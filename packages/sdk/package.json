@@ -1,0 +1,10 @@
+{
+  "name": "@manifold/sdk",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": { "typecheck": "tsc --noEmit", "test": "node --import tsx --test src/index.test.ts" },
+  "dependencies": { "@manifold/contracts": "workspace:*" },
+  "devDependencies": { "tsx": "^4.20.5", "typescript": "^5.9.3" }
+}
