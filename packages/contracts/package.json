@@ -4,5 +4,6 @@
   "private": true,
   "type": "module",
   "exports": { ".": "./src/index.ts" },
-  "scripts": { "typecheck": "tsc --noEmit", "test": "tsc --noEmit" }
+  "scripts": { "typecheck": "tsc --noEmit", "test": "tsc --noEmit" },
+  "devDependencies": { "typescript": "^5.9.3" }
 }
