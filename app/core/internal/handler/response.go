@@ -1,11 +1,15 @@
 package handler
 
 import (
+	"crypto/rand"
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/cors"
@@ -31,6 +35,7 @@ func Router(cfg config.Config, database *store.Store) http.Handler {
 	}
 	h := &apiHandler{cfg: cfg, store: database, auth: authService, validate: validator.New()}
 	router := chi.NewRouter()
+	router.Use(requestIDMiddleware)
 	router.Use(cors.Handler(cors.Options{
 		AllowedOrigins: cfg.AllowedOrigins,
 		AllowedMethods: []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete, http.MethodOptions},
@@ -75,7 +80,11 @@ func WriteJSON(w http.ResponseWriter, status int, value any) {
 }
 
 func WriteError(w http.ResponseWriter, status int, code, message string) {
-	WriteJSON(w, status, map[string]any{"error": map[string]string{"code": code, "message": message}})
+	errorBody := map[string]any{"code": code, "message": message}
+	if requestID := w.Header().Get("X-Request-ID"); requestID != "" {
+		errorBody["requestId"] = requestID
+	}
+	WriteJSON(w, status, map[string]any{"error": errorBody})
 }
 
 func Health(w http.ResponseWriter, _ *http.Request) {
@@ -93,6 +102,7 @@ func (h *apiHandler) login(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusUnauthorized, "INVALID_CREDENTIALS", "Username or password is incorrect.")
 		return
 	}
+	h.audit(r, "admin.session.created", "session", input.Username, nil)
 	WriteJSON(w, http.StatusOK, map[string]any{"accessToken": token, "tokenType": "Bearer", "expiresIn": 43200, "user": map[string]string{"username": input.Username, "role": "admin"}})
 }
 
@@ -218,6 +228,7 @@ func (h *apiHandler) createComment(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusInternalServerError, "COMMENT_CREATE_FAILED", "Comment could not be created.")
 		return
 	}
+	h.audit(r, "comment.created", "comment", comment.ID, map[string]string{"contentId": content.ID})
 	WriteJSON(w, http.StatusCreated, comment)
 }
 
@@ -250,6 +261,7 @@ func (h *apiHandler) adminCreateContent(w http.ResponseWriter, r *http.Request) 
 		WriteError(w, http.StatusConflict, "CONTENT_CREATE_FAILED", "Content could not be created.")
 		return
 	}
+	h.audit(r, "content.created", "content", created.ID, map[string]string{"kind": string(created.Kind)})
 	WriteJSON(w, http.StatusCreated, created)
 }
 
@@ -263,6 +275,7 @@ func (h *apiHandler) adminUpdateContent(w http.ResponseWriter, r *http.Request) 
 		WriteError(w, http.StatusInternalServerError, "CONTENT_UPDATE_FAILED", "Content could not be updated.")
 		return
 	}
+	h.audit(r, "content.updated", "content", chi.URLParam(r, "id"), nil)
 	h.writeAdminContent(w, r)
 }
 
@@ -279,6 +292,7 @@ func (h *apiHandler) setContentStatus(w http.ResponseWriter, r *http.Request, st
 		WriteError(w, http.StatusNotFound, "CONTENT_NOT_FOUND", "Content was not found.")
 		return
 	}
+	h.audit(r, "content."+strings.ToLower(status), "content", chi.URLParam(r, "id"), nil)
 	h.writeAdminContent(w, r)
 }
 
@@ -296,6 +310,7 @@ func (h *apiHandler) adminDeleteContent(w http.ResponseWriter, r *http.Request) 
 		WriteError(w, http.StatusNotFound, "CONTENT_NOT_FOUND", "Content was not found.")
 		return
 	}
+	h.audit(r, "content.deleted", "content", chi.URLParam(r, "id"), nil)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -321,6 +336,7 @@ func (h *apiHandler) setCommentStatus(w http.ResponseWriter, r *http.Request, st
 		WriteError(w, http.StatusNotFound, "COMMENT_NOT_FOUND", "Comment was not found.")
 		return
 	}
+	h.audit(r, "comment."+strings.ToLower(status), "comment", chi.URLParam(r, "id"), nil)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -334,6 +350,7 @@ func (h *apiHandler) adminUpdateNow(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusInternalServerError, "NOW_UPDATE_FAILED", "Now status could not be updated.")
 		return
 	}
+	h.audit(r, "now.updated", "now", "now_1", nil)
 	h.now(w, r)
 }
 
@@ -356,4 +373,55 @@ func collection[T any](items []T) map[string]any {
 		items = []T{}
 	}
 	return map[string]any{"data": items, "pagination": map[string]any{"nextCursor": nil, "hasMore": false}}
+}
+
+func (h *apiHandler) audit(r *http.Request, eventName, resourceType, resourceID string, metadata map[string]string) {
+	actor := "anonymous"
+	if claims := auth.ClaimsFromContext(r.Context()); claims != nil && claims.Subject != "" {
+		actor = claims.Subject
+	}
+	requestID := r.Header.Get("X-Request-ID")
+	if err := h.store.RecordAuditEvent(eventName, resourceType, resourceID, actor, requestID, metadata); err != nil {
+		slog.Error("audit_event_failed", "eventName", eventName, "resourceType", resourceType, "resourceId", resourceID, "requestId", requestID, "error", err)
+	}
+}
+
+func requestIDMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestID := strings.TrimSpace(r.Header.Get("X-Request-ID"))
+		if requestID == "" {
+			requestID = newRequestID()
+		}
+		w.Header().Set("X-Request-ID", requestID)
+		r = r.WithContext(r.Context())
+		started := time.Now()
+		recorder := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+		next.ServeHTTP(recorder, r)
+		slog.Info("http_request", "requestId", requestID, "method", r.Method, "path", r.URL.Path, "status", recorder.status, "durationMs", time.Since(started).Milliseconds())
+	})
+}
+
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (r *statusRecorder) WriteHeader(status int) {
+	r.status = status
+	r.ResponseWriter.WriteHeader(status)
+}
+
+func (r *statusRecorder) Write(body []byte) (int, error) {
+	if r.status == http.StatusOK {
+		r.WriteHeader(http.StatusOK)
+	}
+	return r.ResponseWriter.Write(body)
+}
+
+func newRequestID() string {
+	value := make([]byte, 8)
+	if _, err := rand.Read(value); err != nil {
+		return fmt.Sprintf("req_%d", time.Now().UnixNano())
+	}
+	return "req_" + fmt.Sprintf("%x", value)
 }

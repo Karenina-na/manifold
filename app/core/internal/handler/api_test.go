@@ -40,6 +40,9 @@ func TestPublicContentAndCommentFlow(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("expected content 200, got %d", response.Code)
 	}
+	if response.Header().Get("X-Request-ID") == "" {
+		t.Fatal("expected request id header")
+	}
 
 	response = request(t, router, http.MethodGet, "/api/v1/content/designing-boundaries", nil)
 	if response.Code != http.StatusOK {
@@ -49,6 +52,47 @@ func TestPublicContentAndCommentFlow(t *testing.T) {
 	response = request(t, router, http.MethodPost, "/api/v1/content/designing-boundaries/comments", strings.NewReader(`{"authorName":"Reader","body":"A useful note."}`))
 	if response.Code != http.StatusCreated {
 		t.Fatalf("expected comment 201, got %d", response.Code)
+	}
+}
+
+func TestRequestIDIsPropagatedToStructuredErrors(t *testing.T) {
+	router := newTestRouter(t)
+	recorder := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/content/does-not-exist", nil)
+	req.Header.Set("X-Request-ID", "req_test_1")
+	router.ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", recorder.Code)
+	}
+	if recorder.Header().Get("X-Request-ID") != "req_test_1" {
+		t.Fatalf("expected propagated request id, got %q", recorder.Header().Get("X-Request-ID"))
+	}
+	if !strings.Contains(recorder.Body.String(), `"requestId":"req_test_1"`) {
+		t.Fatalf("expected request id in error body, got %s", recorder.Body.String())
+	}
+}
+
+func TestWriteOperationsCreateAuditEvents(t *testing.T) {
+	database, err := store.Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.MinCost)
+	cfg := config.Config{JWTSecret: "test-secret", AdminUsername: "admin", AdminPasswordHash: string(hash), AllowedOrigins: []string{"*"}}
+	router := handler.Router(cfg, database)
+
+	response := request(t, router, http.MethodPost, "/api/v1/content/designing-boundaries/comments", strings.NewReader(`{"authorName":"Reader","body":"A useful note."}`))
+	if response.Code != http.StatusCreated {
+		t.Fatalf("expected comment 201, got %d", response.Code)
+	}
+	count, err := database.AuditEventCount()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("expected one audit event, got %d", count)
 	}
 }
 

@@ -259,7 +259,7 @@ These extensions remain resource-oriented and can be added without changing the 
 - [x] [P0] Casbin role protection | Admin routes require a valid JWT with the `admin` role.
 - [x] [P0] Admin content lifecycle | Admin can create, edit, publish, unpublish, and soft-delete content.
 - [x] [P0] Admin comment moderation | Admin can list, approve, and reject comments.
-- [ ] [P1] Stable request IDs and audit events | Write logs contain event name, resource ID, operator, request ID, and timestamp.
+- [x] [P1] Stable request IDs and audit events | Write logs contain event name, resource ID, operator, request ID, and timestamp; request IDs are returned in headers and structured errors.
 - [ ] [P1] Cursor/filter implementation | `cursor`, `limit`, `kind`, `tag`, and `q` are validated and applied by Core.
 - [ ] [P1] Optimistic content concurrency | Admin updates support `expectedVersion` and return `409` on stale writes.
 - [ ] [P1] Project/profile/site editing | Admin owns all source records that shape the home page.

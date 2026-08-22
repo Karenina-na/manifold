@@ -18,8 +18,10 @@ CREATE TABLE IF NOT EXISTS content (id TEXT PRIMARY KEY, kind TEXT NOT NULL CHEC
 CREATE TABLE IF NOT EXISTS now_status (id TEXT PRIMARY KEY, title TEXT NOT NULL, detail TEXT NOT NULL DEFAULT '', mood TEXT NOT NULL DEFAULT 'FOCUSED', updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY, slug TEXT NOT NULL UNIQUE, name TEXT NOT NULL, summary TEXT NOT NULL DEFAULT '', description TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'ACTIVE', featured INTEGER NOT NULL DEFAULT 0, homepage_url TEXT NOT NULL DEFAULT '', repository_url TEXT NOT NULL DEFAULT '', tech_stack_json TEXT NOT NULL DEFAULT '[]', started_at TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS comments (id TEXT PRIMARY KEY, content_id TEXT NOT NULL REFERENCES content(id), author_name TEXT NOT NULL, author_url TEXT NOT NULL DEFAULT '', body TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'APPROVED', 'REJECTED')), reply_to_id TEXT REFERENCES comments(id), created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS audit_events (id TEXT PRIMARY KEY, event_name TEXT NOT NULL, resource_type TEXT NOT NULL, resource_id TEXT NOT NULL DEFAULT '', actor TEXT NOT NULL DEFAULT 'anonymous', request_id TEXT NOT NULL DEFAULT '', metadata_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE INDEX IF NOT EXISTS idx_content_publication ON content(status, published_at DESC);
 CREATE INDEX IF NOT EXISTS idx_comments_content_status ON comments(content_id, status, created_at);
+CREATE INDEX IF NOT EXISTS idx_audit_events_created_at ON audit_events(created_at DESC);
 `
 
 type Store struct{ DB *sql.DB }
@@ -260,6 +262,25 @@ func (s *Store) SetCommentStatus(id, status string) error {
 func (s *Store) PendingCommentCount() (int, error) {
 	var count int
 	err := s.DB.QueryRow(`SELECT COUNT(*) FROM comments WHERE status = 'PENDING'`).Scan(&count)
+	return count, err
+}
+
+func (s *Store) RecordAuditEvent(eventName, resourceType, resourceID, actor, requestID string, metadata map[string]string) error {
+	if metadata == nil {
+		metadata = map[string]string{}
+	}
+	raw, err := json.Marshal(metadata)
+	if err != nil {
+		return err
+	}
+	id := "audit_" + time.Now().UTC().Format("20060102150405.000000000")
+	_, err = s.DB.Exec(`INSERT INTO audit_events (id, event_name, resource_type, resource_id, actor, request_id, metadata_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, id, eventName, resourceType, resourceID, actor, requestID, string(raw), time.Now().UTC().Format(time.RFC3339))
+	return err
+}
+
+func (s *Store) AuditEventCount() (int, error) {
+	var count int
+	err := s.DB.QueryRow(`SELECT COUNT(*) FROM audit_events`).Scan(&count)
 	return count, err
 }
 

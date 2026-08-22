@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
@@ -115,5 +116,9 @@ func ClaimsFromContext(ctx context.Context) *Claims {
 func writeAuthError(w http.ResponseWriter, status int, code, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_, _ = w.Write([]byte(`{"error":{"code":"` + code + `","message":"` + message + `"}}`))
+	errorBody := map[string]any{"code": code, "message": message}
+	if requestID := w.Header().Get("X-Request-ID"); requestID != "" {
+		errorBody["requestId"] = requestID
+	}
+	_ = json.NewEncoder(w).Encode(map[string]any{"error": errorBody})
 }
