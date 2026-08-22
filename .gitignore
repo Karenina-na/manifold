@@ -1,0 +1,19 @@
+node_modules/
+.pnpm-store/
+.DS_Store
+.env
+.env.*
+!.env.example
+dist/
+.next/
+coverage/
+*.db
+*.db-shm
+*.db-wal
+.idea/
+.vscode/
+
+# Go local artifacts
+apps/core/data/
+apps/core/bin/
+

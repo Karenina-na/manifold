@@ -1,0 +1,6 @@
+{
+  "name": "manifold",
+  "private": true,
+  "packageManager": "pnpm@11.19.0",
+  "scripts": { "dev": "pnpm --parallel --filter @manifold/web --filter @manifold/admin dev", "build": "pnpm -r build", "check": "pnpm -r typecheck", "test": "pnpm -r test" }
+}
