@@ -1,0 +1,2 @@
+-- Runtime MVP queries live in internal/store until sqlc generation is wired into CI.
+-- Keep this file as the SQL source for the next generated-store increment.

@@ -5,7 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/manifold-space/manifold/apps/core/internal/handler"
+	"github.com/manifold-space/manifold/app/core/internal/handler"
 )
 
 func TestHealth(t *testing.T) {
@@ -15,8 +15,7 @@ func TestHealth(t *testing.T) {
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", recorder.Code)
 	}
-	if got := recorder.Body.String(); got != "{\"status\":\"ok\"}\n" {
+	if got := recorder.Body.String(); got != "{\"status\":\"ok\",\"version\":\"0.1.0\"}\n" {
 		t.Fatalf("unexpected response: %s", got)
 	}
 }
-

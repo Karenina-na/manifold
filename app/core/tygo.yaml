@@ -1,6 +1,5 @@
 packages:
-  - path: github.com/manifold-space/manifold/apps/core/internal/model
+  - path: github.com/manifold-space/manifold/app/core/internal/model
     output_path: ../../packages/contracts/src/generated.ts
     type_mappings:
       time.Time: string
-
