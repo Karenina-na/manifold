@@ -31,6 +31,7 @@ type apiHandler struct {
 	auth         *auth.Service
 	validate     *validator.Validate
 	contentCache *cache.ContentCache
+	statsCache   *cache.StatsCache
 }
 
 func Router(cfg config.Config, database *store.Store) http.Handler {
@@ -38,7 +39,7 @@ func Router(cfg config.Config, database *store.Store) http.Handler {
 	if err != nil {
 		panic(err)
 	}
-	h := &apiHandler{cfg: cfg, store: database, auth: authService, validate: validator.New(), contentCache: cache.NewContentCache(cfg.ContentCacheTTL)}
+	h := &apiHandler{cfg: cfg, store: database, auth: authService, validate: validator.New(), contentCache: cache.NewContentCache(cfg.ContentCacheTTL), statsCache: cache.NewStatsCache(cfg.StatsCacheTTL)}
 	router := chi.NewRouter()
 	router.Use(requestIDMiddleware)
 	router.Use(cors.Handler(cors.Options{
@@ -155,11 +156,16 @@ func (h *apiHandler) feed(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *apiHandler) stats(w http.ResponseWriter, _ *http.Request) {
+	if stats, ok := h.statsCache.Get(); ok {
+		WriteJSON(w, http.StatusOK, stats)
+		return
+	}
 	stats, err := h.store.Stats()
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, "STATS_UNAVAILABLE", "Stats are unavailable.")
 		return
 	}
+	h.statsCache.Set(stats)
 	WriteJSON(w, http.StatusOK, stats)
 }
 
@@ -541,6 +547,7 @@ func (h *apiHandler) adminCreateContent(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	h.audit(r, "content.created", "content", created.ID, map[string]string{"kind": string(created.Kind)})
+	h.statsCache.Purge()
 	WriteJSON(w, http.StatusCreated, created)
 }
 
@@ -614,6 +621,7 @@ func (h *apiHandler) adminDeleteContent(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	h.audit(r, "content.deleted", "content", chi.URLParam(r, "id"), nil)
+	h.statsCache.Purge()
 	if slug == "" {
 		h.contentCache.Purge()
 	} else {
@@ -631,6 +639,7 @@ func (h *apiHandler) contentSlug(id string) string {
 }
 
 func (h *apiHandler) invalidateContentByID(id string) {
+	h.statsCache.Purge()
 	slug := h.contentSlug(id)
 	if slug == "" {
 		h.contentCache.Purge()
@@ -680,10 +689,15 @@ func (h *apiHandler) adminUpdateNow(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *apiHandler) adminStats(w http.ResponseWriter, _ *http.Request) {
-	stats, err := h.store.Stats()
-	if err != nil {
-		WriteError(w, http.StatusInternalServerError, "STATS_UNAVAILABLE", "Stats are unavailable.")
-		return
+	stats, ok := h.statsCache.Get()
+	if !ok {
+		var err error
+		stats, err = h.store.Stats()
+		if err != nil {
+			WriteError(w, http.StatusInternalServerError, "STATS_UNAVAILABLE", "Stats are unavailable.")
+			return
+		}
+		h.statsCache.Set(stats)
 	}
 	pending, err := h.store.PendingCommentCount()
 	if err != nil {

@@ -318,6 +318,37 @@ func TestPublishedContentCacheInvalidatesAfterAdminUpdate(t *testing.T) {
 	}
 }
 
+func TestStatsSnapshotInvalidatesAfterPublishingContent(t *testing.T) {
+	router := newTestRouter(t)
+	token := adminToken(t, router)
+
+	initial := request(t, router, http.MethodGet, "/api/v1/stats", nil)
+	if initial.Code != http.StatusOK || !strings.Contains(initial.Body.String(), `"contentCount":3`) {
+		t.Fatalf("expected initial stats, got %d %s", initial.Code, initial.Body.String())
+	}
+
+	created := adminRequest(t, router, token, http.MethodPost, "/api/v1/admin/content", `{"kind":"NOTE","slug":"stats-snapshot-note","title":"Snapshot","body":"one two","tags":[]}`)
+	if created.Code != http.StatusCreated {
+		t.Fatalf("expected draft creation 201, got %d %s", created.Code, created.Body.String())
+	}
+	var content struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(created.Body.Bytes(), &content); err != nil {
+		t.Fatal(err)
+	}
+
+	published := adminRequest(t, router, token, http.MethodPost, "/api/v1/admin/content/"+content.ID+"/publish", "")
+	if published.Code != http.StatusOK {
+		t.Fatalf("expected publish 200, got %d %s", published.Code, published.Body.String())
+	}
+
+	refreshed := request(t, router, http.MethodGet, "/api/v1/stats", nil)
+	if refreshed.Code != http.StatusOK || !strings.Contains(refreshed.Body.String(), `"contentCount":4`) {
+		t.Fatalf("expected invalidated stats snapshot, got %d %s", refreshed.Code, refreshed.Body.String())
+	}
+}
+
 func TestAdminContentPatchUsesExpectedVersion(t *testing.T) {
 	router := newTestRouter(t)
 	login := request(t, router, http.MethodPost, "/api/v1/admin/session", strings.NewReader(`{"username":"admin","password":"password"}`))
