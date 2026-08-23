@@ -1,17 +1,18 @@
 const { spawn } = require('node:child_process');
 const { mkdtempSync, rmSync } = require('node:fs');
 const { get } = require('node:http');
+const net = require('node:net');
 const { join, resolve } = require('node:path');
 const { chromium } = require('playwright');
 
 const root = resolve(__dirname, '..');
 const startServices = process.env.MANIFOLD_START_SERVICES !== '0';
-const corePort = process.env.MANIFOLD_CORE_PORT ?? '18081';
-const webPort = process.env.MANIFOLD_WEB_PORT ?? '13001';
-const adminPort = process.env.MANIFOLD_ADMIN_PORT ?? '15174';
-const coreUrl = process.env.MANIFOLD_CORE_URL ?? `http://127.0.0.1:${corePort}`;
-const webUrl = process.env.MANIFOLD_WEB_URL ?? `http://127.0.0.1:${webPort}`;
-const adminUrl = process.env.MANIFOLD_ADMIN_URL ?? `http://127.0.0.1:${adminPort}`;
+let corePort = process.env.MANIFOLD_CORE_PORT;
+let webPort = process.env.MANIFOLD_WEB_PORT;
+let adminPort = process.env.MANIFOLD_ADMIN_PORT;
+let coreUrl = process.env.MANIFOLD_CORE_URL;
+let webUrl = process.env.MANIFOLD_WEB_URL;
+let adminUrl = process.env.MANIFOLD_ADMIN_URL;
 const contentPath = process.env.MANIFOLD_CONTENT_PATH ?? '/writing/designing-boundaries';
 const username = process.env.MANIFOLD_ADMIN_USERNAME ?? 'admin';
 const password = process.env.MANIFOLD_ADMIN_PASSWORD ?? 'password';
@@ -25,7 +26,7 @@ if (!startServices && process.env.MANIFOLD_ALLOW_EXTERNAL_MUTATIONS !== '1') {
 }
 
 function spawnService(command, args, cwd, environment) {
-  const child = spawn(command, args, { cwd, env: { ...process.env, ...environment }, stdio: ['ignore', 'pipe', 'pipe'] });
+  const child = spawn(command, args, { cwd, detached: true, env: { ...process.env, ...environment }, stdio: ['ignore', 'pipe', 'pipe'] });
   const output = [];
   const collect = (chunk) => { output.push(chunk.toString()); if (output.length > 40) output.shift(); };
   child.stdout.on('data', collect);
@@ -33,6 +34,22 @@ function spawnService(command, args, cwd, environment) {
   child.getRecentOutput = () => output.join('');
   children.push(child);
   return child;
+}
+
+function freePort() {
+  return new Promise((resolvePort, reject) => {
+    const server = net.createServer();
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', () => {
+      const address = server.address();
+      if (!address || typeof address === 'string') {
+        server.close();
+        reject(new Error('Could not determine an available local port'));
+        return;
+      }
+      server.close((error) => error ? reject(error) : resolvePort(String(address.port)));
+    });
+  });
 }
 
 function waitForUrl(url, timeout = 45_000) {
@@ -59,12 +76,16 @@ function waitForUrl(url, timeout = 45_000) {
 }
 
 async function stopServices() {
-  for (const child of children.reverse()) {
-    if (!child.killed) child.kill('SIGTERM');
+  for (const child of children.slice().reverse()) {
+    if (child.pid && child.exitCode === null) {
+      try { process.kill(-child.pid, 'SIGTERM'); } catch (error) { if (error.code !== 'ESRCH') throw error; }
+    }
   }
-  await new Promise((resolveDone) => setTimeout(resolveDone, 500));
+  await new Promise((resolveDone) => setTimeout(resolveDone, 1_000));
   for (const child of children) {
-    if (!child.killed) child.kill('SIGKILL');
+    if (child.pid && child.exitCode === null) {
+      try { process.kill(-child.pid, 'SIGKILL'); } catch (error) { if (error.code !== 'ESRCH') throw error; }
+    }
   }
   if (temporaryDirectory) rmSync(temporaryDirectory, { recursive: true, force: true });
 }
@@ -78,6 +99,12 @@ async function main() {
   process.on('SIGINT', () => { void stopServices().finally(() => process.exit(130)); });
   process.on('SIGTERM', () => { void stopServices().finally(() => process.exit(143)); });
   if (startServices) {
+    corePort ??= await freePort();
+    webPort ??= await freePort();
+    adminPort ??= await freePort();
+    coreUrl ??= `http://127.0.0.1:${corePort}`;
+    webUrl ??= `http://127.0.0.1:${webPort}`;
+    adminUrl ??= `http://127.0.0.1:${adminPort}`;
     temporaryDirectory = mkdtempSync(join('/tmp', 'manifold-browser-'));
     spawnService('go', ['run', './cmd/server'], join(root, 'app/core'), {
       CORE_ADDR: `:${corePort}`,
