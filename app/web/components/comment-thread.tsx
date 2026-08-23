@@ -12,7 +12,7 @@ import { createBrowserClient } from "../lib/api";
 import styles from "../app/site.module.css";
 
 const commentSchema = z.object({
-  authorName: z.string().trim().min(2, "Please add your name.").max(80),
+  authorName: z.string().trim().max(80),
   authorUrl: z.string().trim().url("Use a complete URL.").or(z.literal("")),
   body: z.string().trim().min(3, "A little more detail would help.").max(4000),
 });
@@ -28,7 +28,7 @@ export function CommentThread({ slug }: { slug: string }) {
     mutationFn: (input: CommentForm) => client.createComment(slug, { authorName: input.authorName, authorUrl: input.authorUrl || undefined, body: input.body }),
     onMutate: async (input) => {
       await queryClient.cancelQueries({ queryKey: ["comments", slug] });
-      setLocalPending((items) => [...items, { id: `pending-${Date.now()}`, contentId: slug, authorName: input.authorName, authorUrl: input.authorUrl || undefined, body: input.body, status: "PENDING", createdAt: new Date().toISOString() }]);
+      setLocalPending((items) => [...items, { id: `pending-${Date.now()}`, contentId: slug, authorName: input.authorName || "Anonymous", authorUrl: input.authorUrl || undefined, body: input.body, status: "PENDING", createdAt: new Date().toISOString() }]);
     },
     onSuccess: (comment) => {
       setLocalPending((items) => items.map((item) => item.authorName === comment.authorName && item.body === comment.body ? comment : item));
@@ -45,7 +45,7 @@ export function CommentThread({ slug }: { slug: string }) {
     <div className={styles.commentList}><AnimatePresence initial={false}>{comments.map((comment) => <motion.article key={comment.id} className={styles.comment} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}><div className={styles.commentMeta}><strong>{comment.authorName}</strong><span>{comment.status === "PENDING" ? "Awaiting review" : "Approved"}</span></div><p>{comment.body}</p></motion.article>)}</AnimatePresence></div>
     <form className={styles.commentForm} onSubmit={form.handleSubmit((input) => mutation.mutate(input))}>
       <div className={styles.formGrid}>
-        <label>Name<input {...form.register("authorName")} placeholder="Your name" autoComplete="name" />{form.formState.errors.authorName && <small>{form.formState.errors.authorName.message}</small>}</label>
+        <label>Name <span>(optional)</span><input {...form.register("authorName")} placeholder="Anonymous" autoComplete="name" />{form.formState.errors.authorName && <small>{form.formState.errors.authorName.message}</small>}</label>
         <label>Website <span>(optional)</span><input {...form.register("authorUrl")} placeholder="https://" inputMode="url" autoComplete="url" />{form.formState.errors.authorUrl && <small>{form.formState.errors.authorUrl.message}</small>}</label>
       </div>
       <label>Response<textarea {...form.register("body")} placeholder="What stayed with you?" rows={5} />{form.formState.errors.body && <small>{form.formState.errors.body.message}</small>}</label>

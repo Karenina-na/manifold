@@ -28,7 +28,7 @@ export interface Collection<T> { data: T[]; pagination: Pagination }
 export interface ContentQuery { kind?: ContentKind | ContentKind[]; tag?: string; q?: string; cursor?: string; limit?: number }
 export interface AdminContentQuery extends ContentQuery { status?: ContentStatus }
 export interface CommentQuery { status?: CommentStatus; cursor?: string; limit?: number }
-export interface CreateCommentInput { authorName: string; authorUrl?: string; body: string; replyToId?: string }
+export interface CreateCommentInput { authorName?: string; authorUrl?: string; body: string; replyToId?: string }
 export interface LoginInput { username: string; password: string }
 export interface LoginResponse { accessToken: string; tokenType: "Bearer"; expiresIn: number; user: { username: string; role: "admin" } }
 export interface ContentInput { kind: ContentKind; slug: string; title: string; summary: string; body: string; tags: string[] }

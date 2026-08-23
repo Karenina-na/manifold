@@ -205,7 +205,26 @@ The planned extension adds `externalLinks` and localized navigation labels as op
 }
 ```
 
-It returns `201` with the created comment and `status: "PENDING"`. Public comment lists only contain `APPROVED` comments. The MVP does not expose email addresses, IP addresses, moderation notes, or audit fields publicly.
+`body` is required. `authorName`, `authorUrl`, and `replyToId` are optional; an omitted or blank `authorName` is normalized to `Anonymous` in the `201` response. It returns the created comment with `status: "PENDING"`. Public comment lists only contain `APPROVED` comments. The MVP does not expose email addresses, IP addresses, moderation notes, or audit fields publicly.
+
+The smallest valid request is:
+
+```json
+{ "body": "A useful note." }
+```
+
+The response still has a stable output shape:
+
+```json
+{
+  "id": "comment_01J...",
+  "contentId": "content_1",
+  "authorName": "Anonymous",
+  "body": "A useful note.",
+  "status": "PENDING",
+  "createdAt": "2026-08-23T08:00:00Z"
+}
+```
 
 ### Reactions
 
@@ -311,6 +330,18 @@ The references justify three later resource families, but they should not expand
 
 These extensions remain resource-oriented and can be added without changing the existing home-page composition contract.
 
+### Extension priority
+
+The reference sites point to three different kinds of growth. They are intentionally ordered by how much independent data behavior they require:
+
+| Priority | Resource family | Why it exists | First interface shape |
+| --- | --- | --- | --- |
+| P0 | Profile, Site, Now, Content, Project | Shared by the home page, stream, detail pages, and Admin | Public read models plus authenticated Admin writes |
+| P1 | ExternalLink, Experience | Links, friends, footprints, photos, and other personal records need independent filtering or media references | `GET /links`, `GET /experiences`, `GET /experiences/:slug` |
+| P2 | ResearchSeries, Media, Activity | Paper/news/earthquake collections, health data, and image metadata have source-specific fields and ingestion workflows | Series/items and asset ingestion APIs |
+
+The rule for adding a new endpoint is: introduce a resource family only when it has a distinct lifecycle, moderation policy, query model, or data shape. A new visual section alone is not sufficient.
+
 ## Feature Matrix
 
 - [x] [P0] SQLite schema and seed data | Core startup creates profile, content, projects, now-status, and comments tables and can restart safely.
@@ -319,6 +350,7 @@ These extensions remain resource-oriented and can be added without changing the 
 - [x] [P0] Public content/feed APIs | Only published content is public; lists omit body and details return Markdown.
 - [x] [P0] Projects and aggregate stats APIs | Core returns curated projects and server-owned counts.
 - [x] [P0] Public comment submission | Validated input enters `PENDING`; public lists contain only `APPROVED` comments.
+- [x] [P0] Anonymous comment submission | `authorName` is optional at the boundary and Core returns the stable display value `Anonymous` when it is omitted or blank.
 - [x] [P0] Visitor-scoped reactions | `LIKE` and `FAVORITE` counts and viewer state are persisted through idempotent Core endpoints and isolated by visitor identifier.
 - [x] [P0] JWT Admin session | Valid credentials issue an expiring JWT; invalid credentials return `401`.
 - [x] [P0] Casbin role protection | Admin routes require a valid JWT with the `admin` role.

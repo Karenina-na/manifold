@@ -10,7 +10,7 @@ Inputs:
 
 - Public Core API responses from `NEXT_PUBLIC_CORE_URL`.
 - URL route state for content slugs.
-- Reader input for comments.
+- Reader input for comments; the display name and website are optional.
 - A locally generated `X-Visitor-ID` persisted in browser storage for reactions.
 
 Outputs:
@@ -30,7 +30,7 @@ Access model: all public reads and visitor reactions/comments are available with
 - [x] [P0] Content detail reading | 验收标准：按 slug 加载正文，使用 `react-markdown` + `rehype-sanitize`，不直接注入未处理 HTML。
 - [x] [P0] SEO metadata | 验收标准：首页和详情页输出稳定 title、description、canonical metadata。
 - [x] [P0] Comment list | 验收标准：详情页只展示 Core 返回的 approved 评论，空态和加载态可见。
-- [x] [P0] Comment form | 验收标准：使用 React Hook Form + Zod 校验，提交采用乐观 UI，失败可恢复且不丢输入。
+- [x] [P0] Comment form | 验收标准：使用 React Hook Form + Zod 校验，正文必填、昵称和网站可选，提交采用乐观 UI，失败可恢复且不丢输入。
 - [x] [P0] Reaction bar | 验收标准：详情页可读取并乐观更新点赞/收藏，SDK 通过 `X-Visitor-ID` 调用 Core，成功后以服务端摘要校正状态。
 - [x] [P1] Reading navigation | 验收标准：提供返回流、上一篇/下一篇的可扩展入口，移动端不遮挡正文。
 - [x] [P1] Responsive/accessibility pass | 验收标准：移动和桌面视口无重叠，交互控件有可访问名称，键盘可完成评论提交。

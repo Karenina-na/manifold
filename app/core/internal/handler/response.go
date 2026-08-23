@@ -220,7 +220,7 @@ func (h *apiHandler) listPublicComments(w http.ResponseWriter, r *http.Request) 
 }
 
 type commentInput struct {
-	AuthorName string  `json:"authorName" validate:"required,max=80"`
+	AuthorName string  `json:"authorName" validate:"max=80"`
 	AuthorURL  string  `json:"authorUrl"`
 	Body       string  `json:"body" validate:"required,max=4000"`
 	ReplyToID  *string `json:"replyToId"`
@@ -243,10 +243,14 @@ func (h *apiHandler) createComment(w http.ResponseWriter, r *http.Request) {
 	}
 	var input commentInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil || h.validate.Struct(input) != nil {
-		WriteError(w, http.StatusUnprocessableEntity, "VALIDATION_ERROR", "Author name and comment body are required.")
+		WriteError(w, http.StatusUnprocessableEntity, "VALIDATION_ERROR", "Comment body is required.")
 		return
 	}
-	comment, err := h.store.CreateComment(content.ID, strings.TrimSpace(input.AuthorName), strings.TrimSpace(input.AuthorURL), strings.TrimSpace(input.Body), input.ReplyToID)
+	authorName := strings.TrimSpace(input.AuthorName)
+	if authorName == "" {
+		authorName = "Anonymous"
+	}
+	comment, err := h.store.CreateComment(content.ID, authorName, strings.TrimSpace(input.AuthorURL), strings.TrimSpace(input.Body), input.ReplyToID)
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, "COMMENT_CREATE_FAILED", "Comment could not be created.")
 		return

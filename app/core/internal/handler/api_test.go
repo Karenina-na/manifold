@@ -56,6 +56,18 @@ func TestPublicContentAndCommentFlow(t *testing.T) {
 	}
 }
 
+func TestCommentWithoutAuthorNameUsesAnonymous(t *testing.T) {
+	router := newTestRouter(t)
+
+	response := request(t, router, http.MethodPost, "/api/v1/content/designing-boundaries/comments", strings.NewReader(`{"body":"A useful note."}`))
+	if response.Code != http.StatusCreated {
+		t.Fatalf("expected anonymous comment 201, got %d", response.Code)
+	}
+	if !strings.Contains(response.Body.String(), `"authorName":"Anonymous"`) {
+		t.Fatalf("expected normalized anonymous author, got %s", response.Body.String())
+	}
+}
+
 func TestContentReactionFlowIsIdempotentAndVisitorScoped(t *testing.T) {
 	router := newTestRouter(t)
 
