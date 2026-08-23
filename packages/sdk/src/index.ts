@@ -1,7 +1,19 @@
 import type { AdminStats, Collection, Comment, CommentQuery, Content, ContentDetail, ContentInput, ContentQuery, CreateCommentInput, HealthStatus, LoginInput, LoginResponse, NowStatus, Profile, Project, SiteComposition, Stats } from "@manifold/contracts";
 
 export class ApiError extends Error {
-	constructor(public readonly status: number, public readonly code: string, message: string, public readonly details?: unknown, public readonly requestId?: string) { super(message); this.name = "ApiError"; }
+	readonly status: number;
+	readonly code: string;
+	readonly details?: unknown;
+	readonly requestId?: string;
+
+	constructor(status: number, code: string, message: string, details?: unknown, requestId?: string) {
+		super(message);
+		this.name = "ApiError";
+		this.status = status;
+		this.code = code;
+		this.details = details;
+		this.requestId = requestId;
+	}
 }
 
 export interface ManifoldClientOptions { baseUrl: string; fetch?: typeof globalThis.fetch; token?: string }
