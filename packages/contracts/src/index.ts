@@ -3,7 +3,7 @@ export type ContentStatus = "DRAFT" | "PUBLISHED" | "DELETED";
 export type CommentStatus = "PENDING" | "APPROVED" | "REJECTED";
 export type ContentSort = "publishedAt" | "createdAt" | "updatedAt";
 
-export interface ApiErrorBody { error: { code: string; message: string; details?: unknown; requestId?: string } }
+export interface ApiErrorBody { error: { code: string; message: string; details?: unknown; requestId?: string; traceId?: string } }
 export interface HealthStatus { status: "ok"; version: string }
 export interface Profile { id: string; displayName: string; handle: string; headline: string; bio: string; avatarUrl: string; location: string; organization: string; websiteUrl: string; updatedAt: string }
 export type ProfileInput = Omit<Profile, "id" | "updatedAt">

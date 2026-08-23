@@ -120,5 +120,8 @@ func writeAuthError(w http.ResponseWriter, status int, code, message string) {
 	if requestID := w.Header().Get("X-Request-ID"); requestID != "" {
 		errorBody["requestId"] = requestID
 	}
+	if traceID := w.Header().Get("X-Trace-ID"); traceID != "" {
+		errorBody["traceId"] = traceID
+	}
 	_ = json.NewEncoder(w).Encode(map[string]any{"error": errorBody})
 }

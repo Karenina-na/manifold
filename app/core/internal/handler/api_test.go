@@ -129,6 +129,7 @@ func TestRequestIDIsPropagatedToStructuredErrors(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/content/does-not-exist", nil)
 	req.Header.Set("X-Request-ID", "req_test_1")
+	req.Header.Set("X-Trace-ID", "trace_test_1")
 	router.ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusNotFound {
@@ -137,8 +138,14 @@ func TestRequestIDIsPropagatedToStructuredErrors(t *testing.T) {
 	if recorder.Header().Get("X-Request-ID") != "req_test_1" {
 		t.Fatalf("expected propagated request id, got %q", recorder.Header().Get("X-Request-ID"))
 	}
+	if recorder.Header().Get("X-Trace-ID") != "trace_test_1" {
+		t.Fatalf("expected propagated trace id, got %q", recorder.Header().Get("X-Trace-ID"))
+	}
 	if !strings.Contains(recorder.Body.String(), `"requestId":"req_test_1"`) {
 		t.Fatalf("expected request id in error body, got %s", recorder.Body.String())
+	}
+	if !strings.Contains(recorder.Body.String(), `"traceId":"trace_test_1"`) {
+		t.Fatalf("expected trace id in error body, got %s", recorder.Body.String())
 	}
 }
 

@@ -5,15 +5,22 @@ export class ApiError extends Error {
 	readonly code: string;
 	readonly details?: unknown;
 	readonly requestId?: string;
+	readonly traceId?: string;
 
-	constructor(status: number, code: string, message: string, details?: unknown, requestId?: string) {
+	constructor(status: number, code: string, message: string, details?: unknown, requestId?: string, traceId?: string) {
 		super(message);
 		this.name = "ApiError";
 		this.status = status;
 		this.code = code;
 		this.details = details;
 		this.requestId = requestId;
+		this.traceId = traceId;
 	}
+}
+
+export function createTraceId() {
+	const uuid = globalThis.crypto?.randomUUID?.();
+	return `trace_${uuid?.replaceAll("-", "") ?? `${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`}`;
 }
 
 export interface ManifoldClientOptions { baseUrl: string; fetch?: typeof globalThis.fetch; token?: string }
@@ -72,13 +79,14 @@ export class ManifoldClient {
 
 	private async request<T>(path: string, options: { method?: string; body?: unknown; headers?: Record<string, string> } = {}): Promise<T> {
 		const headers = new Headers({ Accept: "application/json" });
+		headers.set("X-Trace-ID", createTraceId());
 		if (options.body !== undefined) headers.set("Content-Type", "application/json");
 		if (this.token) headers.set("Authorization", `Bearer ${this.token}`);
 		for (const [key, value] of Object.entries(options.headers ?? {})) headers.set(key, value);
 		const response = await this.fetcher(`${this.baseUrl}${path}`, { method: options.method ?? "GET", headers, body: options.body === undefined ? undefined : JSON.stringify(options.body) });
 		if (!response.ok) {
-			const body = await response.json().catch(() => undefined) as { error?: { code?: string; message?: string; details?: unknown; requestId?: string } } | undefined;
-			throw new ApiError(response.status, body?.error?.code ?? "REQUEST_FAILED", body?.error?.message ?? `Request failed with status ${response.status}`, body?.error?.details, body?.error?.requestId);
+			const body = await response.json().catch(() => undefined) as { error?: { code?: string; message?: string; details?: unknown; requestId?: string; traceId?: string } } | undefined;
+			throw new ApiError(response.status, body?.error?.code ?? "REQUEST_FAILED", body?.error?.message ?? `Request failed with status ${response.status}`, body?.error?.details, body?.error?.requestId, body?.error?.traceId ?? response.headers.get("X-Trace-ID") ?? undefined);
 		}
 		if (response.status === 204) return undefined as T;
 		return response.json() as Promise<T>;

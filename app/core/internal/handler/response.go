@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -96,6 +97,9 @@ func WriteError(w http.ResponseWriter, status int, code, message string) {
 	errorBody := map[string]any{"code": code, "message": message}
 	if requestID := w.Header().Get("X-Request-ID"); requestID != "" {
 		errorBody["requestId"] = requestID
+	}
+	if traceID := w.Header().Get("X-Trace-ID"); traceID != "" {
+		errorBody["traceId"] = traceID
 	}
 	WriteJSON(w, status, map[string]any{"error": errorBody})
 }
@@ -735,22 +739,20 @@ func (h *apiHandler) audit(r *http.Request, eventName, resourceType, resourceID 
 	}
 	requestID := r.Header.Get("X-Request-ID")
 	if err := h.store.RecordAuditEvent(eventName, resourceType, resourceID, actor, requestID, metadata); err != nil {
-		slog.Error("audit_event_failed", "eventName", eventName, "resourceType", resourceType, "resourceId", resourceID, "requestId", requestID, "error", err)
+		slog.Error("audit_event_failed", "eventName", eventName, "resourceType", resourceType, "resourceId", resourceID, "requestId", requestID, "traceId", r.Header.Get("X-Trace-ID"), "error", err)
 	}
 }
 
 func requestIDMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		requestID := strings.TrimSpace(r.Header.Get("X-Request-ID"))
-		if requestID == "" {
-			requestID = newRequestID()
-		}
+		requestID := correlationID(r.Header.Get("X-Request-ID"), "req")
+		traceID := correlationID(r.Header.Get("X-Trace-ID"), "trace")
 		w.Header().Set("X-Request-ID", requestID)
-		r = r.WithContext(r.Context())
+		w.Header().Set("X-Trace-ID", traceID)
 		started := time.Now()
 		recorder := &statusRecorder{ResponseWriter: w}
 		next.ServeHTTP(recorder, r)
-		slog.Info("http_request", "requestId", requestID, "method", r.Method, "path", r.URL.Path, "status", recorder.status, "durationMs", time.Since(started).Milliseconds())
+		slog.Info("http_request", "requestId", requestID, "traceId", traceID, "method", r.Method, "path", r.URL.Path, "status", recorder.status, "durationMs", time.Since(started).Milliseconds())
 	})
 }
 
@@ -780,9 +782,23 @@ func (r *statusRecorder) Write(body []byte) (int, error) {
 }
 
 func newRequestID() string {
+	return newCorrelationID("req")
+}
+
+var correlationIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$`)
+
+func correlationID(value, prefix string) string {
+	value = strings.TrimSpace(value)
+	if correlationIDPattern.MatchString(value) {
+		return value
+	}
+	return newCorrelationID(prefix)
+}
+
+func newCorrelationID(prefix string) string {
 	value := make([]byte, 8)
 	if _, err := rand.Read(value); err != nil {
-		return fmt.Sprintf("req_%d", time.Now().UnixNano())
+		return fmt.Sprintf("%s_%d", prefix, time.Now().UnixNano())
 	}
-	return "req_" + fmt.Sprintf("%x", value)
+	return prefix + "_" + fmt.Sprintf("%x", value)
 }

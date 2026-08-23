@@ -16,7 +16,7 @@ Outputs:
 
 - Public API under `/api/v1` for identity, site composition, current status, content streams, projects, comments, and statistics.
 - Private API under `/api/v1/admin` for session, content lifecycle, current-status editing, comment moderation, and Admin statistics.
-- JSON errors with stable `error.code`, `error.message`, optional `error.details`, and optional `error.requestId`.
+- JSON errors with stable `error.code`, `error.message`, optional `error.details`, and optional `error.requestId`/`error.traceId`.
 
 Isolation rules:
 
@@ -89,7 +89,8 @@ Every non-2xx response uses this shape:
     "code": "VALIDATION_ERROR",
     "message": "The request is invalid.",
     "details": { "field": "title" },
-    "requestId": "req_01J..."
+    "requestId": "req_01J...",
+    "traceId": "trace_01J..."
   }
 }
 ```
@@ -113,6 +114,7 @@ Status semantics:
 - Public comment creation is rate-limited and always creates `PENDING` moderation state.
 - Public reactions use an anonymous visitor identifier from `X-Visitor-ID`; no account is required.
 - Admin requests send `Authorization: Bearer <accessToken>`.
+- Core accepts or generates a safe `X-Trace-ID`, returns it on every response, and includes it in structured errors and logs; `X-Request-ID` remains a backwards-compatible request identifier.
 - Login tokens expire after the configured session lifetime. The current MVP returns `expiresIn` in seconds.
 - `POST` writes that may be retried should accept an `Idempotency-Key`; the server must either replay the original result or reject a conflicting reuse.
 - `DELETE` is a soft delete for content. It is idempotent from a public-client perspective: deleted content remains invisible.
@@ -356,7 +358,7 @@ The rule for adding a new endpoint is: introduce a resource family only when it 
 - [x] [P0] Casbin role protection | Admin routes require a valid JWT with the `admin` role.
 - [x] [P0] Admin content lifecycle | Admin can create, edit, publish, unpublish, and soft-delete content.
 - [x] [P0] Admin comment moderation | Admin can list, approve, and reject comments.
-- [x] [P1] Stable request IDs and audit events | Write logs contain event name, resource ID, operator, request ID, and timestamp; request IDs are returned in headers and structured errors.
+- [x] [P1] Request/trace IDs and audit events | Write logs contain event name, resource ID, operator, request ID, trace ID, and timestamp; both IDs are returned in headers and structured errors, and SDK errors expose `traceId`.
 - [x] [P1] Cursor/filter implementation | `cursor`, `limit`, `kind`, `tag`, and `q` are validated and applied by Core.
 - [x] [P1] Optimistic content concurrency | Admin updates support `expectedVersion` and return `409` on stale writes.
 - [x] [P1] Project/profile/site editing | Admin owns all source records that shape the home page; writes are validated, audited, and persisted in Core.
@@ -377,7 +379,7 @@ The current MVP leaves `Experience`/media and `ResearchSeries` as additive contr
 ## Delivery Order
 
 1. `[DONE]` Keep the current public and Admin MVP routes stable while Web and Admin are built against them.
-2. `[DONE]` Add request IDs, structured logs, and audit events before adding more write surfaces.
+2. `[DONE]` Add request/trace IDs, structured logs, and audit events before adding more write surfaces.
 3. `[DONE]` Add cursor/filter behavior and content version conflicts; update SDK query types in the same change.
 4. `[DONE]` Add Admin editing for profile, site composition, and projects. Links remain a future resource family.
 5. Future extension: add experiences/media and research series only after the core publishing flow is used end to end.
