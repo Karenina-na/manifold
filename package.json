@@ -2,5 +2,14 @@
   "name": "manifold",
   "private": true,
   "packageManager": "pnpm@11.19.0",
-  "scripts": { "dev": "pnpm --parallel --filter @manifold/web --filter @manifold/admin dev", "build": "pnpm -r build", "check": "pnpm -r typecheck", "test": "pnpm -r test" }
+  "scripts": {
+    "dev": "pnpm --parallel --filter @manifold/web --filter @manifold/admin dev",
+    "build": "pnpm -r build",
+    "check": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "browser-test": "node scripts/browser-check.cjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.62.1"
+  }
 }

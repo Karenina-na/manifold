@@ -1,4 +1,4 @@
-.PHONY: core-test core-run build check test
+.PHONY: core-test core-run build check test browser-test
 core-test:
 	cd app/core && go test ./...
 core-run:
@@ -11,3 +11,5 @@ check:
 test:
 	make core-test
 	pnpm test
+browser-test:
+	pnpm browser-test
