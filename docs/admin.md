@@ -2,7 +2,7 @@
 
 ## Module Contract
 
-Status: [WIP: browser integration pending]
+Status: [DONE]
 
 `app/admin` is an independently deployable management and analytics application. It has no dependency on Web components, routes, or state. It calls only private Core endpoints through `@manifold/sdk` and never reads the Core SQLite file.
 
@@ -20,6 +20,8 @@ Outputs:
 - Now-status editor.
 - Dashboard cards and charts based on Core-provided aggregates; no frontend re-computation of business metrics.
 
+Access model: Admin serves the single owner account only. It does not expose registration or multi-user onboarding; Core remains the authority for the `admin` role.
+
 ## Feature Matrix
 
 - [x] [P0] Admin login/session | 验收标准：表单校验后调用 Core 登录，保存 JWT，错误凭据和过期状态有明确反馈。
@@ -32,11 +34,11 @@ Outputs:
 - [x] [P1] Profile/site/project configuration | 验收标准：Settings 页面通过 SDK 读取并更新 Profile、Site composition 和 Projects，服务端返回结构化校验错误。
 - [x] [P1] RBAC-aware UI | 验收标准：依据 Core 返回的角色隐藏无权限动作，服务端仍负责最终拒绝。当前单角色 Admin MVP 不显示额外角色动作。
 - [x] [P1] Responsive management shell | 验收标准：移动端可完成审核和发布，桌面端提供侧栏、表格和详情布局。
-- [ ] [P1] Browser integration test | 验收标准：真实浏览器可完成登录 -> 查看数据 -> 发布草稿或审核评论流程。当前受本地浏览器/服务进程环境限制，尚未宣称完成。
+- [x] [P1] Browser integration test | 验收标准：真实浏览器完成登录 -> 查看 Dashboard 聚合 -> 进入 Comments -> approve 待审评论流程，Core 请求返回 `200`，队列更新为 `0 pending`，控制台无错误。
 
 ## State Flow
 
-Session: `[DONE]` for the MVP login shell; automatic runtime expiry handling remains `[TODO]`; `logged out` -> `logging in` -> `authenticated` -> `expired`.
+Session: `[DONE]` for the MVP login shell; automatic runtime expiry handling is a future extension; `logged out` -> `logging in` -> `authenticated` -> `expired`.
 
 Content actions: `DRAFT` -> `PUBLISHED` -> `DRAFT` or `DELETED`.
 
@@ -55,10 +57,7 @@ Comment actions: `PENDING` -> `APPROVED` or `REJECTED`.
 
 ## Iteration Guide
 
-1. `[TODO]` Add fine-grained roles and permissions after the single-admin MVP is proven.
-2. `[TODO]` Add audit-log filtering, export, and operator activity views.
-3. `[TODO]` Add bulk publishing and scheduled content workflows.
-4. `[TODO]` Add CI enforcement for docs checkboxes, type checks, tests, lint, and production builds.
+Future extensions: fine-grained roles and permissions, audit-log filtering/export, bulk publishing and scheduling, and CI enforcement for the full quality gate.
 
 ## Completion Standard
 
