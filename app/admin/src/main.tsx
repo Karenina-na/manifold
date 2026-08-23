@@ -5,6 +5,7 @@ import { MantineProvider } from '@mantine/core'
 import '@mantine/core/styles.css'
 import './index.css'
 import App from './App.tsx'
+import { AdminErrorBoundary } from './ErrorBoundary.tsx'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -13,11 +14,13 @@ const queryClient = new QueryClient({
 })
 
 createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <MantineProvider theme={{ primaryColor: 'orange', defaultRadius: 'xs' }}>
-      <QueryClientProvider client={queryClient}>
-        <App />
-      </QueryClientProvider>
-    </MantineProvider>
-  </StrictMode>,
+  <AdminErrorBoundary>
+    <StrictMode>
+      <MantineProvider theme={{ primaryColor: 'orange', defaultRadius: 'xs' }}>
+        <QueryClientProvider client={queryClient}>
+          <App />
+        </QueryClientProvider>
+      </MantineProvider>
+    </StrictMode>
+  </AdminErrorBoundary>,
 )

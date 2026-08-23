@@ -37,6 +37,7 @@ Access model: Admin serves the single owner account only. It does not expose reg
 - [x] [P1] Responsive management shell | 验收标准：移动端可完成审核和发布，桌面端提供侧栏、表格和详情布局。
 - [x] [P1] Workspace code splitting | 验收标准：认证壳同步加载，Dashboard、Content、Comments、Now 和 Settings 按视图懒加载，生产构建生成独立工作区 chunk。
 - [x] [P1] Browser integration test | 验收标准：`pnpm browser-test` 自动启动隔离临时服务，真实浏览器完成反应 `200`、评论 `201`、登录/查询 `200`、审核 `204`，队列更新为 `0 pending`，控制台无错误，并清理测试数据。
+- [x] [P1] Error capture and recovery | 验收标准：应用渲染异常由全局 Error Boundary 捕获，记录结构化错误和 trace reference，提供 workspace reload 恢复入口且不显示内部堆栈。
 
 ## State Flow
 

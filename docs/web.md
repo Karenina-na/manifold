@@ -36,6 +36,7 @@ Access model: all public reads and visitor reactions/comments are available with
 - [x] [P1] Reading navigation | 验收标准：提供返回流、上一篇/下一篇的可扩展入口，移动端不遮挡正文。
 - [x] [P1] Responsive/accessibility pass | 验收标准：移动和桌面视口无重叠，交互控件有可访问名称，键盘可完成评论提交。
 - [x] [P1] Browser integration test | 验收标准：真实浏览器完成详情 -> 点赞 -> 收藏 -> 评论提交流程，Core 请求分别返回 `200/201`，页面显示 `Awaiting review`，控制台无错误。
+- [x] [P1] Error capture and recovery | 验收标准：路由级和全局渲染异常进入可恢复错误页，生成前端 trace reference 并记录结构化错误，不泄漏内部堆栈。
 
 ## State Flow
 
@@ -54,7 +55,7 @@ Comment UI: `idle` -> `submitting` -> `pending moderation` or `error`; the serve
 
 ## Iteration Guide
 
-Future extensions: full-text search and command navigation, image/media attachments through a dedicated Core asset API, offline-friendly reading cache, and privacy-preserving analytics/error capture.
+Future extensions: full-text search and command navigation, image/media attachments through a dedicated Core asset API, and offline-friendly reading cache.
 
 ## Completion Standard
 

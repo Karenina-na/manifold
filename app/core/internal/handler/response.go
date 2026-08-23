@@ -42,7 +42,8 @@ func Router(cfg config.Config, database *store.Store) http.Handler {
 	router.Use(cors.Handler(cors.Options{
 		AllowedOrigins: cfg.AllowedOrigins,
 		AllowedMethods: []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete, http.MethodOptions},
-		AllowedHeaders: []string{"Accept", "Authorization", "Content-Type", "Idempotency-Key", "X-Visitor-ID"},
+		AllowedHeaders: []string{"Accept", "Authorization", "Content-Type", "Idempotency-Key", "X-Trace-ID", "X-Visitor-ID"},
+		ExposedHeaders: []string{"X-Request-ID", "X-Trace-ID"},
 	}))
 	router.Get("/healthz", Health)
 	router.Route("/api/v1", func(api chi.Router) {
