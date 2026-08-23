@@ -6,15 +6,21 @@ export type ContentSort = "publishedAt" | "createdAt" | "updatedAt";
 export interface ApiErrorBody { error: { code: string; message: string; details?: unknown; requestId?: string } }
 export interface HealthStatus { status: "ok"; version: string }
 export interface Profile { id: string; displayName: string; handle: string; headline: string; bio: string; avatarUrl: string; location: string; organization: string; websiteUrl: string; updatedAt: string }
+export type ProfileInput = Omit<Profile, "id" | "updatedAt">
 export interface ContentSummary { id: string; kind: ContentKind; status: ContentStatus; slug: string; title: string; summary: string; tags: string[]; publishedAt: string | null; createdAt: string; updatedAt: string; version: number; href: string }
 export interface Content extends ContentSummary { body?: string }
 export interface ContentDetail extends ContentSummary { body: string }
-export interface Project { id: string; slug: string; name: string; summary: string; description: string; status: string; featured: boolean; homepageUrl: string; repositoryUrl: string; techStack: string[]; startedAt: string; updatedAt: string }
+export type ProjectStatus = "ACTIVE" | "PAUSED" | "ARCHIVED";
+export interface Project { id: string; slug: string; name: string; summary: string; description: string; status: ProjectStatus; featured: boolean; homepageUrl: string; repositoryUrl: string; techStack: string[]; startedAt: string; updatedAt: string }
+export type CreateProjectInput = Omit<Project, "id" | "updatedAt">
+export type UpdateProjectInput = Partial<Omit<Project, "id" | "slug" | "updatedAt">>
 export interface NowStatus { title: string; detail: string; mood: string; updatedAt: string; expiresAt?: string }
 export interface Comment { id: string; contentId: string; authorName: string; authorUrl?: string; body: string; status: CommentStatus; createdAt: string; replyToId?: string }
 export interface Stats { contentCount: number; postCount: number; noteCount: number; researchCount: number; wordCount: number; updatedAt: string }
 export interface AdminStats { content: Stats; pendingComments: number }
 export interface SiteComposition { profile: { id: string }; featuredContent: Array<{ id: string; kind: ContentKind }>; featuredProjects: Array<{ id: string }>; navigation: SiteNavigationItem[]; sections: string[]; externalLinks?: ExternalLink[] }
+export interface SiteConfig { featuredContent: Array<{ id: string; kind: ContentKind }>; featuredProjects: Array<{ id: string }>; navigation: SiteNavigationItem[]; sections: string[] }
+export type SiteConfigInput = SiteConfig
 export interface Pagination { nextCursor: string | null; hasMore: boolean }
 export interface Collection<T> { data: T[]; pagination: Pagination }
 export interface ContentQuery { kind?: ContentKind | ContentKind[]; tag?: string; q?: string; cursor?: string; limit?: number }

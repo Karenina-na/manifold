@@ -247,3 +247,62 @@ func TestAdminContentPatchUsesExpectedVersion(t *testing.T) {
 		t.Fatalf("expected deleted content to stay out of the default admin list, got %d %s", adminList.Code, adminList.Body.String())
 	}
 }
+
+func TestAdminConfigurationAndProjectManagement(t *testing.T) {
+	router := newTestRouter(t)
+	token := adminToken(t, router)
+
+	profile := adminRequest(t, router, token, http.MethodPatch, "/api/v1/admin/profile", `{"displayName":"Updated Garden","handle":"@updated"}`)
+	if profile.Code != http.StatusOK || !strings.Contains(profile.Body.String(), "Updated Garden") {
+		t.Fatalf("expected profile update 200, got %d %s", profile.Code, profile.Body.String())
+	}
+
+	site := adminRequest(t, router, token, http.MethodPatch, "/api/v1/admin/site", `{"navigation":[{"label":"Notes","href":"/writing"}],"sections":["PROFILE","FEED"]}`)
+	if site.Code != http.StatusOK || !strings.Contains(site.Body.String(), "Notes") {
+		t.Fatalf("expected site update 200, got %d %s", site.Code, site.Body.String())
+	}
+	publicSite := request(t, router, http.MethodGet, "/api/v1/site", nil)
+	if publicSite.Code != http.StatusOK || !strings.Contains(publicSite.Body.String(), "Notes") {
+		t.Fatalf("expected public site to use persisted config, got %d %s", publicSite.Code, publicSite.Body.String())
+	}
+
+	created := adminRequest(t, router, token, http.MethodPost, "/api/v1/admin/projects", `{"slug":"new-project","name":"New Project","status":"ACTIVE","techStack":["Go"]}`)
+	if created.Code != http.StatusCreated {
+		t.Fatalf("expected project create 201, got %d %s", created.Code, created.Body.String())
+	}
+	var project struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(created.Body.Bytes(), &project); err != nil || project.ID == "" {
+		t.Fatalf("expected project id, got %s", created.Body.String())
+	}
+	updated := adminRequest(t, router, token, http.MethodPatch, "/api/v1/admin/projects/"+project.ID, `{"name":"Renamed Project"}`)
+	if updated.Code != http.StatusOK || !strings.Contains(updated.Body.String(), "Renamed Project") {
+		t.Fatalf("expected project update 200, got %d %s", updated.Code, updated.Body.String())
+	}
+	deleted := adminRequest(t, router, token, http.MethodDelete, "/api/v1/admin/projects/"+project.ID, "")
+	if deleted.Code != http.StatusNoContent {
+		t.Fatalf("expected project delete 204, got %d %s", deleted.Code, deleted.Body.String())
+	}
+}
+
+func adminToken(t *testing.T, router http.Handler) string {
+	t.Helper()
+	login := request(t, router, http.MethodPost, "/api/v1/admin/session", strings.NewReader(`{"username":"admin","password":"password"}`))
+	var session struct {
+		AccessToken string `json:"accessToken"`
+	}
+	if err := json.Unmarshal(login.Body.Bytes(), &session); err != nil || session.AccessToken == "" {
+		t.Fatalf("expected admin token, got %d %s", login.Code, login.Body.String())
+	}
+	return session.AccessToken
+}
+
+func adminRequest(t *testing.T, router http.Handler, token string, method, path, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	recorder := httptest.NewRecorder()
+	req := httptest.NewRequest(method, path, strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+token)
+	router.ServeHTTP(recorder, req)
+	return recorder
+}

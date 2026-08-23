@@ -58,6 +58,14 @@ func Router(cfg config.Config, database *store.Store) http.Handler {
 		api.Post("/admin/session", h.login)
 		api.Route("/admin", func(admin chi.Router) {
 			admin.Use(h.auth.RequireAdmin)
+			admin.Get("/profile", h.adminProfile)
+			admin.Patch("/profile", h.adminUpdateProfile)
+			admin.Get("/site", h.adminSite)
+			admin.Patch("/site", h.adminUpdateSite)
+			admin.Get("/projects", h.adminProjects)
+			admin.Post("/projects", h.adminCreateProject)
+			admin.Patch("/projects/{id}", h.adminUpdateProject)
+			admin.Delete("/projects/{id}", h.adminDeleteProject)
 			admin.Get("/content", h.adminListContent)
 			admin.Post("/content", h.adminCreateContent)
 			admin.Patch("/content/{id}", h.adminUpdateContent)
@@ -118,12 +126,17 @@ func (h *apiHandler) profile(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (h *apiHandler) site(w http.ResponseWriter, _ *http.Request) {
+	config, err := h.store.GetSiteConfig()
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, "SITE_UNAVAILABLE", "Site configuration is unavailable.")
+		return
+	}
 	WriteJSON(w, http.StatusOK, map[string]any{
 		"profile":          map[string]string{"id": "profile_1"},
-		"featuredContent":  []map[string]string{{"id": "content_1", "kind": "POST"}},
-		"featuredProjects": []map[string]string{{"id": "project_1"}},
-		"navigation":       []map[string]string{{"label": "Writing", "href": "/writing"}, {"label": "Projects", "href": "/projects"}},
-		"sections":         []string{"PROFILE", "FEED", "PROJECTS", "NOW"},
+		"featuredContent":  config.FeaturedContent,
+		"featuredProjects": config.FeaturedProjects,
+		"navigation":       config.Navigation,
+		"sections":         config.Sections,
 	})
 }
 
@@ -251,6 +264,151 @@ func (h *apiHandler) adminListContent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	WriteJSON(w, http.StatusOK, collectionWithCursor(items, options.Offset, options.Limit, hasMore))
+}
+
+func (h *apiHandler) adminProfile(w http.ResponseWriter, _ *http.Request) {
+	profile, err := h.store.GetProfile()
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, "PROFILE_UNAVAILABLE", "Profile is unavailable.")
+		return
+	}
+	WriteJSON(w, http.StatusOK, profile)
+}
+
+func (h *apiHandler) adminUpdateProfile(w http.ResponseWriter, r *http.Request) {
+	var input model.Profile
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil || h.validate.Struct(input) != nil || strings.TrimSpace(input.DisplayName) == "" {
+		WriteError(w, http.StatusUnprocessableEntity, "VALIDATION_ERROR", "Display name is required.")
+		return
+	}
+	if err := h.store.UpdateProfile(input); err != nil {
+		WriteError(w, http.StatusInternalServerError, "PROFILE_UPDATE_FAILED", "Profile could not be updated.")
+		return
+	}
+	h.audit(r, "profile.updated", "profile", "profile_1", nil)
+	h.profile(w, r)
+}
+
+func (h *apiHandler) adminSite(w http.ResponseWriter, _ *http.Request) {
+	config, err := h.store.GetSiteConfig()
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, "SITE_UNAVAILABLE", "Site configuration is unavailable.")
+		return
+	}
+	WriteJSON(w, http.StatusOK, config)
+}
+
+func (h *apiHandler) adminUpdateSite(w http.ResponseWriter, r *http.Request) {
+	var input model.SiteConfig
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil || h.validate.Struct(input) != nil {
+		WriteError(w, http.StatusUnprocessableEntity, "VALIDATION_ERROR", "Navigation and sections are required.")
+		return
+	}
+	if err := h.store.UpdateSiteConfig(input); err != nil {
+		WriteError(w, http.StatusInternalServerError, "SITE_UPDATE_FAILED", "Site configuration could not be updated.")
+		return
+	}
+	h.audit(r, "site.updated", "site", "site_1", nil)
+	h.adminSite(w, r)
+}
+
+func (h *apiHandler) adminProjects(w http.ResponseWriter, _ *http.Request) {
+	items, err := h.store.ListProjects()
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, "PROJECTS_UNAVAILABLE", "Projects are unavailable.")
+		return
+	}
+	WriteJSON(w, http.StatusOK, collection(items))
+}
+
+type projectInput struct {
+	Slug          string   `json:"slug" validate:"required,max=160"`
+	Name          string   `json:"name" validate:"required,max=160"`
+	Summary       string   `json:"summary" validate:"max=4000"`
+	Description   string   `json:"description" validate:"max=10000"`
+	Status        string   `json:"status" validate:"required,oneof=ACTIVE PAUSED ARCHIVED"`
+	Featured      bool     `json:"featured"`
+	HomepageURL   string   `json:"homepageUrl" validate:"omitempty,url,max=500"`
+	RepositoryURL string   `json:"repositoryUrl" validate:"omitempty,url,max=500"`
+	TechStack     []string `json:"techStack" validate:"max=20,dive,max=80"`
+	StartedAt     string   `json:"startedAt" validate:"max=40"`
+}
+
+func projectFromInput(input projectInput) model.Project {
+	return model.Project{Slug: input.Slug, Name: input.Name, Summary: input.Summary, Description: input.Description, Status: input.Status, Featured: input.Featured, HomepageURL: input.HomepageURL, RepositoryURL: input.RepositoryURL, TechStack: input.TechStack, StartedAt: input.StartedAt}
+}
+
+func (h *apiHandler) adminCreateProject(w http.ResponseWriter, r *http.Request) {
+	var input projectInput
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil || h.validate.Struct(input) != nil {
+		WriteError(w, http.StatusUnprocessableEntity, "VALIDATION_ERROR", "Project fields are invalid.")
+		return
+	}
+	created, err := h.store.CreateProject(projectFromInput(input))
+	if err != nil {
+		WriteError(w, http.StatusConflict, "PROJECT_CREATE_FAILED", "Project could not be created.")
+		return
+	}
+	h.audit(r, "project.created", "project", created.ID, nil)
+	WriteJSON(w, http.StatusCreated, created)
+}
+
+type projectPatchInput struct {
+	Name          *string   `json:"name" validate:"omitempty,max=160"`
+	Summary       *string   `json:"summary" validate:"omitempty,max=4000"`
+	Description   *string   `json:"description" validate:"omitempty,max=10000"`
+	Status        *string   `json:"status" validate:"omitempty,oneof=ACTIVE PAUSED ARCHIVED"`
+	Featured      *bool     `json:"featured"`
+	HomepageURL   *string   `json:"homepageUrl" validate:"omitempty,url,max=500"`
+	RepositoryURL *string   `json:"repositoryUrl" validate:"omitempty,url,max=500"`
+	TechStack     *[]string `json:"techStack" validate:"omitempty,max=20,dive,max=80"`
+	StartedAt     *string   `json:"startedAt" validate:"omitempty,max=40"`
+}
+
+func (h *apiHandler) adminUpdateProject(w http.ResponseWriter, r *http.Request) {
+	var input projectPatchInput
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil || h.validate.Struct(input) != nil {
+		WriteError(w, http.StatusUnprocessableEntity, "VALIDATION_ERROR", "Project fields are invalid.")
+		return
+	}
+	if input.Name == nil && input.Summary == nil && input.Description == nil && input.Status == nil && input.Featured == nil && input.HomepageURL == nil && input.RepositoryURL == nil && input.TechStack == nil && input.StartedAt == nil {
+		WriteError(w, http.StatusUnprocessableEntity, "VALIDATION_ERROR", "At least one project field is required.")
+		return
+	}
+	err := h.store.UpdateProject(chi.URLParam(r, "id"), store.ProjectUpdate{Name: input.Name, Summary: input.Summary, Description: input.Description, Status: input.Status, Featured: input.Featured, HomepageURL: input.HomepageURL, RepositoryURL: input.RepositoryURL, TechStack: input.TechStack, StartedAt: input.StartedAt})
+	if errors.Is(err, store.ErrProjectNotFound) {
+		WriteError(w, http.StatusNotFound, "PROJECT_NOT_FOUND", "Project was not found.")
+		return
+	}
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, "PROJECT_UPDATE_FAILED", "Project could not be updated.")
+		return
+	}
+	h.audit(r, "project.updated", "project", chi.URLParam(r, "id"), nil)
+	h.writeAdminProject(w, r)
+}
+
+func (h *apiHandler) writeAdminProject(w http.ResponseWriter, r *http.Request) {
+	project, err := h.store.GetProjectByID(chi.URLParam(r, "id"))
+	if err != nil {
+		WriteError(w, http.StatusNotFound, "PROJECT_NOT_FOUND", "Project was not found.")
+		return
+	}
+	WriteJSON(w, http.StatusOK, project)
+}
+
+func (h *apiHandler) adminDeleteProject(w http.ResponseWriter, r *http.Request) {
+	err := h.store.DeleteProject(chi.URLParam(r, "id"))
+	if errors.Is(err, store.ErrProjectNotFound) {
+		WriteError(w, http.StatusNotFound, "PROJECT_NOT_FOUND", "Project was not found.")
+		return
+	}
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, "PROJECT_DELETE_FAILED", "Project could not be deleted.")
+		return
+	}
+	h.audit(r, "project.deleted", "project", chi.URLParam(r, "id"), nil)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 type contentInput struct {

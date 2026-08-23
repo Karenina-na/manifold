@@ -2,7 +2,7 @@
 
 ## Module Contract
 
-Status: [WIP]
+Status: [WIP: browser integration pending]
 
 `app/admin` is an independently deployable management and analytics application. It has no dependency on Web components, routes, or state. It calls only private Core endpoints through `@manifold/sdk` and never reads the Core SQLite file.
 
@@ -29,6 +29,7 @@ Outputs:
 - [x] [P0] Content lifecycle actions | 验收标准：创建、更新、发布、取消发布和删除动作均调用对应 Admin API，并刷新缓存。
 - [x] [P0] Comment moderation | 验收标准：查看待审评论并 approve/reject，操作后队列和统计自动失效。
 - [x] [P0] Now editor | 验收标准：管理员可更新当前状态标题、详情和 mood。
+- [x] [P1] Profile/site/project configuration | 验收标准：Settings 页面通过 SDK 读取并更新 Profile、Site composition 和 Projects，服务端返回结构化校验错误。
 - [x] [P1] RBAC-aware UI | 验收标准：依据 Core 返回的角色隐藏无权限动作，服务端仍负责最终拒绝。当前单角色 Admin MVP 不显示额外角色动作。
 - [x] [P1] Responsive management shell | 验收标准：移动端可完成审核和发布，桌面端提供侧栏、表格和详情布局。
 - [ ] [P1] Browser integration test | 验收标准：真实浏览器可完成登录 -> 查看数据 -> 发布草稿或审核评论流程。当前受本地浏览器/服务进程环境限制，尚未宣称完成。
@@ -38,6 +39,8 @@ Outputs:
 Session: `[DONE]` for the MVP login shell; automatic runtime expiry handling remains `[TODO]`; `logged out` -> `logging in` -> `authenticated` -> `expired`.
 
 Content actions: `DRAFT` -> `PUBLISHED` -> `DRAFT` or `DELETED`.
+
+Configuration actions: `Profile/Site/Project` -> validated Admin write -> Core persistence -> query invalidation -> refreshed Settings view.
 
 Comment actions: `PENDING` -> `APPROVED` or `REJECTED`.
 

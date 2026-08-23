@@ -52,6 +52,28 @@ type Project struct {
 	UpdatedAt     string   `json:"updatedAt"`
 }
 
+type SiteConfig struct {
+	FeaturedContent  []SiteContentRef     `json:"featuredContent" validate:"max=10,dive"`
+	FeaturedProjects []SiteProjectRef     `json:"featuredProjects" validate:"max=10,dive"`
+	Navigation       []SiteNavigationItem `json:"navigation" validate:"min=1,max=10,dive"`
+	Sections         []string             `json:"sections" validate:"min=1,max=10,dive,required,max=40"`
+}
+
+type SiteContentRef struct {
+	ID   string      `json:"id" validate:"required,max=160"`
+	Kind ContentKind `json:"kind" validate:"required,oneof=POST NOTE RESEARCH"`
+}
+
+type SiteProjectRef struct {
+	ID string `json:"id" validate:"required,max=160"`
+}
+
+type SiteNavigationItem struct {
+	Label    string `json:"label" validate:"required,max=80"`
+	Href     string `json:"href" validate:"required,max=200"`
+	External bool   `json:"external"`
+}
+
 type NowStatus struct {
 	Title     string `json:"title"`
 	Detail    string `json:"detail"`

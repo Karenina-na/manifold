@@ -48,7 +48,7 @@ pnpm --filter @manifold/admin dev
 
 ## Project Status
 
-当前仓库已完成第一阶段 API 契约、Core MVP、Web 阅读流和 Admin 管理流的基础实现。真实浏览器集成验证、服务端分页/筛选、并发版本控制及更多个人数据资源将在后续独立提交中推进。
+当前仓库已完成第一阶段 API 契约、Core MVP、Web 阅读流和 Admin 管理流的基础实现，包含服务端分页/筛选、内容并发版本控制以及 Profile、Site composition、Projects 配置管理。真实浏览器集成验证和 Experiences、Media、ResearchSeries 等扩展资源仍按独立切片推进。
 
 ## Contributing
 

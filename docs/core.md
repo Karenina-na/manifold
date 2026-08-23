@@ -222,16 +222,16 @@ It returns `201` with the created comment and `status: "PENDING"`. Public commen
 | `PUT` | `/api/v1/admin/now` | Replace current status | `[DONE]` |
 | `GET` | `/api/v1/admin/stats` | Dashboard aggregates | `[DONE]` |
 
-### Planned Admin endpoints
+### Configuration and extension endpoints
 
-These are part of the target interface but are not required for the current Core MVP:
+The configuration endpoints below are implemented in the current MVP. The remaining rows are intentionally deferred extension points:
 
 | Method | Path | Purpose | Priority |
 | --- | --- | --- | --- |
 | `GET` | `/api/v1/admin/session` | Validate the current session and return operator identity | P1 |
-| `GET/PATCH` | `/api/v1/admin/profile` | Edit identity and biography | P1 |
-| `GET/PATCH` | `/api/v1/admin/site` | Edit home composition and navigation | P1 |
-| `GET/POST/PATCH/DELETE` | `/api/v1/admin/projects` | Manage project records | P1 |
+| `GET/PATCH` | `/api/v1/admin/profile` | Read or replace identity and biography fields | `[DONE]` |
+| `GET/PATCH` | `/api/v1/admin/site` | Read or replace home references, navigation, and section order | `[DONE]` |
+| `GET/POST/PATCH/DELETE` | `/api/v1/admin/projects` | List and manage project records | `[DONE]` |
 | `GET` | `/api/v1/admin/audit-events` | Inspect important writes and moderation actions | P1 |
 | `POST` | `/api/v1/admin/content/:id/duplicate` | Create a draft copy without mutating the source | P2 |
 | `POST` | `/api/v1/admin/assets` | Upload and attach images or other media | P2 |
@@ -248,6 +248,24 @@ Admin content update is a validated partial input with optimistic concurrency:
 ```
 
 The server returns `409 VERSION_CONFLICT` when `expectedVersion` is stale. This prevents two Admin tabs from silently overwriting one another and is the reason `version` is already present in the public model.
+
+Configuration writes use server-owned resource shapes for responses and input-only shapes for requests. `id` and `updatedAt` are never required from clients:
+
+```json
+PATCH /api/v1/admin/profile
+{
+  "displayName": "Manifold",
+  "handle": "@manifold",
+  "headline": "A living digital garden for ideas in motion.",
+  "bio": "A quiet space for writing, thoughts, and research.",
+  "avatarUrl": "",
+  "location": "Peking, China",
+  "organization": "Independent",
+  "websiteUrl": "https://manifold.local"
+}
+```
+
+`PATCH /api/v1/admin/site` accepts `{ featuredContent, featuredProjects, navigation, sections }`. `POST /api/v1/admin/projects` requires `slug`, `name`, and `status` (`ACTIVE`, `PAUSED`, or `ARCHIVED`); `PATCH` is partial and cannot change a project's slug. Project deletion returns `204` and is intended for removing a curated record, while content deletion remains a soft delete because content has public lifecycle history.
 
 ## Resource Boundaries and Extensions
 
@@ -286,7 +304,7 @@ These extensions remain resource-oriented and can be added without changing the 
 - [x] [P1] Stable request IDs and audit events | Write logs contain event name, resource ID, operator, request ID, and timestamp; request IDs are returned in headers and structured errors.
 - [x] [P1] Cursor/filter implementation | `cursor`, `limit`, `kind`, `tag`, and `q` are validated and applied by Core.
 - [x] [P1] Optimistic content concurrency | Admin updates support `expectedVersion` and return `409` on stale writes.
-- [ ] [P1] Project/profile/site editing | Admin owns all source records that shape the home page.
+- [x] [P1] Project/profile/site editing | Admin owns all source records that shape the home page; writes are validated, audited, and persisted in Core.
 - [ ] [P2] Experiences and media | Travel-like records can include images, places, and optional geodata through dedicated assets.
 - [ ] [P2] Research series | Recurring data-heavy reports are addressable without overloading `Content`.
 - [x] [P1] API contract regression tests | Invalid input, auth failures, not-found behavior, publication state, and comment moderation are tested.
@@ -306,7 +324,7 @@ These extensions remain resource-oriented and can be added without changing the 
 1. `[DONE]` Keep the current public and Admin MVP routes stable while Web and Admin are built against them.
 2. `[DONE]` Add request IDs, structured logs, and audit events before adding more write surfaces.
 3. `[DONE]` Add cursor/filter behavior and content version conflicts; update SDK query types in the same change.
-4. `[TODO]` Add Admin editing for profile, site composition, projects, and links.
+4. `[DONE]` Add Admin editing for profile, site composition, and projects. Links remain a future resource family.
 5. `[TODO]` Add experiences/media and research series only after the core publishing flow is used end to end.
 
 ## Completion Standard

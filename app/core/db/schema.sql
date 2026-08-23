@@ -34,6 +34,15 @@ CREATE TABLE IF NOT EXISTS now_status (
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS site_config (
+    id TEXT PRIMARY KEY,
+    featured_content_json TEXT NOT NULL DEFAULT '[]',
+    featured_projects_json TEXT NOT NULL DEFAULT '[]',
+    navigation_json TEXT NOT NULL DEFAULT '[]',
+    sections_json TEXT NOT NULL DEFAULT '[]',
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS projects (
     id TEXT PRIMARY KEY,
     slug TEXT NOT NULL UNIQUE,
