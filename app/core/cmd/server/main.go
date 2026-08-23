@@ -28,7 +28,8 @@ func main() {
 	}
 	defer database.Close()
 
-	router := handler.Router(cfg, database)
+	router, closeRouter := handler.RouterWithLifecycle(cfg, database)
+	defer closeRouter()
 
 	server := &http.Server{Addr: cfg.Addr, Handler: router, ReadHeaderTimeout: 5 * time.Second}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

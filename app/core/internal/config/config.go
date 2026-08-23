@@ -15,6 +15,7 @@ type Config struct {
 	AdminPasswordHash string        `env:"ADMIN_PASSWORD_HASH" envDefault:"$2y$10$c1RwBHkB5sMnrXuxlNO5xudapo9RFfI4swx.EiH5k7HkJp9RDUG9O"`
 	ContentCacheTTL   time.Duration `env:"CONTENT_CACHE_TTL" envDefault:"30s"`
 	StatsCacheTTL     time.Duration `env:"STATS_CACHE_TTL" envDefault:"30s"`
+	AuditEventBuffer  int           `env:"AUDIT_EVENT_BUFFER" envDefault:"256"`
 }
 
 func Load() (Config, error) {

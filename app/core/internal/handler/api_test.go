@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/manifold-space/manifold/app/core/internal/config"
 	"github.com/manifold-space/manifold/app/core/internal/handler"
@@ -23,7 +24,9 @@ func newTestRouter(t *testing.T) http.Handler {
 	t.Cleanup(func() { _ = database.Close() })
 	hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.MinCost)
 	cfg := config.Config{JWTSecret: "test-secret", AdminUsername: "admin", AdminPasswordHash: string(hash), AllowedOrigins: []string{"*"}}
-	return handler.Router(cfg, database)
+	router, closeRouter := handler.RouterWithLifecycle(cfg, database)
+	t.Cleanup(closeRouter)
+	return router
 }
 
 func request(t *testing.T, router http.Handler, method, path string, body io.Reader) *httptest.ResponseRecorder {
@@ -182,18 +185,38 @@ func TestWriteOperationsCreateAuditEvents(t *testing.T) {
 	defer database.Close()
 	hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.MinCost)
 	cfg := config.Config{JWTSecret: "test-secret", AdminUsername: "admin", AdminPasswordHash: string(hash), AllowedOrigins: []string{"*"}}
-	router := handler.Router(cfg, database)
+	router, closeRouter := handler.RouterWithLifecycle(cfg, database)
+	defer closeRouter()
 
-	response := request(t, router, http.MethodPost, "/api/v1/content/designing-boundaries/comments", strings.NewReader(`{"authorName":"Reader","body":"A useful note."}`))
+	recorder := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/content/designing-boundaries/comments", strings.NewReader(`{"authorName":"Reader","body":"A useful note."}`))
+	req.Header.Set("X-Request-ID", "req_audit_test")
+	req.Header.Set("X-Trace-ID", "trace_audit_test")
+	router.ServeHTTP(recorder, req)
+	response := recorder
 	if response.Code != http.StatusCreated {
 		t.Fatalf("expected comment 201, got %d", response.Code)
 	}
-	count, err := database.AuditEventCount()
-	if err != nil {
+	deadline := time.Now().Add(time.Second)
+	for {
+		count, err := database.AuditEventCount()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if count == 1 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("expected one audit event, got %d", count)
+		}
+		time.Sleep(time.Millisecond)
+	}
+	var requestID, traceID string
+	if err := database.DB.QueryRow(`SELECT request_id, trace_id FROM audit_events LIMIT 1`).Scan(&requestID, &traceID); err != nil {
 		t.Fatal(err)
 	}
-	if count != 1 {
-		t.Fatalf("expected one audit event, got %d", count)
+	if requestID != "req_audit_test" || traceID != "trace_audit_test" {
+		t.Fatalf("expected audit correlation IDs, got request=%q trace=%q", requestID, traceID)
 	}
 }
 
@@ -326,7 +349,8 @@ func TestRouterPrewarmsFeaturedPublishedContent(t *testing.T) {
 	defer database.Close()
 	hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.MinCost)
 	cfg := config.Config{JWTSecret: "test-secret", AdminUsername: "admin", AdminPasswordHash: string(hash), AllowedOrigins: []string{"*"}}
-	router := handler.Router(cfg, database)
+	router, closeRouter := handler.RouterWithLifecycle(cfg, database)
+	defer closeRouter()
 
 	if _, err := database.DB.Exec(`UPDATE content SET title = 'Database-only title' WHERE id = 'content_1'`); err != nil {
 		t.Fatal(err)

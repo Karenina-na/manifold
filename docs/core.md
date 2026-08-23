@@ -10,7 +10,7 @@ Inputs:
 
 - Public HTTP requests from `app/web` or other public clients.
 - Authenticated Admin HTTP requests from `app/admin`.
-- Environment configuration: `CORE_ADDR`, `CORE_DATABASE_PATH`, `CORE_ALLOWED_ORIGINS`, `CORE_JWT_SECRET`, `CORE_ADMIN_USERNAME`, `CORE_ADMIN_PASSWORD_HASH`, `CORE_CONTENT_CACHE_TTL`, and `CORE_STATS_CACHE_TTL`.
+- Environment configuration: `CORE_ADDR`, `CORE_DATABASE_PATH`, `CORE_ALLOWED_ORIGINS`, `CORE_JWT_SECRET`, `CORE_ADMIN_USERNAME`, `CORE_ADMIN_PASSWORD_HASH`, `CORE_CONTENT_CACHE_TTL`, `CORE_STATS_CACHE_TTL`, and `CORE_AUDIT_EVENT_BUFFER`.
 
 Outputs:
 
@@ -66,6 +66,22 @@ Profile + SiteComposition + NowStatus
 
 The MVP deliberately does not expose a separate endpoint for every visual section. A new resource family is introduced only when it needs distinct lifecycle, detail shape, moderation, or query semantics. This keeps the public API reusable across the Web, Admin, and future clients while allowing the home page to evolve as a composition of references.
 
+### Interface inventory
+
+The reference signals map to the following API layers:
+
+| Layer | Interfaces | Contract role |
+| --- | --- | --- |
+| P0 identity and composition | `/profile`, `/site`, `/now`, `/stats` | Stable read models for the first viewport, presence beacon, and counters |
+| P0 publishing stream | `/feed`, `/content`, `/content/:slug` | One content primitive for posts, notes, and research details |
+| P0 community | `/content/:slug/comments`, `/content/:slug/reactions` | Anonymous, moderated comments and visitor-scoped reactions |
+| P0 curation | `/projects` | Public project and work history records |
+| P1 projections | `/timeline`, `/search` | Archive and command-menu views derived from existing resources; no duplicate persistence |
+| P1 personal records | `/links`, `/experiences` | Friends, external destinations, travel/footprints, photos, and place metadata |
+| P2 research and ingestion | `/research/series`, `/research/series/:slug/items`, `/admin/assets` | Recurring paper/news reports and authenticated media attachment workflows |
+
+`/timeline` and `/search` are projections, not new domain tables. A new write model is justified only when a section has its own lifecycle, moderation, source synchronization, or structured data that cannot be represented by the P0 resources.
+
 ## API Conventions
 
 ### Versioning and representation
@@ -120,6 +136,7 @@ Status semantics:
 - `DELETE` is a soft delete for content. It is idempotent from a public-client perspective: deleted content remains invisible.
 - Public content detail reads use a bounded, TTL-based Core-side cache. Featured published content is prewarmed during router initialization; the cache is an implementation detail, never changes the response shape, and is invalidated by content update, publish, unpublish, and delete operations.
 - Published-content aggregates use a single-entry TTL snapshot shared by public and Admin stats reads; pending comment counts remain uncached and are queried separately for moderation freshness.
+- Audit writes are non-critical side effects. Core publishes them to a bounded asynchronous queue (default `256`, configurable with `CORE_AUDIT_EVENT_BUFFER`); a full queue drops the event and emits `audit_event_dropped` without failing the originating HTTP request. Shutdown closes the queue and drains accepted events within a five-second grace period, logging `audit_shutdown_timeout` if a sink remains blocked. Audit rows persist both `request_id` and `trace_id`.
 
 ## Public API
 
@@ -247,6 +264,22 @@ Supported reaction kinds are `LIKE` and `FAVORITE`. The caller identifies a brow
 
 `PUT` is idempotent for the `(content, visitor, kind)` tuple. `DELETE` is also idempotent and returns the resulting summary. Invalid visitor identifiers return `400 VISITOR_ID_INVALID`; unsupported kinds return `400 REACTION_KIND_INVALID`; unavailable or unpublished content returns `404 CONTENT_NOT_FOUND`.
 
+### Planned public projections and resource families
+
+These interfaces are part of the target contract, but are not part of the current P0 implementation:
+
+| Method | Path | Purpose | Priority |
+| --- | --- | --- | --- |
+| `GET` | `/api/v1/timeline` | Year/season archive over published content, with counts and representative entries | P1 |
+| `GET` | `/api/v1/search?q=...&type=...&limit=...` | Cross-resource search for the command menu; returns typed lightweight results | P1 |
+| `GET` | `/api/v1/links` | Friends, projects, feeds, contact and other external destinations | P1 |
+| `GET` | `/api/v1/experiences` | Published trips, footprints and other life records | P1 |
+| `GET` | `/api/v1/experiences/:slug` | Experience detail with places and media references | P1 |
+| `GET` | `/api/v1/research/series` | Research/news series catalogue and cadence | P2 |
+| `GET` | `/api/v1/research/series/:slug/items` | Published items within a research series | P2 |
+
+`timeline` should reuse the content publication ordering and opaque cursors. `search` should return a discriminated result such as `{ type: "CONTENT" | "PROJECT" | "LINK", id, title, href }`; it must not expose database-specific ranking or query syntax.
+
 ## Admin API
 
 ### MVP endpoints
@@ -280,6 +313,9 @@ The configuration endpoints below are implemented in the current MVP. The remain
 | `GET` | `/api/v1/admin/audit-events` | Inspect important writes and moderation actions | P1 |
 | `POST` | `/api/v1/admin/content/:id/duplicate` | Create a draft copy without mutating the source | P2 |
 | `POST` | `/api/v1/admin/assets` | Upload and attach images or other media | P2 |
+| `GET/POST/PATCH/DELETE` | `/api/v1/admin/links` | Curate external links and friends | P1 |
+| `GET/POST/PATCH/DELETE` | `/api/v1/admin/experiences` | Create and publish experience records | P1 |
+| `GET/POST/PATCH/DELETE` | `/api/v1/admin/research/series` | Manage recurring research/news series | P2 |
 
 Admin content update is a validated partial input with optimistic concurrency:
 
@@ -331,6 +367,7 @@ The references justify three later resource families, but they should not expand
 - `GET /api/v1/experiences` and `/experiences/:slug` for trips, places, photos, and optional coordinates. Aggregate fields can include `visitCount`, `placeCount`, and `mediaCount`.
 - `GET /api/v1/links` for friends, external projects, RSS, GitHub, and contact destinations. Links should have `kind`, `label`, `url`, `description`, `avatarUrl`, and `isFeatured`.
 - `GET /api/v1/research/series` and `/research/series/:slug/items` for recurring paper/news/earthquake-style reports. A series item should preserve `source`, `publishedAt`, `summary`, `externalUrl`, and optional structured data without forcing the general content model to understand maps or scientific measurements.
+- `GET /api/v1/timeline` and `GET /api/v1/search` are projections over existing published resources. They serve the archive navigation and command menu implied by the references without creating a second content index as a public source of truth.
 
 These extensions remain resource-oriented and can be added without changing the existing home-page composition contract.
 
@@ -367,6 +404,7 @@ The rule for adding a new endpoint is: introduce a resource family only when it 
 - [x] [P1] API contract regression tests | Invalid input, auth failures, not-found behavior, publication state, comment moderation, and visitor-scoped reactions are tested.
 - [x] [P1] Published content detail cache | Public detail reads use a bounded 30-second default TTL cache, featured published content is prewarmed during startup, `CORE_CONTENT_CACHE_TTL` is configurable, and every content lifecycle write invalidates the entry.
 - [x] [P1] Published stats snapshot | Public and Admin stats reuse a 30-second default aggregate snapshot, with `CORE_STATS_CACHE_TTL` override and invalidation on content writes; pending comments remain live.
+- [x] [P1] Asynchronous audit dispatch | Audit events use a bounded non-blocking queue, persist request/trace correlation IDs in the background, drop only non-critical audit work on overflow, and drain accepted events during shutdown.
 
 The current MVP leaves `Experience`/media and `ResearchSeries` as additive contract extensions described above; they are intentionally outside the MVP acceptance matrix until their distinct lifecycle and data shapes are implemented.
 
@@ -383,7 +421,7 @@ The current MVP leaves `Experience`/media and `ResearchSeries` as additive contr
 ## Delivery Order
 
 1. `[DONE]` Keep the current public and Admin MVP routes stable while Web and Admin are built against them.
-2. `[DONE]` Add request/trace IDs, structured logs, and audit events before adding more write surfaces.
+2. `[DONE]` Add request/trace IDs, structured logs, and asynchronous audit events before adding more write surfaces; audit persistence does not block the originating request.
 3. `[DONE]` Add cursor/filter behavior and content version conflicts; update SDK query types in the same change.
 4. `[DONE]` Add Admin editing for profile, site composition, and projects. Links remain a future resource family.
 5. `[DONE]` Add a bounded public content-detail cache with startup prewarm and lifecycle invalidation; keep cache policy internal to Core.

@@ -21,6 +21,7 @@ import (
 	"github.com/manifold-space/manifold/app/core/internal/auth"
 	"github.com/manifold-space/manifold/app/core/internal/cache"
 	"github.com/manifold-space/manifold/app/core/internal/config"
+	"github.com/manifold-space/manifold/app/core/internal/events"
 	"github.com/manifold-space/manifold/app/core/internal/model"
 	"github.com/manifold-space/manifold/app/core/internal/store"
 )
@@ -32,14 +33,39 @@ type apiHandler struct {
 	validate     *validator.Validate
 	contentCache *cache.ContentCache
 	statsCache   *cache.StatsCache
+	auditEvents  events.AuditPublisher
 }
 
+// Router is retained for internal callers that cannot own a shutdown hook.
+// Production entry points must use RouterWithLifecycle so audit writes are asynchronous and drained on shutdown.
 func Router(cfg config.Config, database *store.Store) http.Handler {
+	return newRouter(cfg, database, events.NewSynchronousAuditPublisher(recordAuditEvent(database)))
+}
+
+func RouterWithLifecycle(cfg config.Config, database *store.Store) (http.Handler, func()) {
+	auditEvents := events.NewAuditDispatcher(cfg.AuditEventBuffer, recordAuditEvent(database))
+	router := newRouter(cfg, database, auditEvents)
+	return router, func() {
+		if !auditEvents.CloseWithTimeout(5 * time.Second) {
+			slog.Warn("audit_shutdown_timeout", "timeout", "5s")
+		}
+	}
+}
+
+func recordAuditEvent(database *store.Store) func(events.AuditEvent) {
+	return func(event events.AuditEvent) {
+		if err := database.RecordAuditEvent(event.EventName, event.ResourceType, event.ResourceID, event.Actor, event.RequestID, event.TraceID, event.Metadata); err != nil {
+			slog.Error("audit_event_failed", "eventName", event.EventName, "resourceType", event.ResourceType, "resourceId", event.ResourceID, "requestId", event.RequestID, "traceId", event.TraceID, "error", err)
+		}
+	}
+}
+
+func newRouter(cfg config.Config, database *store.Store, auditEvents events.AuditPublisher) http.Handler {
 	authService, err := auth.New(cfg)
 	if err != nil {
 		panic(err)
 	}
-	h := &apiHandler{cfg: cfg, store: database, auth: authService, validate: validator.New(), contentCache: cache.NewContentCache(cfg.ContentCacheTTL), statsCache: cache.NewStatsCache(cfg.StatsCacheTTL)}
+	h := &apiHandler{cfg: cfg, store: database, auth: authService, validate: validator.New(), contentCache: cache.NewContentCache(cfg.ContentCacheTTL), statsCache: cache.NewStatsCache(cfg.StatsCacheTTL), auditEvents: auditEvents}
 	h.prewarmFeaturedContent()
 	router := chi.NewRouter()
 	router.Use(requestIDMiddleware)
@@ -806,8 +832,8 @@ func (h *apiHandler) audit(r *http.Request, eventName, resourceType, resourceID 
 		actor = claims.Subject
 	}
 	requestID := r.Header.Get("X-Request-ID")
-	if err := h.store.RecordAuditEvent(eventName, resourceType, resourceID, actor, requestID, metadata); err != nil {
-		slog.Error("audit_event_failed", "eventName", eventName, "resourceType", resourceType, "resourceId", resourceID, "requestId", requestID, "traceId", r.Header.Get("X-Trace-ID"), "error", err)
+	if !h.auditEvents.Publish(events.AuditEvent{EventName: eventName, ResourceType: resourceType, ResourceID: resourceID, Actor: actor, RequestID: requestID, TraceID: r.Header.Get("X-Trace-ID"), Metadata: metadata}) {
+		slog.Warn("audit_event_dropped", "eventName", eventName, "resourceType", resourceType, "resourceId", resourceID, "requestId", requestID, "traceId", r.Header.Get("X-Trace-ID"))
 	}
 }
 
@@ -817,6 +843,8 @@ func requestIDMiddleware(next http.Handler) http.Handler {
 		traceID := correlationID(r.Header.Get("X-Trace-ID"), "trace")
 		w.Header().Set("X-Request-ID", requestID)
 		w.Header().Set("X-Trace-ID", traceID)
+		r.Header.Set("X-Request-ID", requestID)
+		r.Header.Set("X-Trace-ID", traceID)
 		started := time.Now()
 		recorder := &statusRecorder{ResponseWriter: w}
 		next.ServeHTTP(recorder, r)

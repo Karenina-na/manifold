@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS site_config (id TEXT PRIMARY KEY, featured_content_js
 CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY, slug TEXT NOT NULL UNIQUE, name TEXT NOT NULL, summary TEXT NOT NULL DEFAULT '', description TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'ACTIVE', featured INTEGER NOT NULL DEFAULT 0, homepage_url TEXT NOT NULL DEFAULT '', repository_url TEXT NOT NULL DEFAULT '', tech_stack_json TEXT NOT NULL DEFAULT '[]', started_at TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS comments (id TEXT PRIMARY KEY, content_id TEXT NOT NULL REFERENCES content(id), author_name TEXT NOT NULL, author_url TEXT NOT NULL DEFAULT '', body TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'APPROVED', 'REJECTED')), reply_to_id TEXT REFERENCES comments(id), created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS reactions (id TEXT PRIMARY KEY, content_id TEXT NOT NULL REFERENCES content(id) ON DELETE CASCADE, visitor_id TEXT NOT NULL, kind TEXT NOT NULL CHECK (kind IN ('LIKE', 'FAVORITE')), created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE (content_id, visitor_id, kind));
-CREATE TABLE IF NOT EXISTS audit_events (id TEXT PRIMARY KEY, event_name TEXT NOT NULL, resource_type TEXT NOT NULL, resource_id TEXT NOT NULL DEFAULT '', actor TEXT NOT NULL DEFAULT 'anonymous', request_id TEXT NOT NULL DEFAULT '', metadata_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS audit_events (id TEXT PRIMARY KEY, event_name TEXT NOT NULL, resource_type TEXT NOT NULL, resource_id TEXT NOT NULL DEFAULT '', actor TEXT NOT NULL DEFAULT 'anonymous', request_id TEXT NOT NULL DEFAULT '', trace_id TEXT NOT NULL DEFAULT '', metadata_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE INDEX IF NOT EXISTS idx_content_publication ON content(status, published_at DESC);
 CREATE INDEX IF NOT EXISTS idx_comments_content_status ON comments(content_id, status, created_at);
 CREATE INDEX IF NOT EXISTS idx_reactions_content_kind ON reactions(content_id, kind);
@@ -85,12 +85,43 @@ func Open(path string) (*Store, error) {
 		_ = db.Close()
 		return nil, err
 	}
+	if err := ensureAuditEventColumns(db); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
 	s := &Store{DB: db}
 	if err := s.seed(); err != nil {
 		_ = db.Close()
 		return nil, err
 	}
 	return s, nil
+}
+
+func ensureAuditEventColumns(db *sql.DB) error {
+	rows, err := db.Query(`PRAGMA table_info(audit_events)`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	hasTraceID := false
+	for rows.Next() {
+		var cid, notNull, primaryKey int
+		var name, columnType string
+		var defaultValue sql.NullString
+		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
+			return err
+		}
+		if name == "trace_id" {
+			hasTraceID = true
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if !hasTraceID {
+		_, err = db.Exec(`ALTER TABLE audit_events ADD COLUMN trace_id TEXT NOT NULL DEFAULT ''`)
+	}
+	return err
 }
 
 func ensureSiteConfigColumns(db *sql.DB) error {
@@ -537,7 +568,7 @@ func (s *Store) PendingCommentCount() (int, error) {
 	return count, err
 }
 
-func (s *Store) RecordAuditEvent(eventName, resourceType, resourceID, actor, requestID string, metadata map[string]string) error {
+func (s *Store) RecordAuditEvent(eventName, resourceType, resourceID, actor, requestID, traceID string, metadata map[string]string) error {
 	if metadata == nil {
 		metadata = map[string]string{}
 	}
@@ -546,7 +577,7 @@ func (s *Store) RecordAuditEvent(eventName, resourceType, resourceID, actor, req
 		return err
 	}
 	id := "audit_" + time.Now().UTC().Format("20060102150405.000000000")
-	_, err = s.DB.Exec(`INSERT INTO audit_events (id, event_name, resource_type, resource_id, actor, request_id, metadata_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, id, eventName, resourceType, resourceID, actor, requestID, string(raw), time.Now().UTC().Format(time.RFC3339))
+	_, err = s.DB.Exec(`INSERT INTO audit_events (id, event_name, resource_type, resource_id, actor, request_id, trace_id, metadata_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, id, eventName, resourceType, resourceID, actor, requestID, traceID, string(raw), time.Now().UTC().Format(time.RFC3339))
 	return err
 }
 
