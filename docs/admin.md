@@ -24,7 +24,7 @@ Outputs:
 
 - [x] [P0] Admin login/session | 验收标准：表单校验后调用 Core 登录，保存 JWT，错误凭据和过期状态有明确反馈。
 - [x] [P0] Dashboard aggregate view | 验收标准：从 `/api/v1/admin/stats` 获取指标，展示内容总量、分类数量、待审评论和趋势图。
-- [x] [P0] Content list/filter | 验收标准：展示草稿/已发布内容，支持 kind 和状态筛选，数据来自 Core。当前 MVP 展示 Core 返回集合，服务端筛选扩展见 `docs/core.md`。
+- [x] [P0] Content list/filter | 验收标准：展示草稿/已发布内容，支持 kind 和状态筛选，筛选参数交给 Core 服务端执行，数据来自 Core。
 - [x] [P0] Content editor | 验收标准：使用 React Hook Form + Zod 编辑标题、摘要、正文、标签和 kind。
 - [x] [P0] Content lifecycle actions | 验收标准：创建、更新、发布、取消发布和删除动作均调用对应 Admin API，并刷新缓存。
 - [x] [P0] Comment moderation | 验收标准：查看待审评论并 approve/reject，操作后队列和统计自动失效。
