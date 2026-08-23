@@ -15,6 +15,8 @@
     "@hookform/resolvers": "^5.9.1",
     "@manifold/contracts": "workspace:*",
     "@manifold/sdk": "workspace:*",
+    "@mantine/core": "^9.5.1",
+    "@mantine/hooks": "^9.5.1",
     "@tanstack/react-query": "^5.101.4",
     "lucide-react": "^1.33.0",
     "react": "^19.2.8",

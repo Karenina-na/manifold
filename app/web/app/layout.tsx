@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import "@radix-ui/themes/styles.css";
 import { Providers } from "../components/providers";
 import { SiteNav } from "../components/site-nav";
 import "./globals.css";

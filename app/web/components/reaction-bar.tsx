@@ -2,7 +2,8 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bookmark, Heart } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { Button } from "@radix-ui/themes";
+import { useMemo, useState } from "react";
 import type { ReactionKind, ReactionSummary } from "@manifold/contracts";
 import { createBrowserClient, getVisitorId } from "../lib/api";
 import styles from "../app/site.module.css";
@@ -11,8 +12,7 @@ type ReactionBarProps = { slug: string };
 
 export function ReactionBar({ slug }: ReactionBarProps) {
   const client = useMemo(() => createBrowserClient(), []);
-  const [visitorId, setVisitorId] = useState("");
-  useEffect(() => setVisitorId(getVisitorId()), []);
+  const [visitorId] = useState(() => typeof window === "undefined" ? "" : getVisitorId());
   const queryClient = useQueryClient();
   const queryKey = ["reactions", slug, visitorId];
   const query = useQuery({ queryKey, queryFn: () => client.reactions(slug, visitorId), enabled: Boolean(visitorId) });
@@ -36,12 +36,12 @@ export function ReactionBar({ slug }: ReactionBarProps) {
   const summary = query.data ?? { likeCount: 0, favoriteCount: 0, viewerLiked: false, viewerFavorited: false };
   const toggle = (kind: ReactionKind, enabled: boolean) => { if (visitorId) mutation.mutate({ kind, enabled }); };
   return <div className={styles.reactionBar} aria-label="Reactions">
-    <button className={`${styles.reactionButton} ${summary.viewerLiked ? styles.reactionButtonActive : ""}`} type="button" aria-pressed={summary.viewerLiked} aria-label={`${summary.viewerLiked ? "Remove" : "Add"} like`} onClick={() => toggle("LIKE", !summary.viewerLiked)} disabled={mutation.isPending}>
+    <Button className={`${styles.reactionButton} ${summary.viewerLiked ? styles.reactionButtonActive : ""}`} variant="soft" type="button" aria-pressed={summary.viewerLiked} aria-label={`${summary.viewerLiked ? "Remove" : "Add"} like`} onClick={() => toggle("LIKE", !summary.viewerLiked)} disabled={mutation.isPending}>
       <Heart size={16} fill={summary.viewerLiked ? "currentColor" : "none"} /> <span>{summary.likeCount}</span>
-    </button>
-    <button className={`${styles.reactionButton} ${summary.viewerFavorited ? styles.reactionButtonActive : ""}`} type="button" aria-pressed={summary.viewerFavorited} aria-label={`${summary.viewerFavorited ? "Remove" : "Add"} favorite`} onClick={() => toggle("FAVORITE", !summary.viewerFavorited)} disabled={mutation.isPending}>
+    </Button>
+    <Button className={`${styles.reactionButton} ${summary.viewerFavorited ? styles.reactionButtonActive : ""}`} variant="soft" type="button" aria-pressed={summary.viewerFavorited} aria-label={`${summary.viewerFavorited ? "Remove" : "Add"} favorite`} onClick={() => toggle("FAVORITE", !summary.viewerFavorited)} disabled={mutation.isPending}>
       <Bookmark size={16} fill={summary.viewerFavorited ? "currentColor" : "none"} /> <span>{summary.favoriteCount}</span>
-    </button>
+    </Button>
     {query.isError && <span className={styles.reactionError}>Reactions unavailable</span>}
   </div>;
 }

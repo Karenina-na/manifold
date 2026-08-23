@@ -28,6 +28,7 @@ Access model: Admin serves the single owner account only. It does not expose reg
 - [x] [P0] Dashboard aggregate view | 验收标准：从 `/api/v1/admin/stats` 获取指标，展示内容总量、分类数量、待审评论和趋势图。
 - [x] [P0] Content list/filter | 验收标准：展示草稿/已发布内容，支持 kind 和状态筛选，筛选参数交给 Core 服务端执行，数据来自 Core。
 - [x] [P0] Content editor | 验收标准：使用 React Hook Form + Zod 编辑标题、摘要、正文、标签和 kind。
+- [x] [P0] Managed UI controls | 验收标准：登录、内容编辑、Now、Settings 和审核动作使用 Mantine 的输入、选择、反馈、按钮和图标动作组件，不自行实现复杂控件。
 - [x] [P0] Content lifecycle actions | 验收标准：创建、更新、发布、取消发布和删除动作均调用对应 Admin API，并刷新缓存。
 - [x] [P0] Comment moderation | 验收标准：查看待审评论并 approve/reject，操作后队列和统计自动失效。
 - [x] [P0] Now editor | 验收标准：管理员可更新当前状态标题、详情和 mood。
@@ -53,6 +54,7 @@ Comment actions: `PENDING` -> `APPROVED` or `REJECTED`.
 - `[DONE]` React Hook Form + Zod + `@hookform/resolvers` for forms.
 - `[DONE]` Recharts for line/bar/pie dashboard charts; no hand-drawn Canvas/SVG charts.
 - `[DONE]` Lucide React for compact action icons and tooltips.
+- `[DONE]` Mantine 9 for accessible management controls, validation feedback, loading buttons, selects, checkboxes, badges, and action icons.
 - `[DONE]` `vite-plugin-pwa` for an installable Admin shell.
 
 ## Iteration Guide

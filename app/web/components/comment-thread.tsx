@@ -4,6 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
 import { Send } from "lucide-react";
+import { Button, TextArea, TextField } from "@radix-ui/themes";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -45,12 +46,12 @@ export function CommentThread({ slug }: { slug: string }) {
     <div className={styles.commentList}><AnimatePresence initial={false}>{comments.map((comment) => <motion.article key={comment.id} className={styles.comment} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}><div className={styles.commentMeta}><strong>{comment.authorName}</strong><span>{comment.status === "PENDING" ? "Awaiting review" : "Approved"}</span></div><p>{comment.body}</p></motion.article>)}</AnimatePresence></div>
     <form className={styles.commentForm} onSubmit={form.handleSubmit((input) => mutation.mutate(input))}>
       <div className={styles.formGrid}>
-        <label>Name <span>(optional)</span><input {...form.register("authorName")} placeholder="Anonymous" autoComplete="name" />{form.formState.errors.authorName && <small>{form.formState.errors.authorName.message}</small>}</label>
-        <label>Website <span>(optional)</span><input {...form.register("authorUrl")} placeholder="https://" inputMode="url" autoComplete="url" />{form.formState.errors.authorUrl && <small>{form.formState.errors.authorUrl.message}</small>}</label>
+        <label>Name <span>(optional)</span><TextField.Root {...form.register("authorName")} placeholder="Anonymous" autoComplete="name" />{form.formState.errors.authorName && <small>{form.formState.errors.authorName.message}</small>}</label>
+        <label>Website <span>(optional)</span><TextField.Root {...form.register("authorUrl")} placeholder="https://" inputMode="url" autoComplete="url" />{form.formState.errors.authorUrl && <small>{form.formState.errors.authorUrl.message}</small>}</label>
       </div>
-      <label>Response<textarea {...form.register("body")} placeholder="What stayed with you?" rows={5} />{form.formState.errors.body && <small>{form.formState.errors.body.message}</small>}</label>
+      <label>Response<TextArea {...form.register("body")} placeholder="What stayed with you?" rows={5} />{form.formState.errors.body && <small>{form.formState.errors.body.message}</small>}</label>
       {mutation.isError && <p className={styles.errorText}>Could not send this yet. Your draft is still here.</p>}
-      <button className={styles.primaryButton} type="submit" disabled={mutation.isPending}><Send size={15} /> {mutation.isPending ? "Sending..." : "Send for review"}</button>
+      <Button className={styles.primaryButton} type="submit" disabled={mutation.isPending}><Send size={15} /> {mutation.isPending ? "Sending..." : "Send for review"}</Button>
       {mutation.isSuccess && <p className={styles.successText}>Received. It will appear after a quick review.</p>}
     </form>
   </section>;

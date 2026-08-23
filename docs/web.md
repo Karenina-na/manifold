@@ -31,6 +31,7 @@ Access model: all public reads and visitor reactions/comments are available with
 - [x] [P0] SEO metadata | 验收标准：首页和详情页输出稳定 title、description、canonical metadata。
 - [x] [P0] Comment list | 验收标准：详情页只展示 Core 返回的 approved 评论，空态和加载态可见。
 - [x] [P0] Comment form | 验收标准：使用 React Hook Form + Zod 校验，正文必填、昵称和网站可选，提交采用乐观 UI，失败可恢复且不丢输入。
+- [x] [P0] Component primitives | 验收标准：评论表单和反应条使用 Radix Themes 的可访问输入、文本域和按钮组件，状态仍由现有 React Hook Form 与 React Query 管理。
 - [x] [P0] Reaction bar | 验收标准：详情页可读取并乐观更新点赞/收藏，SDK 通过 `X-Visitor-ID` 调用 Core，成功后以服务端摘要校正状态。
 - [x] [P1] Reading navigation | 验收标准：提供返回流、上一篇/下一篇的可扩展入口，移动端不遮挡正文。
 - [x] [P1] Responsive/accessibility pass | 验收标准：移动和桌面视口无重叠，交互控件有可访问名称，键盘可完成评论提交。
@@ -49,6 +50,7 @@ Comment UI: `idle` -> `submitting` -> `pending moderation` or `error`; the serve
 - `[DONE]` React Hook Form + Zod for declarative comment validation.
 - `[DONE]` `react-markdown` + `rehype-sanitize` for safe Markdown rendering.
 - `[DONE]` Lucide React for interface icons and Framer Motion only for restrained state transitions.
+- `[DONE]` Radix Themes for accessible Web buttons, text fields, text areas, and theme tokens; page-specific CSS remains limited to layout and reading presentation.
 
 ## Iteration Guide
 
