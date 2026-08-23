@@ -2,7 +2,7 @@
 
 ## Module Contract
 
-Status: [WIP]
+Status: [DONE]
 
 `app/web` is the public reading and interaction application. It is independently deployable, has no import or runtime dependency on `app/admin`, and communicates with Core only through `@manifold/sdk` over HTTP.
 
@@ -11,13 +11,17 @@ Inputs:
 - Public Core API responses from `NEXT_PUBLIC_CORE_URL`.
 - URL route state for content slugs.
 - Reader input for comments.
+- A locally generated `X-Visitor-ID` persisted in browser storage for reactions.
 
 Outputs:
 
 - SEO-friendly home, content list, content detail, project, and current-status views.
 - Sanitized Markdown rendering.
 - Optimistic comment submission state with a pending confirmation.
+- Optimistic `LIKE` and `FAVORITE` state with server reconciliation and rollback on failure.
 - Responsive layout following the existing Yohaku tokens without creating a second design system.
+
+Access model: all public reads and visitor reactions/comments are available without registration; the only identity state held by Web is the anonymous visitor identifier used to scope reactions.
 
 ## Feature Matrix
 
@@ -27,13 +31,14 @@ Outputs:
 - [x] [P0] SEO metadata | 验收标准：首页和详情页输出稳定 title、description、canonical metadata。
 - [x] [P0] Comment list | 验收标准：详情页只展示 Core 返回的 approved 评论，空态和加载态可见。
 - [x] [P0] Comment form | 验收标准：使用 React Hook Form + Zod 校验，提交采用乐观 UI，失败可恢复且不丢输入。
+- [x] [P0] Reaction bar | 验收标准：详情页可读取并乐观更新点赞/收藏，SDK 通过 `X-Visitor-ID` 调用 Core，成功后以服务端摘要校正状态。
 - [x] [P1] Reading navigation | 验收标准：提供返回流、上一篇/下一篇的可扩展入口，移动端不遮挡正文。
 - [x] [P1] Responsive/accessibility pass | 验收标准：移动和桌面视口无重叠，交互控件有可访问名称，键盘可完成评论提交。
-- [ ] [P1] Browser integration test | 验收标准：真实浏览器可完成首页 -> 详情 -> 评论提交流程，控制台无错误。当前受本地浏览器/服务进程环境限制，尚未宣称完成。
+- [x] [P1] Browser integration test | 验收标准：真实浏览器完成详情 -> 点赞 -> 收藏 -> 评论提交流程，Core 请求分别返回 `200/201`，页面显示 `Awaiting review`，控制台无错误。
 
 ## State Flow
 
-Page data: `[DONE]`; browser integration remains `[TODO]`.
+Page data: `[DONE]`; reaction state: `[DONE]`; browser integration: `[DONE]`.
 
 Comment UI: `idle` -> `submitting` -> `pending moderation` or `error`; the server remains the source of truth.
 
@@ -47,10 +52,7 @@ Comment UI: `idle` -> `submitting` -> `pending moderation` or `error`; the serve
 
 ## Iteration Guide
 
-1. `[TODO]` Add full-text search and command navigation after Core search is stable.
-2. `[TODO]` Add image/media attachments through a dedicated Core asset API.
-3. `[TODO]` Add offline-friendly reading cache and progressively enhanced PWA behavior.
-4. `[TODO]` Add analytics/error capture without collecting unnecessary reader data.
+Future extensions: full-text search and command navigation, image/media attachments through a dedicated Core asset API, offline-friendly reading cache, and privacy-preserving analytics/error capture.
 
 ## Completion Standard
 

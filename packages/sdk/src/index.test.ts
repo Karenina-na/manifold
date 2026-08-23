@@ -44,3 +44,37 @@ test("handles empty success responses", async () => {
 	const client = new ManifoldClient({ baseUrl: "http://core.test", fetch: async () => new Response(null, { status: 204 }) });
 	assert.equal(await client.deleteContent("content-1"), undefined);
 });
+
+test("sends visitor-scoped reaction requests", async () => {
+	const requests: Request[] = [];
+	const client = new ManifoldClient({
+		baseUrl: "http://core.test",
+		fetch: async (input, init) => {
+			requests.push(new Request(input, init));
+			return new Response(JSON.stringify({ likeCount: 1, favoriteCount: 0, viewerLiked: true, viewerFavorited: false }), { status: 200 });
+		},
+	});
+
+	await client.reactions("a-piece", "visitor-123");
+	await client.setReaction("a-piece", "LIKE", "visitor-123", true);
+	assert.equal(requests[0]?.url, "http://core.test/api/v1/content/a-piece/reactions");
+	assert.equal(requests[0]?.headers.get("X-Visitor-ID"), "visitor-123");
+	assert.equal(requests[1]?.method, "PUT");
+	assert.equal(requests[1]?.headers.get("X-Visitor-ID"), "visitor-123");
+});
+
+test("binds the default fetch implementation to its global owner", async () => {
+	const originalFetch = globalThis.fetch;
+	let receivedThis: unknown;
+	globalThis.fetch = function (this: unknown, _input: RequestInfo | URL, _init?: RequestInit) {
+		receivedThis = this;
+		return Promise.resolve(new Response(JSON.stringify({ status: "ok", version: "test" }), { status: 200 }));
+	} as typeof fetch;
+	try {
+		const client = new ManifoldClient({ baseUrl: "http://core.test" });
+		await client.health();
+		assert.equal(receivedThis, globalThis);
+	} finally {
+		globalThis.fetch = originalFetch;
+	}
+});

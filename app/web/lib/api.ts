@@ -11,6 +11,15 @@ export function createBrowserClient() {
   return new ManifoldClient({ baseUrl: coreUrl });
 }
 
+export function getVisitorId() {
+  const storageKey = "manifold.visitorId";
+  const stored = window.localStorage.getItem(storageKey);
+  if (stored) return stored;
+  const value = typeof crypto.randomUUID === "function" ? crypto.randomUUID() : `visitor-${Math.random().toString(36).slice(2)}-${Date.now()}`;
+  window.localStorage.setItem(storageKey, value);
+  return value;
+}
+
 export async function loadHomeData() {
   const client = createServerClient();
   try {

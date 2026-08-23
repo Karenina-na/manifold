@@ -23,6 +23,7 @@ Isolation rules:
 - No Web or Admin package imports Core Go code.
 - No frontend reads or writes the SQLite file.
 - Shared TypeScript types travel through `packages/contracts`; HTTP calls travel through `packages/sdk`.
+- There is one owner account with the `admin` role; Core exposes no public registration or visitor login flow.
 
 ## Design Synthesis
 
@@ -110,6 +111,7 @@ Status semantics:
 
 - Public reads do not require authentication.
 - Public comment creation is rate-limited and always creates `PENDING` moderation state.
+- Public reactions use an anonymous visitor identifier from `X-Visitor-ID`; no account is required.
 - Admin requests send `Authorization: Bearer <accessToken>`.
 - Login tokens expire after the configured session lifetime. The current MVP returns `expiresIn` in seconds.
 - `POST` writes that may be retried should accept an `Idempotency-Key`; the server must either replay the original result or reject a conflicting reuse.
@@ -129,6 +131,9 @@ Status semantics:
 | `GET` | `/api/v1/content/:slug` | Published Markdown detail | `[DONE]` |
 | `GET` | `/api/v1/content/:slug/comments` | Approved comments for a content item | `[DONE]` |
 | `POST` | `/api/v1/content/:slug/comments` | Submit a comment for moderation | `[DONE]` |
+| `GET` | `/api/v1/content/:slug/reactions` | Read aggregate and visitor-scoped reaction state | `[DONE]` |
+| `PUT` | `/api/v1/content/:slug/reactions/:kind` | Add an idempotent visitor reaction | `[DONE]` |
+| `DELETE` | `/api/v1/content/:slug/reactions/:kind` | Remove a visitor reaction | `[DONE]` |
 | `GET` | `/api/v1/projects` | Curated project collection | `[DONE]` |
 | `GET` | `/api/v1/now` | Current focus/status beacon | `[DONE]` |
 | `GET` | `/api/v1/stats` | Published-content aggregates | `[DONE]` |
@@ -201,6 +206,23 @@ The planned extension adds `externalLinks` and localized navigation labels as op
 ```
 
 It returns `201` with the created comment and `status: "PENDING"`. Public comment lists only contain `APPROVED` comments. The MVP does not expose email addresses, IP addresses, moderation notes, or audit fields publicly.
+
+### Reactions
+
+Supported reaction kinds are `LIKE` and `FAVORITE`. The caller identifies a browser or client installation with the `X-Visitor-ID` header. The value is 8-128 ASCII characters from `[A-Za-z0-9_-]`; mutation requests require it, while reads may omit it to receive aggregate counts with both viewer flags set to `false`.
+
+`GET /api/v1/content/:slug/reactions` and successful mutation requests return the same stable shape:
+
+```json
+{
+  "likeCount": 12,
+  "favoriteCount": 3,
+  "viewerLiked": true,
+  "viewerFavorited": false
+}
+```
+
+`PUT` is idempotent for the `(content, visitor, kind)` tuple. `DELETE` is also idempotent and returns the resulting summary. Invalid visitor identifiers return `400 VISITOR_ID_INVALID`; unsupported kinds return `400 REACTION_KIND_INVALID`; unavailable or unpublished content returns `404 CONTENT_NOT_FOUND`.
 
 ## Admin API
 
@@ -297,6 +319,7 @@ These extensions remain resource-oriented and can be added without changing the 
 - [x] [P0] Public content/feed APIs | Only published content is public; lists omit body and details return Markdown.
 - [x] [P0] Projects and aggregate stats APIs | Core returns curated projects and server-owned counts.
 - [x] [P0] Public comment submission | Validated input enters `PENDING`; public lists contain only `APPROVED` comments.
+- [x] [P0] Visitor-scoped reactions | `LIKE` and `FAVORITE` counts and viewer state are persisted through idempotent Core endpoints and isolated by visitor identifier.
 - [x] [P0] JWT Admin session | Valid credentials issue an expiring JWT; invalid credentials return `401`.
 - [x] [P0] Casbin role protection | Admin routes require a valid JWT with the `admin` role.
 - [x] [P0] Admin content lifecycle | Admin can create, edit, publish, unpublish, and soft-delete content.
@@ -305,9 +328,9 @@ These extensions remain resource-oriented and can be added without changing the 
 - [x] [P1] Cursor/filter implementation | `cursor`, `limit`, `kind`, `tag`, and `q` are validated and applied by Core.
 - [x] [P1] Optimistic content concurrency | Admin updates support `expectedVersion` and return `409` on stale writes.
 - [x] [P1] Project/profile/site editing | Admin owns all source records that shape the home page; writes are validated, audited, and persisted in Core.
-- [ ] [P2] Experiences and media | Travel-like records can include images, places, and optional geodata through dedicated assets.
-- [ ] [P2] Research series | Recurring data-heavy reports are addressable without overloading `Content`.
-- [x] [P1] API contract regression tests | Invalid input, auth failures, not-found behavior, publication state, and comment moderation are tested.
+- [x] [P1] API contract regression tests | Invalid input, auth failures, not-found behavior, publication state, comment moderation, and visitor-scoped reactions are tested.
+
+The current MVP leaves `Experience`/media and `ResearchSeries` as additive contract extensions described above; they are intentionally outside the MVP acceptance matrix until their distinct lifecycle and data shapes are implemented.
 
 ## State Flows
 
@@ -325,7 +348,7 @@ These extensions remain resource-oriented and can be added without changing the 
 2. `[DONE]` Add request IDs, structured logs, and audit events before adding more write surfaces.
 3. `[DONE]` Add cursor/filter behavior and content version conflicts; update SDK query types in the same change.
 4. `[DONE]` Add Admin editing for profile, site composition, and projects. Links remain a future resource family.
-5. `[TODO]` Add experiences/media and research series only after the core publishing flow is used end to end.
+5. Future extension: add experiences/media and research series only after the core publishing flow is used end to end.
 
 ## Completion Standard
 

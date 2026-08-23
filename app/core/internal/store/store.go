@@ -21,9 +21,11 @@ CREATE TABLE IF NOT EXISTS now_status (id TEXT PRIMARY KEY, title TEXT NOT NULL,
 CREATE TABLE IF NOT EXISTS site_config (id TEXT PRIMARY KEY, featured_content_json TEXT NOT NULL DEFAULT '[]', featured_projects_json TEXT NOT NULL DEFAULT '[]', navigation_json TEXT NOT NULL DEFAULT '[]', sections_json TEXT NOT NULL DEFAULT '[]', updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY, slug TEXT NOT NULL UNIQUE, name TEXT NOT NULL, summary TEXT NOT NULL DEFAULT '', description TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'ACTIVE', featured INTEGER NOT NULL DEFAULT 0, homepage_url TEXT NOT NULL DEFAULT '', repository_url TEXT NOT NULL DEFAULT '', tech_stack_json TEXT NOT NULL DEFAULT '[]', started_at TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS comments (id TEXT PRIMARY KEY, content_id TEXT NOT NULL REFERENCES content(id), author_name TEXT NOT NULL, author_url TEXT NOT NULL DEFAULT '', body TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'APPROVED', 'REJECTED')), reply_to_id TEXT REFERENCES comments(id), created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS reactions (id TEXT PRIMARY KEY, content_id TEXT NOT NULL REFERENCES content(id) ON DELETE CASCADE, visitor_id TEXT NOT NULL, kind TEXT NOT NULL CHECK (kind IN ('LIKE', 'FAVORITE')), created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE (content_id, visitor_id, kind));
 CREATE TABLE IF NOT EXISTS audit_events (id TEXT PRIMARY KEY, event_name TEXT NOT NULL, resource_type TEXT NOT NULL, resource_id TEXT NOT NULL DEFAULT '', actor TEXT NOT NULL DEFAULT 'anonymous', request_id TEXT NOT NULL DEFAULT '', metadata_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE INDEX IF NOT EXISTS idx_content_publication ON content(status, published_at DESC);
 CREATE INDEX IF NOT EXISTS idx_comments_content_status ON comments(content_id, status, created_at);
+CREATE INDEX IF NOT EXISTS idx_reactions_content_kind ON reactions(content_id, kind);
 CREATE INDEX IF NOT EXISTS idx_audit_events_created_at ON audit_events(created_at DESC);
 `
 
@@ -483,6 +485,35 @@ func (s *Store) CreateComment(contentID, authorName, authorURL, body string, rep
 	created := time.Now().UTC().Format(time.RFC3339)
 	_, err := s.DB.Exec(`INSERT INTO comments (id, content_id, author_name, author_url, body, reply_to_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`, id, contentID, authorName, authorURL, body, replyToID, created)
 	return model.Comment{ID: id, ContentID: contentID, AuthorName: authorName, AuthorURL: authorURL, Body: body, Status: "PENDING", CreatedAt: created, ReplyToID: replyToID}, err
+}
+
+func (s *Store) GetReactionSummary(contentID, visitorID string) (model.ReactionSummary, error) {
+	var summary model.ReactionSummary
+	var likeCount, favoriteCount, viewerLiked, viewerFavorited int
+	err := s.DB.QueryRow(`
+		SELECT COALESCE(SUM(kind = 'LIKE'), 0), COALESCE(SUM(kind = 'FAVORITE'), 0),
+		EXISTS(SELECT 1 FROM reactions WHERE content_id = ? AND visitor_id = ? AND kind = 'LIKE'),
+		EXISTS(SELECT 1 FROM reactions WHERE content_id = ? AND visitor_id = ? AND kind = 'FAVORITE')
+		FROM reactions WHERE content_id = ?`, contentID, visitorID, contentID, visitorID, contentID).Scan(&likeCount, &favoriteCount, &viewerLiked, &viewerFavorited)
+	if err != nil {
+		return summary, err
+	}
+	summary.LikeCount = likeCount
+	summary.FavoriteCount = favoriteCount
+	summary.ViewerLiked = viewerLiked == 1
+	summary.ViewerFavorited = viewerFavorited == 1
+	return summary, nil
+}
+
+func (s *Store) SetReaction(contentID, visitorID, kind string) error {
+	id := "reaction_" + contentID + "_" + visitorID + "_" + kind
+	_, err := s.DB.Exec(`INSERT OR IGNORE INTO reactions (id, content_id, visitor_id, kind, created_at) VALUES (?, ?, ?, ?, ?)`, id, contentID, visitorID, kind, time.Now().UTC().Format(time.RFC3339))
+	return err
+}
+
+func (s *Store) DeleteReaction(contentID, visitorID, kind string) error {
+	_, err := s.DB.Exec(`DELETE FROM reactions WHERE content_id = ? AND visitor_id = ? AND kind = ?`, contentID, visitorID, kind)
+	return err
 }
 
 func (s *Store) SetCommentStatus(id, status string) error {

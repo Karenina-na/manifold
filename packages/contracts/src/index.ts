@@ -16,6 +16,8 @@ export type CreateProjectInput = Omit<Project, "id" | "updatedAt">
 export type UpdateProjectInput = Partial<Omit<Project, "id" | "slug" | "updatedAt">>
 export interface NowStatus { title: string; detail: string; mood: string; updatedAt: string; expiresAt?: string }
 export interface Comment { id: string; contentId: string; authorName: string; authorUrl?: string; body: string; status: CommentStatus; createdAt: string; replyToId?: string }
+export type ReactionKind = "LIKE" | "FAVORITE";
+export interface ReactionSummary { likeCount: number; favoriteCount: number; viewerLiked: boolean; viewerFavorited: boolean }
 export interface Stats { contentCount: number; postCount: number; noteCount: number; researchCount: number; wordCount: number; updatedAt: string }
 export interface AdminStats { content: Stats; pendingComments: number }
 export interface SiteComposition { profile: { id: string }; featuredContent: Array<{ id: string; kind: ContentKind }>; featuredProjects: Array<{ id: string }>; navigation: SiteNavigationItem[]; sections: string[]; externalLinks?: ExternalLink[] }

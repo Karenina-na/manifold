@@ -69,6 +69,15 @@ CREATE TABLE IF NOT EXISTS comments (
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS reactions (
+    id TEXT PRIMARY KEY,
+    content_id TEXT NOT NULL REFERENCES content(id) ON DELETE CASCADE,
+    visitor_id TEXT NOT NULL,
+    kind TEXT NOT NULL CHECK (kind IN ('LIKE', 'FAVORITE')),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (content_id, visitor_id, kind)
+);
+
 CREATE TABLE IF NOT EXISTS audit_events (
     id TEXT PRIMARY KEY,
     event_name TEXT NOT NULL,
@@ -82,4 +91,5 @@ CREATE TABLE IF NOT EXISTS audit_events (
 
 CREATE INDEX IF NOT EXISTS idx_content_publication ON content(status, published_at DESC);
 CREATE INDEX IF NOT EXISTS idx_comments_content_status ON comments(content_id, status, created_at);
+CREATE INDEX IF NOT EXISTS idx_reactions_content_kind ON reactions(content_id, kind);
 CREATE INDEX IF NOT EXISTS idx_audit_events_created_at ON audit_events(created_at DESC);

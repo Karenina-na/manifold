@@ -1,4 +1,4 @@
-import type { AdminContentQuery, AdminStats, Collection, Comment, CommentQuery, Content, ContentDetail, ContentInput, ContentQuery, CreateCommentInput, CreateProjectInput, HealthStatus, LoginInput, LoginResponse, NowStatus, Profile, ProfileInput, Project, SiteComposition, SiteConfig, SiteConfigInput, Stats, UpdateContentInput, UpdateProjectInput } from "@manifold/contracts";
+import type { AdminContentQuery, AdminStats, Collection, Comment, CommentQuery, Content, ContentDetail, ContentInput, ContentQuery, CreateCommentInput, CreateProjectInput, HealthStatus, LoginInput, LoginResponse, NowStatus, Profile, ProfileInput, Project, ReactionKind, ReactionSummary, SiteComposition, SiteConfig, SiteConfigInput, Stats, UpdateContentInput, UpdateProjectInput } from "@manifold/contracts";
 
 export class ApiError extends Error {
 	readonly status: number;
@@ -23,7 +23,7 @@ export class ManifoldClient {
 	private readonly baseUrl: string;
 	private token?: string;
 
-	constructor(options: ManifoldClientOptions) { this.baseUrl = options.baseUrl.replace(/\/$/, ""); this.fetcher = options.fetch ?? globalThis.fetch; this.token = options.token; }
+	constructor(options: ManifoldClientOptions) { this.baseUrl = options.baseUrl.replace(/\/$/, ""); this.fetcher = options.fetch ?? globalThis.fetch.bind(globalThis); this.token = options.token; }
 	setToken(token?: string) { this.token = token; }
 	health() { return this.request<HealthStatus>("/healthz"); }
 	profile() { return this.request<Profile>("/api/v1/profile"); }
@@ -36,6 +36,8 @@ export class ManifoldClient {
 	stats() { return this.request<Stats>("/api/v1/stats"); }
 	comments(slug: string, query?: CommentQuery) { return this.request<Collection<Comment>>(this.withQuery(`/api/v1/content/${encodeURIComponent(slug)}/comments`, query)); }
 	createComment(slug: string, input: CreateCommentInput) { return this.request<Comment>(`/api/v1/content/${encodeURIComponent(slug)}/comments`, { method: "POST", body: input }); }
+	reactions(slug: string, visitorId?: string) { return this.request<ReactionSummary>(`/api/v1/content/${encodeURIComponent(slug)}/reactions`, { headers: visitorId ? { "X-Visitor-ID": visitorId } : undefined }); }
+	setReaction(slug: string, kind: ReactionKind, visitorId: string, enabled: boolean) { return this.request<ReactionSummary>(`/api/v1/content/${encodeURIComponent(slug)}/reactions/${kind}`, { method: enabled ? "PUT" : "DELETE", headers: { "X-Visitor-ID": visitorId } }); }
 	login(input: LoginInput) { return this.request<LoginResponse>("/api/v1/admin/session", { method: "POST", body: input }); }
 	adminStats() { return this.request<AdminStats>("/api/v1/admin/stats"); }
 	adminProfile() { return this.request<Profile>("/api/v1/admin/profile"); }
@@ -68,10 +70,11 @@ export class ManifoldClient {
 		return encoded ? `${path}?${encoded}` : path;
 	}
 
-	private async request<T>(path: string, options: { method?: string; body?: unknown } = {}): Promise<T> {
+	private async request<T>(path: string, options: { method?: string; body?: unknown; headers?: Record<string, string> } = {}): Promise<T> {
 		const headers = new Headers({ Accept: "application/json" });
 		if (options.body !== undefined) headers.set("Content-Type", "application/json");
 		if (this.token) headers.set("Authorization", `Bearer ${this.token}`);
+		for (const [key, value] of Object.entries(options.headers ?? {})) headers.set(key, value);
 		const response = await this.fetcher(`${this.baseUrl}${path}`, { method: options.method ?? "GET", headers, body: options.body === undefined ? undefined : JSON.stringify(options.body) });
 		if (!response.ok) {
 			const body = await response.json().catch(() => undefined) as { error?: { code?: string; message?: string; details?: unknown; requestId?: string } } | undefined;

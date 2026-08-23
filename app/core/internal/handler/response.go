@@ -41,7 +41,7 @@ func Router(cfg config.Config, database *store.Store) http.Handler {
 	router.Use(cors.Handler(cors.Options{
 		AllowedOrigins: cfg.AllowedOrigins,
 		AllowedMethods: []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete, http.MethodOptions},
-		AllowedHeaders: []string{"Accept", "Authorization", "Content-Type", "Idempotency-Key"},
+		AllowedHeaders: []string{"Accept", "Authorization", "Content-Type", "Idempotency-Key", "X-Visitor-ID"},
 	}))
 	router.Get("/healthz", Health)
 	router.Route("/api/v1", func(api chi.Router) {
@@ -53,6 +53,9 @@ func Router(cfg config.Config, database *store.Store) http.Handler {
 		api.Get("/content/{slug}", h.getContent)
 		api.Get("/content/{slug}/comments", h.listPublicComments)
 		api.Post("/content/{slug}/comments", h.createComment)
+		api.Get("/content/{slug}/reactions", h.getReactions)
+		api.Put("/content/{slug}/reactions/{kind}", h.putReaction)
+		api.Delete("/content/{slug}/reactions/{kind}", h.deleteReaction)
 		api.Get("/projects", h.projects)
 		api.Get("/now", h.now)
 		api.Post("/admin/session", h.login)
@@ -250,6 +253,95 @@ func (h *apiHandler) createComment(w http.ResponseWriter, r *http.Request) {
 	}
 	h.audit(r, "comment.created", "comment", comment.ID, map[string]string{"contentId": content.ID})
 	WriteJSON(w, http.StatusCreated, comment)
+}
+
+func (h *apiHandler) getReactions(w http.ResponseWriter, r *http.Request) {
+	content, err := h.store.GetContent(chi.URLParam(r, "slug"), false)
+	if errors.Is(err, sql.ErrNoRows) {
+		WriteError(w, http.StatusNotFound, "CONTENT_NOT_FOUND", "Content was not found.")
+		return
+	}
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, "CONTENT_UNAVAILABLE", "Content is unavailable.")
+		return
+	}
+	visitorID, err := visitorID(r, false)
+	if err != nil {
+		WriteError(w, http.StatusBadRequest, "VISITOR_ID_INVALID", "Visitor ID is invalid.")
+		return
+	}
+	summary, err := h.store.GetReactionSummary(content.ID, visitorID)
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, "REACTIONS_UNAVAILABLE", "Reactions are unavailable.")
+		return
+	}
+	WriteJSON(w, http.StatusOK, summary)
+}
+
+func (h *apiHandler) putReaction(w http.ResponseWriter, r *http.Request) {
+	h.mutateReaction(w, r, true)
+}
+
+func (h *apiHandler) deleteReaction(w http.ResponseWriter, r *http.Request) {
+	h.mutateReaction(w, r, false)
+}
+
+func (h *apiHandler) mutateReaction(w http.ResponseWriter, r *http.Request, enabled bool) {
+	content, err := h.store.GetContent(chi.URLParam(r, "slug"), false)
+	if errors.Is(err, sql.ErrNoRows) {
+		WriteError(w, http.StatusNotFound, "CONTENT_NOT_FOUND", "Content was not found.")
+		return
+	}
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, "CONTENT_UNAVAILABLE", "Content is unavailable.")
+		return
+	}
+	kind := strings.ToUpper(strings.TrimSpace(chi.URLParam(r, "kind")))
+	if kind != "LIKE" && kind != "FAVORITE" {
+		WriteError(w, http.StatusBadRequest, "REACTION_KIND_INVALID", "Reaction kind must be LIKE or FAVORITE.")
+		return
+	}
+	visitorID, err := visitorID(r, true)
+	if err != nil {
+		WriteError(w, http.StatusBadRequest, "VISITOR_ID_INVALID", "Visitor ID is required and invalid.")
+		return
+	}
+	if enabled {
+		err = h.store.SetReaction(content.ID, visitorID, kind)
+	} else {
+		err = h.store.DeleteReaction(content.ID, visitorID, kind)
+	}
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, "REACTION_UPDATE_FAILED", "Reaction could not be updated.")
+		return
+	}
+	action := "removed"
+	if enabled {
+		action = "added"
+	}
+	h.audit(r, "reaction."+strings.ToLower(kind)+"."+action, "content", content.ID, nil)
+	summary, err := h.store.GetReactionSummary(content.ID, visitorID)
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, "REACTIONS_UNAVAILABLE", "Reactions are unavailable.")
+		return
+	}
+	WriteJSON(w, http.StatusOK, summary)
+}
+
+func visitorID(r *http.Request, required bool) (string, error) {
+	value := strings.TrimSpace(r.Header.Get("X-Visitor-ID"))
+	if value == "" && !required {
+		return "", nil
+	}
+	if len(value) < 8 || len(value) > 128 {
+		return "", errors.New("visitor id length is invalid")
+	}
+	for _, char := range value {
+		if (char < 'a' || char > 'z') && (char < 'A' || char > 'Z') && (char < '0' || char > '9') && char != '-' && char != '_' {
+			return "", errors.New("visitor id contains invalid characters")
+		}
+	}
+	return value, nil
 }
 
 func (h *apiHandler) adminListContent(w http.ResponseWriter, r *http.Request) {

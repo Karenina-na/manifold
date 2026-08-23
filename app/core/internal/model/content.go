@@ -93,6 +93,13 @@ type Comment struct {
 	ReplyToID  *string `json:"replyToId,omitempty"`
 }
 
+type ReactionSummary struct {
+	LikeCount       int  `json:"likeCount"`
+	FavoriteCount   int  `json:"favoriteCount"`
+	ViewerLiked     bool `json:"viewerLiked"`
+	ViewerFavorited bool `json:"viewerFavorited"`
+}
+
 type Stats struct {
 	ContentCount  int    `json:"contentCount"`
 	PostCount     int    `json:"postCount"`
