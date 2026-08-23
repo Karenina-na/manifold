@@ -19,16 +19,18 @@ import (
 	"github.com/go-playground/validator/v10"
 
 	"github.com/manifold-space/manifold/app/core/internal/auth"
+	"github.com/manifold-space/manifold/app/core/internal/cache"
 	"github.com/manifold-space/manifold/app/core/internal/config"
 	"github.com/manifold-space/manifold/app/core/internal/model"
 	"github.com/manifold-space/manifold/app/core/internal/store"
 )
 
 type apiHandler struct {
-	cfg      config.Config
-	store    *store.Store
-	auth     *auth.Service
-	validate *validator.Validate
+	cfg          config.Config
+	store        *store.Store
+	auth         *auth.Service
+	validate     *validator.Validate
+	contentCache *cache.ContentCache
 }
 
 func Router(cfg config.Config, database *store.Store) http.Handler {
@@ -36,7 +38,7 @@ func Router(cfg config.Config, database *store.Store) http.Handler {
 	if err != nil {
 		panic(err)
 	}
-	h := &apiHandler{cfg: cfg, store: database, auth: authService, validate: validator.New()}
+	h := &apiHandler{cfg: cfg, store: database, auth: authService, validate: validator.New(), contentCache: cache.NewContentCache(cfg.ContentCacheTTL)}
 	router := chi.NewRouter()
 	router.Use(requestIDMiddleware)
 	router.Use(cors.Handler(cors.Options{
@@ -176,7 +178,12 @@ func (h *apiHandler) listContent(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *apiHandler) getContent(w http.ResponseWriter, r *http.Request) {
-	content, err := h.store.GetContent(chi.URLParam(r, "slug"), false)
+	slug := chi.URLParam(r, "slug")
+	if content, ok := h.contentCache.Get(slug); ok {
+		WriteJSON(w, http.StatusOK, content)
+		return
+	}
+	content, err := h.store.GetContent(slug, false)
 	if errors.Is(err, sql.ErrNoRows) {
 		WriteError(w, http.StatusNotFound, "CONTENT_NOT_FOUND", "Content was not found.")
 		return
@@ -185,6 +192,7 @@ func (h *apiHandler) getContent(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusInternalServerError, "CONTENT_UNAVAILABLE", "Content is unavailable.")
 		return
 	}
+	h.contentCache.Set(slug, content)
 	WriteJSON(w, http.StatusOK, content)
 }
 
@@ -568,6 +576,7 @@ func (h *apiHandler) adminUpdateContent(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	h.audit(r, "content.updated", "content", chi.URLParam(r, "id"), nil)
+	h.invalidateContentByID(chi.URLParam(r, "id"))
 	h.writeAdminContent(w, r)
 }
 
@@ -585,6 +594,7 @@ func (h *apiHandler) setContentStatus(w http.ResponseWriter, r *http.Request, st
 		return
 	}
 	h.audit(r, "content."+strings.ToLower(status), "content", chi.URLParam(r, "id"), nil)
+	h.invalidateContentByID(chi.URLParam(r, "id"))
 	h.writeAdminContent(w, r)
 }
 
@@ -598,12 +608,35 @@ func (h *apiHandler) writeAdminContent(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *apiHandler) adminDeleteContent(w http.ResponseWriter, r *http.Request) {
+	slug := h.contentSlug(chi.URLParam(r, "id"))
 	if err := h.store.DeleteContent(chi.URLParam(r, "id")); err != nil {
 		WriteError(w, http.StatusNotFound, "CONTENT_NOT_FOUND", "Content was not found.")
 		return
 	}
 	h.audit(r, "content.deleted", "content", chi.URLParam(r, "id"), nil)
+	if slug == "" {
+		h.contentCache.Purge()
+	} else {
+		h.contentCache.Remove(slug)
+	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *apiHandler) contentSlug(id string) string {
+	content, err := h.store.GetContentByID(id, true)
+	if err != nil {
+		return ""
+	}
+	return content.Slug
+}
+
+func (h *apiHandler) invalidateContentByID(id string) {
+	slug := h.contentSlug(id)
+	if slug == "" {
+		h.contentCache.Purge()
+		return
+	}
+	h.contentCache.Remove(slug)
 }
 
 func (h *apiHandler) adminListComments(w http.ResponseWriter, r *http.Request) {

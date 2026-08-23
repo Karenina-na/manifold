@@ -280,6 +280,44 @@ func TestContentQueryFiltersAndPaginates(t *testing.T) {
 	}
 }
 
+func TestPublishedContentCacheInvalidatesAfterAdminUpdate(t *testing.T) {
+	router := newTestRouter(t)
+	token := adminToken(t, router)
+
+	initial := request(t, router, http.MethodGet, "/api/v1/content/designing-boundaries", nil)
+	if initial.Code != http.StatusOK || !strings.Contains(initial.Body.String(), `"title":"Designing Boundaries"`) {
+		t.Fatalf("expected initial public content, got %d %s", initial.Code, initial.Body.String())
+	}
+
+	updated := adminRequest(t, router, token, http.MethodPatch, "/api/v1/admin/content/content_1", `{"title":"Updated Boundaries","expectedVersion":1}`)
+	if updated.Code != http.StatusOK {
+		t.Fatalf("expected content update 200, got %d %s", updated.Code, updated.Body.String())
+	}
+
+	refreshed := request(t, router, http.MethodGet, "/api/v1/content/designing-boundaries", nil)
+	if refreshed.Code != http.StatusOK || !strings.Contains(refreshed.Body.String(), `"title":"Updated Boundaries"`) {
+		t.Fatalf("expected invalidated public content, got %d %s", refreshed.Code, refreshed.Body.String())
+	}
+
+	unpublished := adminRequest(t, router, token, http.MethodPost, "/api/v1/admin/content/content_1/unpublish", "")
+	if unpublished.Code != http.StatusOK {
+		t.Fatalf("expected unpublish 200, got %d %s", unpublished.Code, unpublished.Body.String())
+	}
+	missing := request(t, router, http.MethodGet, "/api/v1/content/designing-boundaries", nil)
+	if missing.Code != http.StatusNotFound {
+		t.Fatalf("expected unpublished content 404, got %d %s", missing.Code, missing.Body.String())
+	}
+
+	published := adminRequest(t, router, token, http.MethodPost, "/api/v1/admin/content/content_1/publish", "")
+	if published.Code != http.StatusOK {
+		t.Fatalf("expected publish 200, got %d %s", published.Code, published.Body.String())
+	}
+	republished := request(t, router, http.MethodGet, "/api/v1/content/designing-boundaries", nil)
+	if republished.Code != http.StatusOK || !strings.Contains(republished.Body.String(), `"title":"Updated Boundaries"`) {
+		t.Fatalf("expected republished content, got %d %s", republished.Code, republished.Body.String())
+	}
+}
+
 func TestAdminContentPatchUsesExpectedVersion(t *testing.T) {
 	router := newTestRouter(t)
 	login := request(t, router, http.MethodPost, "/api/v1/admin/session", strings.NewReader(`{"username":"admin","password":"password"}`))

@@ -9,6 +9,7 @@ require (
 	github.com/go-chi/cors v1.2.2
 	github.com/go-playground/validator/v10 v10.30.3
 	github.com/golang-jwt/jwt/v5 v5.3.1
+	github.com/hashicorp/golang-lru/v2 v2.0.7
 	golang.org/x/crypto v0.55.0
 	modernc.org/sqlite v1.57.0
 )
