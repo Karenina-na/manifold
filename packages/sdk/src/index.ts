@@ -1,4 +1,4 @@
-import type { AdminStats, Collection, Comment, CommentQuery, Content, ContentDetail, ContentInput, ContentQuery, CreateCommentInput, HealthStatus, LoginInput, LoginResponse, NowStatus, Profile, Project, SiteComposition, Stats } from "@manifold/contracts";
+import type { AdminContentQuery, AdminStats, Collection, Comment, CommentQuery, Content, ContentDetail, ContentInput, ContentQuery, CreateCommentInput, HealthStatus, LoginInput, LoginResponse, NowStatus, Profile, Project, SiteComposition, Stats, UpdateContentInput } from "@manifold/contracts";
 
 export class ApiError extends Error {
 	readonly status: number;
@@ -38,9 +38,9 @@ export class ManifoldClient {
 	createComment(slug: string, input: CreateCommentInput) { return this.request<Comment>(`/api/v1/content/${encodeURIComponent(slug)}/comments`, { method: "POST", body: input }); }
 	login(input: LoginInput) { return this.request<LoginResponse>("/api/v1/admin/session", { method: "POST", body: input }); }
 	adminStats() { return this.request<AdminStats>("/api/v1/admin/stats"); }
-	adminContent(query?: ContentQuery) { return this.request<Collection<Content>>(this.withQuery("/api/v1/admin/content", query)); }
+	adminContent(query?: AdminContentQuery) { return this.request<Collection<Content>>(this.withQuery("/api/v1/admin/content", query)); }
 	createContent(input: ContentInput) { return this.request<Content>("/api/v1/admin/content", { method: "POST", body: input }); }
-	updateContent(id: string, input: ContentInput) { return this.request<Content>(`/api/v1/admin/content/${id}`, { method: "PATCH", body: input }); }
+	updateContent(id: string, input: UpdateContentInput) { return this.request<Content>(`/api/v1/admin/content/${id}`, { method: "PATCH", body: input }); }
 	publishContent(id: string) { return this.request<Content>(`/api/v1/admin/content/${id}/publish`, { method: "POST" }); }
 	unpublishContent(id: string) { return this.request<Content>(`/api/v1/admin/content/${id}/unpublish`, { method: "POST" }); }
 	deleteContent(id: string) { return this.request<void>(`/api/v1/admin/content/${id}`, { method: "DELETE" }); }

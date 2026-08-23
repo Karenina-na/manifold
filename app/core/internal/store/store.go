@@ -3,8 +3,10 @@ package store
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -25,6 +27,28 @@ CREATE INDEX IF NOT EXISTS idx_audit_events_created_at ON audit_events(created_a
 `
 
 type Store struct{ DB *sql.DB }
+
+var (
+	ErrContentNotFound = errors.New("content not found")
+	ErrVersionConflict = errors.New("content version conflict")
+)
+
+type ContentListOptions struct {
+	Kinds  []model.ContentKind
+	Status string
+	Tag    string
+	Query  string
+	Offset int
+	Limit  int
+}
+
+type ContentUpdate struct {
+	Title           *string
+	Summary         *string
+	Body            *string
+	Tags            *[]string
+	ExpectedVersion int
+}
 
 func Open(path string) (*Store, error) {
 	if dir := filepath.Dir(path); dir != "." {
@@ -92,23 +116,52 @@ func (s *Store) GetProfile() (model.Profile, error) {
 	return p, err
 }
 
-func (s *Store) ListContent(includeDrafts bool) ([]model.Content, error) {
-	query := `SELECT id, kind, status, slug, title, summary, body, tags_json, published_at, created_at, updated_at, version FROM content WHERE status != 'DELETED'`
+func (s *Store) ListContent(includeDrafts bool, options ContentListOptions) ([]model.Content, bool, error) {
+	query := `SELECT id, kind, status, slug, title, summary, body, tags_json, published_at, created_at, updated_at, version FROM content WHERE 1 = 1`
 	if !includeDrafts {
 		query += ` AND status = 'PUBLISHED'`
+	} else if options.Status == "" {
+		query += ` AND status != 'DELETED'`
 	}
-	query += ` ORDER BY COALESCE(published_at, created_at) DESC`
-	rows, err := s.DB.Query(query)
+	args := make([]any, 0, len(options.Kinds)+4)
+	if options.Status != "" {
+		query += ` AND status = ?`
+		args = append(args, options.Status)
+	}
+	if len(options.Kinds) > 0 {
+		placeholders := make([]string, len(options.Kinds))
+		for i, kind := range options.Kinds {
+			placeholders[i] = "?"
+			args = append(args, kind)
+		}
+		query += ` AND kind IN (` + strings.Join(placeholders, ",") + `)`
+	}
+	if options.Tag != "" {
+		query += ` AND EXISTS (SELECT 1 FROM json_each(content.tags_json) WHERE json_each.value = ?)`
+		args = append(args, options.Tag)
+	}
+	if options.Query != "" {
+		query += ` AND (LOWER(title) LIKE ? OR LOWER(summary) LIKE ? OR LOWER(body) LIKE ?)`
+		term := "%" + strings.ToLower(options.Query) + "%"
+		args = append(args, term, term, term)
+	}
+	query += ` ORDER BY COALESCE(published_at, created_at) DESC, id DESC LIMIT ? OFFSET ?`
+	limit := options.Limit
+	if limit <= 0 {
+		limit = 20
+	}
+	args = append(args, limit+1, options.Offset)
+	rows, err := s.DB.Query(query, args...)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	defer rows.Close()
 	var items []model.Content
-	for rows.Next() {
+	for rows.Next() && len(items) <= limit {
 		var c model.Content
 		var tags, published sql.NullString
 		if err := rows.Scan(&c.ID, &c.Kind, &c.Status, &c.Slug, &c.Title, &c.Summary, &c.Body, &tags, &published, &c.CreatedAt, &c.UpdatedAt, &c.Version); err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		c.Tags = decodeStrings(tags.String)
 		if published.Valid {
@@ -120,7 +173,11 @@ func (s *Store) ListContent(includeDrafts bool) ([]model.Content, error) {
 		}
 		items = append(items, c)
 	}
-	return items, rows.Err()
+	hasMore := len(items) > limit
+	if hasMore {
+		items = items[:limit]
+	}
+	return items, hasMore, rows.Err()
 }
 
 func (s *Store) GetContent(slug string, includeDrafts bool) (model.Content, error) {
@@ -291,9 +348,43 @@ func (s *Store) CreateContent(c model.Content) (model.Content, error) {
 	return c, err
 }
 
-func (s *Store) UpdateContent(id string, c model.Content) error {
-	_, err := s.DB.Exec(`UPDATE content SET title = ?, summary = ?, body = ?, tags_json = ?, version = version + 1, updated_at = ? WHERE id = ? AND status != 'DELETED'`, c.Title, c.Summary, c.Body, encodeStrings(c.Tags), time.Now().UTC().Format(time.RFC3339), id)
-	return err
+func (s *Store) UpdateContent(id string, update ContentUpdate) error {
+	sets := make([]string, 0, 4)
+	args := make([]any, 0, 7)
+	if update.Title != nil {
+		sets = append(sets, "title = ?")
+		args = append(args, *update.Title)
+	}
+	if update.Summary != nil {
+		sets = append(sets, "summary = ?")
+		args = append(args, *update.Summary)
+	}
+	if update.Body != nil {
+		sets = append(sets, "body = ?")
+		args = append(args, *update.Body)
+	}
+	if update.Tags != nil {
+		sets = append(sets, "tags_json = ?")
+		args = append(args, encodeStrings(*update.Tags))
+	}
+	sets = append(sets, "version = version + 1", "updated_at = ?")
+	args = append(args, time.Now().UTC().Format(time.RFC3339), id, update.ExpectedVersion)
+	result, err := s.DB.Exec(`UPDATE content SET `+strings.Join(sets, ", ")+` WHERE id = ? AND status != 'DELETED' AND version = ?`, args...)
+	if err != nil {
+		return err
+	}
+	count, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if count > 0 {
+		return nil
+	}
+	var exists int
+	if err := s.DB.QueryRow(`SELECT 1 FROM content WHERE id = ? AND status != 'DELETED'`, id).Scan(&exists); errors.Is(err, sql.ErrNoRows) {
+		return ErrContentNotFound
+	}
+	return ErrVersionConflict
 }
 
 func (s *Store) SetContentStatus(id, status string) error {

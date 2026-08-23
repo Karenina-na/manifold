@@ -18,7 +18,7 @@ Run the Core API with `make core-run`. Run the TypeScript applications with thei
 - SDK owns TypeScript transport behavior.
 - Web and Admin consume the SDK rather than duplicating fetch logic.
 
-Keep commits focused on one logical change. Database schema changes must include the corresponding query or migration update. Public API changes must update `docs/api-spec.md` and the shared contracts in the same change.
+Keep commits focused on one logical change. Database schema changes must include the corresponding query or migration update. Public API changes must update `docs/core.md` and the shared contracts in the same change.
 
 ## Verification
 
@@ -30,4 +30,3 @@ make check
 ```
 
 For frontend-only changes, also run the affected workspace build and lint command.
-

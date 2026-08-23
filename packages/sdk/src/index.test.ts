@@ -22,6 +22,24 @@ test("encodes collection queries and bearer authentication", async () => {
 	assert.equal(captured?.headers.get("Authorization"), "Bearer token-1");
 });
 
+test("encodes admin status, cursor, and partial update inputs", async () => {
+	const requests: Request[] = [];
+	const client = new ManifoldClient({
+		baseUrl: "http://core.test",
+		token: "token-1",
+		fetch: async (input, init) => {
+			requests.push(new Request(input, init));
+			return new Response(JSON.stringify({ data: [], pagination: { nextCursor: null, hasMore: false } }), { status: 200 });
+		},
+	});
+
+	await client.adminContent({ status: "DRAFT", cursor: "MQ", limit: 10 });
+	await client.updateContent("content-1", { title: "Updated", expectedVersion: 3 });
+	assert.equal(requests[0]?.url, "http://core.test/api/v1/admin/content?status=DRAFT&cursor=MQ&limit=10");
+	assert.equal(requests[1]?.method, "PATCH");
+	assert.deepEqual(await requests[1]?.json(), { title: "Updated", expectedVersion: 3 });
+});
+
 test("handles empty success responses", async () => {
 	const client = new ManifoldClient({ baseUrl: "http://core.test", fetch: async () => new Response(null, { status: 204 }) });
 	assert.equal(await client.deleteContent("content-1"), undefined);

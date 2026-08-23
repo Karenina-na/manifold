@@ -3,11 +3,13 @@ package handler
 import (
 	"crypto/rand"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -138,13 +140,18 @@ func (h *apiHandler) stats(w http.ResponseWriter, _ *http.Request) {
 	WriteJSON(w, http.StatusOK, stats)
 }
 
-func (h *apiHandler) listContent(w http.ResponseWriter, _ *http.Request) {
-	items, err := h.store.ListContent(false)
+func (h *apiHandler) listContent(w http.ResponseWriter, r *http.Request) {
+	options, err := parseContentListOptions(r, false)
+	if err != nil {
+		WriteError(w, http.StatusBadRequest, "INVALID_QUERY", err.Error())
+		return
+	}
+	items, hasMore, err := h.store.ListContent(false, options)
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, "CONTENT_UNAVAILABLE", "Content is unavailable.")
 		return
 	}
-	WriteJSON(w, http.StatusOK, collection(items))
+	WriteJSON(w, http.StatusOK, collectionWithCursor(items, options.Offset, options.Limit, hasMore))
 }
 
 func (h *apiHandler) getContent(w http.ResponseWriter, r *http.Request) {
@@ -232,13 +239,18 @@ func (h *apiHandler) createComment(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusCreated, comment)
 }
 
-func (h *apiHandler) adminListContent(w http.ResponseWriter, _ *http.Request) {
-	items, err := h.store.ListContent(true)
+func (h *apiHandler) adminListContent(w http.ResponseWriter, r *http.Request) {
+	options, err := parseContentListOptions(r, true)
+	if err != nil {
+		WriteError(w, http.StatusBadRequest, "INVALID_QUERY", err.Error())
+		return
+	}
+	items, hasMore, err := h.store.ListContent(true, options)
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, "CONTENT_UNAVAILABLE", "Content is unavailable.")
 		return
 	}
-	WriteJSON(w, http.StatusOK, collection(items))
+	WriteJSON(w, http.StatusOK, collectionWithCursor(items, options.Offset, options.Limit, hasMore))
 }
 
 type contentInput struct {
@@ -265,13 +277,34 @@ func (h *apiHandler) adminCreateContent(w http.ResponseWriter, r *http.Request) 
 	WriteJSON(w, http.StatusCreated, created)
 }
 
+type contentPatchInput struct {
+	Title           *string   `json:"title" validate:"omitempty,max=200"`
+	Summary         *string   `json:"summary" validate:"omitempty,max=4000"`
+	Body            *string   `json:"body" validate:"omitempty,max=100000"`
+	Tags            *[]string `json:"tags"`
+	ExpectedVersion *int      `json:"expectedVersion" validate:"required,min=1"`
+}
+
 func (h *apiHandler) adminUpdateContent(w http.ResponseWriter, r *http.Request) {
-	var input contentInput
+	var input contentPatchInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil || h.validate.Struct(input) != nil {
 		WriteError(w, http.StatusUnprocessableEntity, "VALIDATION_ERROR", "Invalid content input.")
 		return
 	}
-	if err := h.store.UpdateContent(chi.URLParam(r, "id"), model.Content{Title: input.Title, Summary: input.Summary, Body: input.Body, Tags: input.Tags}); err != nil {
+	if input.Title == nil && input.Summary == nil && input.Body == nil && input.Tags == nil {
+		WriteError(w, http.StatusUnprocessableEntity, "VALIDATION_ERROR", "At least one content field is required.")
+		return
+	}
+	err := h.store.UpdateContent(chi.URLParam(r, "id"), store.ContentUpdate{Title: input.Title, Summary: input.Summary, Body: input.Body, Tags: input.Tags, ExpectedVersion: *input.ExpectedVersion})
+	if errors.Is(err, store.ErrContentNotFound) {
+		WriteError(w, http.StatusNotFound, "CONTENT_NOT_FOUND", "Content was not found.")
+		return
+	}
+	if errors.Is(err, store.ErrVersionConflict) {
+		WriteError(w, http.StatusConflict, "VERSION_CONFLICT", "Content was updated elsewhere.")
+		return
+	}
+	if err != nil {
 		WriteError(w, http.StatusInternalServerError, "CONTENT_UPDATE_FAILED", "Content could not be updated.")
 		return
 	}
@@ -373,6 +406,72 @@ func collection[T any](items []T) map[string]any {
 		items = []T{}
 	}
 	return map[string]any{"data": items, "pagination": map[string]any{"nextCursor": nil, "hasMore": false}}
+}
+
+func collectionWithCursor[T any](items []T, offset, limit int, hasMore bool) map[string]any {
+	if items == nil {
+		items = []T{}
+	}
+	var nextCursor *string
+	if hasMore {
+		value := base64.RawURLEncoding.EncodeToString([]byte(strconv.Itoa(offset + len(items))))
+		nextCursor = &value
+	}
+	return map[string]any{"data": items, "pagination": map[string]any{"nextCursor": nextCursor, "hasMore": hasMore}}
+}
+
+func parseContentListOptions(r *http.Request, includeDrafts bool) (store.ContentListOptions, error) {
+	query := r.URL.Query()
+	options := store.ContentListOptions{Limit: 20}
+	if rawLimit := strings.TrimSpace(query.Get("limit")); rawLimit != "" {
+		limit, err := strconv.Atoi(rawLimit)
+		if err != nil || limit < 1 {
+			return options, fmt.Errorf("limit must be a positive integer")
+		}
+		if limit > 50 {
+			limit = 50
+		}
+		options.Limit = limit
+	}
+	if rawCursor := strings.TrimSpace(query.Get("cursor")); rawCursor != "" {
+		decoded, err := base64.RawURLEncoding.DecodeString(rawCursor)
+		if err != nil {
+			return options, fmt.Errorf("cursor is invalid")
+		}
+		offset, err := strconv.Atoi(string(decoded))
+		if err != nil || offset < 0 {
+			return options, fmt.Errorf("cursor is invalid")
+		}
+		options.Offset = offset
+	}
+	for _, rawValue := range query["kind"] {
+		for _, rawKind := range strings.Split(rawValue, ",") {
+			rawKind = strings.TrimSpace(rawKind)
+			if rawKind == "" {
+				continue
+			}
+			kind := model.ContentKind(rawKind)
+			switch kind {
+			case model.ContentKindPost, model.ContentKindNote, model.ContentKindResearch:
+				options.Kinds = append(options.Kinds, kind)
+			default:
+				return options, fmt.Errorf("kind is invalid")
+			}
+		}
+	}
+	if options.Tag = strings.TrimSpace(query.Get("tag")); len(options.Tag) > 80 {
+		return options, fmt.Errorf("tag is too long")
+	}
+	if options.Query = strings.TrimSpace(query.Get("q")); len(options.Query) > 200 {
+		return options, fmt.Errorf("q is too long")
+	}
+	if rawStatus := strings.TrimSpace(query.Get("status")); rawStatus != "" {
+		if !includeDrafts || (rawStatus != "DRAFT" && rawStatus != "PUBLISHED" && rawStatus != "DELETED") {
+			return options, fmt.Errorf("status is invalid")
+		}
+		options.Status = rawStatus
+	}
+	return options, nil
 }
 
 func (h *apiHandler) audit(r *http.Request, eventName, resourceType, resourceID string, metadata map[string]string) {

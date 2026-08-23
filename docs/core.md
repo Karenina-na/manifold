@@ -76,7 +76,7 @@ The MVP deliberately does not expose a separate endpoint for every visual sectio
 - Public list endpoints return summaries. `body` is returned only by a detail endpoint or an authenticated Admin content read.
 - Collection shape is always `{ data, pagination }`.
 - Cursor pagination is the default for streams. `limit` defaults to 20 and is capped at 50. Ordering is stable and server-defined.
-- Query parameters use camelCase: `kind`, `tag`, `status`, `cursor`, `limit`, `q`, `from`, and `to`.
+- Query parameters use camelCase: `kind`, `tag`, `status`, `cursor`, `limit`, and `q`. Date range parameters such as `from` and `to` remain reserved for a future archive query.
 
 ### Error envelope
 
@@ -135,19 +135,19 @@ Status semantics:
 
 ### Query contract
 
-`GET /api/v1/feed` and `GET /api/v1/content` accept the same planned filter contract:
+`GET /api/v1/feed` and `GET /api/v1/content` accept the same filter contract:
 
 ```text
 kind=POST|NOTE|RESEARCH   optional, repeatable or comma-separated
 tag=systems               optional exact tag filter
-q=boundary                planned full-text search filter
+q=boundary                full-text search filter
 cursor=<opaque>           cursor returned by the previous response
 limit=20                  integer, 1..50
 ```
 
-The current Core implementation returns one page with `nextCursor: null`. The cursor and filter names are fixed now so the Web client does not need a breaking change when the store becomes paginated.
+Core applies `kind`, `tag`, `q`, `cursor`, and `limit` to a stable server-defined ordering. Cursors are opaque URL-safe tokens; the current implementation encodes a page offset and clients must treat them as values to relay, not inspect.
 
-Current implementation note: the MVP accepts the documented collection shape, but does not yet apply cursor, limit, kind, tag, or full-text filters. The names and response shape are frozen as the compatibility target for the next Core increment.
+`GET /api/v1/admin/content` accepts the same filters plus `status=DRAFT|PUBLISHED|DELETED`. Deleted content is excluded from the default Admin list and is returned only when `status=DELETED` is explicit. Public content endpoints reject `status` because deleted and draft records are never public.
 
 ### Public resource shapes
 
@@ -236,7 +236,7 @@ These are part of the target interface but are not required for the current Core
 | `POST` | `/api/v1/admin/content/:id/duplicate` | Create a draft copy without mutating the source | P2 |
 | `POST` | `/api/v1/admin/assets` | Upload and attach images or other media | P2 |
 
-Admin content update is currently a validated full input. The target contract is a partial update with optimistic concurrency:
+Admin content update is a validated partial input with optimistic concurrency:
 
 ```json
 {
@@ -284,8 +284,8 @@ These extensions remain resource-oriented and can be added without changing the 
 - [x] [P0] Admin content lifecycle | Admin can create, edit, publish, unpublish, and soft-delete content.
 - [x] [P0] Admin comment moderation | Admin can list, approve, and reject comments.
 - [x] [P1] Stable request IDs and audit events | Write logs contain event name, resource ID, operator, request ID, and timestamp; request IDs are returned in headers and structured errors.
-- [ ] [P1] Cursor/filter implementation | `cursor`, `limit`, `kind`, `tag`, and `q` are validated and applied by Core.
-- [ ] [P1] Optimistic content concurrency | Admin updates support `expectedVersion` and return `409` on stale writes.
+- [x] [P1] Cursor/filter implementation | `cursor`, `limit`, `kind`, `tag`, and `q` are validated and applied by Core.
+- [x] [P1] Optimistic content concurrency | Admin updates support `expectedVersion` and return `409` on stale writes.
 - [ ] [P1] Project/profile/site editing | Admin owns all source records that shape the home page.
 - [ ] [P2] Experiences and media | Travel-like records can include images, places, and optional geodata through dedicated assets.
 - [ ] [P2] Research series | Recurring data-heavy reports are addressable without overloading `Content`.
@@ -305,7 +305,7 @@ These extensions remain resource-oriented and can be added without changing the 
 
 1. `[DONE]` Keep the current public and Admin MVP routes stable while Web and Admin are built against them.
 2. `[DONE]` Add request IDs, structured logs, and audit events before adding more write surfaces.
-3. `[TODO]` Add cursor/filter behavior and content version conflicts; update SDK query types in the same change.
+3. `[DONE]` Add cursor/filter behavior and content version conflicts; update SDK query types in the same change.
 4. `[TODO]` Add Admin editing for profile, site composition, projects, and links.
 5. `[TODO]` Add experiences/media and research series only after the core publishing flow is used end to end.
 

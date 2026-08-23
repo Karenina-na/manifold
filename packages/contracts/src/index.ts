@@ -17,13 +17,14 @@ export interface AdminStats { content: Stats; pendingComments: number }
 export interface SiteComposition { profile: { id: string }; featuredContent: Array<{ id: string; kind: ContentKind }>; featuredProjects: Array<{ id: string }>; navigation: SiteNavigationItem[]; sections: string[]; externalLinks?: ExternalLink[] }
 export interface Pagination { nextCursor: string | null; hasMore: boolean }
 export interface Collection<T> { data: T[]; pagination: Pagination }
-export interface ContentQuery { kind?: ContentKind | ContentKind[]; tag?: string; q?: string; cursor?: string; limit?: number; sort?: ContentSort }
+export interface ContentQuery { kind?: ContentKind | ContentKind[]; tag?: string; q?: string; cursor?: string; limit?: number }
+export interface AdminContentQuery extends ContentQuery { status?: ContentStatus }
 export interface CommentQuery { status?: CommentStatus; cursor?: string; limit?: number }
 export interface CreateCommentInput { authorName: string; authorUrl?: string; body: string; replyToId?: string }
 export interface LoginInput { username: string; password: string }
 export interface LoginResponse { accessToken: string; tokenType: "Bearer"; expiresIn: number; user: { username: string; role: "admin" } }
 export interface ContentInput { kind: ContentKind; slug: string; title: string; summary: string; body: string; tags: string[] }
-export interface UpdateContentInput { title?: string; summary?: string; body?: string; tags?: string[]; expectedVersion?: number }
+export interface UpdateContentInput { title?: string; summary?: string; body?: string; tags?: string[]; expectedVersion: number }
 export interface SiteNavigationItem { label: string; href: string; external?: boolean }
 export interface ExternalLink { id: string; kind: "FRIEND" | "PROJECT" | "CONTACT" | "FEED" | "OTHER"; label: string; url: string; description?: string; avatarUrl?: string; isFeatured: boolean }
 export interface ExperienceSummary { id: string; slug: string; title: string; summary: string; visitedAt: string; location: { label: string; country?: string; latitude?: number; longitude?: number }; mediaCount: number; href: string }
