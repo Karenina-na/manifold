@@ -22,7 +22,7 @@ Core 使用 Go 标准模块初始化流程，依赖通过 `go get` 与 `go mod t
 - `app/admin`：React + Vite PWA 管理端。
 - `packages/contracts`：跨端 TypeScript API 契约。
 - `packages/sdk`：基于原生 fetch 的强类型 API 客户端。
-- `docs/design-system`：现有设计系统与 token 合约。
+- `docs/core.md`、`docs/web.md`、`docs/admin.md`：接口、模块和验收契约。
 
 ## Development
 

@@ -1,7 +1,0 @@
-node_modules
-dist
-.vite
-.vite-temp
-.turbo
-.DS_Store
-*.tsbuildinfo
