@@ -12,9 +12,17 @@
     "test": "tsc -b --pretty false"
   },
   "dependencies": {
+    "@hookform/resolvers": "^5.9.1",
+    "@manifold/contracts": "workspace:*",
+    "@manifold/sdk": "workspace:*",
+    "@tanstack/react-query": "^5.101.4",
+    "lucide-react": "^1.33.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
-    "@manifold/sdk": "workspace:*"
+    "react-hook-form": "^7.85.0",
+    "recharts": "^3.10.1",
+    "vite-plugin-pwa": "^1.3.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/node": "^24.13.3",
