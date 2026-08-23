@@ -2,7 +2,7 @@
 
 ## Module Contract
 
-Status: [WIP]
+Status: [DONE]
 
 `app/core` is the only service that owns business persistence. It exposes REST/JSON over HTTP, keeps SQLite private, validates boundary input, issues signed JWTs, enforces the `admin` role with Casbin, records moderation state, and provides aggregated statistics.
 
@@ -42,6 +42,28 @@ Manifold therefore uses these boundaries:
 6. Admin writes use explicit lifecycle transitions so draft, published, and deleted states are auditable and predictable.
 
 The API does not copy presentation-specific cards, layout coordinates, or component names from the references. The contract models the information and the relationships that multiple clients need.
+
+### Reference synthesis (2026-08-23)
+
+The following observations were made from the public pages linked in the project brief:
+
+- [Innei](https://innei.in/) makes identity the entry point, then places recent writing, short notes, lightweight media/musings, projects, friends, quotes, and site links around it. This supports a composed home read model instead of a single chronological posts endpoint.
+- [Koobai](https://koobai.com/) treats a personal site as a stream of quick records plus richer sections such as footprints, photos, exercise, reading, drafts, and device-assisted publishing. This supports separating frequently edited `NowStatus` and future `Experience`/`Media` resources from long-form content.
+- [Jun Xie](https://www.seis-jun.xyz/) combines diary-like entries with tags, archive navigation, image-backed articles, and recurring research/news collections. This supports `Content` kinds for the MVP and a later `ResearchSeries` family for recurring reports.
+- [Karenina-na](https://github.com/Karenina-na) uses profile, repository, contribution, activity, and technology signals as public identity data. This supports keeping `Profile`, `Project`, and future external activity/link resources independently addressable.
+
+The design consequence is a small stable core with additive extension points:
+
+```text
+Profile + SiteComposition + NowStatus
+                 |
+                 +-- Content (POST | NOTE | RESEARCH) -- Comments
+                 +-- Project / ExternalLink
+                 +-- future Experience / Media
+                 +-- future ResearchSeries / ResearchSeriesItem
+```
+
+The MVP deliberately does not expose a separate endpoint for every visual section. A new resource family is introduced only when it needs distinct lifecycle, detail shape, moderation, or query semantics. This keeps the public API reusable across the Web, Admin, and future clients while allowing the home page to evolve as a composition of references.
 
 ## API Conventions
 
@@ -124,6 +146,8 @@ limit=20                  integer, 1..50
 ```
 
 The current Core implementation returns one page with `nextCursor: null`. The cursor and filter names are fixed now so the Web client does not need a breaking change when the store becomes paginated.
+
+Current implementation note: the MVP accepts the documented collection shape, but does not yet apply cursor, limit, kind, tag, or full-text filters. The names and response shape are frozen as the compatibility target for the next Core increment.
 
 ### Public resource shapes
 
@@ -280,7 +304,7 @@ These extensions remain resource-oriented and can be added without changing the 
 ## Delivery Order
 
 1. `[DONE]` Keep the current public and Admin MVP routes stable while Web and Admin are built against them.
-2. `[TODO]` Add request IDs, structured logs, and audit events before adding more write surfaces.
+2. `[DONE]` Add request IDs, structured logs, and audit events before adding more write surfaces.
 3. `[TODO]` Add cursor/filter behavior and content version conflicts; update SDK query types in the same change.
 4. `[TODO]` Add Admin editing for profile, site composition, projects, and links.
 5. `[TODO]` Add experiences/media and research series only after the core publishing flow is used end to end.
