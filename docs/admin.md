@@ -36,7 +36,7 @@ Access model: Admin serves the single owner account only. It does not expose reg
 - [x] [P1] RBAC-aware UI | 验收标准：依据 Core 返回的角色隐藏无权限动作，服务端仍负责最终拒绝。当前单角色 Admin MVP 不显示额外角色动作。
 - [x] [P1] Responsive management shell | 验收标准：移动端可完成审核和发布，桌面端提供侧栏、表格和详情布局。
 - [x] [P1] Workspace code splitting | 验收标准：认证壳同步加载，Dashboard、Content、Comments、Now 和 Settings 按视图懒加载，生产构建生成独立工作区 chunk。
-- [x] [P1] Browser integration test | 验收标准：真实浏览器完成登录 -> 查看 Dashboard 聚合 -> 进入 Comments -> approve 待审评论流程，Core 请求返回 `200`，队列更新为 `0 pending`，控制台无错误。
+- [x] [P1] Browser integration test | 验收标准：`pnpm browser-test` 自动启动隔离临时服务，真实浏览器完成反应 `200`、评论 `201`、登录/查询 `200`、审核 `204`，队列更新为 `0 pending`，控制台无错误，并清理测试数据。
 
 ## State Flow
 
@@ -58,7 +58,7 @@ Comment actions: `PENDING` -> `APPROVED` or `REJECTED`.
 - `[DONE]` Mantine 9 for accessible management controls, validation feedback, loading buttons, selects, checkboxes, badges, and action icons.
 - `[DONE]` React lazy/Suspense for view-level code splitting so the mobile-first shell does not synchronously load every workspace and chart.
 - `[DONE]` `vite-plugin-pwa` for an installable Admin shell.
-- `[DONE]` Root `browser-test` command for repeatable Web -> Admin moderation acceptance with explicit zero-row and console-error assertions.
+- `[DONE]` Root `browser-install`/`browser-test` commands for an isolated Web -> Admin acceptance flow with HTTP status, zero-row, console-error, and cleanup assertions.
 
 ## Iteration Guide
 

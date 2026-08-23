@@ -36,8 +36,9 @@ pnpm --filter @manifold/web dev
 # Terminal 3
 pnpm --filter @manifold/admin dev
 
-# Terminal 4, with all three services running
-MANIFOLD_ADMIN_PASSWORD=password pnpm browser-test
+# Terminal 4, starts isolated Core/Web/Admin services and runs the browser flow
+pnpm browser-install
+pnpm browser-test
 ```
 
 ## Commands
@@ -46,7 +47,8 @@ MANIFOLD_ADMIN_PASSWORD=password pnpm browser-test
 - `pnpm --filter @manifold/web dev` 启动 Web。
 - `pnpm --filter @manifold/admin dev` 启动 Admin。
 - `pnpm build` 构建全部 workspace。
-- `pnpm browser-test` 使用真实浏览器回归 Web 评论提交与 Admin 审核流程；可通过 `MANIFOLD_*` 环境变量覆盖本地服务地址和凭据。
+- `pnpm browser-install` 安装 Playwright Chromium（已有 Chrome 时可设置 `MANIFOLD_CHROME_PATH`）。
+- `pnpm browser-test` 自动启动临时 Core/Web/Admin 服务和数据库，回归 Web 评论/反应与 Admin 审核流程；可通过 `MANIFOLD_*` 环境变量覆盖测试配置。
 
 接口契约、资源边界和演进顺序见 [`docs/core.md`](docs/core.md)；Web 与 Admin 的消费约定分别见 [`docs/web.md`](docs/web.md) 和 [`docs/admin.md`](docs/admin.md)。
 
