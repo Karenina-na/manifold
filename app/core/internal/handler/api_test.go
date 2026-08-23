@@ -149,6 +149,31 @@ func TestRequestIDIsPropagatedToStructuredErrors(t *testing.T) {
 	}
 }
 
+func TestTraceHeadersAreAllowedByCORS(t *testing.T) {
+	router := newTestRouter(t)
+	preflight := httptest.NewRecorder()
+	preflightRequest := httptest.NewRequest(http.MethodOptions, "/api/v1/content/designing-boundaries/reactions/LIKE", nil)
+	preflightRequest.Header.Set("Origin", "http://localhost:3000")
+	preflightRequest.Header.Set("Access-Control-Request-Method", http.MethodPut)
+	preflightRequest.Header.Set("Access-Control-Request-Headers", "X-Trace-ID, X-Visitor-ID")
+	router.ServeHTTP(preflight, preflightRequest)
+
+	if preflight.Code != http.StatusOK {
+		t.Fatalf("expected CORS preflight 200, got %d", preflight.Code)
+	}
+	if !strings.Contains(strings.ToLower(preflight.Header().Get("Access-Control-Allow-Headers")), "x-trace-id") {
+		t.Fatalf("expected X-Trace-ID in allowed headers, got %q", preflight.Header().Get("Access-Control-Allow-Headers"))
+	}
+
+	response := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/content/designing-boundaries", nil)
+	request.Header.Set("Origin", "http://localhost:3000")
+	router.ServeHTTP(response, request)
+	if !strings.Contains(strings.ToLower(response.Header().Get("Access-Control-Expose-Headers")), "x-trace-id") {
+		t.Fatalf("expected X-Trace-ID in exposed headers, got %q", response.Header().Get("Access-Control-Expose-Headers"))
+	}
+}
+
 func TestWriteOperationsCreateAuditEvents(t *testing.T) {
 	database, err := store.Open(":memory:")
 	if err != nil {
