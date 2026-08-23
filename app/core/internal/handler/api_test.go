@@ -318,6 +318,25 @@ func TestPublishedContentCacheInvalidatesAfterAdminUpdate(t *testing.T) {
 	}
 }
 
+func TestRouterPrewarmsFeaturedPublishedContent(t *testing.T) {
+	database, err := store.Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.MinCost)
+	cfg := config.Config{JWTSecret: "test-secret", AdminUsername: "admin", AdminPasswordHash: string(hash), AllowedOrigins: []string{"*"}}
+	router := handler.Router(cfg, database)
+
+	if _, err := database.DB.Exec(`UPDATE content SET title = 'Database-only title' WHERE id = 'content_1'`); err != nil {
+		t.Fatal(err)
+	}
+	response := request(t, router, http.MethodGet, "/api/v1/content/designing-boundaries", nil)
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"title":"Designing Boundaries"`) {
+		t.Fatalf("expected featured content to be prewarmed, got %d %s", response.Code, response.Body.String())
+	}
+}
+
 func TestStatsSnapshotInvalidatesAfterPublishingContent(t *testing.T) {
 	router := newTestRouter(t)
 	token := adminToken(t, router)

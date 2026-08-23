@@ -40,6 +40,7 @@ func Router(cfg config.Config, database *store.Store) http.Handler {
 		panic(err)
 	}
 	h := &apiHandler{cfg: cfg, store: database, auth: authService, validate: validator.New(), contentCache: cache.NewContentCache(cfg.ContentCacheTTL), statsCache: cache.NewStatsCache(cfg.StatsCacheTTL)}
+	h.prewarmFeaturedContent()
 	router := chi.NewRouter()
 	router.Use(requestIDMiddleware)
 	router.Use(cors.Handler(cors.Options{
@@ -89,6 +90,25 @@ func Router(cfg config.Config, database *store.Store) http.Handler {
 		})
 	})
 	return router
+}
+
+func (h *apiHandler) prewarmFeaturedContent() {
+	config, err := h.store.GetSiteConfig()
+	if err != nil {
+		slog.Warn("content_cache_prewarm_failed", "reason", "site_config_unavailable", "error", err)
+		return
+	}
+	for _, reference := range config.FeaturedContent {
+		content, err := h.store.GetContentByID(reference.ID, false)
+		if errors.Is(err, sql.ErrNoRows) {
+			continue
+		}
+		if err != nil {
+			slog.Warn("content_cache_prewarm_failed", "contentId", reference.ID, "error", err)
+			continue
+		}
+		h.contentCache.Set(content.Slug, content)
+	}
 }
 
 func WriteJSON(w http.ResponseWriter, status int, value any) {

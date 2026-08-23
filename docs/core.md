@@ -118,7 +118,7 @@ Status semantics:
 - Login tokens expire after the configured session lifetime. The current MVP returns `expiresIn` in seconds.
 - `POST` writes that may be retried should accept an `Idempotency-Key`; the server must either replay the original result or reject a conflicting reuse.
 - `DELETE` is a soft delete for content. It is idempotent from a public-client perspective: deleted content remains invisible.
-- Public content detail reads use a bounded, TTL-based Core-side cache. The cache is an implementation detail: it never changes the response shape and is invalidated by content update, publish, unpublish, and delete operations.
+- Public content detail reads use a bounded, TTL-based Core-side cache. Featured published content is prewarmed during router initialization; the cache is an implementation detail, never changes the response shape, and is invalidated by content update, publish, unpublish, and delete operations.
 - Published-content aggregates use a single-entry TTL snapshot shared by public and Admin stats reads; pending comment counts remain uncached and are queried separately for moderation freshness.
 
 ## Public API
@@ -365,7 +365,7 @@ The rule for adding a new endpoint is: introduce a resource family only when it 
 - [x] [P1] Optimistic content concurrency | Admin updates support `expectedVersion` and return `409` on stale writes.
 - [x] [P1] Project/profile/site editing | Admin owns all source records that shape the home page; writes are validated, audited, and persisted in Core.
 - [x] [P1] API contract regression tests | Invalid input, auth failures, not-found behavior, publication state, comment moderation, and visitor-scoped reactions are tested.
-- [x] [P1] Published content detail cache | Public detail reads use a bounded 30-second default TTL cache, with `CORE_CONTENT_CACHE_TTL` override and invalidation on every content lifecycle write.
+- [x] [P1] Published content detail cache | Public detail reads use a bounded 30-second default TTL cache, featured published content is prewarmed during startup, `CORE_CONTENT_CACHE_TTL` is configurable, and every content lifecycle write invalidates the entry.
 - [x] [P1] Published stats snapshot | Public and Admin stats reuse a 30-second default aggregate snapshot, with `CORE_STATS_CACHE_TTL` override and invalidation on content writes; pending comments remain live.
 
 The current MVP leaves `Experience`/media and `ResearchSeries` as additive contract extensions described above; they are intentionally outside the MVP acceptance matrix until their distinct lifecycle and data shapes are implemented.
@@ -386,7 +386,7 @@ The current MVP leaves `Experience`/media and `ResearchSeries` as additive contr
 2. `[DONE]` Add request/trace IDs, structured logs, and audit events before adding more write surfaces.
 3. `[DONE]` Add cursor/filter behavior and content version conflicts; update SDK query types in the same change.
 4. `[DONE]` Add Admin editing for profile, site composition, and projects. Links remain a future resource family.
-5. `[DONE]` Add a bounded public content-detail cache with lifecycle invalidation; keep cache policy internal to Core.
+5. `[DONE]` Add a bounded public content-detail cache with startup prewarm and lifecycle invalidation; keep cache policy internal to Core.
 6. `[DONE]` Add a shared published-stats snapshot while keeping moderation queue counts uncached.
 7. Future extension: add experiences/media and research series only after the core publishing flow is used end to end.
 
