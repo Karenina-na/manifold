@@ -238,7 +238,9 @@ func (h *apiHandler) getContent(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusInternalServerError, "CONTENT_UNAVAILABLE", "Content is unavailable.")
 		return
 	}
-	h.contentCache.Set(slug, content)
+	if slug != "" {
+		h.contentCache.Set(slug, content)
+	}
 	WriteJSON(w, http.StatusOK, content)
 }
 
@@ -459,9 +461,9 @@ func (h *apiHandler) adminUpdateSite(w http.ResponseWriter, r *http.Request) {
 }
 
 type contentInput struct {
-	Kind     model.ContentKind `json:"kind" validate:"required,oneof=TECH THOUGHT MANUSCRIPT"`
-	Slug     string            `json:"slug" validate:"required,max=160"`
-	Title    string            `json:"title" validate:"required,max=200"`
+	Kind     model.ContentKind `json:"kind" validate:"required,oneof=THOUGHT ARTICLE"`
+	Slug     string            `json:"slug" validate:"omitempty,max=160"`
+	Title    string            `json:"title" validate:"omitempty,max=200"`
 	Summary  string            `json:"summary" validate:"max=4000"`
 	Body     string            `json:"body" validate:"required,max=100000"`
 	Tags     []string          `json:"tags"`
@@ -489,14 +491,67 @@ func validateContentMetadata(kind model.ContentKind, metadata map[string]any) er
 		return nil
 	}
 	switch kind {
-	case model.ContentKindTech:
-		values, ok := metadata["technologies"].([]any)
-		if !ok || len(values) == 0 {
-			return fmt.Errorf("metadata.technologies must contain at least one item")
+	case model.ContentKindThought:
+		if err := stringField("mood", false); err != nil {
+			return err
 		}
-		for _, value := range values {
-			if text, ok := value.(string); !ok || strings.TrimSpace(text) == "" || len(text) > 80 {
-				return fmt.Errorf("metadata.technologies must contain non-empty strings")
+		if err := stringField("question", false); err != nil {
+			return err
+		}
+		if err := stringField("context", false); err != nil {
+			return err
+		}
+		return stringField("source", false)
+	case model.ContentKindArticle:
+		if readingMinutes, ok := metadata["readingMinutes"]; ok {
+			value, valid := readingMinutes.(float64)
+			if !valid || value < 0 || value != float64(int(value)) {
+				return fmt.Errorf("metadata.readingMinutes must be a non-negative integer")
+			}
+		}
+		if toc, ok := metadata["toc"]; ok {
+			items, valid := toc.([]any)
+			if !valid {
+				return fmt.Errorf("metadata.toc must be an array")
+			}
+			if len(items) > 100 {
+				return fmt.Errorf("metadata.toc has too many items")
+			}
+			for _, raw := range items {
+				item, valid := raw.(map[string]any)
+				if !valid {
+					return fmt.Errorf("metadata.toc items must be objects")
+				}
+				id, idOK := item["id"].(string)
+				label, labelOK := item["label"].(string)
+				level, levelOK := item["level"].(float64)
+				if !idOK || strings.TrimSpace(id) == "" || len(id) > 160 || !labelOK || strings.TrimSpace(label) == "" || len(label) > 200 || !levelOK || (level != 2 && level != 3) {
+					return fmt.Errorf("metadata.toc items require id, label, and level 2 or 3")
+				}
+			}
+		}
+		if frontmatter, ok := metadata["frontmatter"]; ok {
+			values, valid := frontmatter.(map[string]any)
+			if !valid {
+				return fmt.Errorf("metadata.frontmatter must be an object")
+			}
+			for key, value := range values {
+				text, valid := value.(string)
+				if strings.TrimSpace(key) == "" || len(key) > 120 || !valid || len(text) > 2000 {
+					return fmt.Errorf("metadata.frontmatter values must be strings")
+				}
+			}
+		}
+		if technologies, ok := metadata["technologies"]; ok {
+			items, valid := technologies.([]any)
+			if !valid || len(items) > 32 {
+				return fmt.Errorf("metadata.technologies must be an array of at most 32 strings")
+			}
+			for _, item := range items {
+				text, valid := item.(string)
+				if !valid || strings.TrimSpace(text) == "" || len(text) > 80 {
+					return fmt.Errorf("metadata.technologies must contain strings")
+				}
 			}
 		}
 		if err := stringField("language", false); err != nil {
@@ -509,30 +564,6 @@ func validateContentMetadata(kind model.ContentKind, metadata map[string]any) er
 			}
 		}
 		return stringField("repositoryUrl", false)
-	case model.ContentKindThought:
-		if err := stringField("mood", false); err != nil {
-			return err
-		}
-		if err := stringField("question", false); err != nil {
-			return err
-		}
-		return stringField("context", false)
-	case model.ContentKindManuscript:
-		form, formOK := metadata["form"].(string)
-		stage, stageOK := metadata["stage"].(string)
-		if !formOK || (form != "ESSAY" && form != "STORY" && form != "BOOK" && form != "OTHER") {
-			return fmt.Errorf("metadata.form is invalid")
-		}
-		if !stageOK || (stage != "IDEA" && stage != "DRAFT" && stage != "REVISION" && stage != "FINAL") {
-			return fmt.Errorf("metadata.stage is invalid")
-		}
-		if wordCount, ok := metadata["wordCount"]; ok {
-			value, valid := wordCount.(float64)
-			if !valid || value < 0 || value != float64(int(value)) {
-				return fmt.Errorf("metadata.wordCount must be a non-negative integer")
-			}
-		}
-		return nil
 	default:
 		return fmt.Errorf("kind is invalid")
 	}
@@ -542,6 +573,10 @@ func (h *apiHandler) adminCreateContent(w http.ResponseWriter, r *http.Request) 
 	var input contentInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil || h.validate.Struct(input) != nil || validateContentMetadata(input.Kind, input.Metadata) != nil {
 		WriteError(w, http.StatusUnprocessableEntity, "VALIDATION_ERROR", "Kind, slug, title, and body are required.")
+		return
+	}
+	if input.Kind == model.ContentKindArticle && (strings.TrimSpace(input.Slug) == "" || strings.TrimSpace(input.Title) == "") {
+		WriteError(w, http.StatusUnprocessableEntity, "VALIDATION_ERROR", "Articles require a slug and title.")
 		return
 	}
 	created, err := h.store.CreateContent(model.Content{Kind: input.Kind, Slug: input.Slug, Title: input.Title, Summary: input.Summary, Body: input.Body, Tags: input.Tags, Metadata: input.Metadata})
@@ -555,12 +590,14 @@ func (h *apiHandler) adminCreateContent(w http.ResponseWriter, r *http.Request) 
 }
 
 type contentPatchInput struct {
-	Title           *string         `json:"title" validate:"omitempty,max=200"`
-	Summary         *string         `json:"summary" validate:"omitempty,max=4000"`
-	Body            *string         `json:"body" validate:"omitempty,max=100000"`
-	Tags            *[]string       `json:"tags"`
-	Metadata        *map[string]any `json:"metadata"`
-	ExpectedVersion *int            `json:"expectedVersion" validate:"required,min=1"`
+	Kind            *model.ContentKind `json:"kind" validate:"omitempty,oneof=THOUGHT ARTICLE"`
+	Slug            *string            `json:"slug" validate:"omitempty,max=160"`
+	Title           *string            `json:"title" validate:"omitempty,max=200"`
+	Summary         *string            `json:"summary" validate:"omitempty,max=4000"`
+	Body            *string            `json:"body" validate:"omitempty,max=100000"`
+	Tags            *[]string          `json:"tags"`
+	Metadata        *map[string]any    `json:"metadata"`
+	ExpectedVersion *int               `json:"expectedVersion" validate:"required,min=1"`
 }
 
 func (h *apiHandler) adminUpdateContent(w http.ResponseWriter, r *http.Request) {
@@ -569,22 +606,42 @@ func (h *apiHandler) adminUpdateContent(w http.ResponseWriter, r *http.Request) 
 		WriteError(w, http.StatusUnprocessableEntity, "VALIDATION_ERROR", "Invalid content input.")
 		return
 	}
-	if input.Title == nil && input.Summary == nil && input.Body == nil && input.Tags == nil && input.Metadata == nil {
+	if input.Kind == nil && input.Slug == nil && input.Title == nil && input.Summary == nil && input.Body == nil && input.Tags == nil && input.Metadata == nil {
 		WriteError(w, http.StatusUnprocessableEntity, "VALIDATION_ERROR", "At least one content field is required.")
 		return
 	}
+	content, err := h.store.GetContentByID(chi.URLParam(r, "id"), true)
+	if errors.Is(err, sql.ErrNoRows) {
+		WriteError(w, http.StatusNotFound, "CONTENT_NOT_FOUND", "Content was not found.")
+		return
+	}
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, "CONTENT_UNAVAILABLE", "Content is unavailable.")
+		return
+	}
+	contentKind := content.Kind
+	if input.Kind != nil {
+		contentKind = *input.Kind
+	}
+	effectiveTitle := content.Title
+	if input.Title != nil {
+		effectiveTitle = *input.Title
+	}
+	effectiveSlug := content.Slug
+	if input.Slug != nil {
+		effectiveSlug = *input.Slug
+	}
+	if contentKind == model.ContentKindArticle && (strings.TrimSpace(effectiveTitle) == "" || strings.TrimSpace(effectiveSlug) == "") {
+		WriteError(w, http.StatusUnprocessableEntity, "VALIDATION_ERROR", "Articles require a title and slug.")
+		return
+	}
 	if input.Metadata != nil {
-		content, err := h.store.GetContentByID(chi.URLParam(r, "id"), true)
-		if errors.Is(err, sql.ErrNoRows) {
-			WriteError(w, http.StatusNotFound, "CONTENT_NOT_FOUND", "Content was not found.")
-			return
-		}
-		if err != nil || validateContentMetadata(content.Kind, *input.Metadata) != nil {
+		if validateContentMetadata(contentKind, *input.Metadata) != nil {
 			WriteError(w, http.StatusUnprocessableEntity, "VALIDATION_ERROR", "Metadata does not match the content kind.")
 			return
 		}
 	}
-	err := h.store.UpdateContent(chi.URLParam(r, "id"), store.ContentUpdate{Title: input.Title, Summary: input.Summary, Body: input.Body, Tags: input.Tags, Metadata: input.Metadata, ExpectedVersion: *input.ExpectedVersion})
+	err = h.store.UpdateContent(chi.URLParam(r, "id"), store.ContentUpdate{Kind: input.Kind, Slug: input.Slug, Title: input.Title, Summary: input.Summary, Body: input.Body, Tags: input.Tags, Metadata: input.Metadata, ExpectedVersion: *input.ExpectedVersion})
 	if errors.Is(err, store.ErrContentNotFound) {
 		WriteError(w, http.StatusNotFound, "CONTENT_NOT_FOUND", "Content was not found.")
 		return
@@ -773,7 +830,7 @@ func parseContentListOptions(r *http.Request, includeDrafts bool) (store.Content
 			}
 			kind := model.ContentKind(rawKind)
 			switch kind {
-			case model.ContentKindTech, model.ContentKindThought, model.ContentKindManuscript:
+			case model.ContentKindArticle, model.ContentKindThought:
 				options.Kinds = append(options.Kinds, kind)
 			default:
 				return options, fmt.Errorf("kind is invalid")

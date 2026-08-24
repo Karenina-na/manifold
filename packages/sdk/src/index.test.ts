@@ -31,8 +31,8 @@ test("encodes collection queries and bearer authentication", async () => {
 		},
 	});
 
-	await client.feed({ kind: ["TECH", "THOUGHT"], tag: "systems", limit: 10 });
-	assert.equal(captured?.url, "http://core.test/api/v1/feed?kind=TECH%2CTHOUGHT&tag=systems&limit=10");
+	await client.feed({ kind: ["ARTICLE", "THOUGHT"], tag: "systems", limit: 10 });
+	assert.equal(captured?.url, "http://core.test/api/v1/feed?kind=ARTICLE%2CTHOUGHT&tag=systems&limit=10");
 	assert.equal(captured?.headers.get("Authorization"), "Bearer token-1");
 });
 
@@ -63,8 +63,8 @@ test("encodes typed content metadata for admin creation", async () => {
 			return new Response(JSON.stringify({ id: "content-1" }), { status: 201 });
 		},
 	});
-	await client.createContent({ kind: "MANUSCRIPT", slug: "draft", title: "Draft", summary: "", body: "Body", tags: [], metadata: { form: "ESSAY", stage: "DRAFT", wordCount: 10 } });
-	assert.deepEqual(await captured?.json(), { kind: "MANUSCRIPT", slug: "draft", title: "Draft", summary: "", body: "Body", tags: [], metadata: { form: "ESSAY", stage: "DRAFT", wordCount: 10 } });
+	await client.createContent({ kind: "ARTICLE", slug: "draft", title: "Draft", summary: "", body: "Body", tags: [], metadata: { readingMinutes: 10 } });
+	assert.deepEqual(await captured?.json(), { kind: "ARTICLE", slug: "draft", title: "Draft", summary: "", body: "Body", tags: [], metadata: { readingMinutes: 10 } });
 });
 
 test("handles empty success responses", async () => {

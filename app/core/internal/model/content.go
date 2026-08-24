@@ -3,30 +3,33 @@ package model
 type ContentKind string
 
 const (
-	ContentKindTech       ContentKind = "TECH"
-	ContentKindThought    ContentKind = "THOUGHT"
-	ContentKindManuscript ContentKind = "MANUSCRIPT"
+	ContentKindThought ContentKind = "THOUGHT"
+	ContentKindArticle ContentKind = "ARTICLE"
 )
 
 type Profile struct {
-	ID           string `json:"id"`
-	DisplayName  string `json:"displayName"`
-	Handle       string `json:"handle"`
-	Headline     string `json:"headline"`
-	Bio          string `json:"bio"`
-	AvatarURL    string `json:"avatarUrl"`
-	Location     string `json:"location"`
-	Organization string `json:"organization"`
-	WebsiteURL   string `json:"websiteUrl"`
-	UpdatedAt    string `json:"updatedAt"`
+	ID           string              `json:"id"`
+	DisplayName  string              `json:"displayName"`
+	Handle       string              `json:"handle"`
+	Headline     string              `json:"headline"`
+	Bio          string              `json:"bio"`
+	AvatarURL    string              `json:"avatarUrl"`
+	Location     string              `json:"location"`
+	Organization string              `json:"organization"`
+	WebsiteURL   string              `json:"websiteUrl"`
+	ResumeURL    string              `json:"resumeUrl,omitempty"`
+	Interests    []string            `json:"interests,omitempty"`
+	Education    []map[string]string `json:"education,omitempty"`
+	Experience   []map[string]string `json:"experience,omitempty"`
+	UpdatedAt    string              `json:"updatedAt"`
 }
 
 type Content struct {
 	ID          string         `json:"id"`
 	Kind        ContentKind    `json:"kind"`
 	Status      string         `json:"status"`
-	Slug        string         `json:"slug"`
-	Title       string         `json:"title"`
+	Slug        string         `json:"slug,omitempty"`
+	Title       string         `json:"title,omitempty"`
 	Summary     string         `json:"summary"`
 	Body        string         `json:"body,omitempty"`
 	Tags        []string       `json:"tags"`
@@ -46,7 +49,7 @@ type SiteConfig struct {
 
 type SiteContentRef struct {
 	ID   string      `json:"id" validate:"required,max=160"`
-	Kind ContentKind `json:"kind" validate:"required,oneof=TECH THOUGHT MANUSCRIPT"`
+	Kind ContentKind `json:"kind" validate:"required,oneof=THOUGHT ARTICLE"`
 }
 
 type SiteNavigationItem struct {
@@ -82,10 +85,9 @@ type ReactionSummary struct {
 }
 
 type Stats struct {
-	ContentCount    int    `json:"contentCount"`
-	TechCount       int    `json:"techCount"`
-	ThoughtCount    int    `json:"thoughtCount"`
-	ManuscriptCount int    `json:"manuscriptCount"`
-	WordCount       int    `json:"wordCount"`
-	UpdatedAt       string `json:"updatedAt"`
+	ContentCount int    `json:"contentCount"`
+	ArticleCount int    `json:"articleCount"`
+	ThoughtCount int    `json:"thoughtCount"`
+	WordCount    int    `json:"wordCount"`
+	UpdatedAt    string `json:"updatedAt"`
 }

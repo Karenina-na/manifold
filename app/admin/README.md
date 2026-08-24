@@ -44,7 +44,7 @@ Content 工作区通过 `adminContent` 读取内容列表，并将 kind/status �
 - kind：All、Technology、Thought、Manuscript。
 - status：All、Draft、Published、Deleted。
 - 选中非 Deleted 内容后在右侧编辑器打开。
-- 新建内容时提交公共字段和对应 kind 的 metadata；TECH 至少填写一个 technology，MANUSCRIPT 需要 form/stage。
+- 新建内容时在 Thought 快速输入和 Writing 长文编辑之间切换；Writing 支持阅读时长、frontmatter 和技术标签。
 - 编辑内容时 slug/kind 不可改，提交 `expectedVersion`。
 - 新建结果是 DRAFT。
 - Draft 可发布，Published 可撤回到 Draft，非 Deleted 内容可软删除。

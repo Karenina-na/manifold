@@ -5,7 +5,7 @@ import { ArrowUpRight, Menu, X } from "lucide-react";
 import { useState } from "react";
 import styles from "../app/site.module.css";
 
-const links = [{ label: "Technology", href: "/writing?kind=TECH" }, { label: "Thoughts", href: "/writing?kind=THOUGHT" }, { label: "Manuscripts", href: "/writing?kind=MANUSCRIPT" }];
+const links = [{ label: "Thoughts", href: "/thoughts" }, { label: "Writings", href: "/writing" }];
 
 export function SiteNav() {
   const [open, setOpen] = useState(false);

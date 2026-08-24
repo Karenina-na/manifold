@@ -68,7 +68,10 @@ function waitForUrl(url, timeout = 45_000) {
       request.setTimeout(2_000, () => { request.destroy(); retry(); });
     };
     const retry = () => {
-      if (Date.now() - started > timeout) reject(new Error(`Timed out waiting for ${url}`));
+      if (Date.now() - started > timeout) {
+        const diagnostics = children.map((child) => child.getRecentOutput?.()).filter(Boolean).join("\n--- service ---\n");
+        reject(new Error(`Timed out waiting for ${url}${diagnostics ? `\nService output:\n${diagnostics}` : ""}`));
+      }
       else setTimeout(poll, 250);
     };
     poll();
@@ -150,6 +153,7 @@ async function main() {
 
     const commentBody = `Browser acceptance ${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     await web.locator('textarea').fill(commentBody);
+    await web.getByLabel(/Quick check/).fill('7');
     const commentResponse = web.waitForResponse((response) => coreResponse(response, '/api/v1/content/designing-boundaries/comments', 'POST', 201));
     await web.getByRole('button', { name: 'Send for review' }).click();
     await commentResponse;

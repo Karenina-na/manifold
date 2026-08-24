@@ -23,10 +23,10 @@ export function getVisitorId() {
 export async function loadHomeData() {
   const client = createServerClient();
   try {
-    const [profile, site, feed, now, stats] = await Promise.all([
-      client.profile(), client.site(), client.feed({ limit: 6 }), client.now(), client.stats(),
+    const [profile, site, writings, thoughts, now, stats] = await Promise.all([
+      client.profile(), client.site(), client.feed({ limit: 2, kind: "ARTICLE" }), client.feed({ limit: 3, kind: "THOUGHT" }), client.now(), client.stats(),
     ]);
-    return { profile, site, feed, now, stats, error: null };
+    return { profile, site, feed: [...writings.data, ...thoughts.data].sort((a, b) => Date.parse(b.publishedAt ?? b.createdAt) - Date.parse(a.publishedAt ?? a.createdAt)), now, stats, error: null };
   } catch {
     return { profile: null, site: null, feed: null, now: null, stats: null, error: "Core is unavailable right now. Please try again in a moment." };
   }

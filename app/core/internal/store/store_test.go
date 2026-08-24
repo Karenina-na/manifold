@@ -42,7 +42,7 @@ func TestContentMetadataPersistsAcrossReads(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer database.Close()
-	created, err := database.CreateContent(model.Content{Kind: model.ContentKindTech, Slug: "metadata-test", Title: "Metadata", Body: "Body", Metadata: map[string]any{"technologies": []any{"Go"}, "difficulty": "ADVANCED"}})
+	created, err := database.CreateContent(model.Content{Kind: model.ContentKindArticle, Slug: "metadata-test", Title: "Metadata", Body: "Body", Metadata: map[string]any{"readingMinutes": float64(4)}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,12 +50,8 @@ func TestContentMetadataPersistsAcrossReads(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if read.Metadata["difficulty"] != "ADVANCED" {
+	if read.Metadata["readingMinutes"] != float64(4) {
 		t.Fatalf("expected metadata to persist, got %#v", read.Metadata)
-	}
-	values, ok := read.Metadata["technologies"].([]any)
-	if !ok || len(values) != 1 || values[0] != "Go" {
-		t.Fatalf("expected technology metadata, got %#v", read.Metadata)
 	}
 }
 
@@ -83,8 +79,8 @@ func TestOpenMigratesLegacyContentKinds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if content.Kind != model.ContentKindTech || content.Metadata["technologies"] == nil {
-		t.Fatalf("expected legacy POST to become TECH metadata, got kind=%q metadata=%#v", content.Kind, content.Metadata)
+	if content.Kind != model.ContentKindArticle || content.Metadata == nil {
+		t.Fatalf("expected legacy POST to become ARTICLE metadata, got kind=%q metadata=%#v", content.Kind, content.Metadata)
 	}
 	var foreignKeys int
 	if err := store.DB.QueryRow(`PRAGMA foreign_keys`).Scan(&foreignKeys); err != nil {

@@ -286,7 +286,7 @@ func TestContentQueryFiltersAndPaginates(t *testing.T) {
 		t.Fatalf("expected the second content page, got %s", response.Body.String())
 	}
 
-	response = request(t, router, http.MethodGet, "/api/v1/content?kind=THOUGHT&kind=TECH&tag=systems", nil)
+	response = request(t, router, http.MethodGet, "/api/v1/content?kind=THOUGHT&kind=ARTICLE&tag=systems", nil)
 	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "designing-boundaries") {
 		t.Fatalf("expected repeated kind and tag filters to match, got %d %s", response.Code, response.Body.String())
 	}
@@ -465,9 +465,9 @@ func TestAdminContentMetadataIsTypedByKind(t *testing.T) {
 	router := newTestRouter(t)
 	token := adminToken(t, router)
 	cases := []struct{ kind, slug, metadata string }{
-		{"TECH", "typed-tech", `{"technologies":["Go"],"difficulty":"BEGINNER"}`},
+		{"ARTICLE", "typed-article", `{"readingMinutes":4}`},
 		{"THOUGHT", "typed-thought", `{"mood":"Calm","question":"Why?"}`},
-		{"MANUSCRIPT", "typed-manuscript", `{"form":"ESSAY","stage":"IDEA","wordCount":12}`},
+		{"ARTICLE", "typed-article-two", `{"readingMinutes":12}`},
 	}
 	for _, item := range cases {
 		body := fmt.Sprintf(`{"kind":%q,"slug":%q,"title":"Typed","body":"Body","tags":[],"metadata":%s}`, item.kind, item.slug, item.metadata)
@@ -480,9 +480,39 @@ func TestAdminContentMetadataIsTypedByKind(t *testing.T) {
 			t.Fatalf("expected typed metadata for %s, got %d %s", item.kind, created.Code, created.Body.String())
 		}
 	}
-	invalid := adminRequest(t, router, token, http.MethodPost, "/api/v1/admin/content", `{"kind":"MANUSCRIPT","slug":"invalid-manuscript","title":"Invalid","body":"Body","tags":[],"metadata":{"form":"INVALID","stage":"IDEA"}}`)
+	invalid := adminRequest(t, router, token, http.MethodPost, "/api/v1/admin/content", `{"kind":"ARTICLE","slug":"invalid-article","title":"Invalid","body":"Body","tags":[],"metadata":{"readingMinutes":-1}}`)
 	if invalid.Code != http.StatusUnprocessableEntity {
-		t.Fatalf("expected invalid manuscript metadata 422, got %d %s", invalid.Code, invalid.Body.String())
+		t.Fatalf("expected invalid article metadata 422, got %d %s", invalid.Code, invalid.Body.String())
+	}
+	for _, item := range []struct {
+		kind     string
+		metadata string
+	}{
+		{"THOUGHT", `{"source":42}`},
+		{"ARTICLE", `{"technologies":["Go",42]}`},
+		{"ARTICLE", `{"toc":[{"id":"section","label":"Section","level":4}]}`},
+		{"ARTICLE", `{"frontmatter":{"series":42}}`},
+	} {
+		invalid = adminRequest(t, router, token, http.MethodPost, "/api/v1/admin/content", fmt.Sprintf(`{"kind":%q,"slug":"invalid-%d","title":"Invalid","body":"Body","tags":[],"metadata":%s}`, item.kind, time.Now().UnixNano(), item.metadata))
+		if invalid.Code != http.StatusUnprocessableEntity {
+			t.Fatalf("expected invalid metadata 422 for %s, got %d %s", item.metadata, invalid.Code, invalid.Body.String())
+		}
+	}
+
+	thought := adminRequest(t, router, token, http.MethodPost, "/api/v1/admin/content", `{"kind":"THOUGHT","title":"Convert me","body":"Body","tags":[],"metadata":{}}`)
+	if thought.Code != http.StatusCreated {
+		t.Fatalf("expected thought creation 201, got %d %s", thought.Code, thought.Body.String())
+	}
+	var created struct {
+		ID      string `json:"id"`
+		Version int    `json:"version"`
+	}
+	if err := json.Unmarshal(thought.Body.Bytes(), &created); err != nil {
+		t.Fatal(err)
+	}
+	converted := adminRequest(t, router, token, http.MethodPatch, "/api/v1/admin/content/"+created.ID, fmt.Sprintf(`{"kind":"ARTICLE","slug":"converted-thought","title":"Converted","expectedVersion":%d}`, created.Version))
+	if converted.Code != http.StatusOK || !strings.Contains(converted.Body.String(), `"kind":"ARTICLE"`) {
+		t.Fatalf("expected thought to article conversion, got %d %s", converted.Code, converted.Body.String())
 	}
 }
 

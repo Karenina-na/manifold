@@ -165,7 +165,7 @@ docker run --rm -p 8080:8080 -e CORE_JWT_SECRET=replace-me manifold-core
 核心表：
 
 - `profile`：单例 `profile_1`。
-- `content`：TECH / THOUGHT / MANUSCRIPT，分别承载技术记录、思考记录和文稿，状态 DRAFT / PUBLISHED / DELETED，slug 唯一，`version` 用于并发更新。公共字段之外，`metadata_json` 保存类型专属结构：TECH 使用 `technologies/language/difficulty/repositoryUrl`，THOUGHT 使用 `mood/question/context`，MANUSCRIPT 使用 `form/stage/wordCount`。Core 会按 kind 校验 metadata，避免三类内容退化成无差别表单。
+- `content`：THOUGHT / ARTICLE，分别承载轻量思考和深度文稿。Thought 的 title/slug 可为空，Article 要求 title/slug；状态 DRAFT / PUBLISHED / DELETED。`metadata_json` 保存思考来源、文稿阅读时长、TOC 和 frontmatter。
 - `now_status`：单例 `now_1`，用于首页当前状态信号。
 - `site_config`：单例 `site_1`，JSON 字段存储精选内容、导航和 sections。
 - `comments`：关联 content，默认 PENDING，公开读取只允许 APPROVED。

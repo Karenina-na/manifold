@@ -5,8 +5,8 @@ Manifold 是一个 API-first 的个人 digital garden：同一套内容和个人
 当前 MVP 已包含：
 
 - Web 首页、写作归档、文章详情和 SEO 元数据。
-- `TECH`、`THOUGHT`、`MANUSCRIPT` Markdown 内容，支持标签、搜索和 cursor 分页。
-- 三类内容共享正文能力，但拥有独立 metadata 结构和 Admin 编辑界面：TECH（技术栈、语言、难度、仓库）、THOUGHT（情绪、问题、上下文）、MANUSCRIPT（体裁、阶段、字数）。
+- `THOUGHT` 与 `ARTICLE` Markdown 内容，支持标签、搜索和 cursor 分页；文稿支持数学公式、代码高亮和一键复制代码。
+- Thoughts 是轻量碎记；Articles 是带阅读时长、目录和 frontmatter 的深度文稿。
 - 匿名评论提交与 Admin 审核、`LIKE`/`FAVORITE` 访客反应。
 - Admin 登录、内容发布生命周期、评论审核、Now、Profile 和首页 composition 管理。
 - Go Core、SQLite、JWT + Casbin 鉴权、请求/追踪 ID、审计事件和 TTL 缓存。
@@ -155,7 +155,7 @@ Admin 的 `VITE_CORE_URL` 必须指向 Core（默认 `http://localhost:8080`）�
 ## 数据与生命周期
 
 - SQLite 由 Core 独占；store 负责建表、兼容旧列和种子数据。
-- Content 类型为 `TECH`、`THOUGHT`、`MANUSCRIPT`；状态为 `DRAFT`、`PUBLISHED`、`DELETED`。
+- Content 类型为 `THOUGHT`、`ARTICLE`；状态为 `DRAFT`、`PUBLISHED`、`DELETED`。
 - 更新带 `expectedVersion`；版本冲突会拒绝覆盖。
 - 删除是软删除；草稿和已删除内容不进入公开接口。
 - 评论创建后是 `PENDING`，批准后才公开。
@@ -165,7 +165,7 @@ Admin 的 `VITE_CORE_URL` 必须指向 Core（默认 `http://localhost:8080`）�
 
 ## 当前边界
 
-P0 聚焦首页、Profile、Site、Now、技术记录、思考记录、文稿、Comments、Reactions 和 Stats。Projects、timeline、search、links、experiences、媒体资产和 research series 不属于当前产品范围。
+P0 聚焦首页、Profile、Site、Now、Thoughts、Writings、Comments、Reactions 和 Stats。跨资源搜索、links、媒体资产、经历详情和 research series 不属于当前产品范围。
 
 ## 贡献
 

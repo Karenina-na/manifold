@@ -188,4 +188,4 @@ pnpm --filter @manifold/web dev
 
 ## 当前边界
 
-当前 Web 只覆盖首页、技术/思考/文稿归档和详情页。Projects、Timeline、跨资源搜索、媒体附件、经历详情和研究系列尚未有页面或 SDK 方法，也不属于当前产品范围。新增资源时应先补 Core contract、contracts、SDK，再加入页面。
+当前 Web 覆盖首页履历、Recent Activity、Thoughts 时间线、Writings 归档和带 TOC 的详情页。跨资源搜索、媒体附件、经历详情和研究系列尚未有页面或 SDK 方法。新增资源时应先补 Core contract、contracts、SDK，再加入页面。

@@ -8,15 +8,19 @@ CREATE TABLE IF NOT EXISTS profile (
     avatar_url TEXT NOT NULL DEFAULT '',
     organization TEXT NOT NULL DEFAULT '',
     website_url TEXT NOT NULL DEFAULT '',
+    resume_url TEXT NOT NULL DEFAULT '',
+    interests_json TEXT NOT NULL DEFAULT '[]',
+    education_json TEXT NOT NULL DEFAULT '[]',
+    experience_json TEXT NOT NULL DEFAULT '[]',
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS content (
     id TEXT PRIMARY KEY,
-    kind TEXT NOT NULL CHECK (kind IN ('TECH', 'THOUGHT', 'MANUSCRIPT')),
+    kind TEXT NOT NULL CHECK (kind IN ('THOUGHT', 'ARTICLE')),
     status TEXT NOT NULL DEFAULT 'DRAFT' CHECK (status IN ('DRAFT', 'PUBLISHED', 'DELETED')),
-    slug TEXT NOT NULL UNIQUE,
-    title TEXT NOT NULL,
+    slug TEXT UNIQUE,
+    title TEXT,
     summary TEXT NOT NULL DEFAULT '',
     body TEXT NOT NULL DEFAULT '',
     tags_json TEXT NOT NULL DEFAULT '[]',

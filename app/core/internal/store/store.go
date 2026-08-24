@@ -15,8 +15,8 @@ import (
 )
 
 const schema = `
-CREATE TABLE IF NOT EXISTS profile (id TEXT PRIMARY KEY, display_name TEXT NOT NULL, handle TEXT NOT NULL DEFAULT '', headline TEXT NOT NULL DEFAULT '', bio TEXT NOT NULL DEFAULT '', location TEXT NOT NULL DEFAULT '', avatar_url TEXT NOT NULL DEFAULT '', organization TEXT NOT NULL DEFAULT '', website_url TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
-CREATE TABLE IF NOT EXISTS content (id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK (kind IN ('TECH', 'THOUGHT', 'MANUSCRIPT')), status TEXT NOT NULL DEFAULT 'DRAFT' CHECK (status IN ('DRAFT', 'PUBLISHED', 'DELETED')), slug TEXT NOT NULL UNIQUE, title TEXT NOT NULL, summary TEXT NOT NULL DEFAULT '', body TEXT NOT NULL DEFAULT '', tags_json TEXT NOT NULL DEFAULT '[]', metadata_json TEXT NOT NULL DEFAULT '{}', published_at TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, version INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS profile (id TEXT PRIMARY KEY, display_name TEXT NOT NULL, handle TEXT NOT NULL DEFAULT '', headline TEXT NOT NULL DEFAULT '', bio TEXT NOT NULL DEFAULT '', location TEXT NOT NULL DEFAULT '', avatar_url TEXT NOT NULL DEFAULT '', organization TEXT NOT NULL DEFAULT '', website_url TEXT NOT NULL DEFAULT '', resume_url TEXT NOT NULL DEFAULT '', interests_json TEXT NOT NULL DEFAULT '[]', education_json TEXT NOT NULL DEFAULT '[]', experience_json TEXT NOT NULL DEFAULT '[]', updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS content (id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK (kind IN ('THOUGHT', 'ARTICLE')), status TEXT NOT NULL DEFAULT 'DRAFT' CHECK (status IN ('DRAFT', 'PUBLISHED', 'DELETED')), slug TEXT UNIQUE, title TEXT, summary TEXT NOT NULL DEFAULT '', body TEXT NOT NULL DEFAULT '', tags_json TEXT NOT NULL DEFAULT '[]', metadata_json TEXT NOT NULL DEFAULT '{}', published_at TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, version INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS now_status (id TEXT PRIMARY KEY, title TEXT NOT NULL, detail TEXT NOT NULL DEFAULT '', mood TEXT NOT NULL DEFAULT 'FOCUSED', updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS site_config (id TEXT PRIMARY KEY, featured_content_json TEXT NOT NULL DEFAULT '[]', navigation_json TEXT NOT NULL DEFAULT '[]', sections_json TEXT NOT NULL DEFAULT '[]', updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS comments (id TEXT PRIMARY KEY, content_id TEXT NOT NULL REFERENCES content(id), author_name TEXT NOT NULL, author_url TEXT NOT NULL DEFAULT '', body TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'APPROVED', 'REJECTED')), reply_to_id TEXT REFERENCES comments(id), created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
@@ -45,6 +45,8 @@ type ContentListOptions struct {
 }
 
 type ContentUpdate struct {
+	Kind            *model.ContentKind
+	Slug            *string
 	Title           *string
 	Summary         *string
 	Body            *string
@@ -69,6 +71,10 @@ func Open(path string) (*Store, error) {
 		return nil, err
 	}
 	if err := ensureSiteConfigColumns(db); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	if err := ensureProfileColumns(db); err != nil {
 		_ = db.Close()
 		return nil, err
 	}
@@ -113,7 +119,7 @@ func ensureContentSchema(db *sql.DB) error {
 	if err := db.QueryRow(`SELECT COALESCE(sql, '') FROM sqlite_master WHERE type = 'table' AND name = 'content'`).Scan(&tableSQL); err != nil {
 		return err
 	}
-	if strings.Contains(tableSQL, "'POST'") || strings.Contains(tableSQL, "'NOTE'") || strings.Contains(tableSQL, "'RESEARCH'") {
+	if strings.Contains(tableSQL, "'POST'") || strings.Contains(tableSQL, "'NOTE'") || strings.Contains(tableSQL, "'RESEARCH'") || strings.Contains(tableSQL, "'TECH'") || strings.Contains(tableSQL, "'MANUSCRIPT'") {
 		return migrateLegacyContent(db, hasMetadata)
 	}
 	if !hasMetadata {
@@ -121,7 +127,7 @@ func ensureContentSchema(db *sql.DB) error {
 			return err
 		}
 	}
-	_, err = db.Exec(`UPDATE content SET metadata_json = CASE kind WHEN 'TECH' THEN '{"technologies":["Unspecified"]}' WHEN 'THOUGHT' THEN '{}' WHEN 'MANUSCRIPT' THEN '{"form":"OTHER","stage":"DRAFT"}' ELSE metadata_json END WHERE TRIM(metadata_json) = '' OR metadata_json = '{}'`)
+	_, err = db.Exec(`UPDATE content SET metadata_json = CASE WHEN kind = 'THOUGHT' THEN '{}' ELSE metadata_json END WHERE TRIM(metadata_json) = '' OR metadata_json = '{}'`)
 	return err
 }
 
@@ -137,16 +143,16 @@ func migrateLegacyContent(db *sql.DB, hasMetadata bool) error {
 	if err != nil {
 		return rollback(err)
 	}
-	contentTable := `CREATE TABLE content_new (id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK (kind IN ('TECH', 'THOUGHT', 'MANUSCRIPT')), status TEXT NOT NULL DEFAULT 'DRAFT' CHECK (status IN ('DRAFT', 'PUBLISHED', 'DELETED')), slug TEXT NOT NULL UNIQUE, title TEXT NOT NULL, summary TEXT NOT NULL DEFAULT '', body TEXT NOT NULL DEFAULT '', tags_json TEXT NOT NULL DEFAULT '[]', metadata_json TEXT NOT NULL DEFAULT '{}', published_at TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, version INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`
+	contentTable := `CREATE TABLE content_new (id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK (kind IN ('THOUGHT', 'ARTICLE')), status TEXT NOT NULL DEFAULT 'DRAFT' CHECK (status IN ('DRAFT', 'PUBLISHED', 'DELETED')), slug TEXT UNIQUE, title TEXT, summary TEXT NOT NULL DEFAULT '', body TEXT NOT NULL DEFAULT '', tags_json TEXT NOT NULL DEFAULT '[]', metadata_json TEXT NOT NULL DEFAULT '{}', published_at TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, version INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`
 	if _, err = tx.Exec(contentTable); err != nil {
 		_ = tx.Rollback()
 		return rollback(err)
 	}
-	metadataExpression := `CASE kind WHEN 'POST' THEN '{"technologies":["Unspecified"]}' WHEN 'NOTE' THEN '{}' WHEN 'RESEARCH' THEN '{"form":"OTHER","stage":"DRAFT"}' ELSE '{}' END`
+	metadataExpression := `CASE kind WHEN 'POST' THEN '{}' WHEN 'NOTE' THEN '{}' WHEN 'RESEARCH' THEN '{}' WHEN 'TECH' THEN '{"technologies":["Unspecified"]}' WHEN 'MANUSCRIPT' THEN '{"form":"OTHER","stage":"DRAFT"}' ELSE '{}' END`
 	if hasMetadata {
-		metadataExpression = `CASE kind WHEN 'POST' THEN '{"technologies":["Unspecified"]}' WHEN 'NOTE' THEN '{}' WHEN 'RESEARCH' THEN '{"form":"OTHER","stage":"DRAFT"}' ELSE CASE WHEN TRIM(metadata_json) = '' THEN '{}' ELSE metadata_json END END`
+		metadataExpression = `CASE kind WHEN 'POST' THEN '{}' WHEN 'NOTE' THEN '{}' WHEN 'RESEARCH' THEN '{}' WHEN 'TECH' THEN '{"technologies":["Unspecified"]}' WHEN 'MANUSCRIPT' THEN '{"form":"OTHER","stage":"DRAFT"}' ELSE CASE WHEN TRIM(metadata_json) = '' THEN '{}' ELSE metadata_json END END`
 	}
-	query := `INSERT INTO content_new (id, kind, status, slug, title, summary, body, tags_json, metadata_json, published_at, created_at, version, updated_at) SELECT id, CASE kind WHEN 'POST' THEN 'TECH' WHEN 'NOTE' THEN 'THOUGHT' WHEN 'RESEARCH' THEN 'MANUSCRIPT' ELSE kind END, status, slug, title, summary, body, tags_json, ` + metadataExpression + `, published_at, created_at, version, updated_at FROM content`
+	query := `INSERT INTO content_new (id, kind, status, slug, title, summary, body, tags_json, metadata_json, published_at, created_at, version, updated_at) SELECT id, CASE kind WHEN 'POST' THEN 'ARTICLE' WHEN 'NOTE' THEN 'THOUGHT' WHEN 'RESEARCH' THEN 'ARTICLE' WHEN 'TECH' THEN 'ARTICLE' WHEN 'MANUSCRIPT' THEN 'ARTICLE' ELSE kind END, status, slug, title, summary, body, tags_json, ` + metadataExpression + `, published_at, created_at, version, updated_at FROM content`
 	if _, err = tx.Exec(query); err != nil {
 		_ = tx.Rollback()
 		return rollback(err)
@@ -224,6 +230,43 @@ func ensureSiteConfigColumns(db *sql.DB) error {
 			}
 		}
 	}
+	_, err = db.Exec(`UPDATE site_config SET navigation_json = ?, sections_json = ? WHERE id = 'site_1' AND (navigation_json LIKE '%TECH%' OR navigation_json LIKE '%MANUSCRIPT%' OR sections_json LIKE '%MANUSCRIPT%')`, encodeJSON([]model.SiteNavigationItem{{Label: "Thoughts", Href: "/thoughts"}, {Label: "Writings", Href: "/writing"}}), encodeJSON([]string{"PROFILE", "CV", "RECENT_ACTIVITY"}))
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func ensureProfileColumns(db *sql.DB) error {
+	rows, err := db.Query(`PRAGMA table_info(profile)`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	columns := map[string]bool{}
+	for rows.Next() {
+		var cid, notNull, primaryKey int
+		var name, columnType string
+		var defaultValue sql.NullString
+		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
+			return err
+		}
+		columns[name] = true
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for _, column := range []string{"resume_url", "interests_json", "education_json", "experience_json"} {
+		if !columns[column] {
+			defaultValue := "'[]'"
+			if column == "resume_url" {
+				defaultValue = "''"
+			}
+			if _, err := db.Exec(`ALTER TABLE profile ADD COLUMN ` + column + ` TEXT NOT NULL DEFAULT ` + defaultValue); err != nil {
+				return err
+			}
+		}
+	}
 	return nil
 }
 
@@ -231,24 +274,24 @@ func (s *Store) Close() error { return s.DB.Close() }
 
 func (s *Store) seed() error {
 	now := time.Now().UTC().Format(time.RFC3339)
-	if _, err := s.DB.Exec(`INSERT OR IGNORE INTO profile (id, display_name, handle, headline, bio, location, organization, website_url, updated_at) VALUES ('profile_1', 'Manifold', '@manifold', 'A living archive for technology, thoughts, and manuscripts.', 'A quiet space for technical records, thoughts, and manuscripts.', 'Peking, China', 'Independent', 'https://manifold.local', ?)`, now); err != nil {
+	if _, err := s.DB.Exec(`INSERT OR IGNORE INTO profile (id, display_name, handle, headline, bio, location, organization, website_url, resume_url, interests_json, education_json, experience_json, updated_at) VALUES ('profile_1', 'Manifold', '@manifold', 'Personal research and software notes.', 'A quiet archive for thoughts and long-form technical writing.', 'Peking, China', 'Independent', 'https://manifold.local', '', '["systems","research","writing"]', '[{"institution":"Independent","program":"Research and engineering","period":"Now"}]', '[{"organization":"Manifold","role":"Research and software","period":"Now"}]', ?)`, now); err != nil {
 		return err
 	}
-	if _, err := s.DB.Exec(`INSERT OR IGNORE INTO now_status (id, title, detail, mood, updated_at) VALUES ('now_1', 'Building the first garden', 'Shaping a small API-first space for technology, thoughts, and manuscripts.', 'FOCUSED', ?)`, now); err != nil {
+	if _, err := s.DB.Exec(`INSERT OR IGNORE INTO now_status (id, title, detail, mood, updated_at) VALUES ('now_1', 'Making room for the next question', 'Balancing research notes with the work of turning them into useful systems.', 'FOCUSED', ?)`, now); err != nil {
 		return err
 	}
-	if _, err := s.DB.Exec(`INSERT OR IGNORE INTO site_config (id, featured_content_json, navigation_json, sections_json, updated_at) VALUES ('site_1', ?, ?, ?, ?)`, encodeJSON([]model.SiteContentRef{{ID: "content_1", Kind: model.ContentKindTech}}), encodeJSON([]model.SiteNavigationItem{{Label: "Technology", Href: "/writing?kind=TECH"}, {Label: "Thoughts", Href: "/writing?kind=THOUGHT"}, {Label: "Manuscripts", Href: "/writing?kind=MANUSCRIPT"}}), encodeJSON([]string{"PROFILE", "NOW", "TECH", "THOUGHT", "MANUSCRIPT"}), now); err != nil {
+	if _, err := s.DB.Exec(`INSERT OR IGNORE INTO site_config (id, featured_content_json, navigation_json, sections_json, updated_at) VALUES ('site_1', ?, ?, ?, ?)`, encodeJSON([]model.SiteContentRef{{ID: "content_1", Kind: model.ContentKindArticle}}), encodeJSON([]model.SiteNavigationItem{{Label: "Thoughts", Href: "/thoughts"}, {Label: "Writings", Href: "/writing"}}), encodeJSON([]string{"PROFILE", "CV", "RECENT_ACTIVITY"}), now); err != nil {
 		return err
 	}
 	seedContent := []struct {
 		id, kind, slug, title, summary, body, tags, metadata string
 	}{
-		{"content_1", "TECH", "designing-boundaries", "Designing Boundaries", "A technical note on keeping a personal system calm and extensible.", "# Designing Boundaries\n\nA good personal system leaves room for the next thought without making today harder.", `["systems","design"]`, `{"technologies":["Go","SQLite","Next.js"],"language":"Go","difficulty":"INTERMEDIATE"}`},
-		{"content_2", "THOUGHT", "a-small-signal", "A Small Signal", "A thought that needs a place to land before it becomes a system.", "Not every thought needs to become a system. Some only need a place to land.", `["thinking"]`, `{"mood":"Curious","question":"What deserves a place to land?"}`},
-		{"content_3", "MANUSCRIPT", "reading-the-edge", "Reading the Edge", "A manuscript for questions between engineering and lived experience.", "## Open question\n\nHow do small tools change the way we notice the world?", `["manuscript","systems"]`, `{"form":"ESSAY","stage":"DRAFT","wordCount":18}`},
+		{"content_1", "ARTICLE", "designing-boundaries", "Designing Boundaries", "A long-form note on keeping a personal system calm and extensible.", "# Designing Boundaries\n\nA good personal system leaves room for the next thought without making today harder.\n\n## The boundary\n\nSmall interfaces protect attention.", `["systems","design"]`, `{"technologies":["Go","SQLite","Next.js"],"language":"Go","difficulty":"INTERMEDIATE","readingMinutes":6,"toc":[{"id":"the-boundary","label":"The boundary","level":2}]}`},
+		{"content_2", "THOUGHT", "a-small-signal", "A Small Signal", "A thought that needs a place to land before it becomes a system.", "Some thoughts only need a place to land before they become a system.", `["thinking"]`, `{"mood":"Curious","question":"What deserves a place to land?"}`},
+		{"content_3", "ARTICLE", "reading-the-edge", "Reading the Edge", "A long-form manuscript for questions between engineering and lived experience.", "## Open question\n\nHow do small tools change the way we notice the world?", `["systems"]`, `{"readingMinutes":3,"toc":[{"id":"open-question","label":"Open question","level":2}]}`},
 	}
 	for _, item := range seedContent {
-		if _, err := s.DB.Exec(`INSERT OR IGNORE INTO content (id, kind, status, slug, title, summary, body, tags_json, metadata_json, published_at, created_at, updated_at) VALUES (?, ?, 'PUBLISHED', ?, ?, ?, ?, ?, ?, ?, ?, ?)`, item.id, item.kind, item.slug, item.title, item.summary, item.body, item.tags, item.metadata, now, now, now); err != nil {
+		if _, err := s.DB.Exec(`INSERT OR IGNORE INTO content (id, kind, status, slug, title, summary, body, tags_json, metadata_json, published_at, created_at, updated_at) VALUES (?, ?, 'PUBLISHED', NULLIF(?, ''), NULLIF(?, ''), ?, ?, ?, ?, ?, ?, ?)`, item.id, item.kind, item.slug, item.title, item.summary, item.body, item.tags, item.metadata, now, now, now); err != nil {
 			return err
 		}
 	}
@@ -284,12 +327,16 @@ func encodeJSON(value any) string {
 
 func (s *Store) GetProfile() (model.Profile, error) {
 	var p model.Profile
-	err := s.DB.QueryRow(`SELECT id, display_name, handle, headline, bio, avatar_url, location, organization, website_url, updated_at FROM profile WHERE id = 'profile_1'`).Scan(&p.ID, &p.DisplayName, &p.Handle, &p.Headline, &p.Bio, &p.AvatarURL, &p.Location, &p.Organization, &p.WebsiteURL, &p.UpdatedAt)
+	var interests, education, experience string
+	err := s.DB.QueryRow(`SELECT id, display_name, handle, headline, bio, avatar_url, location, organization, website_url, resume_url, interests_json, education_json, experience_json, updated_at FROM profile WHERE id = 'profile_1'`).Scan(&p.ID, &p.DisplayName, &p.Handle, &p.Headline, &p.Bio, &p.AvatarURL, &p.Location, &p.Organization, &p.WebsiteURL, &p.ResumeURL, &interests, &education, &experience, &p.UpdatedAt)
+	_ = json.Unmarshal([]byte(interests), &p.Interests)
+	_ = json.Unmarshal([]byte(education), &p.Education)
+	_ = json.Unmarshal([]byte(experience), &p.Experience)
 	return p, err
 }
 
 func (s *Store) UpdateProfile(p model.Profile) error {
-	_, err := s.DB.Exec(`UPDATE profile SET display_name = ?, handle = ?, headline = ?, bio = ?, avatar_url = ?, location = ?, organization = ?, website_url = ?, updated_at = ? WHERE id = 'profile_1'`, p.DisplayName, p.Handle, p.Headline, p.Bio, p.AvatarURL, p.Location, p.Organization, p.WebsiteURL, time.Now().UTC().Format(time.RFC3339))
+	_, err := s.DB.Exec(`UPDATE profile SET display_name = ?, handle = ?, headline = ?, bio = ?, avatar_url = ?, location = ?, organization = ?, website_url = ?, resume_url = ?, interests_json = ?, education_json = ?, experience_json = ?, updated_at = ? WHERE id = 'profile_1'`, p.DisplayName, p.Handle, p.Headline, p.Bio, p.AvatarURL, p.Location, p.Organization, p.WebsiteURL, p.ResumeURL, encodeJSON(p.Interests), encodeJSON(p.Education), encodeJSON(p.Experience), time.Now().UTC().Format(time.RFC3339))
 	return err
 }
 
@@ -359,16 +406,21 @@ func (s *Store) ListContent(includeDrafts bool, options ContentListOptions) ([]m
 	var items []model.Content
 	for rows.Next() && len(items) <= limit {
 		var c model.Content
-		var tags, metadata, published sql.NullString
-		if err := rows.Scan(&c.ID, &c.Kind, &c.Status, &c.Slug, &c.Title, &c.Summary, &c.Body, &tags, &metadata, &published, &c.CreatedAt, &c.UpdatedAt, &c.Version); err != nil {
+		var tags, metadata, published, slug, title sql.NullString
+		if err := rows.Scan(&c.ID, &c.Kind, &c.Status, &slug, &title, &c.Summary, &c.Body, &tags, &metadata, &published, &c.CreatedAt, &c.UpdatedAt, &c.Version); err != nil {
 			return nil, false, err
 		}
+		c.Slug, c.Title = slug.String, title.String
 		c.Tags = decodeStrings(tags.String)
 		c.Metadata = decodeMetadata(metadata.String)
 		if published.Valid {
 			c.PublishedAt = &published.String
 		}
-		c.Href = "/writing/" + c.Slug
+		if c.Kind == model.ContentKindThought {
+			c.Href = "/thoughts/" + c.ID
+		} else {
+			c.Href = "/writing/" + c.Slug
+		}
 		if !includeDrafts {
 			c.Body = ""
 		}
@@ -383,35 +435,45 @@ func (s *Store) ListContent(includeDrafts bool, options ContentListOptions) ([]m
 
 func (s *Store) GetContent(slug string, includeDrafts bool) (model.Content, error) {
 	var c model.Content
-	var tags, metadata, published sql.NullString
-	query := `SELECT id, kind, status, slug, title, summary, body, tags_json, metadata_json, published_at, created_at, updated_at, version FROM content WHERE slug = ? AND status != 'DELETED'`
+	var tags, metadata, published, slugValue, titleValue sql.NullString
+	query := `SELECT id, kind, status, slug, title, summary, body, tags_json, metadata_json, published_at, created_at, updated_at, version FROM content WHERE (slug = ? OR id = ?) AND status != 'DELETED'`
 	if !includeDrafts {
 		query += ` AND status = 'PUBLISHED'`
 	}
-	err := s.DB.QueryRow(query, slug).Scan(&c.ID, &c.Kind, &c.Status, &c.Slug, &c.Title, &c.Summary, &c.Body, &tags, &metadata, &published, &c.CreatedAt, &c.UpdatedAt, &c.Version)
+	err := s.DB.QueryRow(query, slug, slug).Scan(&c.ID, &c.Kind, &c.Status, &slugValue, &titleValue, &c.Summary, &c.Body, &tags, &metadata, &published, &c.CreatedAt, &c.UpdatedAt, &c.Version)
+	c.Slug, c.Title = slugValue.String, titleValue.String
 	c.Tags = decodeStrings(tags.String)
 	c.Metadata = decodeMetadata(metadata.String)
 	if published.Valid {
 		c.PublishedAt = &published.String
 	}
-	c.Href = "/writing/" + c.Slug
+	if c.Kind == model.ContentKindThought {
+		c.Href = "/thoughts/" + c.ID
+	} else {
+		c.Href = "/writing/" + c.Slug
+	}
 	return c, err
 }
 
 func (s *Store) GetContentByID(id string, includeDrafts bool) (model.Content, error) {
 	var c model.Content
-	var tags, metadata, published sql.NullString
+	var tags, metadata, published, slug, title sql.NullString
 	query := `SELECT id, kind, status, slug, title, summary, body, tags_json, metadata_json, published_at, created_at, updated_at, version FROM content WHERE id = ? AND status != 'DELETED'`
 	if !includeDrafts {
 		query += ` AND status = 'PUBLISHED'`
 	}
-	err := s.DB.QueryRow(query, id).Scan(&c.ID, &c.Kind, &c.Status, &c.Slug, &c.Title, &c.Summary, &c.Body, &tags, &metadata, &published, &c.CreatedAt, &c.UpdatedAt, &c.Version)
+	err := s.DB.QueryRow(query, id).Scan(&c.ID, &c.Kind, &c.Status, &slug, &title, &c.Summary, &c.Body, &tags, &metadata, &published, &c.CreatedAt, &c.UpdatedAt, &c.Version)
+	c.Slug, c.Title = slug.String, title.String
 	c.Tags = decodeStrings(tags.String)
 	c.Metadata = decodeMetadata(metadata.String)
 	if published.Valid {
 		c.PublishedAt = &published.String
 	}
-	c.Href = "/writing/" + c.Slug
+	if c.Kind == model.ContentKindThought {
+		c.Href = "/thoughts/" + c.ID
+	} else {
+		c.Href = "/writing/" + c.Slug
+	}
 	return c, err
 }
 
@@ -423,7 +485,7 @@ func (s *Store) GetNow() (model.NowStatus, error) {
 
 func (s *Store) Stats() (model.Stats, error) {
 	var stats model.Stats
-	err := s.DB.QueryRow(`SELECT COUNT(*), SUM(kind = 'TECH'), SUM(kind = 'THOUGHT'), SUM(kind = 'MANUSCRIPT'), COALESCE(SUM(length(body) - length(replace(body, ' ', '')) + 1), 0) FROM content WHERE status = 'PUBLISHED'`).Scan(&stats.ContentCount, &stats.TechCount, &stats.ThoughtCount, &stats.ManuscriptCount, &stats.WordCount)
+	err := s.DB.QueryRow(`SELECT COUNT(*), SUM(kind = 'ARTICLE'), SUM(kind = 'THOUGHT'), COALESCE(SUM(length(body) - length(replace(body, ' ', '')) + 1), 0) FROM content WHERE status = 'PUBLISHED'`).Scan(&stats.ContentCount, &stats.ArticleCount, &stats.ThoughtCount, &stats.WordCount)
 	stats.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 	return stats, err
 }
@@ -555,7 +617,7 @@ func (s *Store) AuditEventCount() (int, error) {
 func (s *Store) CreateContent(c model.Content) (model.Content, error) {
 	now := time.Now().UTC().Format(time.RFC3339)
 	c.ID, c.Status, c.CreatedAt, c.UpdatedAt, c.Version = "content_"+time.Now().UTC().Format("20060102150405.000000000"), "DRAFT", now, now, 1
-	_, err := s.DB.Exec(`INSERT INTO content (id, kind, status, slug, title, summary, body, tags_json, metadata_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, c.ID, c.Kind, c.Status, c.Slug, c.Title, c.Summary, c.Body, encodeStrings(c.Tags), encodeJSON(c.Metadata), now, now)
+	_, err := s.DB.Exec(`INSERT INTO content (id, kind, status, slug, title, summary, body, tags_json, metadata_json, created_at, updated_at) VALUES (?, ?, ?, NULLIF(?, ''), NULLIF(?, ''), ?, ?, ?, ?, ?, ?)`, c.ID, c.Kind, c.Status, c.Slug, c.Title, c.Summary, c.Body, encodeStrings(c.Tags), encodeJSON(c.Metadata), now, now)
 	return c, err
 }
 
@@ -565,6 +627,14 @@ func (s *Store) UpdateContent(id string, update ContentUpdate) error {
 	if update.Title != nil {
 		sets = append(sets, "title = ?")
 		args = append(args, *update.Title)
+	}
+	if update.Slug != nil {
+		sets = append(sets, "slug = NULLIF(?, '')")
+		args = append(args, *update.Slug)
+	}
+	if update.Kind != nil {
+		sets = append(sets, "kind = ?")
+		args = append(args, *update.Kind)
 	}
 	if update.Summary != nil {
 		sets = append(sets, "summary = ?")

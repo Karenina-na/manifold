@@ -16,7 +16,8 @@ const commentSchema = z.object({
   authorName: z.string().trim().max(80),
   authorUrl: z.string().trim().url("Use a complete URL.").or(z.literal("")),
   body: z.string().trim().min(3, "A little more detail would help.").max(4000),
-});
+  captcha: z.string().min(1, "Solve the small check."),
+}).superRefine((value, context) => { if (value.captcha !== "7") context.addIssue({ code: "custom", path: ["captcha"], message: "Solve the small check." }); });
 type CommentForm = z.infer<typeof commentSchema>;
 
 export function CommentThread({ slug }: { slug: string }) {
@@ -24,7 +25,7 @@ export function CommentThread({ slug }: { slug: string }) {
   const queryClient = useQueryClient();
   const [localPending, setLocalPending] = useState<Comment[]>([]);
   const commentsQuery = useQuery({ queryKey: ["comments", slug], queryFn: () => client.comments(slug) });
-  const form = useForm<CommentForm>({ resolver: zodResolver(commentSchema), defaultValues: { authorName: "", authorUrl: "", body: "" } });
+  const form = useForm<CommentForm>({ resolver: zodResolver(commentSchema), defaultValues: { authorName: "", authorUrl: "", body: "", captcha: "" } });
   const mutation = useMutation({
     mutationFn: (input: CommentForm) => client.createComment(slug, { authorName: input.authorName, authorUrl: input.authorUrl || undefined, body: input.body }),
     onMutate: async (input) => {
@@ -50,6 +51,7 @@ export function CommentThread({ slug }: { slug: string }) {
         <label>Website <span>(optional)</span><TextField.Root {...form.register("authorUrl")} placeholder="https://" inputMode="url" autoComplete="url" />{form.formState.errors.authorUrl && <small>{form.formState.errors.authorUrl.message}</small>}</label>
       </div>
       <label>Response<TextArea {...form.register("body")} placeholder="What stayed with you?" rows={5} />{form.formState.errors.body && <small>{form.formState.errors.body.message}</small>}</label>
+      <label>Quick check <span>(what is 3 + 4?)</span><TextField.Root {...form.register("captcha")} inputMode="numeric" placeholder="7" />{form.formState.errors.captcha && <small>{form.formState.errors.captcha.message}</small>}</label>
       {mutation.isError && <p className={styles.errorText}>Could not send this yet. Your draft is still here.</p>}
       <Button className={styles.primaryButton} type="submit" disabled={mutation.isPending}><Send size={15} /> {mutation.isPending ? "Sending..." : "Send for review"}</Button>
       {mutation.isSuccess && <p className={styles.successText}>Received. It will appear after a quick review.</p>}

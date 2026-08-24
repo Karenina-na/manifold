@@ -127,6 +127,7 @@ button { cursor: pointer; }
 .settings-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; align-items: start; margin-bottom: 18px; }
 .checkbox-label { display: flex !important; align-items: center; grid-template-columns: auto 1fr; }
 .checkbox-label input { width: auto !important; accent-color: var(--accent); }
+.markdown-preview { min-height: 406px; max-height: 620px; overflow: auto; padding: 18px; border: 1px solid var(--line); background: var(--surface); line-height: 1.65; }.markdown-preview h2, .markdown-preview h3 { font-family: Georgia, serif; font-weight: 400; }.markdown-preview pre { overflow: auto; padding: 14px; background: var(--ink); color: var(--paper); }.markdown-preview code { font-family: ui-monospace, monospace; }.markdown-preview .katex-display { overflow-x: auto; overflow-y: hidden; }
 
 @media (max-width: 920px) {
   .admin-shell { grid-template-columns: 70px minmax(0, 1fr); }
