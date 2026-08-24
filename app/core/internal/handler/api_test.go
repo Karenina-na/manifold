@@ -2,6 +2,7 @@ package handler_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -242,7 +243,7 @@ func TestAdminLoginReturnsJWT(t *testing.T) {
 func TestContentQueryFiltersAndPaginates(t *testing.T) {
 	router := newTestRouter(t)
 
-	response := request(t, router, http.MethodGet, "/api/v1/content?kind=NOTE&limit=1&q=small", nil)
+	response := request(t, router, http.MethodGet, "/api/v1/content?kind=THOUGHT&limit=1&q=small", nil)
 	if response.Code != http.StatusOK {
 		t.Fatalf("expected filtered content 200, got %d", response.Code)
 	}
@@ -256,7 +257,7 @@ func TestContentQueryFiltersAndPaginates(t *testing.T) {
 	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
 		t.Fatal(err)
 	}
-	if len(payload.Data) != 1 || payload.Data[0].Kind != "NOTE" || payload.Data[0].Slug != "a-small-signal" {
+	if len(payload.Data) != 1 || payload.Data[0].Kind != "THOUGHT" || payload.Data[0].Slug != "a-small-signal" {
 		t.Fatalf("unexpected filtered result: %s", response.Body.String())
 	}
 	if payload.Pagination.HasMore || payload.Pagination.NextCursor != "" {
@@ -285,7 +286,7 @@ func TestContentQueryFiltersAndPaginates(t *testing.T) {
 		t.Fatalf("expected the second content page, got %s", response.Body.String())
 	}
 
-	response = request(t, router, http.MethodGet, "/api/v1/content?kind=NOTE&kind=POST&tag=systems", nil)
+	response = request(t, router, http.MethodGet, "/api/v1/content?kind=THOUGHT&kind=TECH&tag=systems", nil)
 	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "designing-boundaries") {
 		t.Fatalf("expected repeated kind and tag filters to match, got %d %s", response.Code, response.Body.String())
 	}
@@ -370,7 +371,7 @@ func TestStatsSnapshotInvalidatesAfterPublishingContent(t *testing.T) {
 		t.Fatalf("expected initial stats, got %d %s", initial.Code, initial.Body.String())
 	}
 
-	created := adminRequest(t, router, token, http.MethodPost, "/api/v1/admin/content", `{"kind":"NOTE","slug":"stats-snapshot-note","title":"Snapshot","body":"one two","tags":[]}`)
+	created := adminRequest(t, router, token, http.MethodPost, "/api/v1/admin/content", `{"kind":"THOUGHT","slug":"stats-snapshot-thought","title":"Snapshot","body":"one two","tags":[]}`)
 	if created.Code != http.StatusCreated {
 		t.Fatalf("expected draft creation 201, got %d %s", created.Code, created.Body.String())
 	}
@@ -403,7 +404,7 @@ func TestAdminContentPatchUsesExpectedVersion(t *testing.T) {
 	}
 
 	create := httptest.NewRecorder()
-	createRequest := httptest.NewRequest(http.MethodPost, "/api/v1/admin/content", strings.NewReader(`{"kind":"NOTE","slug":"versioned-note","title":"Before","summary":"","body":"Body","tags":[]}`))
+	createRequest := httptest.NewRequest(http.MethodPost, "/api/v1/admin/content", strings.NewReader(`{"kind":"THOUGHT","slug":"versioned-thought","title":"Before","summary":"","body":"Body","tags":[]}`))
 	createRequest.Header.Set("Authorization", "Bearer "+session.AccessToken)
 	router.ServeHTTP(create, createRequest)
 	if create.Code != http.StatusCreated {
@@ -460,7 +461,32 @@ func TestAdminContentPatchUsesExpectedVersion(t *testing.T) {
 	}
 }
 
-func TestAdminConfigurationAndProjectManagement(t *testing.T) {
+func TestAdminContentMetadataIsTypedByKind(t *testing.T) {
+	router := newTestRouter(t)
+	token := adminToken(t, router)
+	cases := []struct{ kind, slug, metadata string }{
+		{"TECH", "typed-tech", `{"technologies":["Go"],"difficulty":"BEGINNER"}`},
+		{"THOUGHT", "typed-thought", `{"mood":"Calm","question":"Why?"}`},
+		{"MANUSCRIPT", "typed-manuscript", `{"form":"ESSAY","stage":"IDEA","wordCount":12}`},
+	}
+	for _, item := range cases {
+		body := fmt.Sprintf(`{"kind":%q,"slug":%q,"title":"Typed","body":"Body","tags":[],"metadata":%s}`, item.kind, item.slug, item.metadata)
+		created := adminRequest(t, router, token, http.MethodPost, "/api/v1/admin/content", body)
+		var payload struct {
+			Metadata map[string]any `json:"metadata"`
+		}
+		_ = json.Unmarshal(created.Body.Bytes(), &payload)
+		if created.Code != http.StatusCreated || len(payload.Metadata) == 0 {
+			t.Fatalf("expected typed metadata for %s, got %d %s", item.kind, created.Code, created.Body.String())
+		}
+	}
+	invalid := adminRequest(t, router, token, http.MethodPost, "/api/v1/admin/content", `{"kind":"MANUSCRIPT","slug":"invalid-manuscript","title":"Invalid","body":"Body","tags":[],"metadata":{"form":"INVALID","stage":"IDEA"}}`)
+	if invalid.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected invalid manuscript metadata 422, got %d %s", invalid.Code, invalid.Body.String())
+	}
+}
+
+func TestAdminConfigurationManagement(t *testing.T) {
 	router := newTestRouter(t)
 	token := adminToken(t, router)
 
@@ -478,24 +504,6 @@ func TestAdminConfigurationAndProjectManagement(t *testing.T) {
 		t.Fatalf("expected public site to use persisted config, got %d %s", publicSite.Code, publicSite.Body.String())
 	}
 
-	created := adminRequest(t, router, token, http.MethodPost, "/api/v1/admin/projects", `{"slug":"new-project","name":"New Project","status":"ACTIVE","techStack":["Go"]}`)
-	if created.Code != http.StatusCreated {
-		t.Fatalf("expected project create 201, got %d %s", created.Code, created.Body.String())
-	}
-	var project struct {
-		ID string `json:"id"`
-	}
-	if err := json.Unmarshal(created.Body.Bytes(), &project); err != nil || project.ID == "" {
-		t.Fatalf("expected project id, got %s", created.Body.String())
-	}
-	updated := adminRequest(t, router, token, http.MethodPatch, "/api/v1/admin/projects/"+project.ID, `{"name":"Renamed Project"}`)
-	if updated.Code != http.StatusOK || !strings.Contains(updated.Body.String(), "Renamed Project") {
-		t.Fatalf("expected project update 200, got %d %s", updated.Code, updated.Body.String())
-	}
-	deleted := adminRequest(t, router, token, http.MethodDelete, "/api/v1/admin/projects/"+project.ID, "")
-	if deleted.Code != http.StatusNoContent {
-		t.Fatalf("expected project delete 204, got %d %s", deleted.Code, deleted.Body.String())
-	}
 }
 
 func adminToken(t *testing.T, router http.Handler) string {

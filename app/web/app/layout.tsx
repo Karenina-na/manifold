@@ -10,7 +10,7 @@ export const metadata: Metadata = {
     default: "Manifold | A living space for ideas in motion",
     template: "%s | Manifold",
   },
-  description: "A quiet digital garden for experiences, writing, thoughts, and research.",
+  description: "A focused archive for technology, thoughts, and manuscripts.",
   alternates: { canonical: "/" },
 };
 

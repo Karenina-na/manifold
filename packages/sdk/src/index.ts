@@ -1,4 +1,4 @@
-import type { AdminContentQuery, AdminStats, Collection, Comment, CommentQuery, Content, ContentDetail, ContentInput, ContentQuery, CreateCommentInput, CreateProjectInput, HealthStatus, LoginInput, LoginResponse, NowStatus, Profile, ProfileInput, Project, ReactionKind, ReactionSummary, SiteComposition, SiteConfig, SiteConfigInput, Stats, UpdateContentInput, UpdateProjectInput } from "@manifold/contracts";
+import type { AdminContentQuery, AdminStats, Collection, Comment, CommentQuery, Content, ContentDetail, ContentInput, ContentQuery, CreateCommentInput, HealthStatus, LoginInput, LoginResponse, NowStatus, Profile, ProfileInput, ReactionKind, ReactionSummary, SiteComposition, SiteConfig, SiteConfigInput, Stats, UpdateContentInput } from "@manifold/contracts";
 
 export class ApiError extends Error {
 	readonly status: number;
@@ -38,7 +38,6 @@ export class ManifoldClient {
 	feed(query?: ContentQuery) { return this.request<Collection<Content>>(this.withQuery("/api/v1/feed", query)); }
 	content(query?: ContentQuery) { return this.request<Collection<Content>>(this.withQuery("/api/v1/content", query)); }
 	contentBySlug(slug: string) { return this.request<ContentDetail>(`/api/v1/content/${encodeURIComponent(slug)}`); }
-	projects() { return this.request<Collection<Project>>("/api/v1/projects"); }
 	now() { return this.request<NowStatus>("/api/v1/now"); }
 	stats() { return this.request<Stats>("/api/v1/stats"); }
 	comments(slug: string, query?: CommentQuery) { return this.request<Collection<Comment>>(this.withQuery(`/api/v1/content/${encodeURIComponent(slug)}/comments`, query)); }
@@ -51,10 +50,6 @@ export class ManifoldClient {
 	updateProfile(input: ProfileInput) { return this.request<Profile>("/api/v1/admin/profile", { method: "PATCH", body: input }); }
 	adminSite() { return this.request<SiteConfig>("/api/v1/admin/site"); }
 	updateSite(input: SiteConfigInput) { return this.request<SiteConfig>("/api/v1/admin/site", { method: "PATCH", body: input }); }
-	adminProjects() { return this.request<Collection<Project>>("/api/v1/admin/projects"); }
-	createProject(input: CreateProjectInput) { return this.request<Project>("/api/v1/admin/projects", { method: "POST", body: input }); }
-	updateProject(id: string, input: UpdateProjectInput) { return this.request<Project>(`/api/v1/admin/projects/${id}`, { method: "PATCH", body: input }); }
-	deleteProject(id: string) { return this.request<void>(`/api/v1/admin/projects/${id}`, { method: "DELETE" }); }
 	adminContent(query?: AdminContentQuery) { return this.request<Collection<Content>>(this.withQuery("/api/v1/admin/content", query)); }
 	createContent(input: ContentInput) { return this.request<Content>("/api/v1/admin/content", { method: "POST", body: input }); }
 	updateContent(id: string, input: UpdateContentInput) { return this.request<Content>(`/api/v1/admin/content/${id}`, { method: "PATCH", body: input }); }

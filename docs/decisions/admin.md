@@ -1,5 +1,7 @@
 # Admin MVP Contract
 
+> Scope note: The current Admin MVP manages homepage composition, Profile, content records, comments, Now, and Stats. Project management described in the earlier contract is historical planning context and is not an active workspace or API.
+
 ## Module Contract
 
 Status: [DONE]

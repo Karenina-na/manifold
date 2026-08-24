@@ -13,13 +13,14 @@ CREATE TABLE IF NOT EXISTS profile (
 
 CREATE TABLE IF NOT EXISTS content (
     id TEXT PRIMARY KEY,
-    kind TEXT NOT NULL CHECK (kind IN ('POST', 'NOTE', 'RESEARCH')),
+    kind TEXT NOT NULL CHECK (kind IN ('TECH', 'THOUGHT', 'MANUSCRIPT')),
     status TEXT NOT NULL DEFAULT 'DRAFT' CHECK (status IN ('DRAFT', 'PUBLISHED', 'DELETED')),
     slug TEXT NOT NULL UNIQUE,
     title TEXT NOT NULL,
     summary TEXT NOT NULL DEFAULT '',
     body TEXT NOT NULL DEFAULT '',
     tags_json TEXT NOT NULL DEFAULT '[]',
+    metadata_json TEXT NOT NULL DEFAULT '{}',
     published_at TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     version INTEGER NOT NULL DEFAULT 1,
@@ -37,24 +38,8 @@ CREATE TABLE IF NOT EXISTS now_status (
 CREATE TABLE IF NOT EXISTS site_config (
     id TEXT PRIMARY KEY,
     featured_content_json TEXT NOT NULL DEFAULT '[]',
-    featured_projects_json TEXT NOT NULL DEFAULT '[]',
     navigation_json TEXT NOT NULL DEFAULT '[]',
     sections_json TEXT NOT NULL DEFAULT '[]',
-    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE IF NOT EXISTS projects (
-    id TEXT PRIMARY KEY,
-    slug TEXT NOT NULL UNIQUE,
-    name TEXT NOT NULL,
-    summary TEXT NOT NULL DEFAULT '',
-    description TEXT NOT NULL DEFAULT '',
-    status TEXT NOT NULL DEFAULT 'ACTIVE',
-    featured INTEGER NOT NULL DEFAULT 0,
-    homepage_url TEXT NOT NULL DEFAULT '',
-    repository_url TEXT NOT NULL DEFAULT '',
-    tech_stack_json TEXT NOT NULL DEFAULT '[]',
-    started_at TEXT NOT NULL DEFAULT '',
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 

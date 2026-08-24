@@ -1,5 +1,7 @@
 # Core API Contract
 
+> Scope note: This decision record contains the earlier broader resource proposal. The current MVP scope is intentionally narrower: homepage, `TECH`, `THOUGHT`, and `MANUSCRIPT` content, comments, reactions, Now, Profile, Site, and Stats. Projects and other expansion resources below are historical planning context and are not active runtime APIs.
+
 ## Module Contract
 
 Status: [DONE]

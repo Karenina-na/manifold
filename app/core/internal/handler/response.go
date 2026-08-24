@@ -88,7 +88,6 @@ func newRouter(cfg config.Config, database *store.Store, auditEvents events.Audi
 		api.Get("/content/{slug}/reactions", h.getReactions)
 		api.Put("/content/{slug}/reactions/{kind}", h.putReaction)
 		api.Delete("/content/{slug}/reactions/{kind}", h.deleteReaction)
-		api.Get("/projects", h.projects)
 		api.Get("/now", h.now)
 		api.Post("/admin/session", h.login)
 		api.Route("/admin", func(admin chi.Router) {
@@ -97,10 +96,6 @@ func newRouter(cfg config.Config, database *store.Store, auditEvents events.Audi
 			admin.Patch("/profile", h.adminUpdateProfile)
 			admin.Get("/site", h.adminSite)
 			admin.Patch("/site", h.adminUpdateSite)
-			admin.Get("/projects", h.adminProjects)
-			admin.Post("/projects", h.adminCreateProject)
-			admin.Patch("/projects/{id}", h.adminUpdateProject)
-			admin.Delete("/projects/{id}", h.adminDeleteProject)
 			admin.Get("/content", h.adminListContent)
 			admin.Post("/content", h.adminCreateContent)
 			admin.Patch("/content/{id}", h.adminUpdateContent)
@@ -189,11 +184,10 @@ func (h *apiHandler) site(w http.ResponseWriter, _ *http.Request) {
 		return
 	}
 	WriteJSON(w, http.StatusOK, map[string]any{
-		"profile":          map[string]string{"id": "profile_1"},
-		"featuredContent":  config.FeaturedContent,
-		"featuredProjects": config.FeaturedProjects,
-		"navigation":       config.Navigation,
-		"sections":         config.Sections,
+		"profile":         map[string]string{"id": "profile_1"},
+		"featuredContent": config.FeaturedContent,
+		"navigation":      config.Navigation,
+		"sections":        config.Sections,
 	})
 }
 
@@ -246,15 +240,6 @@ func (h *apiHandler) getContent(w http.ResponseWriter, r *http.Request) {
 	}
 	h.contentCache.Set(slug, content)
 	WriteJSON(w, http.StatusOK, content)
-}
-
-func (h *apiHandler) projects(w http.ResponseWriter, _ *http.Request) {
-	items, err := h.store.ListProjects()
-	if err != nil {
-		WriteError(w, http.StatusInternalServerError, "PROJECTS_UNAVAILABLE", "Projects are unavailable.")
-		return
-	}
-	WriteJSON(w, http.StatusOK, collection(items))
 }
 
 func (h *apiHandler) now(w http.ResponseWriter, _ *http.Request) {
@@ -473,121 +458,93 @@ func (h *apiHandler) adminUpdateSite(w http.ResponseWriter, r *http.Request) {
 	h.adminSite(w, r)
 }
 
-func (h *apiHandler) adminProjects(w http.ResponseWriter, _ *http.Request) {
-	items, err := h.store.ListProjects()
-	if err != nil {
-		WriteError(w, http.StatusInternalServerError, "PROJECTS_UNAVAILABLE", "Projects are unavailable.")
-		return
-	}
-	WriteJSON(w, http.StatusOK, collection(items))
-}
-
-type projectInput struct {
-	Slug          string   `json:"slug" validate:"required,max=160"`
-	Name          string   `json:"name" validate:"required,max=160"`
-	Summary       string   `json:"summary" validate:"max=4000"`
-	Description   string   `json:"description" validate:"max=10000"`
-	Status        string   `json:"status" validate:"required,oneof=ACTIVE PAUSED ARCHIVED"`
-	Featured      bool     `json:"featured"`
-	HomepageURL   string   `json:"homepageUrl" validate:"omitempty,url,max=500"`
-	RepositoryURL string   `json:"repositoryUrl" validate:"omitempty,url,max=500"`
-	TechStack     []string `json:"techStack" validate:"max=20,dive,max=80"`
-	StartedAt     string   `json:"startedAt" validate:"max=40"`
-}
-
-func projectFromInput(input projectInput) model.Project {
-	return model.Project{Slug: input.Slug, Name: input.Name, Summary: input.Summary, Description: input.Description, Status: input.Status, Featured: input.Featured, HomepageURL: input.HomepageURL, RepositoryURL: input.RepositoryURL, TechStack: input.TechStack, StartedAt: input.StartedAt}
-}
-
-func (h *apiHandler) adminCreateProject(w http.ResponseWriter, r *http.Request) {
-	var input projectInput
-	if err := json.NewDecoder(r.Body).Decode(&input); err != nil || h.validate.Struct(input) != nil {
-		WriteError(w, http.StatusUnprocessableEntity, "VALIDATION_ERROR", "Project fields are invalid.")
-		return
-	}
-	created, err := h.store.CreateProject(projectFromInput(input))
-	if err != nil {
-		WriteError(w, http.StatusConflict, "PROJECT_CREATE_FAILED", "Project could not be created.")
-		return
-	}
-	h.audit(r, "project.created", "project", created.ID, nil)
-	WriteJSON(w, http.StatusCreated, created)
-}
-
-type projectPatchInput struct {
-	Name          *string   `json:"name" validate:"omitempty,max=160"`
-	Summary       *string   `json:"summary" validate:"omitempty,max=4000"`
-	Description   *string   `json:"description" validate:"omitempty,max=10000"`
-	Status        *string   `json:"status" validate:"omitempty,oneof=ACTIVE PAUSED ARCHIVED"`
-	Featured      *bool     `json:"featured"`
-	HomepageURL   *string   `json:"homepageUrl" validate:"omitempty,url,max=500"`
-	RepositoryURL *string   `json:"repositoryUrl" validate:"omitempty,url,max=500"`
-	TechStack     *[]string `json:"techStack" validate:"omitempty,max=20,dive,max=80"`
-	StartedAt     *string   `json:"startedAt" validate:"omitempty,max=40"`
-}
-
-func (h *apiHandler) adminUpdateProject(w http.ResponseWriter, r *http.Request) {
-	var input projectPatchInput
-	if err := json.NewDecoder(r.Body).Decode(&input); err != nil || h.validate.Struct(input) != nil {
-		WriteError(w, http.StatusUnprocessableEntity, "VALIDATION_ERROR", "Project fields are invalid.")
-		return
-	}
-	if input.Name == nil && input.Summary == nil && input.Description == nil && input.Status == nil && input.Featured == nil && input.HomepageURL == nil && input.RepositoryURL == nil && input.TechStack == nil && input.StartedAt == nil {
-		WriteError(w, http.StatusUnprocessableEntity, "VALIDATION_ERROR", "At least one project field is required.")
-		return
-	}
-	err := h.store.UpdateProject(chi.URLParam(r, "id"), store.ProjectUpdate{Name: input.Name, Summary: input.Summary, Description: input.Description, Status: input.Status, Featured: input.Featured, HomepageURL: input.HomepageURL, RepositoryURL: input.RepositoryURL, TechStack: input.TechStack, StartedAt: input.StartedAt})
-	if errors.Is(err, store.ErrProjectNotFound) {
-		WriteError(w, http.StatusNotFound, "PROJECT_NOT_FOUND", "Project was not found.")
-		return
-	}
-	if err != nil {
-		WriteError(w, http.StatusInternalServerError, "PROJECT_UPDATE_FAILED", "Project could not be updated.")
-		return
-	}
-	h.audit(r, "project.updated", "project", chi.URLParam(r, "id"), nil)
-	h.writeAdminProject(w, r)
-}
-
-func (h *apiHandler) writeAdminProject(w http.ResponseWriter, r *http.Request) {
-	project, err := h.store.GetProjectByID(chi.URLParam(r, "id"))
-	if err != nil {
-		WriteError(w, http.StatusNotFound, "PROJECT_NOT_FOUND", "Project was not found.")
-		return
-	}
-	WriteJSON(w, http.StatusOK, project)
-}
-
-func (h *apiHandler) adminDeleteProject(w http.ResponseWriter, r *http.Request) {
-	err := h.store.DeleteProject(chi.URLParam(r, "id"))
-	if errors.Is(err, store.ErrProjectNotFound) {
-		WriteError(w, http.StatusNotFound, "PROJECT_NOT_FOUND", "Project was not found.")
-		return
-	}
-	if err != nil {
-		WriteError(w, http.StatusInternalServerError, "PROJECT_DELETE_FAILED", "Project could not be deleted.")
-		return
-	}
-	h.audit(r, "project.deleted", "project", chi.URLParam(r, "id"), nil)
-	w.WriteHeader(http.StatusNoContent)
-}
-
 type contentInput struct {
-	Kind    model.ContentKind `json:"kind" validate:"required,oneof=POST NOTE RESEARCH"`
-	Slug    string            `json:"slug" validate:"required,max=160"`
-	Title   string            `json:"title" validate:"required,max=200"`
-	Summary string            `json:"summary" validate:"max=4000"`
-	Body    string            `json:"body" validate:"required,max=100000"`
-	Tags    []string          `json:"tags"`
+	Kind     model.ContentKind `json:"kind" validate:"required,oneof=TECH THOUGHT MANUSCRIPT"`
+	Slug     string            `json:"slug" validate:"required,max=160"`
+	Title    string            `json:"title" validate:"required,max=200"`
+	Summary  string            `json:"summary" validate:"max=4000"`
+	Body     string            `json:"body" validate:"required,max=100000"`
+	Tags     []string          `json:"tags"`
+	Metadata map[string]any    `json:"metadata"`
+}
+
+func validateContentMetadata(kind model.ContentKind, metadata map[string]any) error {
+	if metadata == nil {
+		metadata = map[string]any{}
+	}
+	stringField := func(name string, required bool) error {
+		value, ok := metadata[name]
+		if !ok || value == nil || strings.TrimSpace(fmt.Sprint(value)) == "" {
+			if required {
+				return fmt.Errorf("metadata.%s is required", name)
+			}
+			return nil
+		}
+		if _, ok := value.(string); !ok {
+			return fmt.Errorf("metadata.%s must be a string", name)
+		}
+		if len(strings.TrimSpace(value.(string))) > 2000 {
+			return fmt.Errorf("metadata.%s is too long", name)
+		}
+		return nil
+	}
+	switch kind {
+	case model.ContentKindTech:
+		values, ok := metadata["technologies"].([]any)
+		if !ok || len(values) == 0 {
+			return fmt.Errorf("metadata.technologies must contain at least one item")
+		}
+		for _, value := range values {
+			if text, ok := value.(string); !ok || strings.TrimSpace(text) == "" || len(text) > 80 {
+				return fmt.Errorf("metadata.technologies must contain non-empty strings")
+			}
+		}
+		if err := stringField("language", false); err != nil {
+			return err
+		}
+		if difficulty, ok := metadata["difficulty"]; ok {
+			value, valid := difficulty.(string)
+			if !valid || (value != "BEGINNER" && value != "INTERMEDIATE" && value != "ADVANCED") {
+				return fmt.Errorf("metadata.difficulty is invalid")
+			}
+		}
+		return stringField("repositoryUrl", false)
+	case model.ContentKindThought:
+		if err := stringField("mood", false); err != nil {
+			return err
+		}
+		if err := stringField("question", false); err != nil {
+			return err
+		}
+		return stringField("context", false)
+	case model.ContentKindManuscript:
+		form, formOK := metadata["form"].(string)
+		stage, stageOK := metadata["stage"].(string)
+		if !formOK || (form != "ESSAY" && form != "STORY" && form != "BOOK" && form != "OTHER") {
+			return fmt.Errorf("metadata.form is invalid")
+		}
+		if !stageOK || (stage != "IDEA" && stage != "DRAFT" && stage != "REVISION" && stage != "FINAL") {
+			return fmt.Errorf("metadata.stage is invalid")
+		}
+		if wordCount, ok := metadata["wordCount"]; ok {
+			value, valid := wordCount.(float64)
+			if !valid || value < 0 || value != float64(int(value)) {
+				return fmt.Errorf("metadata.wordCount must be a non-negative integer")
+			}
+		}
+		return nil
+	default:
+		return fmt.Errorf("kind is invalid")
+	}
 }
 
 func (h *apiHandler) adminCreateContent(w http.ResponseWriter, r *http.Request) {
 	var input contentInput
-	if err := json.NewDecoder(r.Body).Decode(&input); err != nil || h.validate.Struct(input) != nil {
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil || h.validate.Struct(input) != nil || validateContentMetadata(input.Kind, input.Metadata) != nil {
 		WriteError(w, http.StatusUnprocessableEntity, "VALIDATION_ERROR", "Kind, slug, title, and body are required.")
 		return
 	}
-	created, err := h.store.CreateContent(model.Content{Kind: input.Kind, Slug: input.Slug, Title: input.Title, Summary: input.Summary, Body: input.Body, Tags: input.Tags})
+	created, err := h.store.CreateContent(model.Content{Kind: input.Kind, Slug: input.Slug, Title: input.Title, Summary: input.Summary, Body: input.Body, Tags: input.Tags, Metadata: input.Metadata})
 	if err != nil {
 		WriteError(w, http.StatusConflict, "CONTENT_CREATE_FAILED", "Content could not be created.")
 		return
@@ -598,11 +555,12 @@ func (h *apiHandler) adminCreateContent(w http.ResponseWriter, r *http.Request) 
 }
 
 type contentPatchInput struct {
-	Title           *string   `json:"title" validate:"omitempty,max=200"`
-	Summary         *string   `json:"summary" validate:"omitempty,max=4000"`
-	Body            *string   `json:"body" validate:"omitempty,max=100000"`
-	Tags            *[]string `json:"tags"`
-	ExpectedVersion *int      `json:"expectedVersion" validate:"required,min=1"`
+	Title           *string         `json:"title" validate:"omitempty,max=200"`
+	Summary         *string         `json:"summary" validate:"omitempty,max=4000"`
+	Body            *string         `json:"body" validate:"omitempty,max=100000"`
+	Tags            *[]string       `json:"tags"`
+	Metadata        *map[string]any `json:"metadata"`
+	ExpectedVersion *int            `json:"expectedVersion" validate:"required,min=1"`
 }
 
 func (h *apiHandler) adminUpdateContent(w http.ResponseWriter, r *http.Request) {
@@ -611,11 +569,22 @@ func (h *apiHandler) adminUpdateContent(w http.ResponseWriter, r *http.Request) 
 		WriteError(w, http.StatusUnprocessableEntity, "VALIDATION_ERROR", "Invalid content input.")
 		return
 	}
-	if input.Title == nil && input.Summary == nil && input.Body == nil && input.Tags == nil {
+	if input.Title == nil && input.Summary == nil && input.Body == nil && input.Tags == nil && input.Metadata == nil {
 		WriteError(w, http.StatusUnprocessableEntity, "VALIDATION_ERROR", "At least one content field is required.")
 		return
 	}
-	err := h.store.UpdateContent(chi.URLParam(r, "id"), store.ContentUpdate{Title: input.Title, Summary: input.Summary, Body: input.Body, Tags: input.Tags, ExpectedVersion: *input.ExpectedVersion})
+	if input.Metadata != nil {
+		content, err := h.store.GetContentByID(chi.URLParam(r, "id"), true)
+		if errors.Is(err, sql.ErrNoRows) {
+			WriteError(w, http.StatusNotFound, "CONTENT_NOT_FOUND", "Content was not found.")
+			return
+		}
+		if err != nil || validateContentMetadata(content.Kind, *input.Metadata) != nil {
+			WriteError(w, http.StatusUnprocessableEntity, "VALIDATION_ERROR", "Metadata does not match the content kind.")
+			return
+		}
+	}
+	err := h.store.UpdateContent(chi.URLParam(r, "id"), store.ContentUpdate{Title: input.Title, Summary: input.Summary, Body: input.Body, Tags: input.Tags, Metadata: input.Metadata, ExpectedVersion: *input.ExpectedVersion})
 	if errors.Is(err, store.ErrContentNotFound) {
 		WriteError(w, http.StatusNotFound, "CONTENT_NOT_FOUND", "Content was not found.")
 		return
@@ -804,7 +773,7 @@ func parseContentListOptions(r *http.Request, includeDrafts bool) (store.Content
 			}
 			kind := model.ContentKind(rawKind)
 			switch kind {
-			case model.ContentKindPost, model.ContentKindNote, model.ContentKindResearch:
+			case model.ContentKindTech, model.ContentKindThought, model.ContentKindManuscript:
 				options.Kinds = append(options.Kinds, kind)
 			default:
 				return options, fmt.Errorf("kind is invalid")

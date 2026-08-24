@@ -12,7 +12,7 @@ type Config struct {
 	AllowedOrigins    []string      `env:"ALLOWED_ORIGINS" envDefault:"http://localhost:3000,http://localhost:5173" envSeparator:","`
 	JWTSecret         string        `env:"JWT_SECRET" envDefault:"manifold-dev-secret-change-me"`
 	AdminUsername     string        `env:"ADMIN_USERNAME" envDefault:"admin"`
-	AdminPasswordHash string        `env:"ADMIN_PASSWORD_HASH" envDefault:"$2y$10$c1RwBHkB5sMnrXuxlNO5xudapo9RFfI4swx.EiH5k7HkJp9RDUG9O"`
+	AdminPasswordHash string        `env:"ADMIN_PASSWORD_HASH" envDefault:"$2a$10$tT6zviyM5ANs0OHmn18g4eqtgsvaprMNl9n4CTkccoZW9N/aTcd8W"`
 	ContentCacheTTL   time.Duration `env:"CONTENT_CACHE_TTL" envDefault:"30s"`
 	StatsCacheTTL     time.Duration `env:"STATS_CACHE_TTL" envDefault:"30s"`
 	AuditEventBuffer  int           `env:"AUDIT_EVENT_BUFFER" envDefault:"256"`

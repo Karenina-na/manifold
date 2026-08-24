@@ -1,5 +1,7 @@
 # Web MVP Contract
 
+> Scope note: The current Web MVP exposes the homepage and the `TECH`, `THOUGHT`, and `MANUSCRIPT` archive/detail views. The earlier project view described below is historical planning context and is not an active route.
+
 ## Module Contract
 
 Status: [DONE]

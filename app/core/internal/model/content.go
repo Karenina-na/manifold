@@ -3,9 +3,9 @@ package model
 type ContentKind string
 
 const (
-	ContentKindPost     ContentKind = "POST"
-	ContentKindNote     ContentKind = "NOTE"
-	ContentKindResearch ContentKind = "RESEARCH"
+	ContentKindTech       ContentKind = "TECH"
+	ContentKindThought    ContentKind = "THOUGHT"
+	ContentKindManuscript ContentKind = "MANUSCRIPT"
 )
 
 type Profile struct {
@@ -22,50 +22,31 @@ type Profile struct {
 }
 
 type Content struct {
-	ID          string      `json:"id"`
-	Kind        ContentKind `json:"kind"`
-	Status      string      `json:"status"`
-	Slug        string      `json:"slug"`
-	Title       string      `json:"title"`
-	Summary     string      `json:"summary"`
-	Body        string      `json:"body,omitempty"`
-	Tags        []string    `json:"tags"`
-	PublishedAt *string     `json:"publishedAt"`
-	CreatedAt   string      `json:"createdAt"`
-	UpdatedAt   string      `json:"updatedAt"`
-	Version     int         `json:"version"`
-	Href        string      `json:"href,omitempty"`
-}
-
-type Project struct {
-	ID            string   `json:"id"`
-	Slug          string   `json:"slug"`
-	Name          string   `json:"name"`
-	Summary       string   `json:"summary"`
-	Description   string   `json:"description"`
-	Status        string   `json:"status"`
-	Featured      bool     `json:"featured"`
-	HomepageURL   string   `json:"homepageUrl"`
-	RepositoryURL string   `json:"repositoryUrl"`
-	TechStack     []string `json:"techStack"`
-	StartedAt     string   `json:"startedAt"`
-	UpdatedAt     string   `json:"updatedAt"`
+	ID          string         `json:"id"`
+	Kind        ContentKind    `json:"kind"`
+	Status      string         `json:"status"`
+	Slug        string         `json:"slug"`
+	Title       string         `json:"title"`
+	Summary     string         `json:"summary"`
+	Body        string         `json:"body,omitempty"`
+	Tags        []string       `json:"tags"`
+	PublishedAt *string        `json:"publishedAt"`
+	CreatedAt   string         `json:"createdAt"`
+	UpdatedAt   string         `json:"updatedAt"`
+	Version     int            `json:"version"`
+	Href        string         `json:"href,omitempty"`
+	Metadata    map[string]any `json:"metadata"`
 }
 
 type SiteConfig struct {
-	FeaturedContent  []SiteContentRef     `json:"featuredContent" validate:"max=10,dive"`
-	FeaturedProjects []SiteProjectRef     `json:"featuredProjects" validate:"max=10,dive"`
-	Navigation       []SiteNavigationItem `json:"navigation" validate:"min=1,max=10,dive"`
-	Sections         []string             `json:"sections" validate:"min=1,max=10,dive,required,max=40"`
+	FeaturedContent []SiteContentRef     `json:"featuredContent" validate:"max=10,dive"`
+	Navigation      []SiteNavigationItem `json:"navigation" validate:"min=1,max=10,dive"`
+	Sections        []string             `json:"sections" validate:"min=1,max=10,dive,required,max=40"`
 }
 
 type SiteContentRef struct {
 	ID   string      `json:"id" validate:"required,max=160"`
-	Kind ContentKind `json:"kind" validate:"required,oneof=POST NOTE RESEARCH"`
-}
-
-type SiteProjectRef struct {
-	ID string `json:"id" validate:"required,max=160"`
+	Kind ContentKind `json:"kind" validate:"required,oneof=TECH THOUGHT MANUSCRIPT"`
 }
 
 type SiteNavigationItem struct {
@@ -101,10 +82,10 @@ type ReactionSummary struct {
 }
 
 type Stats struct {
-	ContentCount  int    `json:"contentCount"`
-	PostCount     int    `json:"postCount"`
-	NoteCount     int    `json:"noteCount"`
-	ResearchCount int    `json:"researchCount"`
-	WordCount     int    `json:"wordCount"`
-	UpdatedAt     string `json:"updatedAt"`
+	ContentCount    int    `json:"contentCount"`
+	TechCount       int    `json:"techCount"`
+	ThoughtCount    int    `json:"thoughtCount"`
+	ManuscriptCount int    `json:"manuscriptCount"`
+	WordCount       int    `json:"wordCount"`
+	UpdatedAt       string `json:"updatedAt"`
 }

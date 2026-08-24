@@ -31,8 +31,8 @@ test("encodes collection queries and bearer authentication", async () => {
 		},
 	});
 
-	await client.feed({ kind: ["POST", "NOTE"], tag: "systems", limit: 10 });
-	assert.equal(captured?.url, "http://core.test/api/v1/feed?kind=POST%2CNOTE&tag=systems&limit=10");
+	await client.feed({ kind: ["TECH", "THOUGHT"], tag: "systems", limit: 10 });
+	assert.equal(captured?.url, "http://core.test/api/v1/feed?kind=TECH%2CTHOUGHT&tag=systems&limit=10");
 	assert.equal(captured?.headers.get("Authorization"), "Bearer token-1");
 });
 
@@ -52,6 +52,19 @@ test("encodes admin status, cursor, and partial update inputs", async () => {
 	assert.equal(requests[0]?.url, "http://core.test/api/v1/admin/content?status=DRAFT&cursor=MQ&limit=10");
 	assert.equal(requests[1]?.method, "PATCH");
 	assert.deepEqual(await requests[1]?.json(), { title: "Updated", expectedVersion: 3 });
+});
+
+test("encodes typed content metadata for admin creation", async () => {
+	let captured: Request | undefined;
+	const client = new ManifoldClient({
+		baseUrl: "http://core.test",
+		fetch: async (input, init) => {
+			captured = new Request(input, init);
+			return new Response(JSON.stringify({ id: "content-1" }), { status: 201 });
+		},
+	});
+	await client.createContent({ kind: "MANUSCRIPT", slug: "draft", title: "Draft", summary: "", body: "Body", tags: [], metadata: { form: "ESSAY", stage: "DRAFT", wordCount: 10 } });
+	assert.deepEqual(await captured?.json(), { kind: "MANUSCRIPT", slug: "draft", title: "Draft", summary: "", body: "Body", tags: [], metadata: { form: "ESSAY", stage: "DRAFT", wordCount: 10 } });
 });
 
 test("handles empty success responses", async () => {

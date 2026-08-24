@@ -60,3 +60,18 @@ func TestInvalidPasswordIsRejected(t *testing.T) {
 		t.Fatalf("expected invalid credentials, got %v", err)
 	}
 }
+
+func TestDefaultCredentialsAcceptDocumentedPassword(t *testing.T) {
+	cfg := config.Config{
+		JWTSecret:         "test-secret",
+		AdminUsername:     "admin",
+		AdminPasswordHash: "$2a$10$tT6zviyM5ANs0OHmn18g4eqtgsvaprMNl9n4CTkccoZW9N/aTcd8W",
+	}
+	service, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Login("admin", "password"); err != nil {
+		t.Fatalf("documented default credentials should authenticate: %v", err)
+	}
+}

@@ -16,10 +16,9 @@ import (
 
 const schema = `
 CREATE TABLE IF NOT EXISTS profile (id TEXT PRIMARY KEY, display_name TEXT NOT NULL, handle TEXT NOT NULL DEFAULT '', headline TEXT NOT NULL DEFAULT '', bio TEXT NOT NULL DEFAULT '', location TEXT NOT NULL DEFAULT '', avatar_url TEXT NOT NULL DEFAULT '', organization TEXT NOT NULL DEFAULT '', website_url TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
-CREATE TABLE IF NOT EXISTS content (id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK (kind IN ('POST', 'NOTE', 'RESEARCH')), status TEXT NOT NULL DEFAULT 'DRAFT' CHECK (status IN ('DRAFT', 'PUBLISHED', 'DELETED')), slug TEXT NOT NULL UNIQUE, title TEXT NOT NULL, summary TEXT NOT NULL DEFAULT '', body TEXT NOT NULL DEFAULT '', tags_json TEXT NOT NULL DEFAULT '[]', published_at TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, version INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS content (id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK (kind IN ('TECH', 'THOUGHT', 'MANUSCRIPT')), status TEXT NOT NULL DEFAULT 'DRAFT' CHECK (status IN ('DRAFT', 'PUBLISHED', 'DELETED')), slug TEXT NOT NULL UNIQUE, title TEXT NOT NULL, summary TEXT NOT NULL DEFAULT '', body TEXT NOT NULL DEFAULT '', tags_json TEXT NOT NULL DEFAULT '[]', metadata_json TEXT NOT NULL DEFAULT '{}', published_at TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, version INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS now_status (id TEXT PRIMARY KEY, title TEXT NOT NULL, detail TEXT NOT NULL DEFAULT '', mood TEXT NOT NULL DEFAULT 'FOCUSED', updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
-CREATE TABLE IF NOT EXISTS site_config (id TEXT PRIMARY KEY, featured_content_json TEXT NOT NULL DEFAULT '[]', featured_projects_json TEXT NOT NULL DEFAULT '[]', navigation_json TEXT NOT NULL DEFAULT '[]', sections_json TEXT NOT NULL DEFAULT '[]', updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
-CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY, slug TEXT NOT NULL UNIQUE, name TEXT NOT NULL, summary TEXT NOT NULL DEFAULT '', description TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'ACTIVE', featured INTEGER NOT NULL DEFAULT 0, homepage_url TEXT NOT NULL DEFAULT '', repository_url TEXT NOT NULL DEFAULT '', tech_stack_json TEXT NOT NULL DEFAULT '[]', started_at TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS site_config (id TEXT PRIMARY KEY, featured_content_json TEXT NOT NULL DEFAULT '[]', navigation_json TEXT NOT NULL DEFAULT '[]', sections_json TEXT NOT NULL DEFAULT '[]', updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS comments (id TEXT PRIMARY KEY, content_id TEXT NOT NULL REFERENCES content(id), author_name TEXT NOT NULL, author_url TEXT NOT NULL DEFAULT '', body TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'APPROVED', 'REJECTED')), reply_to_id TEXT REFERENCES comments(id), created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS reactions (id TEXT PRIMARY KEY, content_id TEXT NOT NULL REFERENCES content(id) ON DELETE CASCADE, visitor_id TEXT NOT NULL, kind TEXT NOT NULL CHECK (kind IN ('LIKE', 'FAVORITE')), created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE (content_id, visitor_id, kind));
 CREATE TABLE IF NOT EXISTS audit_events (id TEXT PRIMARY KEY, event_name TEXT NOT NULL, resource_type TEXT NOT NULL, resource_id TEXT NOT NULL DEFAULT '', actor TEXT NOT NULL DEFAULT 'anonymous', request_id TEXT NOT NULL DEFAULT '', trace_id TEXT NOT NULL DEFAULT '', metadata_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
@@ -33,7 +32,6 @@ type Store struct{ DB *sql.DB }
 
 var (
 	ErrContentNotFound = errors.New("content not found")
-	ErrProjectNotFound = errors.New("project not found")
 	ErrVersionConflict = errors.New("content version conflict")
 )
 
@@ -51,19 +49,8 @@ type ContentUpdate struct {
 	Summary         *string
 	Body            *string
 	Tags            *[]string
+	Metadata        *map[string]any
 	ExpectedVersion int
-}
-
-type ProjectUpdate struct {
-	Name          *string
-	Summary       *string
-	Description   *string
-	Status        *string
-	Featured      *bool
-	HomepageURL   *string
-	RepositoryURL *string
-	TechStack     *[]string
-	StartedAt     *string
 }
 
 func Open(path string) (*Store, error) {
@@ -89,12 +76,98 @@ func Open(path string) (*Store, error) {
 		_ = db.Close()
 		return nil, err
 	}
+	if err := ensureContentSchema(db); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
 	s := &Store{DB: db}
 	if err := s.seed(); err != nil {
 		_ = db.Close()
 		return nil, err
 	}
 	return s, nil
+}
+
+func ensureContentSchema(db *sql.DB) error {
+	rows, err := db.Query(`PRAGMA table_info(content)`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	hasMetadata := false
+	for rows.Next() {
+		var cid, notNull, primaryKey int
+		var name, columnType string
+		var defaultValue sql.NullString
+		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
+			return err
+		}
+		if name == "metadata_json" {
+			hasMetadata = true
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	var tableSQL string
+	if err := db.QueryRow(`SELECT COALESCE(sql, '') FROM sqlite_master WHERE type = 'table' AND name = 'content'`).Scan(&tableSQL); err != nil {
+		return err
+	}
+	if strings.Contains(tableSQL, "'POST'") || strings.Contains(tableSQL, "'NOTE'") || strings.Contains(tableSQL, "'RESEARCH'") {
+		return migrateLegacyContent(db, hasMetadata)
+	}
+	if !hasMetadata {
+		if _, err = db.Exec(`ALTER TABLE content ADD COLUMN metadata_json TEXT NOT NULL DEFAULT '{}'`); err != nil {
+			return err
+		}
+	}
+	_, err = db.Exec(`UPDATE content SET metadata_json = CASE kind WHEN 'TECH' THEN '{"technologies":["Unspecified"]}' WHEN 'THOUGHT' THEN '{}' WHEN 'MANUSCRIPT' THEN '{"form":"OTHER","stage":"DRAFT"}' ELSE metadata_json END WHERE TRIM(metadata_json) = '' OR metadata_json = '{}'`)
+	return err
+}
+
+func migrateLegacyContent(db *sql.DB, hasMetadata bool) error {
+	if _, err := db.Exec(`PRAGMA foreign_keys = OFF`); err != nil {
+		return err
+	}
+	rollback := func(err error) error {
+		_, _ = db.Exec(`PRAGMA foreign_keys = ON`)
+		return err
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		return rollback(err)
+	}
+	contentTable := `CREATE TABLE content_new (id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK (kind IN ('TECH', 'THOUGHT', 'MANUSCRIPT')), status TEXT NOT NULL DEFAULT 'DRAFT' CHECK (status IN ('DRAFT', 'PUBLISHED', 'DELETED')), slug TEXT NOT NULL UNIQUE, title TEXT NOT NULL, summary TEXT NOT NULL DEFAULT '', body TEXT NOT NULL DEFAULT '', tags_json TEXT NOT NULL DEFAULT '[]', metadata_json TEXT NOT NULL DEFAULT '{}', published_at TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, version INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`
+	if _, err = tx.Exec(contentTable); err != nil {
+		_ = tx.Rollback()
+		return rollback(err)
+	}
+	metadataExpression := `CASE kind WHEN 'POST' THEN '{"technologies":["Unspecified"]}' WHEN 'NOTE' THEN '{}' WHEN 'RESEARCH' THEN '{"form":"OTHER","stage":"DRAFT"}' ELSE '{}' END`
+	if hasMetadata {
+		metadataExpression = `CASE kind WHEN 'POST' THEN '{"technologies":["Unspecified"]}' WHEN 'NOTE' THEN '{}' WHEN 'RESEARCH' THEN '{"form":"OTHER","stage":"DRAFT"}' ELSE CASE WHEN TRIM(metadata_json) = '' THEN '{}' ELSE metadata_json END END`
+	}
+	query := `INSERT INTO content_new (id, kind, status, slug, title, summary, body, tags_json, metadata_json, published_at, created_at, version, updated_at) SELECT id, CASE kind WHEN 'POST' THEN 'TECH' WHEN 'NOTE' THEN 'THOUGHT' WHEN 'RESEARCH' THEN 'MANUSCRIPT' ELSE kind END, status, slug, title, summary, body, tags_json, ` + metadataExpression + `, published_at, created_at, version, updated_at FROM content`
+	if _, err = tx.Exec(query); err != nil {
+		_ = tx.Rollback()
+		return rollback(err)
+	}
+	if _, err = tx.Exec(`DROP TABLE content`); err != nil {
+		_ = tx.Rollback()
+		return rollback(err)
+	}
+	if _, err = tx.Exec(`ALTER TABLE content_new RENAME TO content`); err != nil {
+		_ = tx.Rollback()
+		return rollback(err)
+	}
+	if _, err = tx.Exec(`CREATE INDEX IF NOT EXISTS idx_content_publication ON content(status, published_at DESC)`); err != nil {
+		_ = tx.Rollback()
+		return rollback(err)
+	}
+	if err = tx.Commit(); err != nil {
+		return rollback(err)
+	}
+	_, err = db.Exec(`PRAGMA foreign_keys = ON`)
+	return err
 }
 
 func ensureAuditEventColumns(db *sql.DB) error {
@@ -144,7 +217,7 @@ func ensureSiteConfigColumns(db *sql.DB) error {
 	if err := rows.Err(); err != nil {
 		return err
 	}
-	for _, column := range []string{"featured_content_json", "featured_projects_json"} {
+	for _, column := range []string{"featured_content_json"} {
 		if !columns[column] {
 			if _, err := db.Exec(`ALTER TABLE site_config ADD COLUMN ` + column + ` TEXT NOT NULL DEFAULT '[]'`); err != nil {
 				return err
@@ -158,34 +231,41 @@ func (s *Store) Close() error { return s.DB.Close() }
 
 func (s *Store) seed() error {
 	now := time.Now().UTC().Format(time.RFC3339)
-	if _, err := s.DB.Exec(`INSERT OR IGNORE INTO profile (id, display_name, handle, headline, bio, location, organization, website_url, updated_at) VALUES ('profile_1', 'Manifold', '@manifold', 'A living digital garden for ideas in motion.', 'A quiet space for experiences, writing, thoughts, and research.', 'Peking, China', 'Independent', 'https://manifold.local', ?)`, now); err != nil {
+	if _, err := s.DB.Exec(`INSERT OR IGNORE INTO profile (id, display_name, handle, headline, bio, location, organization, website_url, updated_at) VALUES ('profile_1', 'Manifold', '@manifold', 'A living archive for technology, thoughts, and manuscripts.', 'A quiet space for technical records, thoughts, and manuscripts.', 'Peking, China', 'Independent', 'https://manifold.local', ?)`, now); err != nil {
 		return err
 	}
-	if _, err := s.DB.Exec(`INSERT OR IGNORE INTO now_status (id, title, detail, mood, updated_at) VALUES ('now_1', 'Building the first garden', 'Shaping a small API-first space for ideas, projects, and research notes.', 'FOCUSED', ?)`, now); err != nil {
+	if _, err := s.DB.Exec(`INSERT OR IGNORE INTO now_status (id, title, detail, mood, updated_at) VALUES ('now_1', 'Building the first garden', 'Shaping a small API-first space for technology, thoughts, and manuscripts.', 'FOCUSED', ?)`, now); err != nil {
 		return err
 	}
-	if _, err := s.DB.Exec(`INSERT OR IGNORE INTO site_config (id, featured_content_json, featured_projects_json, navigation_json, sections_json, updated_at) VALUES ('site_1', ?, ?, ?, ?, ?)`, encodeJSON([]model.SiteContentRef{{ID: "content_1", Kind: model.ContentKindPost}}), encodeJSON([]model.SiteProjectRef{{ID: "project_1"}}), encodeJSON([]model.SiteNavigationItem{{Label: "Writing", Href: "/writing"}, {Label: "Projects", Href: "/projects"}}), encodeJSON([]string{"PROFILE", "NOW", "FEED", "PROJECTS"}), now); err != nil {
+	if _, err := s.DB.Exec(`INSERT OR IGNORE INTO site_config (id, featured_content_json, navigation_json, sections_json, updated_at) VALUES ('site_1', ?, ?, ?, ?)`, encodeJSON([]model.SiteContentRef{{ID: "content_1", Kind: model.ContentKindTech}}), encodeJSON([]model.SiteNavigationItem{{Label: "Technology", Href: "/writing?kind=TECH"}, {Label: "Thoughts", Href: "/writing?kind=THOUGHT"}, {Label: "Manuscripts", Href: "/writing?kind=MANUSCRIPT"}}), encodeJSON([]string{"PROFILE", "NOW", "TECH", "THOUGHT", "MANUSCRIPT"}), now); err != nil {
 		return err
 	}
 	seedContent := []struct {
-		id, kind, slug, title, summary, body, tags string
+		id, kind, slug, title, summary, body, tags, metadata string
 	}{
-		{"content_1", "POST", "designing-boundaries", "Designing Boundaries", "A field note on keeping a personal system calm and extensible.", "# Designing Boundaries\n\nA good personal system leaves room for the next thought without making today harder.", `["systems","design"]`},
-		{"content_2", "NOTE", "a-small-signal", "A Small Signal", "Not every thought needs to become a system. Some only need a place to land.", "Not every thought needs to become a system. Some only need a place to land.", `["notes"]`},
-		{"content_3", "RESEARCH", "reading-the-edge", "Reading the Edge", "A research notebook for questions that sit between engineering and lived experience.", "## Open question\n\nHow do small tools change the way we notice the world?", `["research","systems"]`},
+		{"content_1", "TECH", "designing-boundaries", "Designing Boundaries", "A technical note on keeping a personal system calm and extensible.", "# Designing Boundaries\n\nA good personal system leaves room for the next thought without making today harder.", `["systems","design"]`, `{"technologies":["Go","SQLite","Next.js"],"language":"Go","difficulty":"INTERMEDIATE"}`},
+		{"content_2", "THOUGHT", "a-small-signal", "A Small Signal", "A thought that needs a place to land before it becomes a system.", "Not every thought needs to become a system. Some only need a place to land.", `["thinking"]`, `{"mood":"Curious","question":"What deserves a place to land?"}`},
+		{"content_3", "MANUSCRIPT", "reading-the-edge", "Reading the Edge", "A manuscript for questions between engineering and lived experience.", "## Open question\n\nHow do small tools change the way we notice the world?", `["manuscript","systems"]`, `{"form":"ESSAY","stage":"DRAFT","wordCount":18}`},
 	}
 	for _, item := range seedContent {
-		if _, err := s.DB.Exec(`INSERT OR IGNORE INTO content (id, kind, status, slug, title, summary, body, tags_json, published_at, created_at, updated_at) VALUES (?, ?, 'PUBLISHED', ?, ?, ?, ?, ?, ?, ?, ?)`, item.id, item.kind, item.slug, item.title, item.summary, item.body, item.tags, now, now, now); err != nil {
+		if _, err := s.DB.Exec(`INSERT OR IGNORE INTO content (id, kind, status, slug, title, summary, body, tags_json, metadata_json, published_at, created_at, updated_at) VALUES (?, ?, 'PUBLISHED', ?, ?, ?, ?, ?, ?, ?, ?, ?)`, item.id, item.kind, item.slug, item.title, item.summary, item.body, item.tags, item.metadata, now, now, now); err != nil {
 			return err
 		}
 	}
-	_, err := s.DB.Exec(`INSERT OR IGNORE INTO projects (id, slug, name, summary, description, status, featured, homepage_url, repository_url, tech_stack_json, started_at, updated_at) VALUES ('project_1', 'manifold', 'Manifold', 'This personal digital garden.', 'An API-first home for writing, thoughts, and research.', 'ACTIVE', 1, 'https://manifold.local', 'https://github.com/manifold-space/manifold', '["Go","Next.js","SQLite"]', '2026-08', ?)`, now)
-	return err
+	return nil
 }
 
 func decodeStrings(raw string) []string {
 	var values []string
 	_ = json.Unmarshal([]byte(raw), &values)
+	return values
+}
+
+func decodeMetadata(raw string) map[string]any {
+	values := map[string]any{}
+	if err := json.Unmarshal([]byte(raw), &values); err != nil || values == nil {
+		return map[string]any{}
+	}
 	return values
 }
 
@@ -214,15 +294,12 @@ func (s *Store) UpdateProfile(p model.Profile) error {
 }
 
 func (s *Store) GetSiteConfig() (model.SiteConfig, error) {
-	var rawFeaturedContent, rawFeaturedProjects, rawNavigation, rawSections string
-	if err := s.DB.QueryRow(`SELECT featured_content_json, featured_projects_json, navigation_json, sections_json FROM site_config WHERE id = 'site_1'`).Scan(&rawFeaturedContent, &rawFeaturedProjects, &rawNavigation, &rawSections); err != nil {
+	var rawFeaturedContent, rawNavigation, rawSections string
+	if err := s.DB.QueryRow(`SELECT featured_content_json, navigation_json, sections_json FROM site_config WHERE id = 'site_1'`).Scan(&rawFeaturedContent, &rawNavigation, &rawSections); err != nil {
 		return model.SiteConfig{}, err
 	}
 	var config model.SiteConfig
 	if err := json.Unmarshal([]byte(rawFeaturedContent), &config.FeaturedContent); err != nil {
-		return model.SiteConfig{}, err
-	}
-	if err := json.Unmarshal([]byte(rawFeaturedProjects), &config.FeaturedProjects); err != nil {
 		return model.SiteConfig{}, err
 	}
 	if err := json.Unmarshal([]byte(rawNavigation), &config.Navigation); err != nil {
@@ -235,12 +312,12 @@ func (s *Store) GetSiteConfig() (model.SiteConfig, error) {
 }
 
 func (s *Store) UpdateSiteConfig(config model.SiteConfig) error {
-	_, err := s.DB.Exec(`UPDATE site_config SET featured_content_json = ?, featured_projects_json = ?, navigation_json = ?, sections_json = ?, updated_at = ? WHERE id = 'site_1'`, encodeJSON(config.FeaturedContent), encodeJSON(config.FeaturedProjects), encodeJSON(config.Navigation), encodeJSON(config.Sections), time.Now().UTC().Format(time.RFC3339))
+	_, err := s.DB.Exec(`UPDATE site_config SET featured_content_json = ?, navigation_json = ?, sections_json = ?, updated_at = ? WHERE id = 'site_1'`, encodeJSON(config.FeaturedContent), encodeJSON(config.Navigation), encodeJSON(config.Sections), time.Now().UTC().Format(time.RFC3339))
 	return err
 }
 
 func (s *Store) ListContent(includeDrafts bool, options ContentListOptions) ([]model.Content, bool, error) {
-	query := `SELECT id, kind, status, slug, title, summary, body, tags_json, published_at, created_at, updated_at, version FROM content WHERE 1 = 1`
+	query := `SELECT id, kind, status, slug, title, summary, body, tags_json, metadata_json, published_at, created_at, updated_at, version FROM content WHERE 1 = 1`
 	if !includeDrafts {
 		query += ` AND status = 'PUBLISHED'`
 	} else if options.Status == "" {
@@ -282,11 +359,12 @@ func (s *Store) ListContent(includeDrafts bool, options ContentListOptions) ([]m
 	var items []model.Content
 	for rows.Next() && len(items) <= limit {
 		var c model.Content
-		var tags, published sql.NullString
-		if err := rows.Scan(&c.ID, &c.Kind, &c.Status, &c.Slug, &c.Title, &c.Summary, &c.Body, &tags, &published, &c.CreatedAt, &c.UpdatedAt, &c.Version); err != nil {
+		var tags, metadata, published sql.NullString
+		if err := rows.Scan(&c.ID, &c.Kind, &c.Status, &c.Slug, &c.Title, &c.Summary, &c.Body, &tags, &metadata, &published, &c.CreatedAt, &c.UpdatedAt, &c.Version); err != nil {
 			return nil, false, err
 		}
 		c.Tags = decodeStrings(tags.String)
+		c.Metadata = decodeMetadata(metadata.String)
 		if published.Valid {
 			c.PublishedAt = &published.String
 		}
@@ -305,13 +383,14 @@ func (s *Store) ListContent(includeDrafts bool, options ContentListOptions) ([]m
 
 func (s *Store) GetContent(slug string, includeDrafts bool) (model.Content, error) {
 	var c model.Content
-	var tags, published sql.NullString
-	query := `SELECT id, kind, status, slug, title, summary, body, tags_json, published_at, created_at, updated_at, version FROM content WHERE slug = ? AND status != 'DELETED'`
+	var tags, metadata, published sql.NullString
+	query := `SELECT id, kind, status, slug, title, summary, body, tags_json, metadata_json, published_at, created_at, updated_at, version FROM content WHERE slug = ? AND status != 'DELETED'`
 	if !includeDrafts {
 		query += ` AND status = 'PUBLISHED'`
 	}
-	err := s.DB.QueryRow(query, slug).Scan(&c.ID, &c.Kind, &c.Status, &c.Slug, &c.Title, &c.Summary, &c.Body, &tags, &published, &c.CreatedAt, &c.UpdatedAt, &c.Version)
+	err := s.DB.QueryRow(query, slug).Scan(&c.ID, &c.Kind, &c.Status, &c.Slug, &c.Title, &c.Summary, &c.Body, &tags, &metadata, &published, &c.CreatedAt, &c.UpdatedAt, &c.Version)
 	c.Tags = decodeStrings(tags.String)
+	c.Metadata = decodeMetadata(metadata.String)
 	if published.Valid {
 		c.PublishedAt = &published.String
 	}
@@ -321,13 +400,14 @@ func (s *Store) GetContent(slug string, includeDrafts bool) (model.Content, erro
 
 func (s *Store) GetContentByID(id string, includeDrafts bool) (model.Content, error) {
 	var c model.Content
-	var tags, published sql.NullString
-	query := `SELECT id, kind, status, slug, title, summary, body, tags_json, published_at, created_at, updated_at, version FROM content WHERE id = ? AND status != 'DELETED'`
+	var tags, metadata, published sql.NullString
+	query := `SELECT id, kind, status, slug, title, summary, body, tags_json, metadata_json, published_at, created_at, updated_at, version FROM content WHERE id = ? AND status != 'DELETED'`
 	if !includeDrafts {
 		query += ` AND status = 'PUBLISHED'`
 	}
-	err := s.DB.QueryRow(query, id).Scan(&c.ID, &c.Kind, &c.Status, &c.Slug, &c.Title, &c.Summary, &c.Body, &tags, &published, &c.CreatedAt, &c.UpdatedAt, &c.Version)
+	err := s.DB.QueryRow(query, id).Scan(&c.ID, &c.Kind, &c.Status, &c.Slug, &c.Title, &c.Summary, &c.Body, &tags, &metadata, &published, &c.CreatedAt, &c.UpdatedAt, &c.Version)
 	c.Tags = decodeStrings(tags.String)
+	c.Metadata = decodeMetadata(metadata.String)
 	if published.Valid {
 		c.PublishedAt = &published.String
 	}
@@ -341,124 +421,9 @@ func (s *Store) GetNow() (model.NowStatus, error) {
 	return n, err
 }
 
-func (s *Store) ListProjects() ([]model.Project, error) {
-	rows, err := s.DB.Query(`SELECT id, slug, name, summary, description, status, featured, homepage_url, repository_url, tech_stack_json, started_at, updated_at FROM projects ORDER BY featured DESC, started_at DESC`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []model.Project
-	for rows.Next() {
-		var p model.Project
-		var featured int
-		var stack string
-		if err := rows.Scan(&p.ID, &p.Slug, &p.Name, &p.Summary, &p.Description, &p.Status, &featured, &p.HomepageURL, &p.RepositoryURL, &stack, &p.StartedAt, &p.UpdatedAt); err != nil {
-			return nil, err
-		}
-		p.Featured = featured == 1
-		p.TechStack = decodeStrings(stack)
-		items = append(items, p)
-	}
-	return items, rows.Err()
-}
-
-func (s *Store) GetProjectByID(id string) (model.Project, error) {
-	var p model.Project
-	var featured int
-	var stack string
-	err := s.DB.QueryRow(`SELECT id, slug, name, summary, description, status, featured, homepage_url, repository_url, tech_stack_json, started_at, updated_at FROM projects WHERE id = ?`, id).Scan(&p.ID, &p.Slug, &p.Name, &p.Summary, &p.Description, &p.Status, &featured, &p.HomepageURL, &p.RepositoryURL, &stack, &p.StartedAt, &p.UpdatedAt)
-	p.Featured = featured == 1
-	p.TechStack = decodeStrings(stack)
-	return p, err
-}
-
-func (s *Store) CreateProject(p model.Project) (model.Project, error) {
-	now := time.Now().UTC().Format(time.RFC3339)
-	p.ID, p.UpdatedAt = "project_"+now, now
-	_, err := s.DB.Exec(`INSERT INTO projects (id, slug, name, summary, description, status, featured, homepage_url, repository_url, tech_stack_json, started_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, p.ID, p.Slug, p.Name, p.Summary, p.Description, p.Status, boolInt(p.Featured), p.HomepageURL, p.RepositoryURL, encodeStrings(p.TechStack), p.StartedAt, now)
-	return p, err
-}
-
-func (s *Store) UpdateProject(id string, update ProjectUpdate) error {
-	sets := make([]string, 0, 9)
-	args := make([]any, 0, 11)
-	if update.Name != nil {
-		sets = append(sets, "name = ?")
-		args = append(args, *update.Name)
-	}
-	if update.Summary != nil {
-		sets = append(sets, "summary = ?")
-		args = append(args, *update.Summary)
-	}
-	if update.Description != nil {
-		sets = append(sets, "description = ?")
-		args = append(args, *update.Description)
-	}
-	if update.Status != nil {
-		sets = append(sets, "status = ?")
-		args = append(args, *update.Status)
-	}
-	if update.Featured != nil {
-		sets = append(sets, "featured = ?")
-		args = append(args, boolInt(*update.Featured))
-	}
-	if update.HomepageURL != nil {
-		sets = append(sets, "homepage_url = ?")
-		args = append(args, *update.HomepageURL)
-	}
-	if update.RepositoryURL != nil {
-		sets = append(sets, "repository_url = ?")
-		args = append(args, *update.RepositoryURL)
-	}
-	if update.TechStack != nil {
-		sets = append(sets, "tech_stack_json = ?")
-		args = append(args, encodeStrings(*update.TechStack))
-	}
-	if update.StartedAt != nil {
-		sets = append(sets, "started_at = ?")
-		args = append(args, *update.StartedAt)
-	}
-	sets = append(sets, "updated_at = ?")
-	args = append(args, time.Now().UTC().Format(time.RFC3339), id)
-	result, err := s.DB.Exec(`UPDATE projects SET `+strings.Join(sets, ", ")+` WHERE id = ?`, args...)
-	if err != nil {
-		return err
-	}
-	count, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if count == 0 {
-		return ErrProjectNotFound
-	}
-	return nil
-}
-
-func (s *Store) DeleteProject(id string) error {
-	result, err := s.DB.Exec(`DELETE FROM projects WHERE id = ?`, id)
-	if err != nil {
-		return err
-	}
-	count, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if count == 0 {
-		return ErrProjectNotFound
-	}
-	return nil
-}
-
-func boolInt(value bool) int {
-	if value {
-		return 1
-	}
-	return 0
-}
-
 func (s *Store) Stats() (model.Stats, error) {
 	var stats model.Stats
-	err := s.DB.QueryRow(`SELECT COUNT(*), SUM(kind = 'POST'), SUM(kind = 'NOTE'), SUM(kind = 'RESEARCH'), COALESCE(SUM(length(body) - length(replace(body, ' ', '')) + 1), 0) FROM content WHERE status = 'PUBLISHED'`).Scan(&stats.ContentCount, &stats.PostCount, &stats.NoteCount, &stats.ResearchCount, &stats.WordCount)
+	err := s.DB.QueryRow(`SELECT COUNT(*), SUM(kind = 'TECH'), SUM(kind = 'THOUGHT'), SUM(kind = 'MANUSCRIPT'), COALESCE(SUM(length(body) - length(replace(body, ' ', '')) + 1), 0) FROM content WHERE status = 'PUBLISHED'`).Scan(&stats.ContentCount, &stats.TechCount, &stats.ThoughtCount, &stats.ManuscriptCount, &stats.WordCount)
 	stats.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 	return stats, err
 }
@@ -589,8 +554,8 @@ func (s *Store) AuditEventCount() (int, error) {
 
 func (s *Store) CreateContent(c model.Content) (model.Content, error) {
 	now := time.Now().UTC().Format(time.RFC3339)
-	c.ID, c.Status, c.CreatedAt, c.UpdatedAt, c.Version = "content_"+now, "DRAFT", now, now, 1
-	_, err := s.DB.Exec(`INSERT INTO content (id, kind, status, slug, title, summary, body, tags_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, c.ID, c.Kind, c.Status, c.Slug, c.Title, c.Summary, c.Body, encodeStrings(c.Tags), now, now)
+	c.ID, c.Status, c.CreatedAt, c.UpdatedAt, c.Version = "content_"+time.Now().UTC().Format("20060102150405.000000000"), "DRAFT", now, now, 1
+	_, err := s.DB.Exec(`INSERT INTO content (id, kind, status, slug, title, summary, body, tags_json, metadata_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, c.ID, c.Kind, c.Status, c.Slug, c.Title, c.Summary, c.Body, encodeStrings(c.Tags), encodeJSON(c.Metadata), now, now)
 	return c, err
 }
 
@@ -612,6 +577,10 @@ func (s *Store) UpdateContent(id string, update ContentUpdate) error {
 	if update.Tags != nil {
 		sets = append(sets, "tags_json = ?")
 		args = append(args, encodeStrings(*update.Tags))
+	}
+	if update.Metadata != nil {
+		sets = append(sets, "metadata_json = ?")
+		args = append(args, encodeJSON(*update.Metadata))
 	}
 	sets = append(sets, "version = version + 1", "updated_at = ?")
 	args = append(args, time.Now().UTC().Format(time.RFC3339), id, update.ExpectedVersion)
