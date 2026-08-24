@@ -1,64 +1,122 @@
-# Web MVP Contract
+# Web 当前架构与 API 消费契约
 
-> Scope note: The current Web MVP exposes the homepage and the `TECH`, `THOUGHT`, and `MANUSCRIPT` archive/detail views. The earlier project view described below is historical planning context and is not an active route.
+> 本文记录 `app/web` 的当前实现，而不是未来页面规划。修改 Web 路由、页面数据、Core 调用、Markdown 渲染、评论/反应、SEO、可观测性或设计约束时必须同步本文。历史方案不得把 Projects、Technology、Manuscript 等已移出范围的内容写成当前功能。
 
-## Module Contract
+## 1. 项目定位
 
-Status: [DONE]
+Web 是公开阅读端，负责把 Profile、Now、Stats、Thoughts 和 Writings 组合成个人数字花园。它不持有业务数据，不读 SQLite，不导入 Admin 或 Core Go 包，所有 Core 请求都通过 `@manifold/sdk`。
 
-`app/web` is the public reading and interaction application. It is independently deployable, has no import or runtime dependency on `app/admin`, and communicates with Core only through `@manifold/sdk` over HTTP.
+运行时边界：
 
-Inputs:
+```text
+Next Server/Browser Components
+          |
+          +--> @manifold/sdk --> Core /api/v1
+          +--> @manifold/contracts
+```
 
-- Public Core API responses from `NEXT_PUBLIC_CORE_URL`.
-- URL route state for content slugs.
-- Reader input for comments; the display name and website are optional.
-- A locally generated `X-Visitor-ID` persisted in browser storage for reactions.
+Server Component 负责首屏数据、详情读取和 SEO；Client Component 负责评论、反应、导航菜单、错误恢复和局部状态。
 
-Outputs:
+## 2. 页面与路由
 
-- SEO-friendly home, content list, content detail, project, and current-status views.
-- Sanitized Markdown rendering.
-- Optimistic comment submission state with a pending confirmation.
-- Optimistic `LIKE` and `FAVORITE` state with server reconciliation and rollback on failure.
-- Responsive layout following the existing Yohaku tokens without creating a second design system.
+| 路由 | 类型 | Core 数据 | 行为 |
+| --- | --- | --- | --- |
+| `/` | Dynamic Server Component | profile、site、2 条 Article、3 条 Thought、now、stats | Hero、Compact CV、Recent Activity、统计 |
+| `/thoughts` | Dynamic Server Component | `feed({ kind: "THOUGHT" })` | 轻量时间线/标签入口 |
+| `/thoughts/[id]` | Dynamic Server Component | 通过 ID 获取 Thought 详情 | 复用统一阅读器和评论/反应 |
+| `/writing` | Dynamic Server Component | `content({ kind: "ARTICLE" })` | 长文列表、标签、阅读时长 |
+| `/writing/[slug]` | Dynamic Server Component | `contentBySlug(slug)` | SEO、TOC、Markdown、评论和反应 |
+| `/health` | Route Handler | 无 | Web 进程 liveness，Core 健康检查仍为 `/healthz` |
 
-Access model: all public reads and visitor reactions/comments are available without registration; the only identity state held by Web is the anonymous visitor identifier used to scope reactions.
+详情页根据 content kind 选择返回路径：Thought 用 `/thoughts/{id}`，Article 用 `/writing/{slug}`。Core 返回的 `href` 是列表链接的来源，页面不自行重建业务 URL。
 
-## Feature Matrix
+## 3. 首页数据流
 
-- [x] [P0] Public home composition | 验收标准：首屏展示 profile、now、feed、projects 和 stats，并在 Core 不可用时显示可理解的错误状态。
-- [x] [P0] Content stream | 验收标准：列表显示 kind、标题、摘要、标签和发布时间，可进入详情。
-- [x] [P0] Content detail reading | 验收标准：按 slug 加载正文，使用 `react-markdown` + `rehype-sanitize`，不直接注入未处理 HTML。
-- [x] [P0] SEO metadata | 验收标准：首页和详情页输出稳定 title、description、canonical metadata。
-- [x] [P0] Comment list | 验收标准：详情页只展示 Core 返回的 approved 评论，空态和加载态可见。
-- [x] [P0] Comment form | 验收标准：使用 React Hook Form + Zod 校验，正文必填、昵称和网站可选，提交采用乐观 UI，失败可恢复且不丢输入。
-- [x] [P0] Component primitives | 验收标准：评论表单和反应条使用 Radix Themes 的可访问输入、文本域和按钮组件，状态仍由现有 React Hook Form 与 React Query 管理。
-- [x] [P0] Reaction bar | 验收标准：详情页可读取并乐观更新点赞/收藏，SDK 通过 `X-Visitor-ID` 调用 Core，成功后以服务端摘要校正状态。
-- [x] [P1] Reading navigation | 验收标准：提供返回流、上一篇/下一篇的可扩展入口，移动端不遮挡正文。
-- [x] [P1] Responsive/accessibility pass | 验收标准：移动和桌面视口无重叠，交互控件有可访问名称，键盘可完成评论提交。
-- [x] [P1] Browser integration test | 验收标准：真实浏览器完成详情 -> 点赞 -> 收藏 -> 评论提交流程，Core 请求分别返回 `200/201`，页面显示 `Awaiting review`，控制台无错误。
-- [x] [P1] Error capture and recovery | 验收标准：路由级和全局渲染异常进入可恢复错误页，生成前端 trace reference 并记录结构化错误，不泄漏内部堆栈。
+`loadHomeData()` 并行调用：
 
-## State Flow
+```text
+profile()
+site()
+feed({ limit: 2, kind: "ARTICLE" })
+feed({ limit: 3, kind: "THOUGHT" })
+now()
+stats()
+```
 
-Page data: `[DONE]`; reaction state: `[DONE]`; browser integration: `[DONE]`.
+两组内容在 Web 内按 `publishedAt ?? createdAt` 倒序混排。统计、发布状态和内容计数只使用 Core 返回值，不在浏览器重新计算。任一请求失败时，首页显示 Core unavailable 状态，不暴露内部错误。
 
-Comment UI: `idle` -> `submitting` -> `pending moderation` or `error`; the server remains the source of truth.
+## 4. Markdown 阅读器
 
-## Selected Components
+Web 和 Admin 使用相同的 Markdown 能力组合：
 
-- `[DONE]` Next.js App Router for SSR/SEO and route-level loading boundaries.
-- `[DONE]` TanStack Query for cache, retries, and invalidation around the SDK.
-- `[DONE]` React Hook Form + Zod for declarative comment validation.
-- `[DONE]` `react-markdown` + `rehype-sanitize` for safe Markdown rendering.
-- `[DONE]` Lucide React for interface icons and Framer Motion only for restrained state transitions.
-- `[DONE]` Radix Themes for accessible Web buttons, text fields, text areas, and theme tokens; page-specific CSS remains limited to layout and reading presentation.
+- `react-markdown`：React 渲染边界。
+- `remark-gfm`：表格、任务列表、删除线等 GFM。
+- `remark-math` + `rehype-katex` + `katex`：行内和块级数学公式。
+- `rehype-highlight`：代码块语法高亮。
+- `rehype-sanitize`：第三方插件处理后进行 HTML 清洗。
+- 原生 `navigator.clipboard`：代码块复制，不额外引入 clipboard 包。
 
-## Iteration Guide
+`app/web/components/markdown-content.tsx` 统一生成 h2/h3 anchor id、代码工具条和复制状态。Core 只存 Markdown，不承诺内容生成的 HTML 安全；禁止使用 `dangerouslySetInnerHTML` 绕过清洗。
 
-Future extensions: full-text search and command navigation, image/media attachments through a dedicated Core asset API, and offline-friendly reading cache.
+Article 的 `metadata.toc` 是 Core 持久化的目录来源，Web 使用对应 `id` 生成 sticky TOC。新增运行时标题 ID 算法时必须同步 Core metadata 约定和 Admin 编辑/生成逻辑。
 
-## Completion Standard
+## 5. 评论与反应
 
-Web MVP is complete only when every Feature Matrix checkbox is `- [x]`, every feature status is `[DONE]`, and TypeScript, production build, and browser integration checks pass.
+### 评论
+
+`CommentThread` 使用 React Hook Form、Zod 和 TanStack Query：
+
+1. `comments(slug)` 读取 Core 返回的 APPROVED 评论。
+2. 表单要求正文 3 到 4000 字符，作者名/网站可选，附轻量验证码。
+3. `onMutate` 先插入本地 pending comment，提交成功后用 Core 的 201 结果替换。
+4. 失败时回滚 pending 并保留输入，UI 显示错误。
+5. Query key 为 `comments + slug`，不要把 Admin 审核状态复制到 Web。
+
+### 反应
+
+`getVisitorId()` 将匿名 ID 保存在 `localStorage` 的 `manifold.visitorId`。`ReactionBar`：
+
+- GET 可携带 `X-Visitor-ID`，PUT/DELETE 必须携带。
+- LIKE/FAVORITE 先乐观更新，再用 Core 返回的 `ReactionSummary` 校正。
+- 失败时恢复旧快照，结束后失效 reaction query。
+
+## 6. SEO、错误和可观测性
+
+- `layout.tsx` 使用 `NEXT_PUBLIC_SITE_URL` 作为 `metadataBase`。
+- 内容详情从同一份 Core 数据生成 title、description、canonical 和 Open Graph metadata。
+- `app/error.tsx` 处理路由级异常，`global-error.tsx` 处理根级异常；错误页提供重试和 trace reference，不显示内部 stack。
+- SDK 每次请求发送 `X-Trace-ID`；客户端错误通过 `reportClientError` 记录 scope、错误名、消息、stack 和 trace ID。
+- Core unavailable 时优先显示可理解的恢复提示，不把网络异常转成空内容。
+
+## 7. 配置和依赖
+
+| 变量 | 默认值 | 说明 |
+| --- | --- | --- |
+| `NEXT_PUBLIC_CORE_URL` | `http://localhost:8080` | Server/Browser SDK 请求 Core |
+| `NEXT_PUBLIC_SITE_URL` | `http://localhost:3000` | canonical 和 metadataBase |
+
+主要依赖：Next.js 16、React 19、TanStack Query、React Hook Form、Zod、Radix Themes、Lucide React、Framer Motion、Markdown/公式/高亮链路。新增依赖必须说明用户能力、包体、SSR/CSR 影响和安全边界，并更新 `app/web/package.json`、本文与 `docs/web.md`。
+
+## 8. 设计和开发约束
+
+1. 颜色和字体优先使用 `app/web/app/globals.css` 中对齐 `docs/design-system/src/tokens.css` 的变量。
+2. 不在页面组件中直接拼接 Core URL，不直接计算 Core 统计或状态。
+3. 新增 Client Component 前确认是否真的需要浏览器状态，避免把整页改成 CSR。
+4. 页面必须有 loading/error/empty 状态和移动端约束；按钮使用现有图标体系和可访问名称。
+5. Markdown 必须经过 sanitize；任何 renderer 改动都要检查 XSS、标题锚点和代码复制。
+
+## 9. 修改与验证
+
+修改 Web 时同步检查：
+
+- `packages/contracts/README.md`、`packages/sdk/README.md` 是否仍描述真实调用。
+- `docs/core.md` 是否需要更新响应、参数或错误说明。
+- `docs/admin.md` 是否共享了 Markdown、内容类型或 API 变化。
+- `docs/web.md` 索引和 `app/web/README.md` 是否仍准确。
+
+```bash
+pnpm --filter @manifold/web typecheck
+pnpm --filter @manifold/web lint
+pnpm --filter @manifold/web build
+pnpm browser-test
+```

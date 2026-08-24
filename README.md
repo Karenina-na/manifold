@@ -36,6 +36,15 @@ Core 是唯一拥有业务持久化的服务。Web/Admin 不导入 Go 代码、�
 | `scripts/browser-check.cjs` | Playwright Web/Admin 验收流程 |
 | `app/*/README.md` | 各项目的背景、架构、运行方式和边界 |
 
+详细契约与同步规则：
+
+- [`AGENTS.md`](AGENTS.md)：项目背景、架构边界、文档同步准则和验证门槛。
+- [`docs/core.md`](docs/core.md)：Core 当前 API、数据模型和架构。
+- [`docs/admin.md`](docs/admin.md)：Admin 工作区、API 调用和状态流。
+- [`docs/decisions/web.md`](docs/decisions/web.md)：Web 当前路由、数据流和阅读器架构。
+- [`packages/contracts/README.md`](packages/contracts/README.md)：共享 TypeScript 契约。
+- [`packages/sdk/README.md`](packages/sdk/README.md)：Core SDK 方法和请求约定。
+
 ## 前置条件
 
 - Node.js `>=20.9`（Next.js 16）
