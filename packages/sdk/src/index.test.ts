@@ -90,6 +90,22 @@ test("sends visitor-scoped reaction requests", async () => {
 	assert.equal(requests[1]?.headers.get("X-Visitor-ID"), "visitor-123");
 });
 
+test("sends a presence heartbeat with the visitor id", async () => {
+	let captured: Request | undefined;
+	const client = new ManifoldClient({
+		baseUrl: "http://core.test",
+		fetch: async (input, init) => {
+			captured = new Request(input, init);
+			return new Response(JSON.stringify({ activeVisitors: 3, observedAt: "2026-08-25T10:00:00Z" }), { status: 200 });
+		},
+	});
+
+	assert.deepEqual(await client.presence("visitor-123"), { activeVisitors: 3, observedAt: "2026-08-25T10:00:00Z" });
+	assert.equal(captured?.url, "http://core.test/api/v1/presence");
+	assert.equal(captured?.method, "POST");
+	assert.equal(captured?.headers.get("X-Visitor-ID"), "visitor-123");
+});
+
 test("binds the default fetch implementation to its global owner", async () => {
 	const originalFetch = globalThis.fetch;
 	let receivedThis: unknown;

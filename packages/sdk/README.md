@@ -48,6 +48,7 @@ const page = await client.content({ kind: "ARTICLE", limit: 20 })
 | `contentBySlug(slug)` | GET | `/api/v1/content/:slug` | `ContentDetail` |
 | `now()` | GET | `/api/v1/now` | `NowStatus` |
 | `stats()` | GET | `/api/v1/stats` | `Stats` |
+| `presence(visitorId)` | POST | `/api/v1/presence` | `PresenceStatus` |
 | `comments(slug, query?)` | GET | `/api/v1/content/:slug/comments` | `Collection<Comment>` |
 | `createComment(slug, input)` | POST | `/api/v1/content/:slug/comments` | `Comment` |
 | `reactions(slug, visitorId?)` | GET | `/api/v1/content/:slug/reactions` | `ReactionSummary` |

@@ -1,4 +1,4 @@
-import type { AdminContentQuery, AdminStats, Collection, Comment, CommentQuery, Content, ContentDetail, ContentInput, ContentQuery, CreateCommentInput, HealthStatus, LoginInput, LoginResponse, NowStatus, Profile, ProfileInput, ReactionKind, ReactionSummary, SiteComposition, SiteConfig, SiteConfigInput, Stats, UpdateContentInput } from "@manifold/contracts";
+import type { AdminContentQuery, AdminStats, Collection, Comment, CommentQuery, Content, ContentDetail, ContentInput, ContentQuery, CreateCommentInput, HealthStatus, LoginInput, LoginResponse, NowStatus, PresenceStatus, Profile, ProfileInput, ReactionKind, ReactionSummary, SiteComposition, SiteConfig, SiteConfigInput, Stats, UpdateContentInput } from "@manifold/contracts";
 
 export class ApiError extends Error {
 	readonly status: number;
@@ -40,6 +40,7 @@ export class ManifoldClient {
 	contentBySlug(slug: string) { return this.request<ContentDetail>(`/api/v1/content/${encodeURIComponent(slug)}`); }
 	now() { return this.request<NowStatus>("/api/v1/now"); }
 	stats() { return this.request<Stats>("/api/v1/stats"); }
+	presence(visitorId: string) { return this.request<PresenceStatus>("/api/v1/presence", { method: "POST", headers: { "X-Visitor-ID": visitorId } }); }
 	comments(slug: string, query?: CommentQuery) { return this.request<Collection<Comment>>(this.withQuery(`/api/v1/content/${encodeURIComponent(slug)}/comments`, query)); }
 	createComment(slug: string, input: CreateCommentInput) { return this.request<Comment>(`/api/v1/content/${encodeURIComponent(slug)}/comments`, { method: "POST", body: input }); }
 	reactions(slug: string, visitorId?: string) { return this.request<ReactionSummary>(`/api/v1/content/${encodeURIComponent(slug)}/reactions`, { headers: visitorId ? { "X-Visitor-ID": visitorId } : undefined }); }
