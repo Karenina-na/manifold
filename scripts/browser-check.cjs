@@ -135,6 +135,138 @@ async function main() {
     const webErrors = [];
     web.on('console', (message) => { if (message.type() === 'error') webErrors.push(`console:${message.text()}`); });
     web.on('pageerror', (error) => webErrors.push(`pageerror:${error.message}`));
+    await web.setViewportSize({ width: 1440, height: 1000 });
+    await web.goto(webUrl, { waitUntil: 'networkidle' });
+    await web.getByRole('heading', { name: 'Writings and thoughts' }).waitFor({ state: 'visible' });
+    await web.getByRole('heading', { name: 'My Series' }).waitFor({ state: 'visible' });
+    await web.getByRole('contentinfo').getByText(/\d+ readers online/).waitFor({ state: 'visible', timeout: 5000 });
+    const seriesCard = web.locator('[data-series-card]').first();
+    await seriesCard.waitFor({ state: 'visible' });
+    await seriesCard.hover();
+    const seriesTooltip = seriesCard.locator('[data-series-tooltip]');
+    await seriesTooltip.waitFor({ state: 'visible' });
+    const seriesTooltipText = await seriesTooltip.textContent();
+    if (!seriesTooltipText?.includes('API relay') || !seriesTooltipText.includes('Infrastructure') || !seriesTooltipText.includes('api.weizixiang.dev')) {
+      throw new Error(`My Series tooltip is missing complete content: ${seriesTooltipText}`);
+    }
+    const seriesCardGeometry = await seriesCard.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      const tooltip = element.querySelector('[data-series-tooltip]')?.getBoundingClientRect();
+      return { height: rect.height, tooltipVisible: Boolean(tooltip && tooltip.width > 0 && tooltip.height > 0) };
+    });
+    if (seriesCardGeometry.height > 150 || !seriesCardGeometry.tooltipVisible) {
+      throw new Error(`My Series card is not compact or its tooltip is hidden: ${JSON.stringify(seriesCardGeometry)}`);
+    }
+    await web.locator('[data-contact-item]').first().hover();
+    const contactTooltip = web.locator('[data-contact-item]').first().locator('[data-contact-tooltip]');
+    await contactTooltip.waitFor({ state: 'visible' });
+    const contactTooltipText = await contactTooltip.textContent();
+    if (!contactTooltipText?.includes('GitHub') || !contactTooltipText.includes('manifold-space')) {
+      throw new Error(`Contact tooltip is missing contact details: ${contactTooltipText}`);
+    }
+    const sceneBreakCount = await web.locator('[data-scene-break]').count();
+    if (sceneBreakCount < 4) throw new Error(`Expected scene transition separators between major sections, received ${sceneBreakCount}`);
+    await web.mouse.move(20, 20);
+    const surfaceStyles = await web.evaluate(() => [...document.querySelectorAll('[data-content-surface], [data-update-rail], [data-series-card], [data-contact-panel]')].map((element) => {
+      const style = getComputedStyle(element);
+      return { backgroundColor: style.backgroundColor, backdropFilter: style.backdropFilter };
+    }));
+    if (!surfaceStyles.length || surfaceStyles.some(({ backgroundColor, backdropFilter }) => backgroundColor === 'rgba(0, 0, 0, 0)' || !backdropFilter.includes('blur(8px)'))) {
+      throw new Error(`Content surfaces are not isolating text from the particle field: ${JSON.stringify(surfaceStyles)}`);
+    }
+    const metadataStyles = await web.evaluate(() => {
+      const metadata = document.querySelector('[data-minimal-metadata]');
+      const clock = metadata?.querySelector('[data-metadata-clock]');
+      const canvas = document.querySelector('.backgroundCanvas');
+      const markers = [...document.querySelectorAll('[data-metadata-marker]')];
+      const metadataStyle = metadata ? getComputedStyle(metadata) : null;
+      const clockStyle = clock ? getComputedStyle(clock) : null;
+      const canvasStyle = canvas ? getComputedStyle(canvas) : null;
+      return {
+        visible: Boolean(metadata && metadataStyle?.display !== 'none'),
+        markerCount: markers.length,
+        clockText: clock?.textContent ?? '',
+        writingMode: clockStyle?.writingMode ?? '',
+        maskImage: canvasStyle?.maskImage ?? '',
+        webkitMaskImage: canvasStyle?.webkitMaskImage ?? '',
+      };
+    });
+    if (!metadataStyles.visible || metadataStyles.markerCount < 4 || metadataStyles.writingMode !== 'vertical-rl' || !metadataStyles.clockText.includes('UTC+8') || (!metadataStyles.maskImage.includes('linear-gradient') && !metadataStyles.webkitMaskImage.includes('linear-gradient'))) {
+      throw new Error(`Minimal metadata or particle vignette is missing: ${JSON.stringify(metadataStyles)}`);
+    }
+    await web.locator('[data-metadata-marker]').nth(2).click();
+    if (!web.url().endsWith('#updates-section')) throw new Error(`Section marker did not navigate to Updates: ${web.url()}`);
+    const updateNodes = web.locator('[data-update-node]');
+    const updateNodeCount = await updateNodes.count();
+    if (updateNodeCount < 1 || updateNodeCount > 10) throw new Error(`Expected 1-10 home update nodes, received ${updateNodeCount}`);
+    if (await web.locator('[data-update-month]').count() < 1) throw new Error('Home update timeline has no month markers');
+    const firstUpdate = updateNodes.first();
+    await firstUpdate.hover();
+    await firstUpdate.locator('[data-update-preview]').waitFor({ state: 'visible' });
+    if (await firstUpdate.locator('[data-update-preview] a').count() < 1) throw new Error('Update preview does not list individual updates');
+    const timelineGeometry = await web.evaluate(() => {
+      const rail = document.querySelector('[data-update-rail]');
+      const line = document.querySelector('[data-update-track-line]');
+      const firstNode = document.querySelector('[data-update-node]');
+      const pseudo = firstNode?.parentElement;
+      const firstDate = firstNode?.querySelector('[data-update-date]');
+      const firstDot = firstNode?.querySelector('[data-update-dot]');
+      const lineRect = line?.getBoundingClientRect();
+      const railStyle = rail ? getComputedStyle(rail) : null;
+      const pseudoStyle = pseudo ? getComputedStyle(pseudo, '::before') : null;
+      const dateRect = firstDate?.getBoundingClientRect();
+      const dotRect = firstDot?.getBoundingClientRect();
+      return {
+        lineCount: document.querySelectorAll('[data-update-track-line]').length,
+        lineWidth: lineRect?.width ?? 0,
+        railBorderTop: railStyle?.borderTopWidth ?? '',
+        pseudoDisplay: pseudoStyle?.display ?? '',
+        dateBelowDot: Boolean(dateRect && dotRect && dateRect.top >= dotRect.bottom),
+      };
+    });
+    if (timelineGeometry.lineCount !== 1 || timelineGeometry.pseudoDisplay !== 'none' || timelineGeometry.railBorderTop !== '0px') {
+      throw new Error(`Updates timeline should have one track line: ${JSON.stringify(timelineGeometry)}`);
+    }
+    if (!timelineGeometry.dateBelowDot) throw new Error(`Update date should be below its point: ${JSON.stringify(timelineGeometry)}`);
+    await firstUpdate.locator('[data-update-trigger]').click();
+    await firstUpdate.locator('[data-update-preview]').waitFor({ state: 'visible' });
+    await web.locator('[data-update-rail]').hover({ position: { x: 10, y: 10 } });
+    const previewStyle = await firstUpdate.locator('[data-update-preview]').evaluate((element) => {
+      const style = getComputedStyle(element);
+      return { pointerEvents: style.pointerEvents, overflowY: style.overflowY, maxHeight: style.maxHeight };
+    });
+    if (previewStyle.pointerEvents !== 'auto' || previewStyle.overflowY !== 'auto' || previewStyle.maxHeight === 'none') {
+      throw new Error(`Pinned update preview is not interactive/scrollable: ${JSON.stringify(previewStyle)}`);
+    }
+    const updateLink = firstUpdate.locator('[data-update-preview] a').first();
+    const updateHref = await updateLink.getAttribute('href');
+    if (!updateHref) throw new Error('Update preview link has no href');
+    await updateLink.click();
+    await web.waitForURL((url) => url.pathname === updateHref);
+    await web.goto(webUrl, { waitUntil: 'networkidle' });
+    await web.getByRole('heading', { name: 'Writings and thoughts' }).waitFor({ state: 'visible' });
+    if (await web.locator('[data-timeline-pin]').filter({ hasText: /\d/ }).count()) throw new Error('Recent content timeline pins still contain overlapping numbers');
+    const desktopOverflow = await web.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
+    if (desktopOverflow) throw new Error('Home page overflows horizontally at desktop width');
+
+    await web.setViewportSize({ width: 390, height: 844 });
+    await web.reload({ waitUntil: 'networkidle' });
+    if (await web.locator('[data-minimal-metadata]').evaluate((element) => getComputedStyle(element).display) !== 'none') throw new Error('Minimal metadata should be hidden on mobile');
+    const mobileOverflow = await web.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
+    if (mobileOverflow) {
+      const overflowDetails = await web.evaluate(() => ({
+        scrollWidth: document.documentElement.scrollWidth,
+        clientWidth: document.documentElement.clientWidth,
+        elements: [...document.querySelectorAll('*')].map((element) => {
+          const rect = element.getBoundingClientRect();
+          return { tag: element.tagName, className: typeof element.className === 'string' ? element.className : '', left: rect.left, right: rect.right, width: rect.width };
+        }).filter((element) => element.left < -1 || element.right > document.documentElement.clientWidth + 1).slice(0, 12),
+      }));
+      throw new Error(`Home page overflows horizontally at mobile width: ${JSON.stringify(overflowDetails)}`);
+    }
+    await web.getByRole('contentinfo').waitFor({ state: 'attached' });
+
+    await web.setViewportSize({ width: 1280, height: 900 });
     await web.goto(`${webUrl}${contentPath}`, { waitUntil: 'networkidle' });
     const webControlCounts = {
       inputs: await web.locator('input').count(),
@@ -177,11 +309,11 @@ async function main() {
     await admin.getByRole('button', { name: 'Enter workspace' }).click();
     await loginResponse;
     await statsResponse;
-    await admin.getByText('Good morning, operator.').waitFor({ state: 'visible', timeout: 5000 });
+    await admin.getByRole('heading', { name: 'Dashboard' }).waitFor({ state: 'visible', timeout: 5000 });
     const commentsResponse = admin.waitForResponse((response) => coreResponse(response, '/api/v1/admin/comments', 'GET', 200));
     await admin.getByRole('button', { name: 'Comments' }).click();
     await commentsResponse;
-    await admin.getByText('Keep the conversation kind.').waitFor({ state: 'visible', timeout: 5000 });
+    await admin.getByText('Review comments.').waitFor({ state: 'visible', timeout: 5000 });
     const targetRow = admin.locator('.moderation-row').filter({ hasText: commentBody });
     await targetRow.waitFor({ state: 'visible', timeout: 5000 });
     const approveResponse = admin.waitForResponse((response) => /\/api\/v1\/admin\/comments\/[^/]+\/approve$/.test(new URL(response.url()).pathname) && response.request().method() === 'POST' && response.status() === 204);
