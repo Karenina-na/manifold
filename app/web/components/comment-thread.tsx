@@ -40,7 +40,7 @@ export function CommentThread({ slug }: { slug: string }) {
   const comments = [...localPending, ...(commentsQuery.data?.data ?? [])];
 
   return <section className={styles.commentSection} aria-labelledby="comments-title">
-    <div className={styles.sectionHeading}><div><span className={styles.eyebrow}>Conversation</span><h2 id="comments-title">Leave a thoughtful trace</h2></div><span className={styles.commentCount}>{comments.length}</span></div>
+    <div className={styles.sectionHeading}><div><span className={styles.eyebrow}>Comments</span><h2 id="comments-title">Add a comment</h2></div><span className={styles.commentCount}>{comments.length}</span></div>
     {commentsQuery.isLoading && <p className={styles.muted}>Loading responses...</p>}
     {commentsQuery.isError && <p className={styles.errorText}>Responses are unavailable at the moment.</p>}
     {!commentsQuery.isLoading && !commentsQuery.isError && comments.length === 0 && <p className={styles.muted}>No responses yet. Start the thread.</p>}
@@ -50,9 +50,9 @@ export function CommentThread({ slug }: { slug: string }) {
         <label>Name <span>(optional)</span><TextField.Root {...form.register("authorName")} placeholder="Anonymous" autoComplete="name" />{form.formState.errors.authorName && <small>{form.formState.errors.authorName.message}</small>}</label>
         <label>Website <span>(optional)</span><TextField.Root {...form.register("authorUrl")} placeholder="https://" inputMode="url" autoComplete="url" />{form.formState.errors.authorUrl && <small>{form.formState.errors.authorUrl.message}</small>}</label>
       </div>
-      <label>Response<TextArea {...form.register("body")} placeholder="What stayed with you?" rows={5} />{form.formState.errors.body && <small>{form.formState.errors.body.message}</small>}</label>
+      <label>Comment<TextArea {...form.register("body")} placeholder="Write a comment" rows={5} />{form.formState.errors.body && <small>{form.formState.errors.body.message}</small>}</label>
       <label>Quick check <span>(what is 3 + 4?)</span><TextField.Root {...form.register("captcha")} inputMode="numeric" placeholder="7" />{form.formState.errors.captcha && <small>{form.formState.errors.captcha.message}</small>}</label>
-      {mutation.isError && <p className={styles.errorText}>Could not send this yet. Your draft is still here.</p>}
+      {mutation.isError && <p className={styles.errorText}>Could not send the comment. Please try again.</p>}
       <Button className={styles.primaryButton} type="submit" disabled={mutation.isPending}><Send size={15} /> {mutation.isPending ? "Sending..." : "Send for review"}</Button>
       {mutation.isSuccess && <p className={styles.successText}>Received. It will appear after a quick review.</p>}
     </form>

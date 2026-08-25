@@ -2,15 +2,17 @@ import type { Metadata } from "next";
 import "@radix-ui/themes/styles.css";
 import { Providers } from "../components/providers";
 import { SiteNav } from "../components/site-nav";
+import { BackgroundCanvas } from "../components/background-canvas";
+import { SiteFooter } from "../components/site-footer";
 import "./globals.css";
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"),
   title: {
-    default: "Manifold | A living space for ideas in motion",
+    default: "Manifold | Profile, writings, and thoughts",
     template: "%s | Manifold",
   },
-  description: "A focused archive for technology, thoughts, and manuscripts.",
+  description: "Profile, technical writings, short thoughts, and personal projects.",
   alternates: { canonical: "/" },
 };
 
@@ -19,8 +21,10 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html lang="en">
       <body>
         <Providers>
+          <BackgroundCanvas />
           <SiteNav />
-          {children}
+          <div className="siteContent">{children}</div>
+          <SiteFooter />
         </Providers>
       </body>
     </html>
