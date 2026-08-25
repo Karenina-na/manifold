@@ -15,18 +15,19 @@ Next Server/Browser Components
           +--> @manifold/contracts
 ```
 
-Server Component 负责首屏数据、详情读取和 SEO；Client Component 负责评论、反应、导航菜单、错误恢复和局部状态。
+Server Component 负责首屏数据、详情读取和 SEO；Client Component 负责评论、反应、导航菜单、命令式搜索、主题偏好、错误恢复和局部状态。顶部导航固定为居中 860px 毛玻璃容器，Home/Writings/Thoughts 使用 route-aware pill；搜索通过现有 SDK 的 `feed({ q, kind })` 同时检索两类公开内容，并提供 Profile 的简历链接。主题偏好仅保存在浏览器 `localStorage`，不改变 Core 数据或公共 API。Radix Theme 根节点使用 `hasBackground={false}`，由 Web 的 `--surface-paper` 统一管理页面背景，避免第三方主题默认白色背景形成横向色带。
 
 ## 2. 页面与路由
 
 | 路由 | 类型 | Core 数据 | 行为 |
 | --- | --- | --- | --- |
-| `/` | Dynamic Server Component | profile、site、2 条 Article、3 条 Thought、now、stats | Hero、Compact CV、Recent Activity、统计 |
+| `/` | Dynamic Server Component | profile、site、全部公开 Article/Thought 历史、now、stats | Profile/Introduction、Recent Content、Updates、年度 Contribution activity、My Series、Contact |
 | `/thoughts` | Dynamic Server Component | `feed({ kind: "THOUGHT" })` | 轻量时间线/标签入口 |
 | `/thoughts/[id]` | Dynamic Server Component | 通过 ID 获取 Thought 详情 | 复用统一阅读器和评论/反应 |
 | `/writing` | Dynamic Server Component | `content({ kind: "ARTICLE" })` | 长文列表、标签、阅读时长 |
 | `/writing/[slug]` | Dynamic Server Component | `contentBySlug(slug)` | SEO、TOC、Markdown、评论和反应 |
 | `/health` | Route Handler | 无 | Web 进程 liveness，Core 健康检查仍为 `/healthz` |
+| `/feed.xml` | Dynamic Route Handler | profile、2 条 Article、3 条 Thought | 输出同源 RSS 2.0 feed，复用首页 feed 数据 |
 
 详情页根据 content kind 选择返回路径：Thought 用 `/thoughts/{id}`，Article 用 `/writing/{slug}`。Core 返回的 `href` 是列表链接的来源，页面不自行重建业务 URL。
 
@@ -37,13 +38,15 @@ Server Component 负责首屏数据、详情读取和 SEO；Client Component 负
 ```text
 profile()
 site()
-feed({ limit: 2, kind: "ARTICLE" })
-feed({ limit: 3, kind: "THOUGHT" })
+feed({ limit: 50, kind: "ARTICLE", cursor })  // repeat until pagination ends or 1000 items
+feed({ limit: 50, kind: "THOUGHT", cursor })  // repeat until pagination ends or 1000 items
 now()
 stats()
 ```
 
-两组内容在 Web 内按 `publishedAt ?? createdAt` 倒序混排。统计、发布状态和内容计数只使用 Core 返回值，不在浏览器重新计算。任一请求失败时，首页显示 Core unavailable 状态，不暴露内部错误。
+两组内容在 Web 内按 `publishedAt ?? createdAt` 倒序混排，最多保留每类 1000 条历史副本并按 `updatedAt` 提供给年度 Contribution activity；首个分页请求失败时首页显示 Core unavailable，后续历史页失败则保留已获取数据，不阻断主页。统计、发布状态和内容计数只使用 Core 返回值；Contribution activity 只在 Web 展示边界按 UTC 日期聚合更新次数，不改变 Core 统计。任一首屏请求失败时，首页显示 Core unavailable 状态，不暴露内部错误。
+
+首页将 Profile 与 Introduction 合并为首屏画像模块，Introduction 使用不透明 surface；状态徽标使用 `now.mood`（无值时隐藏），并将 feed 在展示边界拆分为左右两列的 Writings/Thoughts 竖向时间线（各最多 3 条），保留 Core 返回的 `href`。其下展示按 `updatedAt` 倒序选取最近 10 个内容的横向 update rail：月份覆盖数据范围且等距分布，节点在对应月份区间内按日期比例定位；同一天的多个更新合并为一个日期节点，鼠标 hover 或键盘 focus 后在竖向预览中依次展示当天每条更新的标题、类型、摘要、时间和链接。Update rail 下方展示 GitHub 风格的 Contribution activity：年份下拉框切换完整年度，按 UTC 日期聚合内容 `updatedAt`，以 7 行周历网格和 0-4 级颜色表达当天更新数量，并在移动端只允许网格自身横向滚动。后续展示 Profile 的 My Series 索引卡片和不挤压的 Contact 面板。SiteFooter 使用匿名 `manifold.visitorId` 每 60 秒向 Core presence 发送心跳，展示最近 5 分钟活跃访客数，不使用 mock 数字。以上共同信息的排版参考仓库根目录 `1.html`，但内容仍以 Core 返回值为准；滚动渐显由 Web Client Component 的 IntersectionObserver 提供，不改变 Core 状态。
 
 ## 4. Markdown 阅读器
 

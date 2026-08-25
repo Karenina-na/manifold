@@ -4,6 +4,7 @@ import { loadHomeData, formatDate } from "../lib/api";
 import { buildUpdateTimeline } from "../lib/update-timeline";
 import { Reveal } from "../components/reveal";
 import { UpdateTimelineView } from "../components/update-timeline";
+import { ContributionHeatmap } from "../components/contribution-heatmap";
 import { MinimalMetadata } from "../components/minimal-metadata";
 import { FloatingRepl } from "../components/floating-repl";
 import styles from "./site.module.css";
@@ -29,6 +30,7 @@ export default async function Home() {
   const thoughts = data.feed?.filter((item) => item.kind === "THOUGHT").slice(0, 3) ?? [];
   const initials = profile?.displayName?.slice(0, 1).toUpperCase() ?? "M";
   const updateTimeline = buildUpdateTimeline(data.feed ?? []);
+  const contributionItems = data.contentHistory?.map(({ updatedAt, publishedAt, createdAt }) => ({ updatedAt, publishedAt, createdAt })) ?? [];
   const currentFocus = data.now?.mood ?? data.now?.title ?? "Open focus";
   const location = profile?.location?.split(",")[0]?.trim() || "Shanghai";
   const gitSha = process.env.NEXT_PUBLIC_GIT_SHA?.slice(0, 7) ?? "local";
@@ -73,6 +75,7 @@ export default async function Home() {
       <Reveal className={styles.sectionReveal}><section className={styles.updateRail} id="updates-section" data-update-rail aria-labelledby="updates-heading">
         <div className={styles.updateRailHeader}><div><span className={styles.eyebrow}>↗ Updates <span className={styles.eyebrowIndex}>/ 03</span></span><h2 id="updates-heading" className={styles.updateTitle}>A small record of what moved</h2></div><span className={styles.sectionHint}>Last 10 content updates</span></div>
         <UpdateTimelineView timeline={updateTimeline} />
+        <ContributionHeatmap items={contributionItems} />
       </section></Reveal>
       <SceneBreak />
 

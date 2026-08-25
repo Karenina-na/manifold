@@ -398,3 +398,42 @@
   .floatingRepl { right: 16px; bottom: 16px; }
   .replDialog { width: min(340px, calc(100vw - 32px)); }
 }
+
+/* GitHub-inspired contribution activity, kept quiet beside the main timeline. */
+.contributionHeatmap { margin-top: 24px; padding-top: 18px; border-top: 1px solid color-mix(in srgb, var(--color-line) 72%, transparent); }
+.contributionHeader { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
+.contributionHeading { display: grid; gap: 5px; }
+.contributionKicker { display: inline-flex; align-items: center; gap: 5px; color: var(--color-accent); font-family: var(--font-mono); font-size: 9px; letter-spacing: .08em; }
+.contributionHeading h3 { margin: 0; color: var(--color-ink); font-family: var(--app-font-serif); font-size: 18px; font-weight: 400; line-height: 1.3; }
+.contributionYear { display: inline-flex; align-items: center; gap: 8px; color: var(--color-muted); font-family: var(--font-mono); font-size: 9px; }
+.contributionSelectWrap { position: relative; display: inline-flex; align-items: center; }
+.contributionSelectWrap select { appearance: none; min-width: 76px; height: 30px; padding: 0 25px 0 10px; border: 1px solid var(--color-line); border-radius: 7px; outline: 0; background: var(--surface-paper); color: var(--color-ink); font-family: var(--font-mono); font-size: 10px; cursor: pointer; }
+.contributionSelectWrap select:focus-visible { border-color: var(--color-accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 16%, transparent); }
+.contributionSelectWrap svg { position: absolute; right: 8px; pointer-events: none; color: var(--color-muted); }
+.contributionSummary { margin-top: 12px; color: var(--color-muted); font-family: var(--font-mono); font-size: 10px; }
+.contributionSummary strong { color: var(--color-ink); font-weight: 500; }
+.contributionScroll { overflow-x: auto; margin-top: 17px; padding: 17px 0 5px; scrollbar-width: thin; }
+.contributionCanvas { position: relative; min-width: 714px; padding-left: 31px; }
+.contributionMonths { position: relative; height: 17px; margin-left: 31px; }
+.contributionMonths span { position: absolute; top: 0; color: var(--color-muted); font-family: var(--font-mono); font-size: 9px; transform: translateX(-2px); white-space: nowrap; }
+.contributionBody { display: grid; grid-template-columns: 25px 1fr; gap: 6px; }
+.contributionWeekdays { display: grid; grid-template-rows: repeat(7, 10px); gap: 3px; color: var(--color-muted); font-family: var(--font-mono); font-size: 8px; line-height: 10px; text-align: right; }
+.contributionGrid { display: grid; grid-template-columns: repeat(var(--contribution-weeks), 10px); gap: 3px; }
+.contributionWeek { display: grid; grid-template-rows: repeat(7, 10px); gap: 3px; }
+.contributionCell, .contributionCellOutside { display: block; width: 10px; height: 10px; border: 1px solid color-mix(in srgb, var(--color-line) 48%, transparent); border-radius: 2px; background: color-mix(in srgb, var(--color-line) 24%, transparent); }
+.contributionCell[data-level="0"] { background: color-mix(in srgb, var(--color-line) 28%, transparent); }
+.contributionCell[data-level="1"] { border-color: color-mix(in srgb, var(--color-accent) 22%, var(--color-line)); background: color-mix(in srgb, var(--color-accent) 22%, var(--surface-paper)); }
+.contributionCell[data-level="2"] { border-color: color-mix(in srgb, var(--color-accent) 38%, var(--color-line)); background: color-mix(in srgb, var(--color-accent) 42%, var(--surface-paper)); }
+.contributionCell[data-level="3"] { border-color: color-mix(in srgb, var(--color-accent) 58%, var(--color-line)); background: color-mix(in srgb, var(--color-accent) 65%, var(--surface-paper)); }
+.contributionCell[data-level="4"] { border-color: var(--color-accent); background: var(--color-accent); }
+[data-theme="dark"] .contributionCell[data-level="0"] { background: color-mix(in srgb, var(--color-line) 70%, transparent); }
+.contributionCell[role="img"] { cursor: help; transition: transform .16s ease, border-color .16s ease; }
+.contributionCell[role="img"]:hover, .contributionCell[role="img"]:focus-visible { border-color: var(--color-ink); transform: scale(1.35); outline: 0; }
+.contributionFooter { display: flex; align-items: center; justify-content: flex-end; gap: 6px; margin-top: 8px; color: var(--color-muted); font-family: var(--font-mono); font-size: 9px; }
+.contributionLegend { display: inline-flex; gap: 3px; }
+@media (max-width: 760px) {
+  .contributionHeader { align-items: flex-start; }
+  .contributionYear { display: grid; justify-items: end; gap: 5px; }
+  .contributionScroll { margin-right: -2px; }
+  .contributionCanvas { min-width: 714px; }
+}

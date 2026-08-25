@@ -267,6 +267,22 @@ async function main() {
       throw new Error(`Updates timeline should have one track line: ${JSON.stringify(timelineGeometry)}`);
     }
     if (!timelineGeometry.dateBelowDot) throw new Error(`Update date should be below its point: ${JSON.stringify(timelineGeometry)}`);
+    const contribution = web.locator('[data-contribution-heatmap]');
+    await contribution.waitFor({ state: 'visible' });
+    const contributionYears = contribution.locator('[data-contribution-year]');
+    if (await contributionYears.count() !== 1 || await contribution.locator('[data-contribution-month]').count() !== 12 || await contribution.locator('[data-contribution-cell]').count() < 365) {
+      throw new Error('Contribution heatmap does not render a complete year grid');
+    }
+    const contributionYear = await contributionYears.inputValue();
+    if (!contributionYear) throw new Error('Contribution heatmap year selector is empty');
+    const contributionGeometry = await contribution.evaluate((element) => {
+      const month = element.querySelector('[data-contribution-month]')?.getBoundingClientRect();
+      const firstCell = element.querySelector('[data-contribution-cell]')?.getBoundingClientRect();
+      return { monthLeft: month?.left ?? 0, firstCellLeft: firstCell?.left ?? 0 };
+    });
+    if (Math.abs(contributionGeometry.monthLeft - contributionGeometry.firstCellLeft) > 5) {
+      throw new Error(`Contribution month labels are misaligned: ${JSON.stringify(contributionGeometry)}`);
+    }
     await firstUpdate.locator('[data-update-trigger]').click();
     await firstUpdate.locator('[data-update-preview]').waitFor({ state: 'visible' });
     await web.locator('[data-update-rail]').hover({ position: { x: 10, y: 10 } });

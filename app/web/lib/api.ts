@@ -1,7 +1,9 @@
+import type { Content } from "@manifold/contracts";
 import { ManifoldClient } from "@manifold/sdk";
 
 const coreUrl = process.env.NEXT_PUBLIC_CORE_URL ?? "http://localhost:8080";
 const noStoreFetch: typeof fetch = (input, init) => fetch(input, { ...init, cache: "no-store" });
+const MAX_CONTENT_HISTORY = 1000;
 
 export function createServerClient() {
   return new ManifoldClient({ baseUrl: coreUrl, fetch: noStoreFetch });
@@ -20,15 +22,39 @@ export function getVisitorId() {
   return value;
 }
 
-export async function loadHomeData() {
+async function fetchPublicContent(client: ManifoldClient, kind: Content["kind"], includeHistory: boolean) {
+  const items: Content[] = [];
+  let cursor: string | undefined;
+  const seenCursors = new Set<string>();
+  do {
+    try {
+      const page = await client.feed({ kind, limit: includeHistory ? 50 : 10, cursor });
+      items.push(...page.data);
+      if (!includeHistory || items.length >= MAX_CONTENT_HISTORY) break;
+      const nextCursor = page.pagination.nextCursor ?? undefined;
+      if (!nextCursor || seenCursors.has(nextCursor)) break;
+      seenCursors.add(nextCursor);
+      cursor = nextCursor;
+    } catch (error) {
+      if (!items.length) throw error;
+      break;
+    }
+  } while (cursor);
+  return items.slice(0, MAX_CONTENT_HISTORY);
+}
+
+export async function loadHomeData({ includeHistory = true }: { includeHistory?: boolean } = {}) {
   const client = createServerClient();
   try {
+    const fetchContent = (kind: Content["kind"]) => fetchPublicContent(client, kind, includeHistory);
     const [profile, site, writings, thoughts, now, stats] = await Promise.all([
-      client.profile(), client.site(), client.feed({ limit: 2, kind: "ARTICLE" }), client.feed({ limit: 3, kind: "THOUGHT" }), client.now(), client.stats(),
+      client.profile(), client.site(), fetchContent("ARTICLE"), fetchContent("THOUGHT"), client.now(), client.stats(),
     ]);
-    return { profile, site, feed: [...writings.data, ...thoughts.data].sort((a, b) => Date.parse(b.publishedAt ?? b.createdAt) - Date.parse(a.publishedAt ?? a.createdAt)), now, stats, error: null };
+    const contentHistory = [...writings, ...thoughts].sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
+    const feed = [...contentHistory].sort((a, b) => Date.parse(b.publishedAt ?? b.createdAt) - Date.parse(a.publishedAt ?? a.createdAt));
+    return { profile, site, feed, contentHistory, now, stats, error: null };
   } catch {
-    return { profile: null, site: null, feed: null, now: null, stats: null, error: "Core is unavailable right now. Please try again in a moment." };
+    return { profile: null, site: null, feed: null, contentHistory: [], now: null, stats: null, error: "Core is unavailable right now. Please try again in a moment." };
   }
 }
 
