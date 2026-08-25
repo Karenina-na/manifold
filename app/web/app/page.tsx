@@ -5,6 +5,7 @@ import { buildUpdateTimeline } from "../lib/update-timeline";
 import { Reveal } from "../components/reveal";
 import { UpdateTimelineView } from "../components/update-timeline";
 import { MinimalMetadata } from "../components/minimal-metadata";
+import { FloatingRepl } from "../components/floating-repl";
 import styles from "./site.module.css";
 
 export const dynamic = "force-dynamic";
@@ -28,9 +29,13 @@ export default async function Home() {
   const thoughts = data.feed?.filter((item) => item.kind === "THOUGHT").slice(0, 3) ?? [];
   const initials = profile?.displayName?.slice(0, 1).toUpperCase() ?? "M";
   const updateTimeline = buildUpdateTimeline(data.feed ?? []);
+  const currentFocus = data.now?.mood ?? data.now?.title ?? "Open focus";
+  const location = profile?.location?.split(",")[0]?.trim() || "Shanghai";
+  const gitSha = process.env.NEXT_PUBLIC_GIT_SHA?.slice(0, 7) ?? "local";
 
   return <main className={styles.page}>
-    <MinimalMetadata />
+    <MinimalMetadata focus={currentFocus} location={location} gitSha={gitSha} />
+    <FloatingRepl displayName={profile?.displayName ?? "Manifold"} handle={profile?.handle} focus={currentFocus} papers={writings.map((item) => ({ title: item.title || "Untitled writing", href: item.href }))} />
     <div className={styles.shell}>
       {data.error && <p className={styles.errorBanner}>{data.error}</p>}
       <Reveal className={styles.introReveal}><section className={styles.profileSection} id="profile-section" aria-labelledby="intro-heading">
@@ -84,10 +89,17 @@ export default async function Home() {
 
       <Reveal className={styles.sectionReveal}><section className={styles.contactSection} id="contact-section" aria-labelledby="contact-heading">
         <div className={styles.sectionHeading}><div><span className={styles.eyebrow}>↘ Contact <span className={styles.eyebrowIndex}>/ 05</span></span><h2 id="contact-heading">Contact</h2></div><span className={styles.sectionHint}>Public links</span></div>
-        <div className={styles.contactPanel} data-contact-panel><div className={styles.contactGrid}>{(profile?.contacts ?? []).map((contact, index) => <a className={styles.contactItem} data-contact-item href={contact.url} key={contact.url} target={contact.url.startsWith("http") ? "_blank" : undefined} rel={contact.url.startsWith("http") ? "noreferrer" : undefined} aria-describedby={`contact-tooltip-${index}`} aria-label={`${contact.label}: ${contact.handle ?? contact.url}`}>
-          <span className={styles.contactIcon} aria-hidden="true">{contact.label.toLowerCase().includes("mail") ? <Mail size={15} /> : contact.label.toLowerCase().includes("whats") ? <MessageCircle size={15} /> : <Send size={15} />}</span>
-          <span className={styles.contactTooltip} id={`contact-tooltip-${index}`} data-contact-tooltip role="tooltip"><strong>{contact.label}</strong><span>{contact.handle ?? contact.url.replace(/^https?:\/\//, "")}</span><small>{contact.url}</small></span>
-        </a>)}</div>{!(profile?.contacts?.length) && <p className={styles.muted}>Public contact links will appear here.</p>}</div>
+        <div className={styles.contactPanel} data-contact-panel>
+          <div className={styles.contactPanelMeta}>
+            <span className={styles.contactPanelKicker}>PUBLIC CHANNELS</span>
+            <strong>{profile?.contacts?.length ?? 0} available {profile?.contacts?.length === 1 ? "link" : "links"}</strong>
+          </div>
+          <div className={styles.contactGrid}>{(profile?.contacts ?? []).map((contact, index) => <a className={styles.contactItem} data-contact-item href={contact.url} key={contact.url} target={contact.url.startsWith("http") ? "_blank" : undefined} rel={contact.url.startsWith("http") ? "noreferrer" : undefined} aria-describedby={`contact-tooltip-${index}`} aria-label={`${contact.label}: ${contact.handle ?? contact.url}`}>
+            <span className={styles.contactIcon} aria-hidden="true">{contact.label.toLowerCase().includes("github") ? <Globe2 size={16} /> : contact.label.toLowerCase().includes("mail") ? <Mail size={15} /> : contact.label.toLowerCase().includes("whats") ? <MessageCircle size={15} /> : <Send size={15} />}</span>
+            <span className={styles.contactTooltip} id={`contact-tooltip-${index}`} data-contact-tooltip role="tooltip"><span className={styles.tooltipMeta}>CONTACT</span><strong>{contact.label}</strong><span>{contact.handle ?? contact.url.replace(/^https?:\/\//, "")}</span><small>{contact.url}</small></span>
+          </a>)}</div>
+          {!(profile?.contacts?.length) && <p className={styles.muted}>No public links yet.</p>}
+        </div>
       </section></Reveal>
 
     </div>

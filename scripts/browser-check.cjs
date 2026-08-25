@@ -140,6 +140,45 @@ async function main() {
     await web.getByRole('heading', { name: 'Writings and thoughts' }).waitFor({ state: 'visible' });
     await web.getByRole('heading', { name: 'My Series' }).waitFor({ state: 'visible' });
     await web.getByRole('contentinfo').getByText(/\d+ readers online/).waitFor({ state: 'visible', timeout: 5000 });
+    if (await web.locator('[data-manifold-physics]').count() !== 1) throw new Error('Manifold physics canvas is missing');
+    const telemetry = web.locator('[data-metadata-telemetry]');
+    await telemetry.waitFor({ state: 'visible' });
+    const telemetryText = await telemetry.textContent();
+    if (!telemetryText?.includes('LIVE') || !telemetryText.includes('UTC+8') || !telemetryText.includes('HEAD')) {
+      throw new Error(`Live status tape is incomplete: ${telemetryText}`);
+    }
+    const firstMetadataMarker = web.locator('[data-metadata-marker]').first();
+    await firstMetadataMarker.hover();
+    const metadataPreview = firstMetadataMarker.locator('[data-metadata-preview]');
+    await metadataPreview.waitFor({ state: 'visible' });
+    if (!(await metadataPreview.textContent())?.includes('Profile')) throw new Error('Mini-map preview does not identify its section');
+    const repl = web.locator('[data-floating-repl]');
+    await repl.getByRole('button', { name: /Open command line/i }).click();
+    const replDialog = repl.getByRole('dialog');
+    await replDialog.waitFor({ state: 'visible' });
+    const replInput = replDialog.getByRole('textbox', { name: 'Command line' });
+    await replInput.fill('whoami');
+    await replInput.press('Enter');
+    if (!(await replDialog.locator('[data-repl-output]').last().textContent())?.includes('Manifold')) throw new Error('REPL whoami command did not return the profile');
+    await replInput.fill('papers');
+    await replInput.press('Enter');
+    if ((await replDialog.locator('[data-repl-output]').last().textContent())?.includes('No papers')) throw new Error('REPL papers command returned an empty result unexpectedly');
+    await replInput.fill('ascii');
+    await replInput.press('Enter');
+    if (!(await replDialog.locator('[data-repl-output]').last().textContent())?.includes('manifold in motion')) throw new Error('REPL ASCII easter egg did not return its output');
+    await replDialog.getByRole('button', { name: /Close command line/i }).click();
+    await web.keyboard.press('Control+j');
+    await repl.getByRole('dialog').waitFor({ state: 'visible' });
+    await repl.getByRole('button', { name: /Close command line/i }).click();
+    const canvasMetrics = await web.evaluate(() => {
+      const canvas = document.querySelector('[data-manifold-physics]');
+      if (!(canvas instanceof HTMLCanvasElement)) return { width: 0, height: 0, energy: 0 };
+      const context = canvas.getContext('2d');
+      if (!context) return { width: canvas.width, height: canvas.height, energy: 0 };
+      const sample = context.getImageData(0, 0, Math.min(canvas.width, 320), Math.min(canvas.height, 180)).data;
+      return { width: canvas.width, height: canvas.height, energy: sample.reduce((total, value) => total + value, 0) };
+    });
+    if (!canvasMetrics.width || !canvasMetrics.height || canvasMetrics.energy === 0) throw new Error(`Manifold physics canvas is blank: ${JSON.stringify(canvasMetrics)}`);
     const seriesCard = web.locator('[data-series-card]').first();
     await seriesCard.waitFor({ state: 'visible' });
     await seriesCard.hover();

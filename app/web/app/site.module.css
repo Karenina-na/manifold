@@ -303,6 +303,23 @@
   .contactTooltip { width: min(280px, calc(100vw - 40px)); }
 }
 
+/* Contact rail: a balanced footer-side entry point with upward previews. */
+.contactPanel { display: flex; align-items: center; justify-content: space-between; gap: 24px; width: 100%; min-height: 78px; padding: 17px 20px; border: 1px solid color-mix(in srgb, var(--color-line) 72%, transparent); border-radius: 10px; background: color-mix(in srgb, var(--surface-paper) 82%, transparent); backdrop-filter: blur(8px); }
+.contactPanelMeta { display: grid; flex: 1 1 auto; gap: 6px; min-width: 0; }
+.contactPanelKicker { color: var(--color-accent); font-family: var(--font-mono); font-size: 9px; letter-spacing: .1em; }
+.contactPanelMeta strong { color: var(--color-ink); font-family: var(--font-mono); font-size: 11px; font-weight: 500; letter-spacing: .02em; white-space: nowrap; }
+.contactPanel .contactGrid { display: flex !important; flex: 0 0 auto; flex-wrap: wrap; justify-content: flex-end; align-items: center; width: auto; gap: 10px; }
+.contactPanel .contactItem { width: 44px; height: 38px; flex: 0 0 44px; border-color: color-mix(in srgb, var(--color-line) 86%, transparent); background: color-mix(in srgb, var(--surface-paper) 72%, var(--color-accent-soft)); }
+.contactPanel .contactItem:focus-visible { outline: 2px solid color-mix(in srgb, var(--color-accent) 60%, transparent); outline-offset: 3px; }
+.contactPanel .contactTooltip { top: auto; bottom: calc(100% + 10px); }
+.contactPanel .contactItem:nth-last-child(-n + 2) .contactTooltip { right: 0; left: auto; }
+.contactPanel .muted { margin: 0; }
+@media (max-width: 760px) {
+  .contactPanel { align-items: flex-start; flex-direction: column; gap: 14px; padding: 15px 16px; }
+  .contactPanel .contactGrid { width: 100%; justify-content: flex-start; }
+  .contactPanel .contactItem:nth-last-child(-n + 2) .contactTooltip { right: auto; left: 0; width: min(280px, calc(100vw - 40px)); }
+}
+
 /* Updates interaction pass: one axis, dates under points, and pinned readable previews. */
 .updateRail { border: 0; background: color-mix(in srgb, var(--surface-paper) 82%, transparent); backdrop-filter: blur(8px); }
 .updateTimeline { padding: 18px 10px 2px; }
@@ -338,4 +355,46 @@
   .updateNode[data-update-edge="start"] .updatePreview[data-open="true"] { transform: translate(0, 0); }
   .updateNode[data-update-edge="end"] .updatePreview { left: auto; right: 0; transform: translate(0, 6px); }
   .updateNode[data-update-edge="end"] .updatePreview[data-open="true"] { transform: translate(0, 0); }
+}
+
+/* The side metadata acts as a quiet telemetry tape and an interactive mini-map. */
+.metadataTelemetry { position: absolute; top: 68%; left: max(16px, calc((100vw - 780px) / 2 - 204px)); display: grid; width: min(180px, max(0px, calc((100vw - 780px) / 2 - 24px))); gap: 9px; color: color-mix(in srgb, var(--color-muted) 78%, transparent); writing-mode: horizontal-tb; text-orientation: mixed; transform: translateY(-50%); white-space: normal; pointer-events: auto; }
+.telemetryItem { display: inline-flex; align-items: flex-start; gap: 6px; line-height: 1.3; }
+.telemetryItem:first-child { color: var(--color-success); }
+.telemetryOnlineDot { width: 5px; height: 5px; flex: 0 0 5px; border-radius: 50%; background: var(--color-success); box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-success) 18%, transparent); }
+.metadataPreview { position: absolute; top: 50%; right: 30px; display: grid; gap: 5px; width: 205px; padding: 12px 13px; border: 1px solid var(--color-line); border-radius: 8px; background: color-mix(in srgb, var(--surface-paper) 96%, transparent); box-shadow: 0 12px 30px rgba(24, 24, 20, .12); color: var(--color-muted); opacity: 0; visibility: hidden; pointer-events: none; transform: translateY(-50%) translateX(6px); transition: opacity .18s ease, transform .18s ease, visibility .18s ease; writing-mode: horizontal-tb; text-align: left; white-space: normal; }
+.metadataMarker:hover .metadataPreview, .metadataMarker:focus-visible .metadataPreview { opacity: 1; visibility: visible; pointer-events: auto; transform: translateY(-50%) translateX(0); }
+.metadataPreview strong { color: var(--color-ink); font-family: var(--app-font-serif); font-size: 14px; font-weight: 400; line-height: 1.25; }
+.metadataPreview small { color: var(--color-muted); font-family: var(--app-font-sans); font-size: 11px; line-height: 1.45; }
+.metadataPreview code { color: var(--color-accent); font-family: var(--font-mono); font-size: 9px; }
+@media (max-width: 760px) {
+  .metadataTelemetry { display: none; }
+}
+
+@media (min-width: 761px) and (max-width: 980px) {
+  .metadataTelemetry { display: none; }
+}
+
+/* A small command surface that stays out of the reading flow until invoked. */
+.floatingRepl { position: fixed; z-index: 18; right: 24px; bottom: 24px; color: var(--color-ink); font-family: var(--font-mono); font-size: 10px; }
+.replCapsule { display: inline-flex; align-items: center; gap: 7px; min-height: 34px; padding: 0 11px; border: 1px solid color-mix(in srgb, var(--color-line) 82%, transparent); border-radius: 999px; background: color-mix(in srgb, var(--surface-paper) 86%, transparent); box-shadow: 0 8px 24px rgba(24, 24, 20, .1); backdrop-filter: blur(10px); color: var(--color-muted); cursor: pointer; transition: border-color .2s ease, color .2s ease, transform .2s ease, background .2s ease; }
+.replCapsule:hover, .replCapsule:focus-visible { border-color: color-mix(in srgb, var(--color-accent) 50%, var(--color-line)); background: var(--surface-paper); color: var(--color-ink); transform: translateY(-2px); }
+.replCapsule kbd { color: var(--color-muted); font-size: 9px; }
+.replDialog { display: grid; width: min(340px, calc(100vw - 32px)); overflow: hidden; border: 1px solid var(--color-line); border-radius: 10px; background: color-mix(in srgb, var(--surface-paper) 95%, transparent); box-shadow: 0 18px 50px rgba(24, 24, 20, .16); backdrop-filter: blur(14px); }
+.replHeader { display: flex; align-items: center; justify-content: space-between; padding: 9px 10px 8px 12px; border-bottom: 1px solid var(--color-line); color: var(--color-muted); font-size: 10px; letter-spacing: .04em; }
+.replHeader > span { display: inline-flex; align-items: center; gap: 6px; }
+.replClose { display: inline-grid; place-items: center; width: 25px; height: 25px; border: 0; border-radius: 50%; background: transparent; color: var(--color-muted); cursor: pointer; }
+.replClose:hover, .replClose:focus-visible { background: var(--color-accent-soft); color: var(--color-ink); }
+.replBody { display: grid; gap: 10px; max-height: 250px; overflow-y: auto; padding: 12px; }
+.replWelcome, .replOutput { display: grid; gap: 4px; line-height: 1.45; }
+.replWelcome > span { color: var(--color-accent); }
+.replWelcome small, .replOutput > span:not(.replPrompt) { color: var(--color-muted); font-size: 10px; }
+.replOutput { padding-top: 8px; border-top: 1px solid var(--color-line); }
+.replPrompt { color: var(--color-accent); }
+.replForm { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-top: 1px solid var(--color-line); }
+.replForm input { min-width: 0; flex: 1; border: 0; outline: 0; background: transparent; color: var(--color-ink); font-family: var(--font-mono); font-size: 11px; }
+.replForm input::placeholder { color: var(--color-muted); opacity: .72; }
+@media (max-width: 760px) {
+  .floatingRepl { right: 16px; bottom: 16px; }
+  .replDialog { width: min(340px, calc(100vw - 32px)); }
 }
