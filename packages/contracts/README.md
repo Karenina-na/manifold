@@ -41,10 +41,11 @@ Thought 的 `ThoughtMetadata` 字段为 `mood`、`question`、`context`、`sourc
 
 ### 其他公共资源
 
-- `Profile` / `ProfileInput`：身份、简介、网站、简历、兴趣、教育和经历。
+- `Profile` / `ProfileInput`：身份、简介、网站、简历、兴趣、教育、经历、个人 Series 和联系方式。`series` 使用 `{ name, url, description, category? }`，`contacts` 使用 `{ label, url, handle?, icon? }`。
 - `SiteComposition` / `SiteConfig`：首页内容引用、导航和 sections。
 - `NowStatus`：当前状态标题、详情、mood 和时间戳。
 - `Stats` / `AdminStats`：公开统计和 Admin 待审核评论数量。
+- `PresenceStatus`：匿名在线心跳返回的活跃访客数和观测时间；Core 只保留短期心跳，不返回访客身份。
 - `Comment`、`CommentStatus`、`CreateCommentInput`：评论和审核状态。
 - `ReactionKind`、`ReactionSummary`：LIKE/FAVORITE 及访客状态。
 - `Collection<T>`、`Pagination`：统一列表响应。
