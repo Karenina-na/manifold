@@ -12,6 +12,8 @@ CREATE TABLE IF NOT EXISTS profile (
     interests_json TEXT NOT NULL DEFAULT '[]',
     education_json TEXT NOT NULL DEFAULT '[]',
     experience_json TEXT NOT NULL DEFAULT '[]',
+    series_json TEXT NOT NULL DEFAULT '[]',
+    contacts_json TEXT NOT NULL DEFAULT '[]',
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -67,6 +69,11 @@ CREATE TABLE IF NOT EXISTS reactions (
     UNIQUE (content_id, visitor_id, kind)
 );
 
+CREATE TABLE IF NOT EXISTS presence (
+    visitor_id TEXT PRIMARY KEY,
+    last_seen_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS audit_events (
     id TEXT PRIMARY KEY,
     event_name TEXT NOT NULL,
@@ -82,4 +89,5 @@ CREATE TABLE IF NOT EXISTS audit_events (
 CREATE INDEX IF NOT EXISTS idx_content_publication ON content(status, published_at DESC);
 CREATE INDEX IF NOT EXISTS idx_comments_content_status ON comments(content_id, status, created_at);
 CREATE INDEX IF NOT EXISTS idx_reactions_content_kind ON reactions(content_id, kind);
+CREATE INDEX IF NOT EXISTS idx_presence_last_seen ON presence(last_seen_at);
 CREATE INDEX IF NOT EXISTS idx_audit_events_created_at ON audit_events(created_at DESC);

@@ -81,6 +81,7 @@ func newRouter(cfg config.Config, database *store.Store, auditEvents events.Audi
 		api.Get("/site", h.site)
 		api.Get("/feed", h.feed)
 		api.Get("/stats", h.stats)
+		api.Post("/presence", h.presence)
 		api.Get("/content", h.listContent)
 		api.Get("/content/{slug}", h.getContent)
 		api.Get("/content/{slug}/comments", h.listPublicComments)
@@ -207,6 +208,20 @@ func (h *apiHandler) stats(w http.ResponseWriter, _ *http.Request) {
 	}
 	h.statsCache.Set(stats)
 	WriteJSON(w, http.StatusOK, stats)
+}
+
+func (h *apiHandler) presence(w http.ResponseWriter, r *http.Request) {
+	visitorID, err := visitorID(r, true)
+	if err != nil {
+		WriteError(w, http.StatusBadRequest, "VISITOR_ID_INVALID", "Visitor ID is required and invalid.")
+		return
+	}
+	activeVisitors, err := h.store.TouchPresence(visitorID)
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, "PRESENCE_UNAVAILABLE", "Presence is unavailable.")
+		return
+	}
+	WriteJSON(w, http.StatusOK, model.PresenceStatus{ActiveVisitors: activeVisitors, ObservedAt: time.Now().UTC().Format(time.RFC3339)})
 }
 
 func (h *apiHandler) listContent(w http.ResponseWriter, r *http.Request) {

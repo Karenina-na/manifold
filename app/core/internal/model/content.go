@@ -21,6 +21,8 @@ type Profile struct {
 	Interests    []string            `json:"interests,omitempty"`
 	Education    []map[string]string `json:"education,omitempty"`
 	Experience   []map[string]string `json:"experience,omitempty"`
+	Series       []map[string]string `json:"series,omitempty"`
+	Contacts     []map[string]string `json:"contacts,omitempty"`
 	UpdatedAt    string              `json:"updatedAt"`
 }
 
@@ -90,4 +92,9 @@ type Stats struct {
 	ThoughtCount int    `json:"thoughtCount"`
 	WordCount    int    `json:"wordCount"`
 	UpdatedAt    string `json:"updatedAt"`
+}
+
+type PresenceStatus struct {
+	ActiveVisitors int    `json:"activeVisitors"`
+	ObservedAt     string `json:"observedAt"`
 }

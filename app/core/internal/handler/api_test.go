@@ -72,6 +72,31 @@ func TestCommentWithoutAuthorNameUsesAnonymous(t *testing.T) {
 	}
 }
 
+func TestPresenceCountsRecentVisitors(t *testing.T) {
+	router := newTestRouter(t)
+
+	heartbeat := func(visitor string) *httptest.ResponseRecorder {
+		recorder := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/presence", nil)
+		req.Header.Set("X-Visitor-ID", visitor)
+		router.ServeHTTP(recorder, req)
+		return recorder
+	}
+
+	first := heartbeat("visitor-a")
+	if first.Code != http.StatusOK || !strings.Contains(first.Body.String(), `"activeVisitors":1`) {
+		t.Fatalf("expected one active visitor, got %d %s", first.Code, first.Body.String())
+	}
+	second := heartbeat("visitor-b")
+	if second.Code != http.StatusOK || !strings.Contains(second.Body.String(), `"activeVisitors":2`) {
+		t.Fatalf("expected two active visitors, got %d %s", second.Code, second.Body.String())
+	}
+	invalid := heartbeat("short")
+	if invalid.Code != http.StatusBadRequest || !strings.Contains(invalid.Body.String(), "VISITOR_ID_INVALID") {
+		t.Fatalf("expected invalid visitor id 400, got %d %s", invalid.Code, invalid.Body.String())
+	}
+}
+
 func TestContentReactionFlowIsIdempotentAndVisitorScoped(t *testing.T) {
 	router := newTestRouter(t)
 
@@ -520,8 +545,8 @@ func TestAdminConfigurationManagement(t *testing.T) {
 	router := newTestRouter(t)
 	token := adminToken(t, router)
 
-	profile := adminRequest(t, router, token, http.MethodPatch, "/api/v1/admin/profile", `{"displayName":"Updated Garden","handle":"@updated"}`)
-	if profile.Code != http.StatusOK || !strings.Contains(profile.Body.String(), "Updated Garden") {
+	profile := adminRequest(t, router, token, http.MethodPatch, "/api/v1/admin/profile", `{"displayName":"Updated Garden","handle":"@updated","series":[{"name":"Relay","url":"https://relay.example","description":"A public relay","category":"Infrastructure"}],"contacts":[{"label":"WhatsApp","url":"https://wa.me/123","handle":"+123"}]}`)
+	if profile.Code != http.StatusOK || !strings.Contains(profile.Body.String(), "Updated Garden") || !strings.Contains(profile.Body.String(), "Relay") || !strings.Contains(profile.Body.String(), "WhatsApp") {
 		t.Fatalf("expected profile update 200, got %d %s", profile.Code, profile.Body.String())
 	}
 

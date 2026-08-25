@@ -15,20 +15,24 @@ import (
 )
 
 const schema = `
-CREATE TABLE IF NOT EXISTS profile (id TEXT PRIMARY KEY, display_name TEXT NOT NULL, handle TEXT NOT NULL DEFAULT '', headline TEXT NOT NULL DEFAULT '', bio TEXT NOT NULL DEFAULT '', location TEXT NOT NULL DEFAULT '', avatar_url TEXT NOT NULL DEFAULT '', organization TEXT NOT NULL DEFAULT '', website_url TEXT NOT NULL DEFAULT '', resume_url TEXT NOT NULL DEFAULT '', interests_json TEXT NOT NULL DEFAULT '[]', education_json TEXT NOT NULL DEFAULT '[]', experience_json TEXT NOT NULL DEFAULT '[]', updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS profile (id TEXT PRIMARY KEY, display_name TEXT NOT NULL, handle TEXT NOT NULL DEFAULT '', headline TEXT NOT NULL DEFAULT '', bio TEXT NOT NULL DEFAULT '', location TEXT NOT NULL DEFAULT '', avatar_url TEXT NOT NULL DEFAULT '', organization TEXT NOT NULL DEFAULT '', website_url TEXT NOT NULL DEFAULT '', resume_url TEXT NOT NULL DEFAULT '', interests_json TEXT NOT NULL DEFAULT '[]', education_json TEXT NOT NULL DEFAULT '[]', experience_json TEXT NOT NULL DEFAULT '[]', series_json TEXT NOT NULL DEFAULT '[]', contacts_json TEXT NOT NULL DEFAULT '[]', updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS content (id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK (kind IN ('THOUGHT', 'ARTICLE')), status TEXT NOT NULL DEFAULT 'DRAFT' CHECK (status IN ('DRAFT', 'PUBLISHED', 'DELETED')), slug TEXT UNIQUE, title TEXT, summary TEXT NOT NULL DEFAULT '', body TEXT NOT NULL DEFAULT '', tags_json TEXT NOT NULL DEFAULT '[]', metadata_json TEXT NOT NULL DEFAULT '{}', published_at TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, version INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS now_status (id TEXT PRIMARY KEY, title TEXT NOT NULL, detail TEXT NOT NULL DEFAULT '', mood TEXT NOT NULL DEFAULT 'FOCUSED', updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS site_config (id TEXT PRIMARY KEY, featured_content_json TEXT NOT NULL DEFAULT '[]', navigation_json TEXT NOT NULL DEFAULT '[]', sections_json TEXT NOT NULL DEFAULT '[]', updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS comments (id TEXT PRIMARY KEY, content_id TEXT NOT NULL REFERENCES content(id), author_name TEXT NOT NULL, author_url TEXT NOT NULL DEFAULT '', body TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'APPROVED', 'REJECTED')), reply_to_id TEXT REFERENCES comments(id), created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS reactions (id TEXT PRIMARY KEY, content_id TEXT NOT NULL REFERENCES content(id) ON DELETE CASCADE, visitor_id TEXT NOT NULL, kind TEXT NOT NULL CHECK (kind IN ('LIKE', 'FAVORITE')), created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE (content_id, visitor_id, kind));
+CREATE TABLE IF NOT EXISTS presence (visitor_id TEXT PRIMARY KEY, last_seen_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS audit_events (id TEXT PRIMARY KEY, event_name TEXT NOT NULL, resource_type TEXT NOT NULL, resource_id TEXT NOT NULL DEFAULT '', actor TEXT NOT NULL DEFAULT 'anonymous', request_id TEXT NOT NULL DEFAULT '', trace_id TEXT NOT NULL DEFAULT '', metadata_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE INDEX IF NOT EXISTS idx_content_publication ON content(status, published_at DESC);
 CREATE INDEX IF NOT EXISTS idx_comments_content_status ON comments(content_id, status, created_at);
 CREATE INDEX IF NOT EXISTS idx_reactions_content_kind ON reactions(content_id, kind);
+CREATE INDEX IF NOT EXISTS idx_presence_last_seen ON presence(last_seen_at);
 CREATE INDEX IF NOT EXISTS idx_audit_events_created_at ON audit_events(created_at DESC);
 `
 
 type Store struct{ DB *sql.DB }
+
+const presenceTTL = 5 * time.Minute
 
 var (
 	ErrContentNotFound = errors.New("content not found")
@@ -256,7 +260,7 @@ func ensureProfileColumns(db *sql.DB) error {
 	if err := rows.Err(); err != nil {
 		return err
 	}
-	for _, column := range []string{"resume_url", "interests_json", "education_json", "experience_json"} {
+	for _, column := range []string{"resume_url", "interests_json", "education_json", "experience_json", "series_json", "contacts_json"} {
 		if !columns[column] {
 			defaultValue := "'[]'"
 			if column == "resume_url" {
@@ -274,10 +278,34 @@ func (s *Store) Close() error { return s.DB.Close() }
 
 func (s *Store) seed() error {
 	now := time.Now().UTC().Format(time.RFC3339)
-	if _, err := s.DB.Exec(`INSERT OR IGNORE INTO profile (id, display_name, handle, headline, bio, location, organization, website_url, resume_url, interests_json, education_json, experience_json, updated_at) VALUES ('profile_1', 'Manifold', '@manifold', 'Personal research and software notes.', 'A quiet archive for thoughts and long-form technical writing.', 'Peking, China', 'Independent', 'https://manifold.local', '', '["systems","research","writing"]', '[{"institution":"Independent","program":"Research and engineering","period":"Now"}]', '[{"organization":"Manifold","role":"Research and software","period":"Now"}]', ?)`, now); err != nil {
+	if _, err := s.DB.Exec(`INSERT OR IGNORE INTO profile (id, display_name, handle, headline, bio, location, organization, website_url, resume_url, interests_json, education_json, experience_json, series_json, contacts_json, updated_at) VALUES ('profile_1', 'Manifold', '@manifold', 'Profile, writings, and thoughts.', 'Technical writings and short thoughts.', 'Peking, China', 'Independent', 'https://manifold.local', '', '["systems","research","writing"]', '[{"institution":"Independent","program":"Research and engineering","period":"Now"}]', '[{"organization":"Manifold","role":"Research and software","period":"Now"}]', '[{"name":"API relay","url":"https://api.weizixiang.dev","description":"A small public gateway for experiments and personal infrastructure.","category":"Infrastructure"},{"name":"OpenList","url":"https://openlist.weizixiang.dev","description":"A calm index for files, links, and things worth keeping close.","category":"Tool"}]', '[{"label":"GitHub","url":"https://github.com/manifold-space/manifold","handle":"@manifold-space"},{"label":"Email","url":"mailto:hello@manifold.local","handle":"hello@manifold.local"}]', ?)`, now); err != nil {
 		return err
 	}
-	if _, err := s.DB.Exec(`INSERT OR IGNORE INTO now_status (id, title, detail, mood, updated_at) VALUES ('now_1', 'Making room for the next question', 'Balancing research notes with the work of turning them into useful systems.', 'FOCUSED', ?)`, now); err != nil {
+	if _, err := s.DB.Exec(`UPDATE profile SET series_json = '[{"name":"API relay","url":"https://api.weizixiang.dev","description":"A small public gateway for experiments and personal infrastructure.","category":"Infrastructure"},{"name":"OpenList","url":"https://openlist.weizixiang.dev","description":"A calm index for files, links, and things worth keeping close.","category":"Tool"}]' WHERE id = 'profile_1' AND series_json = '[]'`); err != nil {
+		return err
+	}
+	if _, err := s.DB.Exec(`UPDATE profile SET contacts_json = '[{"label":"GitHub","url":"https://github.com/manifold-space/manifold","handle":"@manifold-space"},{"label":"Email","url":"mailto:hello@manifold.local","handle":"hello@manifold.local"}]' WHERE id = 'profile_1' AND contacts_json = '[]'`); err != nil {
+		return err
+	}
+	if _, err := s.DB.Exec(`UPDATE profile SET headline = 'Profile, writings, and thoughts.', bio = 'Technical writings and short thoughts.' WHERE id = 'profile_1' AND headline = 'A living digital garden for ideas in motion.'`); err != nil {
+		return err
+	}
+	if _, err := s.DB.Exec(`UPDATE profile SET bio = 'Technical writings and short thoughts.' WHERE id = 'profile_1' AND bio = 'Technical writings and short thoughtsxxxxx'`); err != nil {
+		return err
+	}
+	if _, err := s.DB.Exec(`UPDATE now_status SET title = 'Balancing current work', detail = 'Current work across software and research.' WHERE id = 'now_1' AND title = 'Building the first garden'`); err != nil {
+		return err
+	}
+	if _, err := s.DB.Exec(`UPDATE content SET summary = 'Notes on designing boundaries in personal systems.' WHERE id = 'content_1' AND summary = 'A field note on keeping a personal system calm and extensible.'`); err != nil {
+		return err
+	}
+	if _, err := s.DB.Exec(`UPDATE content SET summary = 'Short note on when to turn an observation into a system.', body = 'Not every observation needs a system. First decide whether it changes the way you work.' WHERE id = 'content_2' AND summary = 'Not every thought needs to become a system. Some only need a place to land.'`); err != nil {
+		return err
+	}
+	if _, err := s.DB.Exec(`UPDATE content SET summary = 'Questions about the relationship between software and daily life.' WHERE id = 'content_3' AND summary = 'A research notebook for questions that sit between engineering and lived experience.'`); err != nil {
+		return err
+	}
+	if _, err := s.DB.Exec(`INSERT OR IGNORE INTO now_status (id, title, detail, mood, updated_at) VALUES ('now_1', 'Balancing current work', 'Current work across software and research.', 'FOCUSED', ?)`, now); err != nil {
 		return err
 	}
 	if _, err := s.DB.Exec(`INSERT OR IGNORE INTO site_config (id, featured_content_json, navigation_json, sections_json, updated_at) VALUES ('site_1', ?, ?, ?, ?)`, encodeJSON([]model.SiteContentRef{{ID: "content_1", Kind: model.ContentKindArticle}}), encodeJSON([]model.SiteNavigationItem{{Label: "Thoughts", Href: "/thoughts"}, {Label: "Writings", Href: "/writing"}}), encodeJSON([]string{"PROFILE", "CV", "RECENT_ACTIVITY"}), now); err != nil {
@@ -286,9 +314,9 @@ func (s *Store) seed() error {
 	seedContent := []struct {
 		id, kind, slug, title, summary, body, tags, metadata string
 	}{
-		{"content_1", "ARTICLE", "designing-boundaries", "Designing Boundaries", "A long-form note on keeping a personal system calm and extensible.", "# Designing Boundaries\n\nA good personal system leaves room for the next thought without making today harder.\n\n## The boundary\n\nSmall interfaces protect attention.", `["systems","design"]`, `{"technologies":["Go","SQLite","Next.js"],"language":"Go","difficulty":"INTERMEDIATE","readingMinutes":6,"toc":[{"id":"the-boundary","label":"The boundary","level":2}]}`},
-		{"content_2", "THOUGHT", "a-small-signal", "A Small Signal", "A thought that needs a place to land before it becomes a system.", "Some thoughts only need a place to land before they become a system.", `["thinking"]`, `{"mood":"Curious","question":"What deserves a place to land?"}`},
-		{"content_3", "ARTICLE", "reading-the-edge", "Reading the Edge", "A long-form manuscript for questions between engineering and lived experience.", "## Open question\n\nHow do small tools change the way we notice the world?", `["systems"]`, `{"readingMinutes":3,"toc":[{"id":"open-question","label":"Open question","level":2}]}`},
+		{"content_1", "ARTICLE", "designing-boundaries", "Designing Boundaries", "Notes on designing boundaries in personal systems.", "# Designing Boundaries\n\nA personal system should preserve attention and make the next action clear.\n\n## The boundary\n\nSmall interfaces reduce unnecessary decisions.", `["systems","design"]`, `{"technologies":["Go","SQLite","Next.js"],"language":"Go","difficulty":"INTERMEDIATE","readingMinutes":6,"toc":[{"id":"the-boundary","label":"The boundary","level":2}]}`},
+		{"content_2", "THOUGHT", "a-small-signal", "A Small Signal", "Short note on when to turn an observation into a system.", "Not every observation needs a system. First decide whether it changes the way you work.", `["thinking"]`, `{"mood":"Curious","question":"When is a system justified?"}`},
+		{"content_3", "ARTICLE", "reading-the-edge", "Reading the Edge", "Questions about the relationship between software and daily life.", "## Open question\n\nHow do small tools change the way we notice the world?", `["systems"]`, `{"readingMinutes":3,"toc":[{"id":"open-question","label":"Open question","level":2}]}`},
 	}
 	for _, item := range seedContent {
 		if _, err := s.DB.Exec(`INSERT OR IGNORE INTO content (id, kind, status, slug, title, summary, body, tags_json, metadata_json, published_at, created_at, updated_at) VALUES (?, ?, 'PUBLISHED', NULLIF(?, ''), NULLIF(?, ''), ?, ?, ?, ?, ?, ?, ?)`, item.id, item.kind, item.slug, item.title, item.summary, item.body, item.tags, item.metadata, now, now, now); err != nil {
@@ -327,16 +355,18 @@ func encodeJSON(value any) string {
 
 func (s *Store) GetProfile() (model.Profile, error) {
 	var p model.Profile
-	var interests, education, experience string
-	err := s.DB.QueryRow(`SELECT id, display_name, handle, headline, bio, avatar_url, location, organization, website_url, resume_url, interests_json, education_json, experience_json, updated_at FROM profile WHERE id = 'profile_1'`).Scan(&p.ID, &p.DisplayName, &p.Handle, &p.Headline, &p.Bio, &p.AvatarURL, &p.Location, &p.Organization, &p.WebsiteURL, &p.ResumeURL, &interests, &education, &experience, &p.UpdatedAt)
+	var interests, education, experience, series, contacts string
+	err := s.DB.QueryRow(`SELECT id, display_name, handle, headline, bio, avatar_url, location, organization, website_url, resume_url, interests_json, education_json, experience_json, series_json, contacts_json, updated_at FROM profile WHERE id = 'profile_1'`).Scan(&p.ID, &p.DisplayName, &p.Handle, &p.Headline, &p.Bio, &p.AvatarURL, &p.Location, &p.Organization, &p.WebsiteURL, &p.ResumeURL, &interests, &education, &experience, &series, &contacts, &p.UpdatedAt)
 	_ = json.Unmarshal([]byte(interests), &p.Interests)
 	_ = json.Unmarshal([]byte(education), &p.Education)
 	_ = json.Unmarshal([]byte(experience), &p.Experience)
+	_ = json.Unmarshal([]byte(series), &p.Series)
+	_ = json.Unmarshal([]byte(contacts), &p.Contacts)
 	return p, err
 }
 
 func (s *Store) UpdateProfile(p model.Profile) error {
-	_, err := s.DB.Exec(`UPDATE profile SET display_name = ?, handle = ?, headline = ?, bio = ?, avatar_url = ?, location = ?, organization = ?, website_url = ?, resume_url = ?, interests_json = ?, education_json = ?, experience_json = ?, updated_at = ? WHERE id = 'profile_1'`, p.DisplayName, p.Handle, p.Headline, p.Bio, p.AvatarURL, p.Location, p.Organization, p.WebsiteURL, p.ResumeURL, encodeJSON(p.Interests), encodeJSON(p.Education), encodeJSON(p.Experience), time.Now().UTC().Format(time.RFC3339))
+	_, err := s.DB.Exec(`UPDATE profile SET display_name = ?, handle = ?, headline = ?, bio = ?, avatar_url = ?, location = ?, organization = ?, website_url = ?, resume_url = ?, interests_json = ?, education_json = ?, experience_json = ?, series_json = ?, contacts_json = ?, updated_at = ? WHERE id = 'profile_1'`, p.DisplayName, p.Handle, p.Headline, p.Bio, p.AvatarURL, p.Location, p.Organization, p.WebsiteURL, p.ResumeURL, encodeJSON(p.Interests), encodeJSON(p.Education), encodeJSON(p.Experience), encodeJSON(p.Series), encodeJSON(p.Contacts), time.Now().UTC().Format(time.RFC3339))
 	return err
 }
 
@@ -488,6 +518,22 @@ func (s *Store) Stats() (model.Stats, error) {
 	err := s.DB.QueryRow(`SELECT COUNT(*), SUM(kind = 'ARTICLE'), SUM(kind = 'THOUGHT'), COALESCE(SUM(length(body) - length(replace(body, ' ', '')) + 1), 0) FROM content WHERE status = 'PUBLISHED'`).Scan(&stats.ContentCount, &stats.ArticleCount, &stats.ThoughtCount, &stats.WordCount)
 	stats.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 	return stats, err
+}
+
+func (s *Store) TouchPresence(visitorID string) (int, error) {
+	now := time.Now().UTC()
+	cutoff := now.Add(-presenceTTL).Format(time.RFC3339)
+	if _, err := s.DB.Exec(`DELETE FROM presence WHERE last_seen_at < ?`, cutoff); err != nil {
+		return 0, err
+	}
+	if _, err := s.DB.Exec(`INSERT INTO presence (visitor_id, last_seen_at) VALUES (?, ?) ON CONFLICT(visitor_id) DO UPDATE SET last_seen_at = excluded.last_seen_at`, visitorID, now.Format(time.RFC3339)); err != nil {
+		return 0, err
+	}
+	var activeVisitors int
+	if err := s.DB.QueryRow(`SELECT COUNT(*) FROM presence WHERE last_seen_at >= ?`, cutoff).Scan(&activeVisitors); err != nil {
+		return 0, err
+	}
+	return activeVisitors, nil
 }
 
 func (s *Store) ListComments(contentID, status string) ([]model.Comment, error) {
