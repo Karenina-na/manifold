@@ -4,11 +4,11 @@
 
 ## 1. 背景与边界
 
-`app/core` 是 Manifold 唯一的后端服务和业务数据所有者。它为公开 Web 和私有 Admin 提供 REST/JSON API，并负责 SQLite、鉴权、内容生命周期、评论审核、访客反应、统计、缓存和审计。
+`app/core` 是 Manifold 唯一的后端服务和业务数据所有者。它为公开 Web 和私有 Admin 提供 REST/JSON API，并负责 SQLite、鉴权、内容生命周期、评论审核、访客反应、匿名在线 Presence、统计、缓存和审计。
 
 Core 不负责页面布局、Markdown HTML 展示、浏览器状态、Admin 表单或 PWA。Web/Admin 只能通过 `packages/sdk` 访问 Core，不能读 SQLite 或导入 Core 的 Go 内部包。
 
-当前产品范围：Home、Thoughts、Writings、Profile、Site、Now、Comments、Reactions、Stats。内容只有 `THOUGHT` 与 `ARTICLE` 两种类型；Projects、Technology、Manuscript、ResearchSeries 等是历史或未来规划，不是当前运行时 API。
+当前产品范围：Home、Thoughts、Writings、Profile、Site、Now、Comments、Reactions、匿名 Presence、Stats。内容只有 `THOUGHT` 与 `ARTICLE` 两种类型；Projects、Technology、Manuscript、ResearchSeries 等是历史或未来规划，不是当前运行时 API。
 
 ## 2. 架构
 
@@ -107,7 +107,7 @@ Core 使用 `caarlos0/env` 读取 `CORE_` 前缀变量，不自动读取仓库�
 | 方法 | 路径 | 返回/行为 |
 | --- | --- | --- |
 | `GET` | `/healthz` | `{ status: "ok", version }` |
-| `GET` | `/api/v1/profile` | `Profile` |
+| `GET` | `/api/v1/profile` | `Profile`，包含身份、教育/经历、个人 `series` 和 `contacts` |
 | `GET` | `/api/v1/site` | 首页 profile 引用、精选内容、导航和 sections |
 | `GET` | `/api/v1/feed` | 内容集合，使用与 `/content` 相同的筛选 |
 | `GET` | `/api/v1/content` | 已发布内容摘要集合 |
@@ -119,6 +119,7 @@ Core 使用 `caarlos0/env` 读取 `CORE_` 前缀变量，不自动读取仓库�
 | `DELETE` | `/api/v1/content/{slug}/reactions/{kind}` | 移除反应，200 |
 | `GET` | `/api/v1/now` | `NowStatus` |
 | `GET` | `/api/v1/stats` | 已发布统计 `Stats` |
+| `POST` | `/api/v1/presence` | 使用 `X-Visitor-ID` 更新匿名心跳，返回最近 5 分钟活跃访客数 |
 
 内容列表参数：
 
@@ -140,7 +141,7 @@ limit=1..50
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| `GET/PATCH` | `/api/v1/admin/profile` | 读取/更新 Profile、简历、兴趣、教育、经历 |
+| `GET/PATCH` | `/api/v1/admin/profile` | 读取/更新 Profile、简历、兴趣、教育、经历、个人 Series 和联系方式 |
 | `GET/PATCH` | `/api/v1/admin/site` | 读取/更新首页 composition |
 | `GET` | `/api/v1/admin/content` | 管理内容列表，支持 `kind`、`status`、`tag`、`q`、cursor |
 | `POST` | `/api/v1/admin/content` | 创建 DRAFT |
@@ -173,7 +174,7 @@ limit=1..50
 
 Metadata：Thought 使用 `mood/question/context/source`；Article 使用 `readingMinutes/toc/frontmatter/technologies/language/difficulty/repositoryUrl`。Core 会校验 metadata 的类型、长度、TOC 层级、技术标签和难度枚举。
 
-其他表：`profile`、`site_config`、`now_status`、`comments`、`reactions`、`audit_events`。Profile 包含 `resume_url`、`interests_json`、`education_json`、`experience_json`；Site 是单例配置；评论默认 PENDING；反应有 `(content_id, visitor_id, kind)` 唯一约束。
+其他表：`profile`、`site_config`、`now_status`、`comments`、`reactions`、`presence`、`audit_events`。Profile 包含 `resume_url`、`interests_json`、`education_json`、`experience_json`、`series_json`、`contacts_json`；Series 项为 `{name,url,description,category?}`，联系方式为 `{label,url,handle?,icon?}`；Site 是单例配置；评论默认 PENDING；反应有 `(content_id, visitor_id, kind)` 唯一约束；Presence 只保存匿名 visitor ID 的最近心跳时间，过期窗口为 5 分钟。
 
 旧 SQLite content 类型迁移规则：`POST/RESEARCH/TECH/MANUSCRIPT -> ARTICLE`，`NOTE -> THOUGHT`，并重建 kind CHECK 约束。迁移必须保持可重复执行。
 
