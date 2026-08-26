@@ -88,13 +88,15 @@
 }
 
 /* Public home: centered navigation, readable timelines, and quiet motion. */
+:global(:root) { --motion-fast: 180ms; --motion-base: 320ms; --motion-slow: 560ms; --motion-ease: cubic-bezier(.22, 1, .36, 1); }
+html { scroll-behavior: smooth; }
 .navbar { display: grid; grid-template-columns: 1fr auto 1fr; }
 .identity { grid-column: 1; grid-row: 1; justify-self: start; }
 .navLinks { display: contents; }
 .navPills { grid-column: 2; grid-row: 1; justify-self: center; }
 .navUtilities { grid-column: 3; grid-row: 1; justify-self: end; }
-.introReveal, .sectionReveal { opacity: 1; transform: none; }
-.introReveal[data-revealed="true"], .sectionReveal[data-revealed="true"] { animation: revealIn .65s ease both; }
+.introReveal, .sectionReveal { opacity: 0; transform: translateY(18px); transition: opacity var(--motion-slow) var(--motion-ease), transform var(--motion-slow) var(--motion-ease); }
+.introReveal[data-revealed="true"], .sectionReveal[data-revealed="true"] { opacity: 1; transform: translateY(0); }
 .sectionReveal:nth-of-type(3) { transition-delay: .06s; }
 .sectionReveal:nth-of-type(4) { transition-delay: .12s; }
 .sectionReveal:nth-of-type(5) { transition-delay: .18s; }
@@ -466,4 +468,22 @@
   .contributionYear { display: grid; justify-items: end; gap: 5px; }
   .contributionScroll { margin-right: -2px; }
   .contributionCanvas { min-width: 714px; }
+}
+
+/* Restrained Home interaction motion with a consistent editorial easing curve. */
+.timelineItem { transition: background var(--motion-base) var(--motion-ease), transform var(--motion-base) var(--motion-ease), padding-left var(--motion-base) var(--motion-ease); }
+.seriesCard { transition: border-color var(--motion-base) var(--motion-ease), background var(--motion-base) var(--motion-ease), transform var(--motion-base) var(--motion-ease), box-shadow var(--motion-base) var(--motion-ease); }
+.seriesCard:hover { transform: translateY(-5px); box-shadow: 0 12px 26px rgba(24, 24, 20, .08); }
+.contactItem { transition: color var(--motion-base) var(--motion-ease), background var(--motion-base) var(--motion-ease), transform var(--motion-base) var(--motion-ease); }
+.sectionReveal[data-revealed="true"] .timelineItem,
+.sectionReveal[data-revealed="true"] .seriesTooltipAnchor,
+.sectionReveal[data-revealed="true"] .contactItem { animation: childReveal var(--motion-slow) var(--motion-ease) both; }
+.sectionReveal[data-revealed="true"] .timelineItem:nth-child(2), .sectionReveal[data-revealed="true"] .seriesTooltipAnchor:nth-child(2), .sectionReveal[data-revealed="true"] .contactItem:nth-child(2) { animation-delay: 70ms; }
+.sectionReveal[data-revealed="true"] .timelineItem:nth-child(3), .sectionReveal[data-revealed="true"] .seriesTooltipAnchor:nth-child(3), .sectionReveal[data-revealed="true"] .contactItem:nth-child(3) { animation-delay: 140ms; }
+.sectionReveal[data-revealed="true"] .timelineItem:nth-child(4), .sectionReveal[data-revealed="true"] .seriesTooltipAnchor:nth-child(4), .sectionReveal[data-revealed="true"] .contactItem:nth-child(4) { animation-delay: 210ms; }
+@keyframes childReveal { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+  .introReveal, .sectionReveal { opacity: 1; transform: none; }
 }
