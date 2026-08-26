@@ -37,7 +37,7 @@ export class ManifoldClient {
 	site() { return this.request<SiteComposition>("/api/v1/site"); }
 	feed(query?: ContentQuery) { return this.request<Collection<Content>>(this.withQuery("/api/v1/feed", query)); }
 	content(query?: ContentQuery) { return this.request<Collection<Content>>(this.withQuery("/api/v1/content", query)); }
-	contentBySlug(slug: string) { return this.request<ContentDetail>(`/api/v1/content/${encodeURIComponent(slug)}`); }
+	contentBySlug(slug: string, options?: { trackView?: boolean }) { return this.request<ContentDetail>(this.withQuery(`/api/v1/content/${encodeURIComponent(slug)}`, options?.trackView === false ? { trackView: false } : undefined)); }
 	now() { return this.request<NowStatus>("/api/v1/now"); }
 	stats() { return this.request<Stats>("/api/v1/stats"); }
 	presence(visitorId: string) { return this.request<PresenceStatus>("/api/v1/presence", { method: "POST", headers: { "X-Visitor-ID": visitorId } }); }

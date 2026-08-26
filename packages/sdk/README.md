@@ -45,7 +45,7 @@ const page = await client.content({ kind: "ARTICLE", limit: 20 })
 | `site()` | GET | `/api/v1/site` | `SiteComposition` |
 | `feed(query?)` | GET | `/api/v1/feed` | `Collection<Content>` |
 | `content(query?)` | GET | `/api/v1/content` | `Collection<Content>`，内容项包含 `viewCount` / `likeCount` |
-| `contentBySlug(slug)` | GET | `/api/v1/content/:slug` | `ContentDetail` |
+| `contentBySlug(slug, options?)` | GET | `/api/v1/content/:slug` | `ContentDetail`；`{ trackView: false }` 用于不计入浏览量的 metadata 读取 |
 | `now()` | GET | `/api/v1/now` | `NowStatus` |
 | `stats()` | GET | `/api/v1/stats` | `Stats` |
 | `presence(visitorId)` | POST | `/api/v1/presence` | `PresenceStatus` |

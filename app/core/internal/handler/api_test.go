@@ -74,6 +74,10 @@ func TestContentListIncludesViewAndLikeCounts(t *testing.T) {
 	if first.Code != http.StatusOK {
 		t.Fatalf("expected detail 200, got %d", first.Code)
 	}
+	metadata := request(t, router, http.MethodGet, "/api/v1/content/designing-boundaries?trackView=false", nil)
+	if metadata.Code != http.StatusOK {
+		t.Fatalf("expected metadata detail 200, got %d", metadata.Code)
+	}
 	liked := requestWithVisitor(t, router, http.MethodPut, "/api/v1/content/designing-boundaries/reactions/LIKE", "visitor-a")
 	if liked.Code != http.StatusOK {
 		t.Fatalf("expected reaction 200, got %d", liked.Code)

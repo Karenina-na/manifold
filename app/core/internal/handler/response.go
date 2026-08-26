@@ -253,11 +253,13 @@ func (h *apiHandler) getContent(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	viewCount, likeCount, err := h.store.RecordContentView(content.ID)
-	if err != nil {
-		slog.Error("content_view_count_failed", "contentId", content.ID, "error", err)
-	} else {
-		content.ViewCount, content.LikeCount = viewCount, likeCount
+	if r.URL.Query().Get("trackView") != "false" {
+		viewCount, likeCount, err := h.store.RecordContentView(content.ID)
+		if err != nil {
+			slog.Error("content_view_count_failed", "contentId", content.ID, "error", err)
+		} else {
+			content.ViewCount, content.LikeCount = viewCount, likeCount
+		}
 	}
 	if slug != "" {
 		h.contentCache.Set(slug, content)

@@ -111,7 +111,7 @@ Core 使用 `caarlos0/env` 读取 `CORE_` 前缀变量，不自动读取仓库�
 | `GET` | `/api/v1/site` | 首页 profile 引用、精选内容、导航和 sections |
 | `GET` | `/api/v1/feed` | 内容集合，使用与 `/content` 相同的筛选 |
 | `GET` | `/api/v1/content` | 已发布内容摘要集合，包含 `viewCount` 和 `likeCount` 聚合值 |
-| `GET` | `/api/v1/content/{slug}` | 通过 slug 或 ID 返回已发布详情和 Markdown body，并记录一次 `content.viewed` 审计事件 |
+| `GET` | `/api/v1/content/{slug}` | 通过 slug 或 ID 返回已发布详情和 Markdown body；默认记录一次 `content.viewed` 审计事件，内部 metadata 请求可传 `trackView=false` 跳过计数 |
 | `GET` | `/api/v1/content/{slug}/comments` | 只返回 `APPROVED` 评论 |
 | `POST` | `/api/v1/content/{slug}/comments` | 创建 `PENDING` 评论，201 |
 | `GET` | `/api/v1/content/{slug}/reactions` | 反应统计和当前访客状态 |

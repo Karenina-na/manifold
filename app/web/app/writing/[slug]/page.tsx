@@ -18,7 +18,7 @@ function MetadataBlock({ content }: { content: ContentDetail }) {
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
-  const content = await createServerClient().contentBySlug(slug).catch(() => null);
+  const content = await createServerClient().contentBySlug(slug, { trackView: false }).catch(() => null);
   if (!content) return { title: "Writing" };
   return { title: content.title || "Thought", description: content.summary, alternates: { canonical: `/writing/${content.slug || content.id}` }, openGraph: { title: content.title || "Thought", description: content.summary, type: "article" } };
 }
