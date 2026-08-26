@@ -39,7 +39,7 @@ export function CommentThread({ slug }: { slug: string }) {
   });
   const comments = [...localPending, ...(commentsQuery.data?.data ?? [])];
 
-  return <section className={styles.commentSection} aria-labelledby="comments-title">
+  return <section id="comments" className={styles.commentSection} aria-labelledby="comments-title">
     <div className={styles.sectionHeading}><div><span className={styles.eyebrow}>Comments</span><h2 id="comments-title">Add a comment</h2></div><span className={styles.commentCount}>{comments.length}</span></div>
     {commentsQuery.isLoading && <p className={styles.muted}>Loading responses...</p>}
     {commentsQuery.isError && <p className={styles.errorText}>Responses are unavailable at the moment.</p>}

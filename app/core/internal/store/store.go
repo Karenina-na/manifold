@@ -687,11 +687,34 @@ func (s *Store) AuditEventCount() (int, error) {
 func (s *Store) CreateContent(c model.Content) (model.Content, error) {
 	now := time.Now().UTC().Format(time.RFC3339)
 	c.ID, c.Status, c.CreatedAt, c.UpdatedAt, c.Version = "content_"+time.Now().UTC().Format("20060102150405.000000000"), "DRAFT", now, now, 1
+	c.Metadata = normalizeArticleMetadata(string(c.Kind), c.Body, c.Metadata)
 	_, err := s.DB.Exec(`INSERT INTO content (id, kind, status, slug, title, summary, body, tags_json, metadata_json, created_at, updated_at) VALUES (?, ?, ?, NULLIF(?, ''), NULLIF(?, ''), ?, ?, ?, ?, ?, ?)`, c.ID, c.Kind, c.Status, c.Slug, c.Title, c.Summary, c.Body, encodeStrings(c.Tags), encodeJSON(c.Metadata), now, now)
 	return c, err
 }
 
 func (s *Store) UpdateContent(id string, update ContentUpdate) error {
+	if update.Body != nil || update.Metadata != nil || update.Kind != nil {
+		current, err := s.GetContentByID(id, true)
+		if err != nil {
+			return err
+		}
+		effectiveKind := current.Kind
+		if update.Kind != nil {
+			effectiveKind = *update.Kind
+		}
+		effectiveBody := current.Body
+		if update.Body != nil {
+			effectiveBody = *update.Body
+		}
+		effectiveMetadata := current.Metadata
+		if update.Metadata != nil {
+			effectiveMetadata = *update.Metadata
+		}
+		if effectiveKind == model.ContentKindArticle {
+			normalized := normalizeArticleMetadata(string(effectiveKind), effectiveBody, effectiveMetadata)
+			update.Metadata = &normalized
+		}
+	}
 	sets := make([]string, 0, 4)
 	args := make([]any, 0, 7)
 	if update.Title != nil {

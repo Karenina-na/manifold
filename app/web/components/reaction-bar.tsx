@@ -8,9 +8,9 @@ import type { ReactionKind, ReactionSummary } from "@manifold/contracts";
 import { createBrowserClient, getVisitorId } from "../lib/api";
 import styles from "../app/site.module.css";
 
-type ReactionBarProps = { slug: string };
+type ReactionBarProps = { slug: string; compact?: boolean };
 
-export function ReactionBar({ slug }: ReactionBarProps) {
+export function ReactionBar({ slug, compact = false }: ReactionBarProps) {
   const client = useMemo(() => createBrowserClient(), []);
   const [visitorId] = useState(() => typeof window === "undefined" ? "" : getVisitorId());
   const queryClient = useQueryClient();
@@ -35,7 +35,7 @@ export function ReactionBar({ slug }: ReactionBarProps) {
 
   const summary = query.data ?? { likeCount: 0, favoriteCount: 0, viewerLiked: false, viewerFavorited: false };
   const toggle = (kind: ReactionKind, enabled: boolean) => { if (visitorId) mutation.mutate({ kind, enabled }); };
-  return <div className={styles.reactionBar} aria-label="Reactions">
+  return <div className={`${styles.reactionBar} ${compact ? styles.reactionBarCompact : ""}`} aria-label="Reactions">
     <Button className={`${styles.reactionButton} ${summary.viewerLiked ? styles.reactionButtonActive : ""}`} variant="soft" type="button" aria-pressed={summary.viewerLiked} aria-label={`${summary.viewerLiked ? "Remove" : "Add"} like`} onClick={() => toggle("LIKE", !summary.viewerLiked)} disabled={mutation.isPending}>
       <Heart size={16} fill={summary.viewerLiked ? "currentColor" : "none"} /> <span>{summary.likeCount}</span>
     </Button>

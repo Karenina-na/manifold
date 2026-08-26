@@ -25,7 +25,7 @@ Server Component 负责首屏数据、详情读取和 SEO；Client Component 负
 | `/thoughts` | Dynamic Server Component | `feed({ kind: "THOUGHT" })` | 轻量时间线/标签入口 |
 | `/thoughts/[id]` | Dynamic Server Component | 通过 ID 获取 Thought 详情 | 复用统一阅读器和评论/反应 |
 | `/writing` | Dynamic Server Component + client archive controls | `content({ kind: "ARTICLE", limit: 100 })` | 双栏长文归档、置顶首篇、搜索、标签筛选、最新/最早/最近更新排序与 sticky 侧栏；列表展示 Core 聚合的浏览量和点赞数；从详情页通过浏览器历史返回时刷新 RSC 数据 |
-| `/writing/[slug]` | Dynamic Server Component | `contentBySlug(slug)` | SEO、TOC、Markdown、评论和反应 |
+| `/writing/[slug]` | Dynamic Server Component + client reading controls | `contentBySlug(slug)` | 白色阅读面、同排日期/阅读时长/语言/统计、Markdown、左侧操作卡、右侧进度目录、评论和反应 |
 | `/health` | Route Handler | 无 | Web 进程 liveness，Core 健康检查仍为 `/healthz` |
 | `/feed.xml` | Dynamic Route Handler | profile、2 条 Article、3 条 Thought | 输出同源 RSS 2.0 feed，复用首页 feed 数据 |
 
@@ -61,7 +61,7 @@ Web 和 Admin 使用相同的 Markdown 能力组合：
 
 `app/web/components/markdown-content.tsx` 统一生成 h2/h3 anchor id、代码工具条和复制状态。Core 只存 Markdown，不承诺内容生成的 HTML 安全；禁止使用 `dangerouslySetInnerHTML` 绕过清洗。
 
-Article 的 `metadata.toc` 是 Core 持久化的目录来源，Web 使用对应 `id` 生成 sticky TOC。新增运行时标题 ID 算法时必须同步 Core metadata 约定和 Admin 编辑/生成逻辑。
+Article 的 `metadata.toc` 和 `readingMinutes` 由 Core 在保存时从 Markdown 派生。Web 使用对应 `id` 生成右侧 sticky 目录和阅读进度，左侧操作卡承载点赞、收藏、评论跳转和分享，并在页面末尾进入视口时向底部过渡。新增运行时标题 ID 算法时必须同步 Core metadata 约定和 Admin 编辑/生成逻辑。
 
 ## 5. 评论与反应
 

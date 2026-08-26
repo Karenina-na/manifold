@@ -130,6 +130,7 @@ button { cursor: pointer; }
 .checkbox-label { display: flex !important; align-items: center; grid-template-columns: auto 1fr; }
 .checkbox-label input { width: auto !important; accent-color: var(--accent); }
 .markdown-preview { min-height: 406px; max-height: 620px; overflow: auto; padding: 18px; border: 1px solid var(--line); background: var(--surface); line-height: 1.65; }.markdown-preview h2, .markdown-preview h3 { font-family: Georgia, serif; font-weight: 400; }.markdown-preview pre { overflow: auto; padding: 14px; background: var(--ink); color: var(--paper); }.markdown-preview code { font-family: ui-monospace, monospace; }.markdown-preview .katex-display { overflow-x: auto; overflow-y: hidden; }
+.article-editor-grid { align-items: start; }.article-metadata-stack { padding-top: 4px; border-top: 1px solid var(--line); }.field-hint { margin: 8px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
 
 @media (max-width: 920px) {
   .admin-shell { grid-template-columns: 70px minmax(0, 1fr); }

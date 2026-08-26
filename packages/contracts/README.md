@@ -29,8 +29,8 @@ Article 的 `ArticleMetadata` 字段：
 
 | 字段 | 类型 | 语义 |
 | --- | --- | --- |
-| `readingMinutes` | `number` | 非负整数阅读时长 |
-| `toc` | `{ id, label, level }[]` | `level` 只能是 2 或 3 |
+| `readingMinutes` | `number` | Core 根据文章正文计算的阅读时长 |
+| `toc` | `{ id, label, level }[]` | Core 根据二、三级 Markdown 标题生成，`level` 只能是 2 或 3 |
 | `frontmatter` | `Record<string, string>` | 独立 JSON 元数据，不是 YAML 解析结果 |
 | `technologies` | `string[]` | 技术标签 |
 | `language` | `string` | 文章主要语言 |

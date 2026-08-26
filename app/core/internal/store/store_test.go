@@ -3,6 +3,7 @@ package store
 import (
 	"database/sql"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/manifold-space/manifold/app/core/internal/model"
@@ -42,7 +43,7 @@ func TestContentMetadataPersistsAcrossReads(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer database.Close()
-	created, err := database.CreateContent(model.Content{Kind: model.ContentKindArticle, Slug: "metadata-test", Title: "Metadata", Body: "Body", Metadata: map[string]any{"readingMinutes": float64(4)}})
+	created, err := database.CreateContent(model.Content{Kind: model.ContentKindArticle, Slug: "metadata-test", Title: "Metadata", Body: "Body", Metadata: map[string]any{"language": "Go"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,10 +51,58 @@ func TestContentMetadataPersistsAcrossReads(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if read.Metadata["readingMinutes"] != float64(4) {
-		t.Fatalf("expected metadata to persist, got %#v", read.Metadata)
+	if read.Metadata["language"] != "Go" || read.Metadata["readingMinutes"] != float64(1) {
+		t.Fatalf("expected editorial and derived metadata to persist, got %#v", read.Metadata)
 	}
 }
+
+func TestArticleMetadataIsDerivedFromMarkdown(t *testing.T) {
+	database, err := Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+
+	created, err := database.CreateContent(model.Content{
+		Kind:     model.ContentKindArticle,
+		Slug:     "derived-metadata",
+		Title:    "Derived metadata",
+		Body:     "## First section\n\nA short paragraph with several words.\n\n### Detail\n\n```md\n## Not a heading\n```\n\n## First section\n\nAnother paragraph.",
+		Metadata: map[string]any{"language": "Go", "readingMinutes": float64(99)},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	read, err := database.GetContentByID(created.ID, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if read.Metadata["readingMinutes"] != float64(1) {
+		t.Fatalf("expected computed one-minute read, got %#v", read.Metadata["readingMinutes"])
+	}
+	toc, ok := read.Metadata["toc"].([]any)
+	if !ok || len(toc) != 3 {
+		t.Fatalf("expected three computed toc entries, got %#v", read.Metadata["toc"])
+	}
+	if toc[0].(map[string]any)["id"] != "first-section" || toc[1].(map[string]any)["level"] != float64(3) || toc[2].(map[string]any)["id"] != "first-section-2" {
+		t.Fatalf("unexpected toc: %#v", toc)
+	}
+
+	update := map[string]any{"language": "TypeScript", "readingMinutes": float64(88)}
+	if err := database.UpdateContent(created.ID, ContentUpdate{Body: stringPtr("## Updated section\n\n" + strings.Repeat("word ", 450)), Metadata: &update, ExpectedVersion: created.Version}); err != nil {
+		t.Fatal(err)
+	}
+	updated, err := database.GetContentByID(created.ID, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.Metadata["readingMinutes"] != float64(3) || updated.Metadata["language"] != "TypeScript" {
+		t.Fatalf("expected update to recompute derived metadata and preserve language, got %#v", updated.Metadata)
+	}
+}
+
+func stringPtr(value string) *string { return &value }
 
 func TestOpenMigratesLegacyContentKinds(t *testing.T) {
 	databasePath := filepath.Join(t.TempDir(), "legacy-content.db")

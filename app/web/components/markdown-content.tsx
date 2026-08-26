@@ -43,18 +43,22 @@ function CodeBlock({ children }: { children: React.ReactNode }) {
   );
 }
 
-const components: Components = {
-  h2: ({ children }) => <h2 id={headingId(children)}>{children}</h2>,
-  h3: ({ children }) => <h3 id={headingId(children)}>{children}</h3>,
-  pre: ({ children }) => <CodeBlock>{children}</CodeBlock>,
-};
+function createComponents(headingIds: string[] = []): Components {
+  let headingIndex = 0;
+  const nextHeadingId = (children: React.ReactNode) => headingIds[headingIndex++] ?? headingId(children);
+  return {
+    h2: ({ children }) => <h2 id={nextHeadingId(children)} data-content-heading>{children}</h2>,
+    h3: ({ children }) => <h3 id={nextHeadingId(children)} data-content-heading>{children}</h3>,
+    pre: ({ children }) => <CodeBlock>{children}</CodeBlock>,
+  };
+}
 
-export function MarkdownContent({ content }: { content: string }) {
+export function MarkdownContent({ content, headingIds }: { content: string; headingIds?: string[] }) {
   return (
     <ReactMarkdown
       remarkPlugins={[remarkGfm, remarkMath]}
       rehypePlugins={[rehypeSanitize, rehypeKatex, rehypeHighlight]}
-      components={components}
+      components={createComponents(headingIds)}
     >
       {content}
     </ReactMarkdown>

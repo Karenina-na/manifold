@@ -53,7 +53,7 @@ Dashboard、Content、Comments、Now、Settings 通过 lazy chunk 加载，登�
 
 Thought 模式字段：正文、可选 title/slug、tags、mood、question、context、source。
 
-Article 模式字段：title、slug、summary、Markdown body、tags、readingMinutes、frontmatter JSON、technologies、language、difficulty。编辑器右侧使用 `react-markdown`、GFM、数学公式、代码高亮和 sanitize 进行实时预览。
+Article 模式字段：title、slug、summary、Markdown body、tags、frontmatter JSON、technologies、language（下拉选择）、difficulty。阅读时长和目录由 Core 在保存时根据 Markdown 自动计算，编辑器以只读状态展示预计时长；右侧使用 `react-markdown`、GFM、数学公式、代码高亮和 sanitize 进行实时预览。
 
 规则：Article 创建和转换时 title、slug 必填；Thought 可为空；所有更新带 `expectedVersion`；新建总是 DRAFT；列表筛选由 Core 执行。
 
