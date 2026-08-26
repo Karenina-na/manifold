@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowUpRight, ExternalLink, Globe2, Mail, MessageCircle, Send } from "lucide-react";
+import { ArrowUpRight } from "lucide-react";
 import { loadHomeData, formatDate } from "../lib/api";
 import { buildUpdateTimeline } from "../lib/update-timeline";
 import { Reveal } from "../components/reveal";
@@ -7,6 +7,7 @@ import { UpdateTimelineView } from "../components/update-timeline";
 import { ContributionHeatmap } from "../components/contribution-heatmap";
 import { MinimalMetadata } from "../components/minimal-metadata";
 import { FloatingRepl } from "../components/floating-repl";
+import { ContactLinks, SeriesLinks } from "../components/profile-surfaces";
 import styles from "./site.module.css";
 
 export const dynamic = "force-dynamic";
@@ -81,11 +82,7 @@ export default async function Home() {
 
       <Reveal className={styles.sectionReveal}><section className={styles.seriesSection} id="series-section" aria-labelledby="series-heading">
         <div className={styles.sectionHeading}><div><span className={styles.eyebrow}>◈ My Series <span className={styles.eyebrowIndex}>/ 04</span></span><h2 id="series-heading">My Series</h2></div><span className={styles.sectionHint}>Services and tools</span></div>
-        <div className={styles.seriesGrid}>{(profile?.series ?? []).map((series, index) => <a className={styles.seriesCard} data-series-card href={series.url} key={series.url} target="_blank" rel="noreferrer" aria-describedby={`series-tooltip-${index}`}>
-          <div className={styles.seriesCardTop}><span className={styles.seriesIdentity}><span className={styles.seriesIndex}>0{index + 1}</span><span className={styles.seriesIcon}><Globe2 size={15} /></span></span><ExternalLink size={14} aria-hidden="true" /></div>
-          <div className={styles.seriesCardBody}><span className={styles.seriesCategory}>{series.category ?? "Series"}</span><h3>{series.name}</h3></div>
-          <span className={styles.seriesTooltip} id={`series-tooltip-${index}`} data-series-tooltip role="tooltip"><span className={styles.tooltipMeta}>{series.category ?? "Series"}</span><strong>{series.name}</strong><span className={styles.tooltipDescription}>{series.description}</span><span className={styles.tooltipUrl}>{series.url}</span></span>
-        </a>)}</div>
+        <SeriesLinks series={profile?.series ?? []} />
         {!(profile?.series?.length) && <p className={styles.muted}>Series will appear here as they take shape.</p>}
       </section></Reveal>
       <SceneBreak />
@@ -93,14 +90,7 @@ export default async function Home() {
       <Reveal className={styles.sectionReveal}><section className={styles.contactSection} id="contact-section" aria-labelledby="contact-heading">
         <div className={styles.sectionHeading}><div><span className={styles.eyebrow}>↘ Contact <span className={styles.eyebrowIndex}>/ 05</span></span><h2 id="contact-heading">Contact</h2></div><span className={styles.sectionHint}>Public links</span></div>
         <div className={styles.contactPanel} data-contact-panel>
-          <div className={styles.contactPanelMeta}>
-            <span className={styles.contactPanelKicker}>PUBLIC CHANNELS</span>
-            <strong>{profile?.contacts?.length ?? 0} available {profile?.contacts?.length === 1 ? "link" : "links"}</strong>
-          </div>
-          <div className={styles.contactGrid}>{(profile?.contacts ?? []).map((contact, index) => <a className={styles.contactItem} data-contact-item href={contact.url} key={contact.url} target={contact.url.startsWith("http") ? "_blank" : undefined} rel={contact.url.startsWith("http") ? "noreferrer" : undefined} aria-describedby={`contact-tooltip-${index}`} aria-label={`${contact.label}: ${contact.handle ?? contact.url}`}>
-            <span className={styles.contactIcon} aria-hidden="true">{contact.label.toLowerCase().includes("github") ? <Globe2 size={16} /> : contact.label.toLowerCase().includes("mail") ? <Mail size={15} /> : contact.label.toLowerCase().includes("whats") ? <MessageCircle size={15} /> : <Send size={15} />}</span>
-            <span className={styles.contactTooltip} id={`contact-tooltip-${index}`} data-contact-tooltip role="tooltip"><span className={styles.tooltipMeta}>CONTACT</span><strong>{contact.label}</strong><span>{contact.handle ?? contact.url.replace(/^https?:\/\//, "")}</span><small>{contact.url}</small></span>
-          </a>)}</div>
+          <ContactLinks contacts={profile?.contacts ?? []} />
           {!(profile?.contacts?.length) && <p className={styles.muted}>No public links yet.</p>}
         </div>
       </section></Reveal>

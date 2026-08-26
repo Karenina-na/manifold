@@ -182,7 +182,7 @@ async function main() {
     const seriesCard = web.locator('[data-series-card]').first();
     await seriesCard.waitFor({ state: 'visible' });
     await seriesCard.hover();
-    const seriesTooltip = seriesCard.locator('[data-series-tooltip]');
+    const seriesTooltip = web.locator('[data-series-tooltip]');
     await seriesTooltip.waitFor({ state: 'visible' });
     const seriesTooltipText = await seriesTooltip.textContent();
     if (!seriesTooltipText?.includes('API relay') || !seriesTooltipText.includes('Infrastructure') || !seriesTooltipText.includes('api.weizixiang.dev')) {
@@ -190,18 +190,36 @@ async function main() {
     }
     const seriesCardGeometry = await seriesCard.evaluate((element) => {
       const rect = element.getBoundingClientRect();
-      const tooltip = element.querySelector('[data-series-tooltip]')?.getBoundingClientRect();
-      return { height: rect.height, tooltipVisible: Boolean(tooltip && tooltip.width > 0 && tooltip.height > 0) };
+      const tooltip = document.querySelector('[data-series-tooltip]');
+      const tooltipStyle = tooltip ? getComputedStyle(tooltip) : null;
+      const tooltipRect = tooltip?.getBoundingClientRect();
+      return { height: rect.height, tooltipVisible: Boolean(tooltipRect && tooltipRect.width > 0 && tooltipRect.height > 0), tooltipLayer: tooltipStyle?.zIndex ?? '' };
     });
-    if (seriesCardGeometry.height > 150 || !seriesCardGeometry.tooltipVisible) {
+    if (seriesCardGeometry.height > 150 || !seriesCardGeometry.tooltipVisible || seriesCardGeometry.tooltipLayer !== '1000') {
       throw new Error(`My Series card is not compact or its tooltip is hidden: ${JSON.stringify(seriesCardGeometry)}`);
     }
     await web.locator('[data-contact-item]').first().hover();
-    const contactTooltip = web.locator('[data-contact-item]').first().locator('[data-contact-tooltip]');
+    const contactTooltip = web.locator('[data-contact-tooltip]');
     await contactTooltip.waitFor({ state: 'visible' });
     const contactTooltipText = await contactTooltip.textContent();
     if (!contactTooltipText?.includes('GitHub') || !contactTooltipText.includes('manifold-space')) {
       throw new Error(`Contact tooltip is missing contact details: ${contactTooltipText}`);
+    }
+    const contactGeometry = await web.locator('[data-contact-item]').first().evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      const tooltip = document.querySelector('[data-contact-tooltip]');
+      const tooltipRect = tooltip?.getBoundingClientRect();
+      const linkId = element.getAttribute('aria-describedby');
+      return {
+        width: rect.width,
+        height: rect.height,
+        tooltipInViewport: Boolean(tooltipRect && tooltipRect.left >= 0 && tooltipRect.right <= window.innerWidth && tooltipRect.top >= 0 && tooltipRect.bottom <= window.innerHeight),
+        tooltipLayer: tooltip ? getComputedStyle(tooltip).zIndex : '',
+        describedByResolved: Boolean(linkId && document.getElementById(linkId)),
+      };
+    });
+    if (contactGeometry.width !== 42 || contactGeometry.height !== 42 || !contactGeometry.tooltipInViewport || contactGeometry.tooltipLayer !== '1000' || !contactGeometry.describedByResolved) {
+      throw new Error(`Contact icon rail or tooltip layering is incorrect: ${JSON.stringify(contactGeometry)}`);
     }
     const sceneBreakCount = await web.locator('[data-scene-break]').count();
     if (sceneBreakCount < 4) throw new Error(`Expected scene transition separators between major sections, received ${sceneBreakCount}`);
