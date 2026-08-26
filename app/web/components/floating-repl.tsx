@@ -74,8 +74,10 @@ export function FloatingRepl({ displayName, handle, focus, papers }: FloatingRep
 
   // 打开时自动聚焦
   useEffect(() => {
-    if (open) inputRef.current?.focus();
-  }, [open]);
+    if (!open || isBusy) return;
+    const frame = window.requestAnimationFrame(() => inputRef.current?.focus());
+    return () => window.cancelAnimationFrame(frame);
+  }, [open, isBusy]);
 
   // 输出更新时自动滚动到底部
   useEffect(() => {
