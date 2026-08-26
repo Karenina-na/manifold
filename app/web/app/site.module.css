@@ -582,3 +582,61 @@ html { scroll-behavior: smooth; }
 .pageStatus { color: var(--color-muted); font-family: var(--font-mono); font-size: 12px; }
 
 .writingItem div span:last-child { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; color: var(--color-muted); }
+
+/* Article ending: discussion and composer are separate surfaces with the same paper language as the title and body. */
+.articleActionRail { grid-column: 1; grid-row: 1 / span 3; }
+.articleDiscussionBlock, .articleComposerBlock { grid-column: 2; min-width: 0; border: 1px solid color-mix(in srgb, var(--color-line) 72%, transparent); background: color-mix(in srgb, var(--surface-paper) 88%, var(--color-accent-soft)); box-shadow: 0 12px 34px rgba(24, 24, 20, .045); }
+.articleDiscussionBlock { grid-row: 2; margin-top: 22px; padding: 32px clamp(34px, 5vw, 64px) 42px; }
+.articleDiscussionBlock .commentSection { margin: 0; padding: 0; border-top: 0; }
+.articleDiscussionBlock .sectionHeading { margin-bottom: 20px; }
+.articleComposerBlock { grid-row: 3; margin-top: 22px; padding: 0; }
+.articleComposerCard { min-width: 0; }
+.articleComposerCard[data-compact="true"] { display: grid; gap: 10px; width: 100%; padding: 15px 13px; border: 1px solid color-mix(in srgb, var(--color-line) 72%, transparent); background: color-mix(in srgb, var(--surface-paper) 88%, var(--color-accent-soft)); box-shadow: 0 12px 28px rgba(24, 24, 20, .08); transform-origin: 50% 100%; }
+.articleComposerCard[data-compact="true"][data-expanded="true"] { width: min(360px, calc(100vw - 32px)); }
+.articleComposerCard[data-compact="false"] { padding: 32px clamp(34px, 5vw, 64px) 42px; }
+.articleComposerActions { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; }
+.articleComposerCard[data-compact="true"] .articleComposerActions { display: grid; gap: 9px; }
+.articleComposerCard[data-compact="false"] .articleComposerActions { padding-bottom: 22px; border-bottom: 1px solid var(--color-line); }
+.articleComposerCard[data-compact="false"] .articleActionLabel { margin-right: auto; color: var(--color-ink); font-family: var(--app-font-serif); font-size: 24px; letter-spacing: 0; text-transform: none; }
+.articleComposerCard[data-compact="true"] .commentForm { max-width: 340px; margin-top: 3px; }
+.articleComposerCard[data-compact="false"] .commentForm { max-width: 720px; padding-top: 24px; }
+.articleComposerCard[data-compact="false"] .articleActionButton { min-height: 36px; }
+.articleComposerCard[data-compact="false"] .reactionBar { margin-top: 0; padding-top: 0; border-top: 0; }
+.commentStats { display: grid; grid-template-columns: repeat(3, 1fr); margin: 0 0 24px; border-top: 1px solid var(--color-line); border-bottom: 1px solid var(--color-line); }
+.commentStats span { display: inline-flex; align-items: center; gap: 7px; min-width: 0; padding: 14px 16px 14px 0; color: var(--color-muted); font: 11px var(--font-mono); text-transform: uppercase; letter-spacing: .06em; }
+.commentStats span + span { padding-left: 16px; border-left: 1px solid var(--color-line); }
+.commentStats strong { color: var(--color-ink); font-family: var(--app-font-serif); font-size: 21px; font-weight: 400; letter-spacing: 0; }
+.commentTools { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
+.commentSearch, .commentFilter { display: flex; align-items: center; gap: 8px; min-height: 36px; border: 1px solid var(--color-line); background: rgba(255,255,255,.22); color: var(--color-muted); }
+.commentSearch { flex: 1; padding: 0 11px; }
+.commentSearch input { min-width: 0; flex: 1; border: 0; outline: 0; background: transparent; color: var(--color-ink); font: inherit; font-size: 13px; }
+.commentFilter { padding-left: 10px; }
+.commentFilter select { min-height: 34px; padding: 0 26px 0 0; border: 0; outline: 0; background: transparent; color: var(--color-ink); font: inherit; font-size: 12px; cursor: pointer; }
+.articleComposerTrigger { height: 1px; margin-bottom: -1px; }
+.srOnly { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+
+@media (max-width: 1050px) {
+  .articleActionRail { grid-column: 1; grid-row: 2 / span 3; }
+  .articleDiscussionBlock { grid-column: 2; grid-row: 3; }
+  .articleComposerBlock { grid-column: 2; grid-row: 4; }
+}
+
+@media (max-width: 760px) {
+  .articleActionRail { grid-column: auto; grid-row: auto; }
+  .articleReadingMain, .articleBodyBlock, .articleDiscussionBlock, .articleComposerBlock { width: 100%; max-width: 100%; }
+  .articleBodyBlock { overflow: hidden; }
+  .articleBodyBlock .markdown { min-width: 0; max-width: 100%; overflow-x: auto; }
+  .articleDiscussionBlock, .articleComposerBlock { width: 100%; margin-top: 0; }
+  .articleDiscussionBlock { order: 3; padding: 26px 16px 34px; }
+  .articleComposerBlock { order: 4; }
+  .articleComposerCard[data-compact="false"] { padding: 26px 16px 34px; }
+  .articleComposerCard[data-compact="false"] .articleComposerActions { display: grid; grid-template-columns: 1fr 1fr; align-items: center; gap: 8px; }
+  .articleComposerCard[data-compact="false"] .articleActionLabel { grid-column: 1 / -1; margin: 0 0 8px; }
+  .articleComposerCard[data-compact="false"] .reactionBar { grid-column: 1 / -1; }
+  .commentStats { grid-template-columns: 1fr; }
+  .commentStats span, .commentStats span + span { padding: 10px 0; border-left: 0; }
+  .commentStats span + span { border-top: 1px solid var(--color-line); }
+  .commentTools { align-items: stretch; flex-direction: column; }
+  .commentSearch, .commentFilter { width: 100%; }
+  .commentFilter select { flex: 1; }
+}

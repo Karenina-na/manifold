@@ -1,11 +1,10 @@
 "use client";
 
-import { MessageCircle, Share2 } from "lucide-react";
-import { AnimatePresence, LayoutGroup, motion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
+import { AnimatePresence, LayoutGroup } from "framer-motion";
 import type { ArticleMetadata } from "@manifold/contracts";
-import { ReactionBar } from "./reaction-bar";
 import styles from "../app/site.module.css";
+import { CommentComposer } from "./comment-thread";
 
 type TocItem = NonNullable<ArticleMetadata["toc"]>[number];
 
@@ -38,45 +37,30 @@ function ArticleToc({ items }: { items: TocItem[] }) {
   </aside>;
 }
 
-export function ArticleReadingShell({ children, afterReading, toc, slug }: { children: React.ReactNode; afterReading: React.ReactNode; toc: TocItem[]; slug: string }) {
-  const endRef = useRef<HTMLDivElement>(null);
+export function ArticleReadingShell({ children, discussion, toc, slug }: { children: React.ReactNode; discussion: React.ReactNode; toc: TocItem[]; slug: string }) {
+  const discussionEndRef = useRef<HTMLDivElement>(null);
   const [atEnd, setAtEnd] = useState(false);
+  const [compactExpanded, setCompactExpanded] = useState(false);
+  const [bottomExpanded, setBottomExpanded] = useState(true);
   useEffect(() => {
-    if (!endRef.current) return;
-    const observer = new IntersectionObserver(([entry]) => setAtEnd(entry.isIntersecting), { threshold: 0.15 });
-    observer.observe(endRef.current);
+    if (!discussionEndRef.current) return;
+    const observer = new IntersectionObserver(([entry]) => setAtEnd(entry.isIntersecting), { rootMargin: "0px 0px -24% 0px", threshold: 0.1 });
+    observer.observe(discussionEndRef.current);
     return () => observer.disconnect();
   }, []);
-  const scrollToComments = () => document.getElementById("comments-title")?.scrollIntoView({ behavior: "smooth", block: "start" });
-  const share = async () => {
-    if (navigator.share) {
-      await navigator.share({ title: document.title, url: window.location.href }).catch(() => undefined);
-    } else if (navigator.clipboard) {
-      await navigator.clipboard.writeText(window.location.href);
-    }
-  };
-  const actionCard = <motion.div
-    layoutId="article-action-card"
-    className={styles.articleActionCard}
-    initial={{ opacity: 0, scale: 0.94, rotate: atEnd ? -2 : 2 }}
-    animate={{ opacity: 1, scale: 1, rotate: atEnd ? 1.5 : 0 }}
-    exit={{ opacity: 0, scale: 0.94, rotate: atEnd ? 2 : -2 }}
-    transition={{ layout: { duration: 0.78, ease: [0.16, 1, 0.3, 1] }, opacity: { duration: 0.2 }, scale: { duration: 0.42, ease: [0.16, 1, 0.3, 1] }, rotate: { duration: 0.78, ease: [0.16, 1, 0.3, 1] } }}
-  >
-    <span className={styles.articleActionLabel}>Keep reading</span>
-    <ReactionBar slug={slug} compact />
-    <button type="button" className={styles.articleActionButton} onClick={scrollToComments}><MessageCircle size={15} /> Comment</button>
-    <button type="button" className={styles.articleActionButton} onClick={share}><Share2 size={15} /> Share</button>
-  </motion.div>;
+
   return <LayoutGroup id="article-reading-actions"><div className={styles.articleReadingShell}>
     <aside className={styles.articleActionRail} aria-label="Article actions">
-      <AnimatePresence initial={false} mode="popLayout">{!atEnd && actionCard}</AnimatePresence>
+      <AnimatePresence initial={false} mode="popLayout">{!atEnd && <CommentComposer slug={slug} compact expanded={compactExpanded} onExpandedChange={setCompactExpanded} />}</AnimatePresence>
     </aside>
     <div className={styles.articleReadingMain}>{children}</div>
     {toc.length > 0 && <ArticleToc items={toc} />}
-    <aside className={styles.articleEndActionSlot} aria-label="Article actions at the end">
-      <AnimatePresence initial={false} mode="popLayout">{atEnd && actionCard}</AnimatePresence>
-    </aside>
-    <section ref={endRef} className={styles.articleEndBlock}>{afterReading}</section>
+    <section className={styles.articleDiscussionBlock} aria-label="Article discussion">
+      {discussion}
+      <div ref={discussionEndRef} className={styles.articleComposerTrigger} aria-hidden="true" />
+    </section>
+    <AnimatePresence initial={false} mode="popLayout">{atEnd && <section className={styles.articleComposerBlock} aria-label="Add a comment">
+      <CommentComposer slug={slug} expanded={bottomExpanded} onExpandedChange={setBottomExpanded} />
+    </section>}</AnimatePresence>
   </div></LayoutGroup>;
 }

@@ -43,13 +43,34 @@ function CodeBlock({ children }: { children: React.ReactNode }) {
   );
 }
 
-function createComponents(headingIds: string[] = [], hideFirstH1 = false): Components {
+function createHeadingLineIds(content: string, headingIds: string[]) {
+  const lineIds = new Map<number, string>();
   let headingIndex = 0;
-  const nextHeadingId = (children: React.ReactNode) => headingIds[headingIndex++] ?? headingId(children);
+  let inFence = false;
+  content.split(/\r?\n/).forEach((line, index) => {
+    const trimmed = line.trim();
+    if (trimmed.startsWith("```") || trimmed.startsWith("~~~")) {
+      inFence = !inFence;
+      return;
+    }
+    if (inFence) return;
+    const match = /^ {0,3}(#{2,3})\s+(.+?)\s*$/.exec(line);
+    if (!match) return;
+    lineIds.set(index + 1, headingIds[headingIndex++] ?? headingId(match[2]));
+  });
+  return lineIds;
+}
+
+function createComponents(content: string, headingIds: string[] = [], hideFirstH1 = false): Components {
+  const headingLineIds = createHeadingLineIds(content, headingIds);
+  const nextHeadingId = (children: React.ReactNode, node?: { position?: { start?: { line?: number } } }) => {
+    const line = node?.position?.start?.line;
+    return (line ? headingLineIds.get(line) : undefined) ?? headingId(children);
+  };
   return {
     h1: ({ children }) => hideFirstH1 ? null : <h1>{children}</h1>,
-    h2: ({ children }) => <h2 id={nextHeadingId(children)} data-content-heading>{children}</h2>,
-    h3: ({ children }) => <h3 id={nextHeadingId(children)} data-content-heading>{children}</h3>,
+    h2: ({ children, node }) => <h2 id={nextHeadingId(children, node)} data-content-heading>{children}</h2>,
+    h3: ({ children, node }) => <h3 id={nextHeadingId(children, node)} data-content-heading>{children}</h3>,
     pre: ({ children }) => <CodeBlock>{children}</CodeBlock>,
   };
 }
@@ -59,7 +80,7 @@ export function MarkdownContent({ content, headingIds, hideFirstH1 = false }: { 
     <ReactMarkdown
       remarkPlugins={[remarkGfm, remarkMath]}
       rehypePlugins={[rehypeSanitize, rehypeKatex, rehypeHighlight]}
-      components={createComponents(headingIds, hideFirstH1)}
+      components={createComponents(content, headingIds, hideFirstH1)}
     >
       {content}
     </ReactMarkdown>

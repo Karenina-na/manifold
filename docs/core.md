@@ -173,7 +173,7 @@ limit=1..50
 | `published_at/created_at/updated_at/version` | 生命周期、时间和乐观并发 |
 | `view_count` | 公开详情读取时同步递增的持久化浏览量 |
 
-Metadata：Thought 使用 `mood/question/context/source`；Article 使用 `readingMinutes/toc/frontmatter/technologies/language/difficulty/repositoryUrl`。保存 ARTICLE 时 Core 会根据 Markdown body 覆盖计算 `readingMinutes`（约 200 个词/分钟，至少 1 分钟）并从二、三级标题重建 `toc`；编辑端不应手工提交这两个派生字段。Core 仍会校验 metadata 的类型、长度、TOC 层级、技术标签和难度枚举。
+Metadata：Thought 使用 `mood/question/context/source`；Article 使用 `readingMinutes/toc/frontmatter/technologies/language/difficulty/repositoryUrl`。保存 ARTICLE 时 Core 会根据 Markdown body 覆盖计算 `readingMinutes`（约 200 个词/分钟，至少 1 分钟）并从二、三级标题重建 `toc`；打开已有数据库时也会回填缺失或过期的这两个派生字段，保留语言等编辑字段；编辑端不应手工提交这两个派生字段。Core 仍会校验 metadata 的类型、长度、TOC 层级、技术标签和难度枚举。
 
 其他表：`profile`、`site_config`、`now_status`、`comments`、`reactions`、`presence`、`audit_events`。`content.view_count` 在公开详情读取时同步原子递增，列表响应直接返回该持久化计数；`likeCount` 从 `reactions` 聚合 `LIKE`。详情读取同时写入 `audit_events(event_name = 'content.viewed', resource_type = 'content')` 供观测使用，审计队列丢弃不会影响浏览量统计。Profile 包含 `resume_url`、`interests_json`、`education_json`、`experience_json`、`series_json`、`contacts_json`；Series 项为 `{name,url,description,category?}`，联系方式为 `{label,url,handle?,icon?}`；Site 是单例配置；评论默认 PENDING；反应有 `(content_id, visitor_id, kind)` 唯一约束；Presence 只保存匿名 visitor ID 的最近心跳时间，过期窗口为 5 分钟。
 

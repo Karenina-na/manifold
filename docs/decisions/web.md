@@ -25,7 +25,7 @@ Server Component 负责首屏数据、详情读取和 SEO；Client Component 负
 | `/thoughts` | Dynamic Server Component | `feed({ kind: "THOUGHT" })` | 轻量时间线/标签入口 |
 | `/thoughts/[id]` | Dynamic Server Component | 通过 ID 获取 Thought 详情 | 复用统一阅读器和评论/反应 |
 | `/writing` | Dynamic Server Component + client archive controls | `content({ kind: "ARTICLE", limit: 100 })` | 双栏长文归档、置顶首篇、搜索、标签筛选、最新/最早/最近更新排序与 sticky 侧栏；列表展示 Core 聚合的浏览量和点赞数；从详情页通过浏览器历史返回时刷新 RSC 数据 |
-| `/writing/[slug]` | Dynamic Server Component + client reading controls | `contentBySlug(slug)` | 三段同宽的不透明阅读面（标题、正文、After reading）、同排日期/阅读时长/语言/统计、Markdown、右侧进度目录、评论和反应；底部区域拆分评论与互动操作，桌面/平板动作卡通过共享布局动画移入左侧，手机端在评论之后堆叠 |
+| `/writing/[slug]` | Dynamic Server Component + client reading controls | `contentBySlug(slug)` | 四段同宽的不透明阅读面（标题、正文、讨论、添加评论）、同排日期/阅读时长/语言/统计、Markdown、右侧进度目录、评论和反应；讨论面展示统计、搜索和筛选，添加评论面在接近底部时由桌面/平板左侧紧凑动作卡通过共享布局动画展开，手机端在讨论面之后堆叠 |
 | `/health` | Route Handler | 无 | Web 进程 liveness，Core 健康检查仍为 `/healthz` |
 | `/feed.xml` | Dynamic Route Handler | profile、2 条 Article、3 条 Thought | 输出同源 RSS 2.0 feed，复用首页 feed 数据 |
 
@@ -61,18 +61,18 @@ Web 和 Admin 使用相同的 Markdown 能力组合：
 
 `app/web/components/markdown-content.tsx` 统一生成 h2/h3 anchor id、代码工具条和复制状态。Core 只存 Markdown，不承诺内容生成的 HTML 安全；禁止使用 `dangerouslySetInnerHTML` 绕过清洗。
 
-Article 的 `metadata.toc` 和 `readingMinutes` 由 Core 在保存时从 Markdown 派生。Web 使用对应 `id` 生成右侧 sticky 目录和阅读进度，互动卡承载点赞、收藏、评论跳转和分享；当 After reading 区域进入视口时，桌面/平板通过共享布局动画把卡片移到评论区左侧，手机端将其作为评论后的独立操作块。新增运行时标题 ID 算法时必须同步 Core metadata 约定和 Admin 编辑/生成逻辑。
+Article 的 `metadata.toc` 和 `readingMinutes` 由 Core 在保存时从 Markdown 派生。Web 使用对应 `id` 生成右侧 sticky 目录和阅读进度。阅读结束区域拆为讨论面和添加评论面：讨论面读取公开评论并展示浏览/点赞/评论统计，支持按作者或正文搜索、按是否有网站或最近时间筛选；添加评论面承载点赞、收藏、评论和分享。桌面/平板在讨论面尚未接近底部时只显示左侧紧凑动作卡，评论操作可展开同一表单；触发底部观察点后，卡片通过共享布局动画移动到中央添加评论面并默认展开。手机端动作卡先以 sticky 横条出现，添加评论面在讨论面之后堆叠。新增运行时标题 ID 算法时必须同步 Core metadata 约定和 Admin 编辑/生成逻辑。
 
 ## 5. 评论与反应
 
 ### 评论
 
-`CommentThread` 使用 React Hook Form、Zod 和 TanStack Query：
+`ArticleDiscussion` 与 `CommentComposer` 使用 React Hook Form、Zod 和 TanStack Query，`CommentThread` 仅作为 Thought 详情的兼容组合：
 
 1. `comments(slug)` 读取 Core 返回的 APPROVED 评论。
 2. 表单要求正文 3 到 4000 字符，作者名/网站可选，附轻量验证码。
-3. `onMutate` 先插入本地 pending comment，提交成功后用 Core 的 201 结果替换。
-4. 失败时回滚 pending 并保留输入，UI 显示错误。
+3. 讨论面在客户端对公开评论执行搜索和筛选，不复制 Admin 审核筛选或新增 Core 查询参数。
+4. 添加评论表单提交到 Core，成功后清空表单并失效 `comments + slug` query；失败时保留输入并显示错误。
 5. Query key 为 `comments + slug`，不要把 Admin 审核状态复制到 Web。
 
 ### 反应

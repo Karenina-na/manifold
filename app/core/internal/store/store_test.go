@@ -102,6 +102,38 @@ func TestArticleMetadataIsDerivedFromMarkdown(t *testing.T) {
 	}
 }
 
+func TestOpenBackfillsArticleMetadataForExistingRows(t *testing.T) {
+	databasePath := filepath.Join(t.TempDir(), "article-metadata.db")
+	database, err := Open(databasePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.DB.Exec(`INSERT INTO content (id, kind, status, slug, title, summary, body, tags_json, metadata_json, published_at, created_at, updated_at) VALUES ('legacy_article', 'ARTICLE', 'PUBLISHED', 'legacy-article', 'Legacy article', '', '## Existing heading' || char(10) || char(10) || 'A paragraph.', '[]', '{"language":"Go"}', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`); err != nil {
+		database.Close()
+		t.Fatal(err)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	database, err = Open(databasePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	content, err := database.GetContent("legacy-article", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if content.Metadata["language"] != "Go" || content.Metadata["readingMinutes"] != float64(1) {
+		t.Fatalf("expected existing article metadata to be backfilled, got %#v", content.Metadata)
+	}
+	toc, ok := content.Metadata["toc"].([]any)
+	if !ok || len(toc) != 1 || toc[0].(map[string]any)["id"] != "existing-heading" {
+		t.Fatalf("expected existing article toc to be backfilled, got %#v", content.Metadata["toc"])
+	}
+}
+
 func stringPtr(value string) *string { return &value }
 
 func TestOpenMigratesLegacyContentKinds(t *testing.T) {

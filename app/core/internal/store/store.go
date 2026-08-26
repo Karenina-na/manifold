@@ -128,7 +128,10 @@ func ensureContentSchema(db *sql.DB) error {
 		return err
 	}
 	if strings.Contains(tableSQL, "'POST'") || strings.Contains(tableSQL, "'NOTE'") || strings.Contains(tableSQL, "'RESEARCH'") || strings.Contains(tableSQL, "'TECH'") || strings.Contains(tableSQL, "'MANUSCRIPT'") {
-		return migrateLegacyContent(db, hasMetadata, hasViewCount)
+		if err := migrateLegacyContent(db, hasMetadata, hasViewCount); err != nil {
+			return err
+		}
+		return backfillArticleMetadata(db)
 	}
 	if !hasMetadata {
 		if _, err = db.Exec(`ALTER TABLE content ADD COLUMN metadata_json TEXT NOT NULL DEFAULT '{}'`); err != nil {
@@ -141,7 +144,46 @@ func ensureContentSchema(db *sql.DB) error {
 		}
 	}
 	_, err = db.Exec(`UPDATE content SET metadata_json = CASE WHEN kind = 'THOUGHT' THEN '{}' ELSE metadata_json END WHERE TRIM(metadata_json) = '' OR metadata_json = '{}'`)
-	return err
+	if err != nil {
+		return err
+	}
+	return backfillArticleMetadata(db)
+}
+
+func backfillArticleMetadata(db *sql.DB) error {
+	rows, err := db.Query(`SELECT id, body, metadata_json FROM content WHERE kind = 'ARTICLE'`)
+	if err != nil {
+		return err
+	}
+	type articleRow struct {
+		id, body, metadata string
+	}
+	articles := make([]articleRow, 0)
+	for rows.Next() {
+		var article articleRow
+		if err := rows.Scan(&article.id, &article.body, &article.metadata); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		articles = append(articles, article)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return err
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	for _, article := range articles {
+		encoded := encodeJSON(normalizeArticleMetadata("ARTICLE", article.body, decodeMetadata(article.metadata)))
+		if encoded == article.metadata {
+			continue
+		}
+		if _, err := db.Exec(`UPDATE content SET metadata_json = ? WHERE id = ?`, encoded, article.id); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func migrateLegacyContent(db *sql.DB, hasMetadata, hasViewCount bool) error {
