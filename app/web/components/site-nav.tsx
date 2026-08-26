@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowUpRight, GitBranch, Moon, Search, Sun, X } from "lucide-react";
+import { ArrowUpRight, Moon, Rss, Search, Sun, X } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { createBrowserClient } from "../lib/api";
@@ -98,7 +98,7 @@ export function SiteNav() {
         <div className={styles.navUtilities}>
           <button className={styles.utilityButton} type="button" onClick={() => setSearchOpen(true)} aria-label="Search content"><Search size={15} /><kbd>⌘K</kbd></button>
           <button className={styles.utilityButton} type="button" onClick={toggleTheme} aria-label={`Switch to ${theme === "light" ? "dark" : "light"} mode`}>{theme === "light" ? <Moon size={15} /> : <Sun size={15} />}</button>
-          <a className={styles.utilityButton} href="https://github.com/manifold-space/manifold" target="_blank" rel="noreferrer" aria-label="Manifold on GitHub"><GitBranch size={15} /></a>
+          <a className={styles.utilityButton} href="/feed.xml" aria-label="Subscribe to the RSS feed"><Rss size={15} /></a>
         </div>
       </nav>
     </header>
