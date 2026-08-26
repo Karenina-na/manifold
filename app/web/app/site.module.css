@@ -482,6 +482,19 @@ html { scroll-behavior: smooth; }
 .sectionReveal[data-revealed="true"] .timelineItem:nth-child(3), .sectionReveal[data-revealed="true"] .seriesTooltipAnchor:nth-child(3), .sectionReveal[data-revealed="true"] .contactItem:nth-child(3) { animation-delay: 140ms; }
 .sectionReveal[data-revealed="true"] .timelineItem:nth-child(4), .sectionReveal[data-revealed="true"] .seriesTooltipAnchor:nth-child(4), .sectionReveal[data-revealed="true"] .contactItem:nth-child(4) { animation-delay: 210ms; }
 @keyframes childReveal { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+/* Hover previews should arrive after the surface settles, instead of snapping in. */
+.seriesTooltip, .contactTooltip, .updatePreview, .metadataPreview, .floatingTooltip {
+  transition-duration: 520ms;
+  transition-timing-function: var(--motion-ease);
+}
+.seriesTooltip, .contactTooltip, .updatePreview { transform: translateY(9px); }
+.seriesCard:hover .seriesTooltip, .seriesCard:focus-visible .seriesTooltip,
+.contactItem:hover .contactTooltip, .contactItem:focus-visible .contactTooltip,
+.updatePreview[data-open="true"] { transform: translateY(0); }
+.metadataPreview { transform: translateY(-50%) translateX(9px); }
+.metadataMarker:hover .metadataPreview, .metadataMarker:focus-visible .metadataPreview { transform: translateY(-50%) translateX(0); }
+
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   .page *, .page *::before, .page *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
