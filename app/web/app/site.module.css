@@ -330,10 +330,10 @@ html { scroll-behavior: smooth; }
 .floatingTooltip .tooltipDescription { color: var(--color-muted); }
 .floatingTooltip .tooltipUrl { overflow-wrap: anywhere; color: var(--color-ink); font-family: var(--font-mono); font-size: 9px; }
 .tooltipInner { display: grid; gap: 5px; min-width: 0; }
-.floatingTooltip[data-contact-tooltip] { width: min(260px, calc(100vw - 32px)); }
-.floatingTooltip[data-contact-tooltip] .tooltipMeta { margin-bottom: 2px; }
-.floatingTooltip[data-contact-tooltip] strong { font-size: 17px; }
-.floatingTooltip[data-contact-tooltip] .tooltipInner > span:not(.tooltipMeta) { overflow-wrap: anywhere; }
+.floatingTooltip[data-contact-tooltip] { width: max-content; min-width: 150px; max-width: min(220px, calc(100vw - 32px)); padding: 13px 18px; border-radius: 16px; text-align: center; }
+.floatingTooltip[data-contact-tooltip] .tooltipMeta,
+.floatingTooltip[data-contact-tooltip] .tooltipInner > span:not(.tooltipMeta) { display: none; }
+.floatingTooltip[data-contact-tooltip] strong { font-family: var(--app-font-sans); font-size: 18px; font-weight: 400; line-height: 1.2; }
 .floatingTooltip { opacity: 0; transform: translateY(6px); transition: opacity 360ms var(--motion-ease), transform 360ms var(--motion-ease); }
 .floatingTooltip[data-state="open"] { opacity: 1; transform: translateY(0); }
 .floatingTooltip[data-state="closed"] { opacity: 0; pointer-events: none; }
@@ -342,12 +342,13 @@ html { scroll-behavior: smooth; }
 .contactPanel { display: flex; align-items: center; justify-content: center; width: 100%; min-height: 0; padding: 6px 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
 .contactPanel .contactGrid { justify-content: center; gap: 16px; }
 .tooltipAnchor, .seriesTooltipAnchor { display: block; min-width: 0; }
-.contactItem { display: inline-grid; place-items: center; justify-content: center; align-content: center; width: 42px; height: 42px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: color-mix(in srgb, var(--color-muted) 84%, transparent); line-height: 0; transition: color .2s ease, background .2s ease, transform .2s ease; }
+.contactItem { display: grid; place-items: center; justify-content: center; align-content: center; width: 42px; height: 42px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: color-mix(in srgb, var(--color-muted) 84%, transparent); line-height: 0; vertical-align: middle; transition: color .2s ease, background .2s ease, transform .2s ease; }
 .contactItem:hover, .contactItem:focus-visible { border: 0; background: color-mix(in srgb, var(--color-accent-soft) 72%, transparent); color: var(--color-ink); transform: translateY(-2px); }
 .contactPanel .contactItem { width: 42px; height: 42px; flex: 0 0 42px; border: 0; border-radius: 50%; background: transparent; }
 .contactPanel .contactItem:hover, .contactPanel .contactItem:focus-visible { border: 0; background: color-mix(in srgb, var(--color-accent-soft) 72%, transparent); }
 .contactIcon { display: grid; place-items: center; justify-content: center; align-content: center; width: 22px; height: 22px; border-radius: 0; background: transparent; color: inherit; line-height: 0; }
-.contactIcon svg { display: block; }
+.contactIcon svg { display: block; width: 22px; height: 22px; flex: 0 0 22px; }
+.contactIcon[data-contact-icon="github"] svg { transform: translateX(1px); }
 .contactPanel .contactTooltip { display: grid; }
 
 /* Series wrappers preserve the grid while the card itself stays compact. */

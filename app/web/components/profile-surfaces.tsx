@@ -24,7 +24,7 @@ function contactIcon(contact: ProfileContact) {
   return <Globe2 size={22} strokeWidth={1.7} />;
 }
 
-function TooltipLink({ href, label, description, children, external = false, tooltipPlacement = "top" }: { href: string; label: string; description: string; children: React.ReactNode; external?: boolean; tooltipPlacement?: "top" | "bottom" }) {
+function TooltipLink({ href, label, description, children, external = false }: { href: string; label: string; description: string; children: React.ReactNode; external?: boolean }) {
   const anchorRef = useRef<HTMLAnchorElement>(null);
   const [open, setOpen] = useState(false);
   const tooltipId = useId();
@@ -32,7 +32,7 @@ function TooltipLink({ href, label, description, children, external = false, too
     <a ref={anchorRef} className={styles.contactItem} data-contact-item href={href} target={external ? "_blank" : undefined} rel={external ? "noreferrer" : undefined} aria-label={label} aria-describedby={tooltipId}>
       {children}
     </a>
-    <FloatingTooltip anchorRef={anchorRef} open={open} placement={tooltipPlacement} dataAttribute="data-contact-tooltip" id={tooltipId}>
+    <FloatingTooltip anchorRef={anchorRef} open={open} placement="bottom" dataAttribute="data-contact-tooltip" id={tooltipId}>
       <span className={styles.tooltipMeta}>CONTACT</span>
       <strong>{label}</strong>
       <span>{description}</span>
@@ -43,7 +43,7 @@ function TooltipLink({ href, label, description, children, external = false, too
 export function ContactLinks({ contacts }: { contacts: ProfileContact[] }) {
   return <div className={styles.contactGrid} data-contact-grid>
     {contacts.map((contact) => <TooltipLink key={contact.url} href={contact.url} label={contact.label} description={contact.handle ?? contact.url.replace(/^https?:\/\//, "")} external={contact.url.startsWith("http")}>
-      <span className={styles.contactIcon} aria-hidden="true">{contactIcon(contact)}</span>
+      <span className={styles.contactIcon} data-contact-icon={contact.icon?.toLowerCase().trim() ?? ""} aria-hidden="true">{contactIcon(contact)}</span>
     </TooltipLink>)}
   </div>;
 }
