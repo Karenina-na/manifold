@@ -9,7 +9,7 @@ export interface ProfileSeriesItem { name: string; url: string; description: str
 export interface ProfileContact { label: string; url: string; handle?: string; icon?: string }
 export interface Profile { id: string; displayName: string; handle: string; headline: string; bio: string; avatarUrl: string; location: string; organization: string; websiteUrl: string; resumeUrl?: string; interests?: string[]; education?: Array<{ institution: string; program: string; period: string }>; experience?: Array<{ organization: string; role: string; period: string }>; series?: ProfileSeriesItem[]; contacts?: ProfileContact[]; updatedAt: string }
 export type ProfileInput = Omit<Profile, "id" | "updatedAt">
-export interface ContentSummary { id: string; kind: ContentKind; status: ContentStatus; slug: string | null; title: string | null; summary: string; tags: string[]; publishedAt: string | null; createdAt: string; updatedAt: string; version: number; href: string }
+export interface ContentSummary { id: string; kind: ContentKind; status: ContentStatus; slug: string | null; title: string | null; summary: string; tags: string[]; publishedAt: string | null; createdAt: string; updatedAt: string; version: number; href: string; viewCount: number; likeCount: number }
 export interface ThoughtMetadata { mood?: string; question?: string; context?: string; source?: string }
 export interface ArticleMetadata { readingMinutes?: number; toc?: Array<{ id: string; label: string; level: 2 | 3 }>; frontmatter?: Record<string, string>; technologies?: string[]; language?: string; difficulty?: "BEGINNER" | "INTERMEDIATE" | "ADVANCED"; repositoryUrl?: string }
 export type ContentMetadata = ThoughtMetadata | ArticleMetadata

@@ -19,7 +19,7 @@ app/core JSON <--> packages/contracts <--> packages/sdk <--> Web / Admin
 
 - `ContentKind = "THOUGHT" | "ARTICLE"`
 - `ContentStatus = "DRAFT" | "PUBLISHED" | "DELETED"`
-- `ContentSummary`：列表和轻量内容对象，`slug`、`title` 可为空。
+- `ContentSummary`：列表和轻量内容对象，`slug`、`title` 可为空，并包含 Core 聚合的 `viewCount` 与 `likeCount`。
 - `Content`：摘要对象加可选 `body` 和按 `kind` 判别的 metadata。
 - `ContentDetail`：详情对象，`body` 必填。
 - `ContentInput`：创建输入的判别联合：Thought 和 Article 使用不同 metadata。

@@ -100,6 +100,8 @@ button { cursor: pointer; }
 .content-row:hover, .content-row.selected { background: #fbf5ee; }
 .row-title { display: flex; align-items: center; gap: 8px; color: var(--ink); font-size: 14px; font-weight: 800; }
 .content-row p, .moderation-body small { margin: 6px 0 0; color: var(--muted); font-size: 12px; }
+.content-stats { display: inline-flex; align-items: center; gap: 4px; margin-top: 8px; color: var(--muted); font-size: 11px; }
+.content-stats svg:nth-of-type(2) { margin-left: 6px; }
 .row-actions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
 .status-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
 .status-dot.published { background: var(--success); }

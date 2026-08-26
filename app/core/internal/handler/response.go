@@ -240,22 +240,29 @@ func (h *apiHandler) listContent(w http.ResponseWriter, r *http.Request) {
 
 func (h *apiHandler) getContent(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
-	if content, ok := h.contentCache.Get(slug); ok {
-		WriteJSON(w, http.StatusOK, content)
-		return
+	content, ok := h.contentCache.Get(slug)
+	if !ok {
+		var err error
+		content, err = h.store.GetContent(slug, false)
+		if errors.Is(err, sql.ErrNoRows) {
+			WriteError(w, http.StatusNotFound, "CONTENT_NOT_FOUND", "Content was not found.")
+			return
+		}
+		if err != nil {
+			WriteError(w, http.StatusInternalServerError, "CONTENT_UNAVAILABLE", "Content is unavailable.")
+			return
+		}
 	}
-	content, err := h.store.GetContent(slug, false)
-	if errors.Is(err, sql.ErrNoRows) {
-		WriteError(w, http.StatusNotFound, "CONTENT_NOT_FOUND", "Content was not found.")
-		return
-	}
+	viewCount, likeCount, err := h.store.RecordContentView(content.ID)
 	if err != nil {
-		WriteError(w, http.StatusInternalServerError, "CONTENT_UNAVAILABLE", "Content is unavailable.")
-		return
+		slog.Error("content_view_count_failed", "contentId", content.ID, "error", err)
+	} else {
+		content.ViewCount, content.LikeCount = viewCount, likeCount
 	}
 	if slug != "" {
 		h.contentCache.Set(slug, content)
 	}
+	h.audit(r, "content.viewed", "content", content.ID, nil)
 	WriteJSON(w, http.StatusOK, content)
 }
 

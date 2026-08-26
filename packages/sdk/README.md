@@ -44,7 +44,7 @@ const page = await client.content({ kind: "ARTICLE", limit: 20 })
 | `profile()` | GET | `/api/v1/profile` | `Profile` |
 | `site()` | GET | `/api/v1/site` | `SiteComposition` |
 | `feed(query?)` | GET | `/api/v1/feed` | `Collection<Content>` |
-| `content(query?)` | GET | `/api/v1/content` | `Collection<Content>` |
+| `content(query?)` | GET | `/api/v1/content` | `Collection<Content>`，内容项包含 `viewCount` / `likeCount` |
 | `contentBySlug(slug)` | GET | `/api/v1/content/:slug` | `ContentDetail` |
 | `now()` | GET | `/api/v1/now` | `NowStatus` |
 | `stats()` | GET | `/api/v1/stats` | `Stats` |
@@ -62,7 +62,7 @@ const page = await client.content({ kind: "ARTICLE", limit: 20 })
 | `adminStats()` | GET | `/api/v1/admin/stats` | `AdminStats` |
 | `adminProfile()` / `updateProfile(input)` | GET/PATCH | `/api/v1/admin/profile` | `Profile` |
 | `adminSite()` / `updateSite(input)` | GET/PATCH | `/api/v1/admin/site` | `SiteConfig` |
-| `adminContent(query?)` | GET | `/api/v1/admin/content` | `Collection<Content>` |
+| `adminContent(query?)` | GET | `/api/v1/admin/content` | `Collection<Content>`，内容项包含 `viewCount` / `likeCount` |
 | `createContent(input)` | POST | `/api/v1/admin/content` | `Content` |
 | `updateContent(id, input)` | PATCH | `/api/v1/admin/content/:id` | `Content` |
 | `publishContent(id)` / `unpublishContent(id)` | POST | `/publish` `/unpublish` | `Content` |

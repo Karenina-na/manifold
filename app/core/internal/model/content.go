@@ -40,6 +40,8 @@ type Content struct {
 	UpdatedAt   string         `json:"updatedAt"`
 	Version     int            `json:"version"`
 	Href        string         `json:"href,omitempty"`
+	ViewCount   int            `json:"viewCount"`
+	LikeCount   int            `json:"likeCount"`
 	Metadata    map[string]any `json:"metadata"`
 }
 

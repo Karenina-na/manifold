@@ -60,6 +60,43 @@ func TestPublicContentAndCommentFlow(t *testing.T) {
 	}
 }
 
+func TestContentListIncludesViewAndLikeCounts(t *testing.T) {
+	database, err := store.Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.MinCost)
+	cfg := config.Config{JWTSecret: "test-secret", AdminUsername: "admin", AdminPasswordHash: string(hash), AllowedOrigins: []string{"*"}}
+	router := handler.Router(cfg, database)
+
+	first := request(t, router, http.MethodGet, "/api/v1/content/designing-boundaries", nil)
+	if first.Code != http.StatusOK {
+		t.Fatalf("expected detail 200, got %d", first.Code)
+	}
+	liked := requestWithVisitor(t, router, http.MethodPut, "/api/v1/content/designing-boundaries/reactions/LIKE", "visitor-a")
+	if liked.Code != http.StatusOK {
+		t.Fatalf("expected reaction 200, got %d", liked.Code)
+	}
+	second := request(t, router, http.MethodGet, "/api/v1/content/designing-boundaries", nil)
+	if second.Code != http.StatusOK || !strings.Contains(second.Body.String(), `"viewCount":2`) || !strings.Contains(second.Body.String(), `"likeCount":1`) {
+		t.Fatalf("expected cached detail stats to refresh, got %d %s", second.Code, second.Body.String())
+	}
+	list := request(t, router, http.MethodGet, "/api/v1/content", nil)
+	if list.Code != http.StatusOK || !strings.Contains(list.Body.String(), `"viewCount":2`) || !strings.Contains(list.Body.String(), `"likeCount":1`) {
+		t.Fatalf("expected list stats, got %d %s", list.Code, list.Body.String())
+	}
+}
+
+func requestWithVisitor(t *testing.T, router http.Handler, method, path, visitorID string) *httptest.ResponseRecorder {
+	t.Helper()
+	recorder := httptest.NewRecorder()
+	req := httptest.NewRequest(method, path, nil)
+	req.Header.Set("X-Visitor-ID", visitorID)
+	router.ServeHTTP(recorder, req)
+	return recorder
+}
+
 func TestCommentWithoutAuthorNameUsesAnonymous(t *testing.T) {
 	router := newTestRouter(t)
 

@@ -110,8 +110,8 @@ Core 使用 `caarlos0/env` 读取 `CORE_` 前缀变量，不自动读取仓库�
 | `GET` | `/api/v1/profile` | `Profile`，包含身份、教育/经历、个人 `series` 和 `contacts` |
 | `GET` | `/api/v1/site` | 首页 profile 引用、精选内容、导航和 sections |
 | `GET` | `/api/v1/feed` | 内容集合，使用与 `/content` 相同的筛选 |
-| `GET` | `/api/v1/content` | 已发布内容摘要集合 |
-| `GET` | `/api/v1/content/{slug}` | 通过 slug 或 ID 返回已发布详情和 Markdown body |
+| `GET` | `/api/v1/content` | 已发布内容摘要集合，包含 `viewCount` 和 `likeCount` 聚合值 |
+| `GET` | `/api/v1/content/{slug}` | 通过 slug 或 ID 返回已发布详情和 Markdown body，并记录一次 `content.viewed` 审计事件 |
 | `GET` | `/api/v1/content/{slug}/comments` | 只返回 `APPROVED` 评论 |
 | `POST` | `/api/v1/content/{slug}/comments` | 创建 `PENDING` 评论，201 |
 | `GET` | `/api/v1/content/{slug}/reactions` | 反应统计和当前访客状态 |
@@ -143,7 +143,7 @@ limit=1..50
 | --- | --- | --- |
 | `GET/PATCH` | `/api/v1/admin/profile` | 读取/更新 Profile、简历、兴趣、教育、经历、个人 Series 和联系方式 |
 | `GET/PATCH` | `/api/v1/admin/site` | 读取/更新首页 composition |
-| `GET` | `/api/v1/admin/content` | 管理内容列表，支持 `kind`、`status`、`tag`、`q`、cursor |
+| `GET` | `/api/v1/admin/content` | 管理内容列表，支持 `kind`、`status`、`tag`、`q`、cursor，并返回 `viewCount` / `likeCount` |
 | `POST` | `/api/v1/admin/content` | 创建 DRAFT |
 | `PATCH` | `/api/v1/admin/content/{id}` | 局部更新和类型转换 |
 | `POST` | `/api/v1/admin/content/{id}/publish` | DRAFT -> PUBLISHED |
@@ -171,10 +171,11 @@ limit=1..50
 | `title` | 可空；Article 必填 |
 | `summary/body/tags_json/metadata_json` | Markdown、标签和类型 metadata |
 | `published_at/created_at/updated_at/version` | 生命周期、时间和乐观并发 |
+| `view_count` | 公开详情读取时同步递增的持久化浏览量 |
 
 Metadata：Thought 使用 `mood/question/context/source`；Article 使用 `readingMinutes/toc/frontmatter/technologies/language/difficulty/repositoryUrl`。Core 会校验 metadata 的类型、长度、TOC 层级、技术标签和难度枚举。
 
-其他表：`profile`、`site_config`、`now_status`、`comments`、`reactions`、`presence`、`audit_events`。Profile 包含 `resume_url`、`interests_json`、`education_json`、`experience_json`、`series_json`、`contacts_json`；Series 项为 `{name,url,description,category?}`，联系方式为 `{label,url,handle?,icon?}`；Site 是单例配置；评论默认 PENDING；反应有 `(content_id, visitor_id, kind)` 唯一约束；Presence 只保存匿名 visitor ID 的最近心跳时间，过期窗口为 5 分钟。
+其他表：`profile`、`site_config`、`now_status`、`comments`、`reactions`、`presence`、`audit_events`。`content.view_count` 在公开详情读取时同步原子递增，列表响应直接返回该持久化计数；`likeCount` 从 `reactions` 聚合 `LIKE`。详情读取同时写入 `audit_events(event_name = 'content.viewed', resource_type = 'content')` 供观测使用，审计队列丢弃不会影响浏览量统计。Profile 包含 `resume_url`、`interests_json`、`education_json`、`experience_json`、`series_json`、`contacts_json`；Series 项为 `{name,url,description,category?}`，联系方式为 `{label,url,handle?,icon?}`；Site 是单例配置；评论默认 PENDING；反应有 `(content_id, visitor_id, kind)` 唯一约束；Presence 只保存匿名 visitor ID 的最近心跳时间，过期窗口为 5 分钟。
 
 旧 SQLite content 类型迁移规则：`POST/RESEARCH/TECH/MANUSCRIPT -> ARTICLE`，`NOTE -> THOUGHT`，并重建 kind CHECK 约束。迁移必须保持可重复执行。
 

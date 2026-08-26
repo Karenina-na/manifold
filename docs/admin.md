@@ -45,7 +45,7 @@ Dashboard、Content、Comments、Now、Settings 通过 lazy chunk 加载，登�
 
 | 操作 | SDK/Core |
 | --- | --- |
-| 列表和筛选 | `adminContent({ kind, status, tag, q, cursor, limit })` |
+| 列表和筛选 | `adminContent({ kind, status, tag, q, cursor, limit })`，列表项显示 Core 返回的浏览量和点赞数 |
 | 创建草稿 | `createContent(ContentInput)` |
 | 编辑/转换 | `updateContent(id, UpdateContentInput)` |
 | 发布/撤回 | `publishContent(id)` / `unpublishContent(id)` |

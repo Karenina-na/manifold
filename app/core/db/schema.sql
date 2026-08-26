@@ -30,7 +30,8 @@ CREATE TABLE IF NOT EXISTS content (
     published_at TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     version INTEGER NOT NULL DEFAULT 1,
-    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    view_count INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS now_status (
@@ -91,3 +92,4 @@ CREATE INDEX IF NOT EXISTS idx_comments_content_status ON comments(content_id, s
 CREATE INDEX IF NOT EXISTS idx_reactions_content_kind ON reactions(content_id, kind);
 CREATE INDEX IF NOT EXISTS idx_presence_last_seen ON presence(last_seen_at);
 CREATE INDEX IF NOT EXISTS idx_audit_events_created_at ON audit_events(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_events_content_views ON audit_events(event_name, resource_id);

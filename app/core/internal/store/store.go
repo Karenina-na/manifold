@@ -16,7 +16,7 @@ import (
 
 const schema = `
 CREATE TABLE IF NOT EXISTS profile (id TEXT PRIMARY KEY, display_name TEXT NOT NULL, handle TEXT NOT NULL DEFAULT '', headline TEXT NOT NULL DEFAULT '', bio TEXT NOT NULL DEFAULT '', location TEXT NOT NULL DEFAULT '', avatar_url TEXT NOT NULL DEFAULT '', organization TEXT NOT NULL DEFAULT '', website_url TEXT NOT NULL DEFAULT '', resume_url TEXT NOT NULL DEFAULT '', interests_json TEXT NOT NULL DEFAULT '[]', education_json TEXT NOT NULL DEFAULT '[]', experience_json TEXT NOT NULL DEFAULT '[]', series_json TEXT NOT NULL DEFAULT '[]', contacts_json TEXT NOT NULL DEFAULT '[]', updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
-CREATE TABLE IF NOT EXISTS content (id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK (kind IN ('THOUGHT', 'ARTICLE')), status TEXT NOT NULL DEFAULT 'DRAFT' CHECK (status IN ('DRAFT', 'PUBLISHED', 'DELETED')), slug TEXT UNIQUE, title TEXT, summary TEXT NOT NULL DEFAULT '', body TEXT NOT NULL DEFAULT '', tags_json TEXT NOT NULL DEFAULT '[]', metadata_json TEXT NOT NULL DEFAULT '{}', published_at TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, version INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS content (id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK (kind IN ('THOUGHT', 'ARTICLE')), status TEXT NOT NULL DEFAULT 'DRAFT' CHECK (status IN ('DRAFT', 'PUBLISHED', 'DELETED')), slug TEXT UNIQUE, title TEXT, summary TEXT NOT NULL DEFAULT '', body TEXT NOT NULL DEFAULT '', tags_json TEXT NOT NULL DEFAULT '[]', metadata_json TEXT NOT NULL DEFAULT '{}', published_at TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, version INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, view_count INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS now_status (id TEXT PRIMARY KEY, title TEXT NOT NULL, detail TEXT NOT NULL DEFAULT '', mood TEXT NOT NULL DEFAULT 'FOCUSED', updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS site_config (id TEXT PRIMARY KEY, featured_content_json TEXT NOT NULL DEFAULT '[]', navigation_json TEXT NOT NULL DEFAULT '[]', sections_json TEXT NOT NULL DEFAULT '[]', updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS comments (id TEXT PRIMARY KEY, content_id TEXT NOT NULL REFERENCES content(id), author_name TEXT NOT NULL, author_url TEXT NOT NULL DEFAULT '', body TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'APPROVED', 'REJECTED')), reply_to_id TEXT REFERENCES comments(id), created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
@@ -28,6 +28,7 @@ CREATE INDEX IF NOT EXISTS idx_comments_content_status ON comments(content_id, s
 CREATE INDEX IF NOT EXISTS idx_reactions_content_kind ON reactions(content_id, kind);
 CREATE INDEX IF NOT EXISTS idx_presence_last_seen ON presence(last_seen_at);
 CREATE INDEX IF NOT EXISTS idx_audit_events_created_at ON audit_events(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_events_content_views ON audit_events(event_name, resource_id);
 `
 
 type Store struct{ DB *sql.DB }
@@ -104,7 +105,7 @@ func ensureContentSchema(db *sql.DB) error {
 		return err
 	}
 	defer rows.Close()
-	hasMetadata := false
+	hasMetadata, hasViewCount := false, false
 	for rows.Next() {
 		var cid, notNull, primaryKey int
 		var name, columnType string
@@ -115,6 +116,9 @@ func ensureContentSchema(db *sql.DB) error {
 		if name == "metadata_json" {
 			hasMetadata = true
 		}
+		if name == "view_count" {
+			hasViewCount = true
+		}
 	}
 	if err := rows.Err(); err != nil {
 		return err
@@ -124,10 +128,15 @@ func ensureContentSchema(db *sql.DB) error {
 		return err
 	}
 	if strings.Contains(tableSQL, "'POST'") || strings.Contains(tableSQL, "'NOTE'") || strings.Contains(tableSQL, "'RESEARCH'") || strings.Contains(tableSQL, "'TECH'") || strings.Contains(tableSQL, "'MANUSCRIPT'") {
-		return migrateLegacyContent(db, hasMetadata)
+		return migrateLegacyContent(db, hasMetadata, hasViewCount)
 	}
 	if !hasMetadata {
 		if _, err = db.Exec(`ALTER TABLE content ADD COLUMN metadata_json TEXT NOT NULL DEFAULT '{}'`); err != nil {
+			return err
+		}
+	}
+	if !hasViewCount {
+		if _, err = db.Exec(`ALTER TABLE content ADD COLUMN view_count INTEGER NOT NULL DEFAULT 0`); err != nil {
 			return err
 		}
 	}
@@ -135,7 +144,7 @@ func ensureContentSchema(db *sql.DB) error {
 	return err
 }
 
-func migrateLegacyContent(db *sql.DB, hasMetadata bool) error {
+func migrateLegacyContent(db *sql.DB, hasMetadata, hasViewCount bool) error {
 	if _, err := db.Exec(`PRAGMA foreign_keys = OFF`); err != nil {
 		return err
 	}
@@ -147,7 +156,7 @@ func migrateLegacyContent(db *sql.DB, hasMetadata bool) error {
 	if err != nil {
 		return rollback(err)
 	}
-	contentTable := `CREATE TABLE content_new (id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK (kind IN ('THOUGHT', 'ARTICLE')), status TEXT NOT NULL DEFAULT 'DRAFT' CHECK (status IN ('DRAFT', 'PUBLISHED', 'DELETED')), slug TEXT UNIQUE, title TEXT, summary TEXT NOT NULL DEFAULT '', body TEXT NOT NULL DEFAULT '', tags_json TEXT NOT NULL DEFAULT '[]', metadata_json TEXT NOT NULL DEFAULT '{}', published_at TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, version INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`
+	contentTable := `CREATE TABLE content_new (id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK (kind IN ('THOUGHT', 'ARTICLE')), status TEXT NOT NULL DEFAULT 'DRAFT' CHECK (status IN ('DRAFT', 'PUBLISHED', 'DELETED')), slug TEXT UNIQUE, title TEXT, summary TEXT NOT NULL DEFAULT '', body TEXT NOT NULL DEFAULT '', tags_json TEXT NOT NULL DEFAULT '[]', metadata_json TEXT NOT NULL DEFAULT '{}', published_at TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, version INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, view_count INTEGER NOT NULL DEFAULT 0)`
 	if _, err = tx.Exec(contentTable); err != nil {
 		_ = tx.Rollback()
 		return rollback(err)
@@ -156,7 +165,11 @@ func migrateLegacyContent(db *sql.DB, hasMetadata bool) error {
 	if hasMetadata {
 		metadataExpression = `CASE kind WHEN 'POST' THEN '{}' WHEN 'NOTE' THEN '{}' WHEN 'RESEARCH' THEN '{}' WHEN 'TECH' THEN '{"technologies":["Unspecified"]}' WHEN 'MANUSCRIPT' THEN '{"form":"OTHER","stage":"DRAFT"}' ELSE CASE WHEN TRIM(metadata_json) = '' THEN '{}' ELSE metadata_json END END`
 	}
-	query := `INSERT INTO content_new (id, kind, status, slug, title, summary, body, tags_json, metadata_json, published_at, created_at, version, updated_at) SELECT id, CASE kind WHEN 'POST' THEN 'ARTICLE' WHEN 'NOTE' THEN 'THOUGHT' WHEN 'RESEARCH' THEN 'ARTICLE' WHEN 'TECH' THEN 'ARTICLE' WHEN 'MANUSCRIPT' THEN 'ARTICLE' ELSE kind END, status, slug, title, summary, body, tags_json, ` + metadataExpression + `, published_at, created_at, version, updated_at FROM content`
+	viewCountExpression := "0"
+	if hasViewCount {
+		viewCountExpression = "view_count"
+	}
+	query := `INSERT INTO content_new (id, kind, status, slug, title, summary, body, tags_json, metadata_json, published_at, created_at, version, updated_at, view_count) SELECT id, CASE kind WHEN 'POST' THEN 'ARTICLE' WHEN 'NOTE' THEN 'THOUGHT' WHEN 'RESEARCH' THEN 'ARTICLE' WHEN 'TECH' THEN 'ARTICLE' WHEN 'MANUSCRIPT' THEN 'ARTICLE' ELSE kind END, status, slug, title, summary, body, tags_json, ` + metadataExpression + `, published_at, created_at, version, updated_at, ` + viewCountExpression + ` FROM content`
 	if _, err = tx.Exec(query); err != nil {
 		_ = tx.Rollback()
 		return rollback(err)
@@ -394,7 +407,7 @@ func (s *Store) UpdateSiteConfig(config model.SiteConfig) error {
 }
 
 func (s *Store) ListContent(includeDrafts bool, options ContentListOptions) ([]model.Content, bool, error) {
-	query := `SELECT id, kind, status, slug, title, summary, body, tags_json, metadata_json, published_at, created_at, updated_at, version FROM content WHERE 1 = 1`
+	query := `SELECT id, kind, status, slug, title, summary, body, tags_json, metadata_json, published_at, created_at, updated_at, version, view_count, (SELECT COUNT(*) FROM reactions WHERE content_id = content.id AND kind = 'LIKE') FROM content WHERE 1 = 1`
 	if !includeDrafts {
 		query += ` AND status = 'PUBLISHED'`
 	} else if options.Status == "" {
@@ -437,7 +450,7 @@ func (s *Store) ListContent(includeDrafts bool, options ContentListOptions) ([]m
 	for rows.Next() && len(items) <= limit {
 		var c model.Content
 		var tags, metadata, published, slug, title sql.NullString
-		if err := rows.Scan(&c.ID, &c.Kind, &c.Status, &slug, &title, &c.Summary, &c.Body, &tags, &metadata, &published, &c.CreatedAt, &c.UpdatedAt, &c.Version); err != nil {
+		if err := rows.Scan(&c.ID, &c.Kind, &c.Status, &slug, &title, &c.Summary, &c.Body, &tags, &metadata, &published, &c.CreatedAt, &c.UpdatedAt, &c.Version, &c.ViewCount, &c.LikeCount); err != nil {
 			return nil, false, err
 		}
 		c.Slug, c.Title = slug.String, title.String
@@ -466,11 +479,11 @@ func (s *Store) ListContent(includeDrafts bool, options ContentListOptions) ([]m
 func (s *Store) GetContent(slug string, includeDrafts bool) (model.Content, error) {
 	var c model.Content
 	var tags, metadata, published, slugValue, titleValue sql.NullString
-	query := `SELECT id, kind, status, slug, title, summary, body, tags_json, metadata_json, published_at, created_at, updated_at, version FROM content WHERE (slug = ? OR id = ?) AND status != 'DELETED'`
+	query := `SELECT id, kind, status, slug, title, summary, body, tags_json, metadata_json, published_at, created_at, updated_at, version, view_count, (SELECT COUNT(*) FROM reactions WHERE content_id = content.id AND kind = 'LIKE') FROM content WHERE (slug = ? OR id = ?) AND status != 'DELETED'`
 	if !includeDrafts {
 		query += ` AND status = 'PUBLISHED'`
 	}
-	err := s.DB.QueryRow(query, slug, slug).Scan(&c.ID, &c.Kind, &c.Status, &slugValue, &titleValue, &c.Summary, &c.Body, &tags, &metadata, &published, &c.CreatedAt, &c.UpdatedAt, &c.Version)
+	err := s.DB.QueryRow(query, slug, slug).Scan(&c.ID, &c.Kind, &c.Status, &slugValue, &titleValue, &c.Summary, &c.Body, &tags, &metadata, &published, &c.CreatedAt, &c.UpdatedAt, &c.Version, &c.ViewCount, &c.LikeCount)
 	c.Slug, c.Title = slugValue.String, titleValue.String
 	c.Tags = decodeStrings(tags.String)
 	c.Metadata = decodeMetadata(metadata.String)
@@ -488,11 +501,11 @@ func (s *Store) GetContent(slug string, includeDrafts bool) (model.Content, erro
 func (s *Store) GetContentByID(id string, includeDrafts bool) (model.Content, error) {
 	var c model.Content
 	var tags, metadata, published, slug, title sql.NullString
-	query := `SELECT id, kind, status, slug, title, summary, body, tags_json, metadata_json, published_at, created_at, updated_at, version FROM content WHERE id = ? AND status != 'DELETED'`
+	query := `SELECT id, kind, status, slug, title, summary, body, tags_json, metadata_json, published_at, created_at, updated_at, version, view_count, (SELECT COUNT(*) FROM reactions WHERE content_id = content.id AND kind = 'LIKE') FROM content WHERE id = ? AND status != 'DELETED'`
 	if !includeDrafts {
 		query += ` AND status = 'PUBLISHED'`
 	}
-	err := s.DB.QueryRow(query, id).Scan(&c.ID, &c.Kind, &c.Status, &slug, &title, &c.Summary, &c.Body, &tags, &metadata, &published, &c.CreatedAt, &c.UpdatedAt, &c.Version)
+	err := s.DB.QueryRow(query, id).Scan(&c.ID, &c.Kind, &c.Status, &slug, &title, &c.Summary, &c.Body, &tags, &metadata, &published, &c.CreatedAt, &c.UpdatedAt, &c.Version, &c.ViewCount, &c.LikeCount)
 	c.Slug, c.Title = slug.String, title.String
 	c.Tags = decodeStrings(tags.String)
 	c.Metadata = decodeMetadata(metadata.String)
@@ -607,6 +620,17 @@ func (s *Store) GetReactionSummary(contentID, visitorID string) (model.ReactionS
 	summary.ViewerLiked = viewerLiked == 1
 	summary.ViewerFavorited = viewerFavorited == 1
 	return summary, nil
+}
+
+func (s *Store) RecordContentView(contentID string) (int, int, error) {
+	if _, err := s.DB.Exec(`UPDATE content SET view_count = view_count + 1 WHERE id = ?`, contentID); err != nil {
+		return 0, 0, err
+	}
+	var viewCount, likeCount int
+	if err := s.DB.QueryRow(`SELECT view_count, (SELECT COUNT(*) FROM reactions WHERE content_id = content.id AND kind = 'LIKE') FROM content WHERE id = ?`, contentID).Scan(&viewCount, &likeCount); err != nil {
+		return 0, 0, err
+	}
+	return viewCount, likeCount, nil
 }
 
 func (s *Store) SetReaction(contentID, visitorID, kind string) error {
