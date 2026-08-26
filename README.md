@@ -7,7 +7,7 @@ Manifold 是一个 API-first 的个人 digital garden：同一套内容和个人
 - Web 首页、写作归档、文章详情和 SEO 元数据。
 - `THOUGHT` 与 `ARTICLE` Markdown 内容，支持标签、搜索和 cursor 分页；文稿支持数学公式、代码高亮和一键复制代码。
 - Thoughts 是轻量碎记；Articles 是带阅读时长、目录和 frontmatter 的深度文稿。
-- 匿名评论提交与 Admin 审核、`LIKE`/`FAVORITE` 访客反应。
+- 匿名评论提交与 Admin 审核、`LIKE` 访客反应。
 - Admin 登录、内容发布生命周期、评论审核、Now、Profile 和首页 composition 管理。
 - Go Core、SQLite、JWT + Casbin 鉴权、请求/追踪 ID、审计事件和 TTL 缓存。
 

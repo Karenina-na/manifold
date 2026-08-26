@@ -345,17 +345,13 @@ async function main() {
       inputs: await web.locator('input').count(),
       textareas: await web.locator('textarea').count(),
       sendButtons: await web.getByRole('button', { name: 'Send for review' }).count(),
-      reactionButtons: await web.getByRole('button', { name: /like|favorite/i }).count(),
+      reactionButtons: await web.getByRole('button', { name: /like/i }).count(),
     };
-    if (webControlCounts.sendButtons !== 1 || webControlCounts.reactionButtons !== 2) throw new Error('Web controls are incomplete');
+    if (webControlCounts.sendButtons !== 1 || webControlCounts.reactionButtons !== 1) throw new Error('Web controls are incomplete');
 
     const likeResponse = web.waitForResponse((response) => coreResponse(response, '/api/v1/content/designing-boundaries/reactions/LIKE', 'PUT', 200));
     await web.getByRole('button', { name: 'Add like' }).click();
     await likeResponse;
-    const favoriteResponse = web.waitForResponse((response) => coreResponse(response, '/api/v1/content/designing-boundaries/reactions/FAVORITE', 'PUT', 200));
-    await web.getByRole('button', { name: 'Add favorite' }).click();
-    await favoriteResponse;
-
     const commentBody = `Browser acceptance ${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     await web.locator('textarea').fill(commentBody);
     await web.getByLabel(/Quick check/).fill('7');

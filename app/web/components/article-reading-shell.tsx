@@ -59,8 +59,8 @@ export function ArticleReadingShell({ children, discussion, toc, slug }: { child
       {discussion}
       <div ref={discussionEndRef} className={styles.articleComposerTrigger} aria-hidden="true" />
     </section>
-    <AnimatePresence initial={false} mode="popLayout">{atEnd && <section className={styles.articleComposerBlock} aria-label="Add a comment">
-      <CommentComposer slug={slug} expanded={bottomExpanded} onExpandedChange={setBottomExpanded} />
-    </section>}</AnimatePresence>
+    <section className={styles.articleComposerBlock} data-active={atEnd ? "true" : "false"} aria-label="Add a comment" aria-hidden={!atEnd}>
+      <AnimatePresence initial={false} mode="popLayout">{atEnd && <CommentComposer slug={slug} expanded={bottomExpanded} onExpandedChange={setBottomExpanded} />}</AnimatePresence>
+    </section>
   </div></LayoutGroup>;
 }

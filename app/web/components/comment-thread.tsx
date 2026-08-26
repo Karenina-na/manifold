@@ -94,7 +94,7 @@ export function CommentComposer({ slug, expanded, compact = false, onExpandedCha
   });
   const toggleExpanded = () => onExpandedChange ? onExpandedChange(!expanded) : setLocalExpanded((value) => !value);
 
-  return <motion.div layoutId="article-composer" layout className={styles.articleComposerCard} data-compact={compact ? "true" : "false"} data-expanded={isExpanded ? "true" : "false"}>
+  return <motion.div layoutId="article-composer" className={styles.articleComposerCard} data-compact={compact ? "true" : "false"} data-expanded={isExpanded ? "true" : "false"}>
     <div className={styles.articleComposerActions}>
       <span className={styles.articleActionLabel}>{compact ? "Leave a trace" : "Add a comment"}</span>
       <ReactionBar slug={slug} compact={compact} />

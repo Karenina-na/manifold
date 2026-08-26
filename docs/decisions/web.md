@@ -61,7 +61,7 @@ Web 和 Admin 使用相同的 Markdown 能力组合：
 
 `app/web/components/markdown-content.tsx` 统一生成 h2/h3 anchor id、代码工具条和复制状态。Core 只存 Markdown，不承诺内容生成的 HTML 安全；禁止使用 `dangerouslySetInnerHTML` 绕过清洗。
 
-Article 的 `metadata.toc` 和 `readingMinutes` 由 Core 在保存时从 Markdown 派生。Web 使用对应 `id` 生成右侧 sticky 目录和阅读进度。阅读结束区域拆为讨论面和添加评论面：讨论面读取公开评论并展示浏览/点赞/评论统计，支持按作者或正文搜索、按是否有网站或最近时间筛选；添加评论面承载点赞、收藏、评论和分享。桌面/平板在讨论面尚未接近底部时只显示左侧紧凑动作卡，评论操作可展开同一表单；触发底部观察点后，卡片通过共享布局动画移动到中央添加评论面并默认展开。手机端动作卡先以 sticky 横条出现，添加评论面在讨论面之后堆叠。新增运行时标题 ID 算法时必须同步 Core metadata 约定和 Admin 编辑/生成逻辑。
+Article 的 `metadata.toc` 和 `readingMinutes` 由 Core 在保存时从 Markdown 派生。Web 使用对应 `id` 生成右侧 sticky 目录和阅读进度。阅读结束区域拆为讨论面和添加评论面：讨论面读取公开评论并展示浏览/点赞/评论统计，支持按作者或正文搜索、按是否有网站或最近时间筛选；添加评论面承载点赞、评论和分享。桌面/平板在讨论面尚未接近底部时只显示左侧紧凑动作卡，评论操作可展开同一表单；触发底部观察点后，卡片通过共享布局动画移动到中央添加评论面并默认展开。手机端动作卡先以 sticky 横条出现，添加评论面在讨论面之后堆叠。新增运行时标题 ID 算法时必须同步 Core metadata 约定和 Admin 编辑/生成逻辑。
 
 ## 5. 评论与反应
 
@@ -80,7 +80,7 @@ Article 的 `metadata.toc` 和 `readingMinutes` 由 Core 在保存时从 Markdow
 `getVisitorId()` 将匿名 ID 保存在 `localStorage` 的 `manifold.visitorId`。`ReactionBar`：
 
 - GET 可携带 `X-Visitor-ID`，PUT/DELETE 必须携带。
-- LIKE/FAVORITE 先乐观更新，再用 Core 返回的 `ReactionSummary` 校正。
+- Web 只暴露 LIKE 操作，先乐观更新，再用 Core 返回的 `ReactionSummary` 校正；Core 保留 FAVORITE 合同以兼容已有 API 客户端。
 - 失败时恢复旧快照，结束后失效 reaction query。
 
 ## 6. SEO、错误和可观测性
