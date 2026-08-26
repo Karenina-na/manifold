@@ -550,8 +550,8 @@ html { scroll-behavior: smooth; }
 @media (prefers-reduced-motion: reduce) { .writingReveal { opacity: 1; transform: none; transition: none; } }
 
 /* Long-form reading surface: the page stays quiet while the article gets a clear paper boundary. */
-.articleSurface { width: min(1320px, calc(100% - 32px)); margin: 38px auto 72px; border: 1px solid color-mix(in srgb, var(--color-line) 68%, transparent); background: color-mix(in srgb, #fff 94%, var(--surface-paper)); box-shadow: 0 24px 70px rgba(24, 24, 20, .08); }
-.articleSurfaceInner { padding: 0 clamp(22px, 5vw, 76px) 72px; }
+.articleSurface { width: min(1400px, calc(100% - 32px)); margin: 38px auto 72px; border: 1px solid color-mix(in srgb, var(--color-line) 68%, transparent); background: color-mix(in srgb, #fff 94%, var(--surface-paper)); box-shadow: 0 24px 70px rgba(24, 24, 20, .08); }
+.articleSurfaceInner { padding: 0 clamp(24px, 4vw, 64px) 72px; }
 .articleBack { width: min(760px, 100%); margin: 0 auto; padding-top: 28px; }.articleBack a { display: inline-flex; align-items: center; gap: 6px; color: var(--color-muted); font: 11px var(--font-mono); }.articleBack a:hover { color: var(--color-accent); }
 .articleSurface .articleHeader { width: min(760px, 100%); max-width: none; margin: 0 auto; padding: 62px 0 48px; }.articleSurface .articleHeader h1 { max-width: 760px; }.articleSurface .articleHeader p { max-width: 680px; }
 .articleMeta { align-items: center; gap: 11px 16px; line-height: 1.35; }.articleMeta span { white-space: nowrap; }.articleMetaTag { color: var(--color-accent); }
@@ -561,12 +561,12 @@ html { scroll-behavior: smooth; }
 .articleReadingMainContent .commentSection { margin-top: 96px; }
 
 /* Detail page surfaces follow the archive/home neutral paper instead of a single white card. */
-.articleSurface { width: min(1320px, calc(100% - 32px)); margin: 38px auto 72px; border: 0; background: transparent; box-shadow: none; }
-.articleSurfaceInner { padding: 0 clamp(22px, 5vw, 76px) 72px; }
+.articleSurface { width: min(1400px, calc(100% - 32px)); margin: 38px auto 72px; border: 0; background: transparent; box-shadow: none; }
+.articleSurfaceInner { padding: 0 clamp(24px, 4vw, 64px) 72px; }
 .articleTitleBlock, .articleBodyBlock, .articleEndBlock { border: 1px solid color-mix(in srgb, var(--color-line) 72%, transparent); background: color-mix(in srgb, var(--surface-paper) 88%, var(--color-accent-soft)); box-shadow: 0 12px 34px rgba(24, 24, 20, .045); }
-.articleTitleBlock { width: calc(100% - 360px - clamp(44px, 8vw, 92px)); margin: 0 0 22px calc(170px + clamp(22px, 4vw, 46px)); }.articleTitleBlock .articleBack { padding-top: 24px; }.articleTitleBlock .articleHeader { padding-top: 42px; padding-bottom: 40px; }
-.articleBodyBlock { padding: 32px clamp(20px, 4vw, 58px) 54px; }.articleReadingShell { grid-template-columns: 170px minmax(0, 760px) 190px; }.articleReadingMain { min-width: 0; grid-column: 2; grid-row: 1; }.articleToc { grid-column: 3; grid-row: 1; }
-.articleEndBlock { grid-column: 2; grid-row: 2; min-width: 0; margin-top: 22px; }.articleEndInner { width: min(760px, 100%); margin: 0 auto; padding: 34px clamp(20px, 4vw, 58px) 44px; }.articleEndHeading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding-bottom: 22px; border-bottom: 1px solid var(--color-line); }.articleEndHeading h2 { margin: 0; font-family: var(--app-font-serif); font-size: 30px; font-weight: 400; }.articleEndBlock .commentSection { margin-top: 28px; padding-top: 0; border-top: 0; }
+.articleTitleBlock { width: min(860px, 100%); margin: 0 auto 22px; }.articleTitleBlock .articleBack { padding-top: 24px; }.articleTitleBlock .articleHeader { width: 100%; max-width: none; padding: 42px clamp(34px, 5vw, 64px) 40px; }
+.articleBodyBlock { padding: 36px clamp(34px, 5vw, 64px) 62px; }.articleReadingShell { grid-template-columns: 170px minmax(0, 860px) 170px; gap: 22px; }.articleReadingMain { min-width: 0; grid-column: 2; grid-row: 1; }.articleToc { grid-column: 3; grid-row: 1; }
+.articleEndBlock { grid-column: 2; grid-row: 2; min-width: 0; margin-top: 22px; }.articleEndInner { width: min(860px, 100%); margin: 0 auto; padding: 38px clamp(34px, 5vw, 64px) 50px; }.articleEndHeading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding-bottom: 22px; border-bottom: 1px solid var(--color-line); }.articleEndHeading h2 { margin: 0; font-family: var(--app-font-serif); font-size: 30px; font-weight: 400; }.articleEndBlock .commentSection { margin-top: 28px; padding-top: 0; border-top: 0; }
 .articleActionRailAtEnd { position: relative; top: auto; grid-column: 1; grid-row: 2; align-self: start; margin: 72px 0 0 16px; transform: none; }
 
 @media (max-width: 1050px) {
