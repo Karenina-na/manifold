@@ -41,6 +41,9 @@ const COMMANDS = [
   "ping",
   "ascii",
   "clear",
+  "exit",
+  "quit",
+  "close",
   "sudo",
 ];
 
@@ -88,6 +91,11 @@ export function FloatingRepl({ displayName, handle, focus, papers }: FloatingRep
 
   // 键盘操作：历史记录导航与 Tab 补全
   const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "l") {
+      event.preventDefault();
+      setOutputs([]);
+      return;
+    }
     if (event.key === "ArrowUp") {
       event.preventDefault();
       if (history.length === 0) return;
@@ -132,6 +140,10 @@ export function FloatingRepl({ displayName, handle, focus, papers }: FloatingRep
     // 特殊指令：clear
     if (trimmed.toLowerCase() === "clear") {
       setOutputs([]);
+      return;
+    }
+    if (["exit", "quit", "close"].includes(trimmed.toLowerCase())) {
+      setOpen(false);
       return;
     }
 
@@ -391,15 +403,16 @@ async function executeCommand(
         { text: "• pwd          : Print the simulated working directory" },
         { text: "• cd <dir>     : Move between papers/ and contact/" },
         { text: "• cat <file>   : Read about.md, focus.txt, or README.md" },
-        { text: "• whoami       : Print active user session identity" },
-        { text: "• now          : Fetch real-time research & production focus" },
-        { text: "• papers       : List indexed research publications" },
-        { text: "• open <idx>   : Launch specific publication in browser" },
-        { text: "• theme <mode> : Toggle or set explicit theme (light|dark)" },
-        { text: "• calc <expr>  : Safe math evaluation engine" },
-        { text: "• ping [host]  : Measure latency to internal nodes" },
-        { text: "• clear        : Flush and clear terminal buffer" },
-        { text: "• ascii        : Render ASCII system glyph" },
+        { text: "• whoami:       Print active user session identity" },
+        { text: "• now:          Fetch real-time research & production focus" },
+        { text: "• papers:       List indexed research publications" },
+        { text: "• open <idx>:   Launch specific publication in browser" },
+        { text: "• theme <mode>: Toggle or set explicit theme (light|dark)" },
+        { text: "• calc <expr>:  Safe math evaluation engine" },
+        { text: "• ping [host]:  Measure latency to internal nodes" },
+        { text: "• clear:        Flush and clear terminal buffer" },
+        { text: "• exit/quit:    Close the terminal window" },
+        { text: "• ascii:        Render ASCII system glyph" },
       ];
 
     default:

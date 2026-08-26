@@ -329,6 +329,9 @@ html { scroll-behavior: smooth; }
 .floatingTooltip > span { font-size: 11px; line-height: 1.5; }
 .floatingTooltip .tooltipDescription { color: var(--color-muted); }
 .floatingTooltip .tooltipUrl { overflow-wrap: anywhere; color: var(--color-ink); font-family: var(--font-mono); font-size: 9px; }
+.floatingTooltip { opacity: 0; transform: translateY(6px); transition: opacity 360ms var(--motion-ease), transform 360ms var(--motion-ease); }
+.floatingTooltip[data-state="open"] { opacity: 1; transform: translateY(0); }
+.floatingTooltip[data-state="closed"] { opacity: 0; pointer-events: none; }
 
 /* Icon-only contact rail matching the reference's quiet, evenly spaced marks. */
 .contactPanel { display: flex; align-items: center; justify-content: center; width: 100%; min-height: 0; padding: 6px 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
@@ -339,7 +342,7 @@ html { scroll-behavior: smooth; }
 .contactPanel .contactItem { width: 42px; height: 42px; flex: 0 0 42px; border: 0; border-radius: 50%; background: transparent; }
 .contactPanel .contactItem:hover, .contactPanel .contactItem:focus-visible { border: 0; background: color-mix(in srgb, var(--color-accent-soft) 72%, transparent); }
 .contactIcon { display: grid; place-items: center; width: auto; height: auto; border-radius: 0; background: transparent; color: inherit; }
-.contactPanel .contactTooltip { display: none; }
+.contactPanel .contactTooltip { display: grid; }
 
 /* Series wrappers preserve the grid while the card itself stays compact. */
 .seriesGrid > .seriesTooltipAnchor { min-width: 0; }
@@ -436,12 +439,20 @@ html { scroll-behavior: smooth; }
 .replDialog .replBody { min-height: 300px; max-height: min(440px, calc(100vh - 190px)); padding: 18px 20px; }
 .replDialog .replForm { padding: 12px 18px 14px; background: color-mix(in srgb, var(--color-accent-soft) 24%, transparent); }
 .replDialog .replPrompt { white-space: nowrap; }
+.replPromptLine { display: flex; align-items: baseline; justify-content: space-between; gap: 18px; min-width: 0; }
+.replPromptLine .replPrompt { min-width: 0; overflow: hidden; color: var(--color-ink); text-overflow: ellipsis; }
+.replTimestamp { flex: 0 0 auto; margin-left: auto; color: var(--color-muted); font-size: 9px; letter-spacing: .04em; }
+.replWelcome > span, .replForm .replPrompt { color: var(--color-success); }
+.replForm input { transition: opacity var(--motion-fast) ease; }
+.replForm input:focus::placeholder { opacity: 0; }
 @media (max-width: 760px) {
   .floatingRepl { right: 16px; bottom: 16px; }
   .replDialog { width: min(340px, calc(100vw - 32px)); }
-  .replScrim { padding: 14px; }
-  .replDialog { width: calc(100vw - 28px); max-height: calc(100vh - 28px); }
-  .replDialog .replBody { min-height: 260px; padding: 15px; }
+  .replScrim { padding: 0; }
+  .replDialog { width: 100vw; max-width: none; height: 100dvh; max-height: none; border: 0; border-radius: 0; grid-template-rows: auto minmax(0, 1fr) auto; }
+  .replDialog .replBody { min-height: 0; max-height: none; padding: 18px 15px; }
+  .replDialog .replForm { min-height: 58px; padding: 12px 14px; }
+  .replDialog .replSubmit { width: 38px; height: 38px; }
 }
 
 /* GitHub-inspired contribution activity, kept quiet beside the main timeline. */
