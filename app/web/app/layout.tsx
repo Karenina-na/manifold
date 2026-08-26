@@ -4,6 +4,7 @@ import { Providers } from "../components/providers";
 import { SiteNav } from "../components/site-nav";
 import { BackgroundCanvas } from "../components/background-canvas";
 import { SiteFooter } from "../components/site-footer";
+import { FloatingRepl } from "../components/floating-repl";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -24,6 +25,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           <BackgroundCanvas />
           <SiteNav />
           <div className="siteContent">{children}</div>
+          <FloatingRepl displayName="Manifold" handle="@manifold" focus="Open focus" papers={[]} />
           <SiteFooter />
         </Providers>
       </body>

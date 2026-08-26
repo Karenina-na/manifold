@@ -6,7 +6,6 @@ import { Reveal } from "../components/reveal";
 import { UpdateTimelineView } from "../components/update-timeline";
 import { ContributionHeatmap } from "../components/contribution-heatmap";
 import { MinimalMetadata } from "../components/minimal-metadata";
-import { FloatingRepl } from "../components/floating-repl";
 import { ContactLinks, SeriesLinks } from "../components/profile-surfaces";
 import styles from "./site.module.css";
 
@@ -38,7 +37,6 @@ export default async function Home() {
 
   return <main className={styles.page}>
     <MinimalMetadata focus={currentFocus} location={location} gitSha={gitSha} />
-    <FloatingRepl displayName={profile?.displayName ?? "Manifold"} handle={profile?.handle} focus={currentFocus} papers={writings.map((item) => ({ title: item.title || "Untitled writing", href: item.href }))} />
     <div className={styles.shell}>
       {data.error && <p className={styles.errorBanner}>{data.error}</p>}
       <Reveal className={styles.introReveal}><section className={styles.profileSection} id="profile-section" aria-labelledby="intro-heading">

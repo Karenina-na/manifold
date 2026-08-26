@@ -24,7 +24,7 @@ Server Component 负责首屏数据、详情读取和 SEO；Client Component 负
 | `/` | Dynamic Server Component | profile、site、全部公开 Article/Thought 历史、now、stats | Profile/Introduction、Recent Content、Updates、年度 Contribution activity、My Series、Contact |
 | `/thoughts` | Dynamic Server Component | `feed({ kind: "THOUGHT" })` | 轻量时间线/标签入口 |
 | `/thoughts/[id]` | Dynamic Server Component | 通过 ID 获取 Thought 详情 | 复用统一阅读器和评论/反应 |
-| `/writing` | Dynamic Server Component | `content({ kind: "ARTICLE" })` | 长文列表、标签、阅读时长 |
+| `/writing` | Dynamic Server Component + client archive controls | `content({ kind: "ARTICLE", limit: 100 })` | 双栏长文归档、置顶首篇、搜索、标签筛选、最新/最早/最近更新排序与 sticky 侧栏 |
 | `/writing/[slug]` | Dynamic Server Component | `contentBySlug(slug)` | SEO、TOC、Markdown、评论和反应 |
 | `/health` | Route Handler | 无 | Web 进程 liveness，Core 健康检查仍为 `/healthz` |
 | `/feed.xml` | Dynamic Route Handler | profile、2 条 Article、3 条 Thought | 输出同源 RSS 2.0 feed，复用首页 feed 数据 |
