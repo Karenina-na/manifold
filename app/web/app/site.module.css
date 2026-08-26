@@ -427,9 +427,21 @@ html { scroll-behavior: smooth; }
 .replForm { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-top: 1px solid var(--color-line); }
 .replForm input { min-width: 0; flex: 1; border: 0; outline: 0; background: transparent; color: var(--color-ink); font-family: var(--font-mono); font-size: 11px; }
 .replForm input::placeholder { color: var(--color-muted); opacity: .72; }
+.replScrim { position: fixed; z-index: 30; inset: 0; display: grid; place-items: center; padding: 24px; background: rgba(24, 23, 20, .16); backdrop-filter: blur(7px); opacity: 0; visibility: hidden; pointer-events: none; transition: opacity 420ms var(--motion-ease), visibility 420ms var(--motion-ease); }
+.replScrim[data-open="true"] { opacity: 1; visibility: visible; pointer-events: auto; }
+.replDialog { width: min(720px, calc(100vw - 48px)); max-height: min(620px, calc(100vh - 48px)); border-color: color-mix(in srgb, var(--color-ink) 24%, var(--color-line)); border-radius: 12px; background: color-mix(in srgb, var(--surface-paper) 94%, transparent); box-shadow: 0 30px 90px rgba(24, 24, 20, .2), 0 0 0 1px rgba(255,255,255,.18) inset; transform: translateY(18px) scale(.96); opacity: 0; transition: transform 520ms var(--motion-ease), opacity 420ms var(--motion-ease); }
+.replDialog[data-open="true"] { transform: translateY(0) scale(1); opacity: 1; }
+.replWindowTitle, .replWindowStatus { display: inline-flex; align-items: center; gap: 6px; }
+.replWindowStatus { color: var(--color-success); font-size: 9px; text-transform: uppercase; letter-spacing: .08em; }
+.replDialog .replBody { min-height: 300px; max-height: min(440px, calc(100vh - 190px)); padding: 18px 20px; }
+.replDialog .replForm { padding: 12px 18px 14px; background: color-mix(in srgb, var(--color-accent-soft) 24%, transparent); }
+.replDialog .replPrompt { white-space: nowrap; }
 @media (max-width: 760px) {
   .floatingRepl { right: 16px; bottom: 16px; }
   .replDialog { width: min(340px, calc(100vw - 32px)); }
+  .replScrim { padding: 14px; }
+  .replDialog { width: calc(100vw - 28px); max-height: calc(100vh - 28px); }
+  .replDialog .replBody { min-height: 260px; padding: 15px; }
 }
 
 /* GitHub-inspired contribution activity, kept quiet beside the main timeline. */
