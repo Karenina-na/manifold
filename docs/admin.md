@@ -67,7 +67,7 @@ Article 模式字段：title、slug、summary、Markdown body、tags、readingMi
 
 ### Settings
 
-Profile 调用 `GET/PATCH /api/v1/admin/profile`，包含 displayName、handle、headline、bio、avatarUrl、location、organization、websiteUrl、resumeUrl、interests、education、experience、series、contacts。Series 和联系方式在 Settings 以 JSON 编辑，Web 首页以公开卡片/链接展示。
+Profile 调用 `GET/PATCH /api/v1/admin/profile`，包含 displayName、handle、headline、bio、avatarUrl、location、organization、websiteUrl、resumeUrl、interests、education、experience、series、contacts。Series 和联系方式在 Settings 以 JSON 编辑；联系方式支持可选的 `icon` Lucide 图标 key（如 `github`、`x`、`mail`、`rss`、`telegram`、`podcast`、`tv`），Web 首页以公开卡片/链接展示，其中 Contact 仅显示居中的图标入口。
 
 Site 调用 `GET/PATCH /api/v1/admin/site`，包含 `featuredContent`、`navigation` 和 `sections`。浏览器先用 Zod 校验 navigation JSON 和 sections，Core 仍做最终校验。
 

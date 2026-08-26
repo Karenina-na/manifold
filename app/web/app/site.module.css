@@ -328,9 +328,8 @@
 .floatingTooltip .tooltipUrl { overflow-wrap: anywhere; color: var(--color-ink); font-family: var(--font-mono); font-size: 9px; }
 
 /* Icon-only contact rail matching the reference's quiet, evenly spaced marks. */
-.contactPanel { width: fit-content; min-height: 0; padding: 6px 8px; border: 1px solid color-mix(in srgb, var(--color-line) 42%, transparent); border-radius: 999px; background: color-mix(in srgb, var(--surface-paper) 72%, transparent); box-shadow: none; }
-.contactPanel { display: block; align-items: center; flex-direction: row; gap: 0; }
-.contactPanel .contactGrid { justify-content: flex-start; gap: 16px; }
+.contactPanel { display: flex; align-items: center; justify-content: center; width: 100%; min-height: 0; padding: 6px 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.contactPanel .contactGrid { justify-content: center; gap: 16px; }
 .tooltipAnchor, .seriesTooltipAnchor { display: block; min-width: 0; }
 .contactItem { display: inline-grid; place-items: center; width: 42px; height: 42px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: color-mix(in srgb, var(--color-muted) 84%, transparent); transition: color .2s ease, background .2s ease, transform .2s ease; }
 .contactItem:hover, .contactItem:focus-visible { border: 0; background: color-mix(in srgb, var(--color-accent-soft) 72%, transparent); color: var(--color-ink); transform: translateY(-2px); }
@@ -345,7 +344,7 @@
 .seriesCardBody h3 { overflow: hidden; margin: 4px 0 0; color: var(--color-ink); font-family: var(--app-font-serif); font-size: 18px; font-weight: 400; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
 
 @media (max-width: 760px) {
-  .contactPanel { display: block; align-items: center; flex-direction: row; gap: 0; padding: 6px 8px; }
+  .contactPanel { display: flex; align-items: center; justify-content: center; padding: 6px 0; }
   .contactPanel .contactGrid { gap: 8px; }
   .contactPanel .contactItem { width: 42px; height: 42px; }
   .floatingTooltip { width: min(320px, calc(100vw - 24px)); }
