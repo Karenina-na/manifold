@@ -345,11 +345,11 @@ async function main() {
       inputs: await web.locator('input').count(),
       textareas: await web.locator('textarea').count(),
       sendButtons: await web.getByRole('button', { name: 'Send for review' }).count(),
-      reactionButtons: await web.getByRole('button', { name: /like/i }).count(),
+      likeButtons: await web.getByRole('button', { name: /like/i }).count(),
     };
-    if (webControlCounts.sendButtons !== 1 || webControlCounts.reactionButtons !== 1) throw new Error('Web controls are incomplete');
+    if (webControlCounts.sendButtons !== 1 || webControlCounts.likeButtons !== 1) throw new Error('Web controls are incomplete');
 
-    const likeResponse = web.waitForResponse((response) => coreResponse(response, '/api/v1/content/designing-boundaries/reactions/LIKE', 'PUT', 200));
+    const likeResponse = web.waitForResponse((response) => coreResponse(response, '/api/v1/content/designing-boundaries/likes', 'PUT', 200));
     await web.getByRole('button', { name: 'Add like' }).click();
     await likeResponse;
     const commentBody = `Browser acceptance ${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`;

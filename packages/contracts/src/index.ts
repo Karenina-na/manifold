@@ -19,8 +19,7 @@ export type Content = ContentWithMetadata<ThoughtMetadata, "THOUGHT"> | ContentW
 export type ContentDetail = ContentDetailWithMetadata<ThoughtMetadata, "THOUGHT"> | ContentDetailWithMetadata<ArticleMetadata, "ARTICLE">
 export interface NowStatus { title: string; detail: string; mood: string; updatedAt: string; expiresAt?: string }
 export interface Comment { id: string; contentId: string; authorName: string; authorUrl?: string; body: string; status: CommentStatus; createdAt: string; replyToId?: string }
-export type ReactionKind = "LIKE" | "FAVORITE";
-export interface ReactionSummary { likeCount: number; favoriteCount: number; viewerLiked: boolean; viewerFavorited: boolean }
+export interface LikeSummary { likeCount: number; viewerLiked: boolean }
 export interface Stats { contentCount: number; articleCount: number; thoughtCount: number; wordCount: number; updatedAt: string }
 export interface PresenceStatus { activeVisitors: number; observedAt: string }
 export interface AdminStats { content: Stats; pendingComments: number }

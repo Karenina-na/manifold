@@ -78,9 +78,9 @@ func TestContentListIncludesViewAndLikeCounts(t *testing.T) {
 	if metadata.Code != http.StatusOK {
 		t.Fatalf("expected metadata detail 200, got %d", metadata.Code)
 	}
-	liked := requestWithVisitor(t, router, http.MethodPut, "/api/v1/content/designing-boundaries/reactions/LIKE", "visitor-a")
+	liked := requestWithVisitor(t, router, http.MethodPut, "/api/v1/content/designing-boundaries/likes", "visitor-a")
 	if liked.Code != http.StatusOK {
-		t.Fatalf("expected reaction 200, got %d", liked.Code)
+		t.Fatalf("expected like 200, got %d", liked.Code)
 	}
 	second := request(t, router, http.MethodGet, "/api/v1/content/designing-boundaries", nil)
 	if second.Code != http.StatusOK || !strings.Contains(second.Body.String(), `"viewCount":2`) || !strings.Contains(second.Body.String(), `"likeCount":1`) {
@@ -138,19 +138,19 @@ func TestPresenceCountsRecentVisitors(t *testing.T) {
 	}
 }
 
-func TestContentReactionFlowIsIdempotentAndVisitorScoped(t *testing.T) {
+func TestContentLikeFlowIsIdempotentAndVisitorScoped(t *testing.T) {
 	router := newTestRouter(t)
 
 	read := func(visitorID string) *httptest.ResponseRecorder {
 		recorder := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/content/designing-boundaries/reactions", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/content/designing-boundaries/likes", nil)
 		req.Header.Set("X-Visitor-ID", visitorID)
 		router.ServeHTTP(recorder, req)
 		return recorder
 	}
-	mutate := func(method, kind, visitorID string) *httptest.ResponseRecorder {
+	mutate := func(method, visitorID string) *httptest.ResponseRecorder {
 		recorder := httptest.NewRecorder()
-		req := httptest.NewRequest(method, "/api/v1/content/designing-boundaries/reactions/"+kind, nil)
+		req := httptest.NewRequest(method, "/api/v1/content/designing-boundaries/likes", nil)
 		req.Header.Set("X-Visitor-ID", visitorID)
 		router.ServeHTTP(recorder, req)
 		return recorder
@@ -158,13 +158,13 @@ func TestContentReactionFlowIsIdempotentAndVisitorScoped(t *testing.T) {
 
 	initial := read("visitor-a")
 	if initial.Code != http.StatusOK || !strings.Contains(initial.Body.String(), `"likeCount":0`) {
-		t.Fatalf("expected empty reaction summary, got %d %s", initial.Code, initial.Body.String())
+		t.Fatalf("expected empty like summary, got %d %s", initial.Code, initial.Body.String())
 	}
-	liked := mutate(http.MethodPut, "LIKE", "visitor-a")
+	liked := mutate(http.MethodPut, "visitor-a")
 	if liked.Code != http.StatusOK || !strings.Contains(liked.Body.String(), `"likeCount":1`) || !strings.Contains(liked.Body.String(), `"viewerLiked":true`) {
 		t.Fatalf("expected visitor like, got %d %s", liked.Code, liked.Body.String())
 	}
-	repeated := mutate(http.MethodPut, "LIKE", "visitor-a")
+	repeated := mutate(http.MethodPut, "visitor-a")
 	if repeated.Code != http.StatusOK || !strings.Contains(repeated.Body.String(), `"likeCount":1`) {
 		t.Fatalf("expected idempotent like, got %d %s", repeated.Code, repeated.Body.String())
 	}
@@ -172,25 +172,21 @@ func TestContentReactionFlowIsIdempotentAndVisitorScoped(t *testing.T) {
 	if otherVisitor.Code != http.StatusOK || !strings.Contains(otherVisitor.Body.String(), `"viewerLiked":false`) {
 		t.Fatalf("expected visitor-scoped state, got %d %s", otherVisitor.Code, otherVisitor.Body.String())
 	}
-	bookmarked := mutate(http.MethodPut, "FAVORITE", "visitor-a")
-	if bookmarked.Code != http.StatusOK || !strings.Contains(bookmarked.Body.String(), `"viewerFavorited":true`) {
-		t.Fatalf("expected visitor bookmark, got %d %s", bookmarked.Code, bookmarked.Body.String())
-	}
-	unliked := mutate(http.MethodDelete, "LIKE", "visitor-a")
+	unliked := mutate(http.MethodDelete, "visitor-a")
 	if unliked.Code != http.StatusOK || !strings.Contains(unliked.Body.String(), `"likeCount":0`) || !strings.Contains(unliked.Body.String(), `"viewerLiked":false`) {
 		t.Fatalf("expected like removal, got %d %s", unliked.Code, unliked.Body.String())
 	}
-	invalid := mutate(http.MethodPut, "CLAP", "visitor-a")
-	if invalid.Code != http.StatusBadRequest || !strings.Contains(invalid.Body.String(), "REACTION_KIND_INVALID") {
-		t.Fatalf("expected invalid reaction kind 400, got %d %s", invalid.Code, invalid.Body.String())
-	}
-	missingVisitor := request(t, router, http.MethodPut, "/api/v1/content/designing-boundaries/reactions/LIKE", nil)
+	missingVisitor := request(t, router, http.MethodPut, "/api/v1/content/designing-boundaries/likes", nil)
 	if missingVisitor.Code != http.StatusBadRequest || !strings.Contains(missingVisitor.Body.String(), "VISITOR_ID_INVALID") {
 		t.Fatalf("expected missing visitor id 400, got %d %s", missingVisitor.Code, missingVisitor.Body.String())
 	}
-	invalidVisitor := mutate(http.MethodPut, "LIKE", "visitor with spaces")
+	invalidVisitor := mutate(http.MethodPut, "visitor with spaces")
 	if invalidVisitor.Code != http.StatusBadRequest || !strings.Contains(invalidVisitor.Body.String(), "VISITOR_ID_INVALID") {
 		t.Fatalf("expected invalid visitor id 400, got %d %s", invalidVisitor.Code, invalidVisitor.Body.String())
+	}
+	legacy := request(t, router, http.MethodGet, "/api/v1/content/designing-boundaries/reactions", nil)
+	if legacy.Code != http.StatusNotFound {
+		t.Fatalf("expected removed reactions endpoint 404, got %d %s", legacy.Code, legacy.Body.String())
 	}
 }
 
@@ -222,7 +218,7 @@ func TestRequestIDIsPropagatedToStructuredErrors(t *testing.T) {
 func TestTraceHeadersAreAllowedByCORS(t *testing.T) {
 	router := newTestRouter(t)
 	preflight := httptest.NewRecorder()
-	preflightRequest := httptest.NewRequest(http.MethodOptions, "/api/v1/content/designing-boundaries/reactions/LIKE", nil)
+	preflightRequest := httptest.NewRequest(http.MethodOptions, "/api/v1/content/designing-boundaries/likes", nil)
 	preflightRequest.Header.Set("Origin", "http://localhost:3000")
 	preflightRequest.Header.Set("Access-Control-Request-Method", http.MethodPut)
 	preflightRequest.Header.Set("Access-Control-Request-Headers", "X-Trace-ID, X-Visitor-ID")

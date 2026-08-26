@@ -15,17 +15,18 @@ import (
 )
 
 const schema = `
+DROP TABLE IF EXISTS reactions;
 CREATE TABLE IF NOT EXISTS profile (id TEXT PRIMARY KEY, display_name TEXT NOT NULL, handle TEXT NOT NULL DEFAULT '', headline TEXT NOT NULL DEFAULT '', bio TEXT NOT NULL DEFAULT '', location TEXT NOT NULL DEFAULT '', avatar_url TEXT NOT NULL DEFAULT '', organization TEXT NOT NULL DEFAULT '', website_url TEXT NOT NULL DEFAULT '', resume_url TEXT NOT NULL DEFAULT '', interests_json TEXT NOT NULL DEFAULT '[]', education_json TEXT NOT NULL DEFAULT '[]', experience_json TEXT NOT NULL DEFAULT '[]', series_json TEXT NOT NULL DEFAULT '[]', contacts_json TEXT NOT NULL DEFAULT '[]', updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS content (id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK (kind IN ('THOUGHT', 'ARTICLE')), status TEXT NOT NULL DEFAULT 'DRAFT' CHECK (status IN ('DRAFT', 'PUBLISHED', 'DELETED')), slug TEXT UNIQUE, title TEXT, summary TEXT NOT NULL DEFAULT '', body TEXT NOT NULL DEFAULT '', tags_json TEXT NOT NULL DEFAULT '[]', metadata_json TEXT NOT NULL DEFAULT '{}', published_at TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, version INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, view_count INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS now_status (id TEXT PRIMARY KEY, title TEXT NOT NULL, detail TEXT NOT NULL DEFAULT '', mood TEXT NOT NULL DEFAULT 'FOCUSED', updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS site_config (id TEXT PRIMARY KEY, featured_content_json TEXT NOT NULL DEFAULT '[]', navigation_json TEXT NOT NULL DEFAULT '[]', sections_json TEXT NOT NULL DEFAULT '[]', updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS comments (id TEXT PRIMARY KEY, content_id TEXT NOT NULL REFERENCES content(id), author_name TEXT NOT NULL, author_url TEXT NOT NULL DEFAULT '', body TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'APPROVED', 'REJECTED')), reply_to_id TEXT REFERENCES comments(id), created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
-CREATE TABLE IF NOT EXISTS reactions (id TEXT PRIMARY KEY, content_id TEXT NOT NULL REFERENCES content(id) ON DELETE CASCADE, visitor_id TEXT NOT NULL, kind TEXT NOT NULL CHECK (kind IN ('LIKE', 'FAVORITE')), created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE (content_id, visitor_id, kind));
+CREATE TABLE IF NOT EXISTS likes (id TEXT PRIMARY KEY, content_id TEXT NOT NULL REFERENCES content(id) ON DELETE CASCADE, visitor_id TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE (content_id, visitor_id));
 CREATE TABLE IF NOT EXISTS presence (visitor_id TEXT PRIMARY KEY, last_seen_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS audit_events (id TEXT PRIMARY KEY, event_name TEXT NOT NULL, resource_type TEXT NOT NULL, resource_id TEXT NOT NULL DEFAULT '', actor TEXT NOT NULL DEFAULT 'anonymous', request_id TEXT NOT NULL DEFAULT '', trace_id TEXT NOT NULL DEFAULT '', metadata_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE INDEX IF NOT EXISTS idx_content_publication ON content(status, published_at DESC);
 CREATE INDEX IF NOT EXISTS idx_comments_content_status ON comments(content_id, status, created_at);
-CREATE INDEX IF NOT EXISTS idx_reactions_content_kind ON reactions(content_id, kind);
+CREATE INDEX IF NOT EXISTS idx_likes_content ON likes(content_id);
 CREATE INDEX IF NOT EXISTS idx_presence_last_seen ON presence(last_seen_at);
 CREATE INDEX IF NOT EXISTS idx_audit_events_created_at ON audit_events(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_audit_events_content_views ON audit_events(event_name, resource_id);
@@ -449,7 +450,7 @@ func (s *Store) UpdateSiteConfig(config model.SiteConfig) error {
 }
 
 func (s *Store) ListContent(includeDrafts bool, options ContentListOptions) ([]model.Content, bool, error) {
-	query := `SELECT id, kind, status, slug, title, summary, body, tags_json, metadata_json, published_at, created_at, updated_at, version, view_count, (SELECT COUNT(*) FROM reactions WHERE content_id = content.id AND kind = 'LIKE') FROM content WHERE 1 = 1`
+	query := `SELECT id, kind, status, slug, title, summary, body, tags_json, metadata_json, published_at, created_at, updated_at, version, view_count, (SELECT COUNT(*) FROM likes WHERE content_id = content.id) FROM content WHERE 1 = 1`
 	if !includeDrafts {
 		query += ` AND status = 'PUBLISHED'`
 	} else if options.Status == "" {
@@ -521,7 +522,7 @@ func (s *Store) ListContent(includeDrafts bool, options ContentListOptions) ([]m
 func (s *Store) GetContent(slug string, includeDrafts bool) (model.Content, error) {
 	var c model.Content
 	var tags, metadata, published, slugValue, titleValue sql.NullString
-	query := `SELECT id, kind, status, slug, title, summary, body, tags_json, metadata_json, published_at, created_at, updated_at, version, view_count, (SELECT COUNT(*) FROM reactions WHERE content_id = content.id AND kind = 'LIKE') FROM content WHERE (slug = ? OR id = ?) AND status != 'DELETED'`
+	query := `SELECT id, kind, status, slug, title, summary, body, tags_json, metadata_json, published_at, created_at, updated_at, version, view_count, (SELECT COUNT(*) FROM likes WHERE content_id = content.id) FROM content WHERE (slug = ? OR id = ?) AND status != 'DELETED'`
 	if !includeDrafts {
 		query += ` AND status = 'PUBLISHED'`
 	}
@@ -543,7 +544,7 @@ func (s *Store) GetContent(slug string, includeDrafts bool) (model.Content, erro
 func (s *Store) GetContentByID(id string, includeDrafts bool) (model.Content, error) {
 	var c model.Content
 	var tags, metadata, published, slug, title sql.NullString
-	query := `SELECT id, kind, status, slug, title, summary, body, tags_json, metadata_json, published_at, created_at, updated_at, version, view_count, (SELECT COUNT(*) FROM reactions WHERE content_id = content.id AND kind = 'LIKE') FROM content WHERE id = ? AND status != 'DELETED'`
+	query := `SELECT id, kind, status, slug, title, summary, body, tags_json, metadata_json, published_at, created_at, updated_at, version, view_count, (SELECT COUNT(*) FROM likes WHERE content_id = content.id) FROM content WHERE id = ? AND status != 'DELETED'`
 	if !includeDrafts {
 		query += ` AND status = 'PUBLISHED'`
 	}
@@ -646,21 +647,16 @@ func (s *Store) CreateComment(contentID, authorName, authorURL, body string, rep
 	return model.Comment{ID: id, ContentID: contentID, AuthorName: authorName, AuthorURL: authorURL, Body: body, Status: "PENDING", CreatedAt: created, ReplyToID: replyToID}, err
 }
 
-func (s *Store) GetReactionSummary(contentID, visitorID string) (model.ReactionSummary, error) {
-	var summary model.ReactionSummary
-	var likeCount, favoriteCount, viewerLiked, viewerFavorited int
+func (s *Store) GetLikeSummary(contentID, visitorID string) (model.LikeSummary, error) {
+	var summary model.LikeSummary
+	var viewerLiked int
 	err := s.DB.QueryRow(`
-		SELECT COALESCE(SUM(kind = 'LIKE'), 0), COALESCE(SUM(kind = 'FAVORITE'), 0),
-		EXISTS(SELECT 1 FROM reactions WHERE content_id = ? AND visitor_id = ? AND kind = 'LIKE'),
-		EXISTS(SELECT 1 FROM reactions WHERE content_id = ? AND visitor_id = ? AND kind = 'FAVORITE')
-		FROM reactions WHERE content_id = ?`, contentID, visitorID, contentID, visitorID, contentID).Scan(&likeCount, &favoriteCount, &viewerLiked, &viewerFavorited)
+		SELECT (SELECT COUNT(*) FROM likes WHERE content_id = ?),
+		EXISTS(SELECT 1 FROM likes WHERE content_id = ? AND visitor_id = ?)`, contentID, contentID, visitorID).Scan(&summary.LikeCount, &viewerLiked)
 	if err != nil {
 		return summary, err
 	}
-	summary.LikeCount = likeCount
-	summary.FavoriteCount = favoriteCount
 	summary.ViewerLiked = viewerLiked == 1
-	summary.ViewerFavorited = viewerFavorited == 1
 	return summary, nil
 }
 
@@ -669,20 +665,20 @@ func (s *Store) RecordContentView(contentID string) (int, int, error) {
 		return 0, 0, err
 	}
 	var viewCount, likeCount int
-	if err := s.DB.QueryRow(`SELECT view_count, (SELECT COUNT(*) FROM reactions WHERE content_id = content.id AND kind = 'LIKE') FROM content WHERE id = ?`, contentID).Scan(&viewCount, &likeCount); err != nil {
+	if err := s.DB.QueryRow(`SELECT view_count, (SELECT COUNT(*) FROM likes WHERE content_id = content.id) FROM content WHERE id = ?`, contentID).Scan(&viewCount, &likeCount); err != nil {
 		return 0, 0, err
 	}
 	return viewCount, likeCount, nil
 }
 
-func (s *Store) SetReaction(contentID, visitorID, kind string) error {
-	id := "reaction_" + contentID + "_" + visitorID + "_" + kind
-	_, err := s.DB.Exec(`INSERT OR IGNORE INTO reactions (id, content_id, visitor_id, kind, created_at) VALUES (?, ?, ?, ?, ?)`, id, contentID, visitorID, kind, time.Now().UTC().Format(time.RFC3339))
+func (s *Store) SetLike(contentID, visitorID string) error {
+	id := "like_" + contentID + "_" + visitorID
+	_, err := s.DB.Exec(`INSERT OR IGNORE INTO likes (id, content_id, visitor_id, created_at) VALUES (?, ?, ?, ?)`, id, contentID, visitorID, time.Now().UTC().Format(time.RFC3339))
 	return err
 }
 
-func (s *Store) DeleteReaction(contentID, visitorID, kind string) error {
-	_, err := s.DB.Exec(`DELETE FROM reactions WHERE content_id = ? AND visitor_id = ? AND kind = ?`, contentID, visitorID, kind)
+func (s *Store) DeleteLike(contentID, visitorID string) error {
+	_, err := s.DB.Exec(`DELETE FROM likes WHERE content_id = ? AND visitor_id = ?`, contentID, visitorID)
 	return err
 }
 

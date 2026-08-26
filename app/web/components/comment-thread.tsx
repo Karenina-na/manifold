@@ -12,7 +12,7 @@ import type { Comment } from "@manifold/contracts";
 import { createBrowserClient, getVisitorId } from "../lib/api";
 import { filterComments, type CommentFilter } from "../lib/comment-filter";
 import styles from "../app/site.module.css";
-import { ReactionBar } from "./reaction-bar";
+import { LikeButton } from "./like-button";
 
 const commentSchema = z.object({
   authorName: z.string().trim().max(80),
@@ -41,10 +41,10 @@ export function ArticleDiscussion({ slug, viewCount = 0, likeCount = 0, showStat
   const [filter, setFilter] = useState<CommentFilter>("all");
   const [visitorId] = useState(() => typeof window === "undefined" ? "" : getVisitorId());
   const commentsQuery = useQuery({ queryKey: ["comments", slug], queryFn: () => client.comments(slug) });
-  const reactions = useQuery({ queryKey: ["reactions", slug, visitorId], queryFn: () => client.reactions(slug, visitorId), enabled: Boolean(visitorId) });
+  const likesQuery = useQuery({ queryKey: ["likes", slug, visitorId], queryFn: () => client.likes(slug, visitorId), enabled: Boolean(visitorId) });
   const comments = useMemo(() => commentsQuery.data?.data ?? [], [commentsQuery.data]);
   const visibleComments = useMemo(() => filterComments(comments, search, filter), [comments, search, filter]);
-  const currentLikeCount = reactions.data?.likeCount ?? likeCount;
+  const currentLikeCount = likesQuery.data?.likeCount ?? likeCount;
 
   return <section id="comments" className={`${styles.commentSection} ${styles.articleDiscussion}`} aria-labelledby="comments-title">
     <div className={styles.sectionHeading}>
@@ -97,7 +97,7 @@ export function CommentComposer({ slug, expanded, compact = false, onExpandedCha
   return <motion.div layoutId="article-composer" className={styles.articleComposerCard} data-compact={compact ? "true" : "false"} data-expanded={isExpanded ? "true" : "false"}>
     <div className={styles.articleComposerActions}>
       <span className={styles.articleActionLabel}>{compact ? "Leave a trace" : "Add a comment"}</span>
-      <ReactionBar slug={slug} compact={compact} />
+      <LikeButton slug={slug} compact={compact} />
       <button type="button" className={styles.articleActionButton} aria-expanded={isExpanded} onClick={toggleExpanded}><MessageCircle size={15} /> <span>{isExpanded ? "Hide comment" : "Comment"}</span></button>
       <button type="button" className={styles.articleActionButton} onClick={shareArticle}><Share2 size={15} /> <span>Share</span></button>
     </div>

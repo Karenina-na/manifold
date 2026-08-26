@@ -81,11 +81,9 @@ type Comment struct {
 	ReplyToID  *string `json:"replyToId,omitempty"`
 }
 
-type ReactionSummary struct {
-	LikeCount       int  `json:"likeCount"`
-	FavoriteCount   int  `json:"favoriteCount"`
-	ViewerLiked     bool `json:"viewerLiked"`
-	ViewerFavorited bool `json:"viewerFavorited"`
+type LikeSummary struct {
+	LikeCount   int  `json:"likeCount"`
+	ViewerLiked bool `json:"viewerLiked"`
 }
 
 type Stats struct {

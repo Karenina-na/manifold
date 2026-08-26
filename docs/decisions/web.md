@@ -77,11 +77,11 @@ Article 的 `metadata.toc` 和 `readingMinutes` 由 Core 在保存时从 Markdow
 
 ### 反应
 
-`getVisitorId()` 将匿名 ID 保存在 `localStorage` 的 `manifold.visitorId`。`ReactionBar`：
+`getVisitorId()` 将匿名 ID 保存在 `localStorage` 的 `manifold.visitorId`。`LikeButton`：
 
 - GET 可携带 `X-Visitor-ID`，PUT/DELETE 必须携带。
-- Web 只暴露 LIKE 操作，先乐观更新，再用 Core 返回的 `ReactionSummary` 校正；Core 保留 FAVORITE 合同以兼容已有 API 客户端。
-- 失败时恢复旧快照，结束后失效 reaction query。
+- Web 只暴露 LIKE 操作，先乐观更新，再用 Core 返回的 `LikeSummary` 校正。
+- 失败时恢复旧快照，结束后失效 likes query。
 
 ## 6. SEO、错误和可观测性
 

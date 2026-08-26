@@ -47,7 +47,7 @@ Thought 的 `ThoughtMetadata` 字段为 `mood`、`question`、`context`、`sourc
 - `Stats` / `AdminStats`：公开统计和 Admin 待审核评论数量。
 - `PresenceStatus`：匿名在线心跳返回的活跃访客数和观测时间；Core 只保留短期心跳，不返回访客身份。
 - `Comment`、`CommentStatus`、`CreateCommentInput`：评论和审核状态。
-- `ReactionKind`、`ReactionSummary`：LIKE/FAVORITE 及访客状态。
+- `LikeSummary`：文章点赞统计和当前访客状态。
 - `Collection<T>`、`Pagination`：统一列表响应。
 - `ContentQuery`、`AdminContentQuery`、`CommentQuery`：服务端筛选和 cursor 分页参数。
 - `ApiErrorBody`：Core 结构化错误响应字段；SDK 的运行时 `ApiError` 见 [`packages/sdk/README.md`](../sdk/README.md)。

@@ -72,19 +72,19 @@ test("handles empty success responses", async () => {
 	assert.equal(await client.deleteContent("content-1"), undefined);
 });
 
-test("sends visitor-scoped reaction requests", async () => {
+test("sends visitor-scoped like requests", async () => {
 	const requests: Request[] = [];
 	const client = new ManifoldClient({
 		baseUrl: "http://core.test",
 		fetch: async (input, init) => {
 			requests.push(new Request(input, init));
-			return new Response(JSON.stringify({ likeCount: 1, favoriteCount: 0, viewerLiked: true, viewerFavorited: false }), { status: 200 });
+			return new Response(JSON.stringify({ likeCount: 1, viewerLiked: true }), { status: 200 });
 		},
 	});
 
-	await client.reactions("a-piece", "visitor-123");
-	await client.setReaction("a-piece", "LIKE", "visitor-123", true);
-	assert.equal(requests[0]?.url, "http://core.test/api/v1/content/a-piece/reactions");
+	await client.likes("a-piece", "visitor-123");
+	await client.setLike("a-piece", "visitor-123", true);
+	assert.equal(requests[0]?.url, "http://core.test/api/v1/content/a-piece/likes");
 	assert.equal(requests[0]?.headers.get("X-Visitor-ID"), "visitor-123");
 	assert.equal(requests[1]?.method, "PUT");
 	assert.equal(requests[1]?.headers.get("X-Visitor-ID"), "visitor-123");

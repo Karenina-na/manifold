@@ -18,12 +18,12 @@ type ArticleMetaProps = {
 
 export function ArticleMeta({ date, metadata, viewCount, likeCount, tags, slug }: ArticleMetaProps) {
   const [visitorId] = useState(() => typeof window === "undefined" ? "" : getVisitorId());
-  const reactions = useQuery({
-    queryKey: ["reactions", slug, visitorId],
-    queryFn: () => createBrowserClient().reactions(slug, visitorId),
+  const likesQuery = useQuery({
+    queryKey: ["likes", slug, visitorId],
+    queryFn: () => createBrowserClient().likes(slug, visitorId),
     enabled: Boolean(visitorId),
   });
-  const currentLikeCount = reactions.data?.likeCount ?? likeCount;
+  const currentLikeCount = likesQuery.data?.likeCount ?? likeCount;
   return <div className={styles.articleMeta} aria-label="Article metadata">
     <span><CalendarDays size={14} aria-hidden="true" /> <time dateTime={date}>{new Intl.DateTimeFormat("en", { month: "short", day: "2-digit", year: "numeric" }).format(new Date(date))}</time></span>
     {metadata.readingMinutes !== undefined && <span><Clock3 size={14} aria-hidden="true" /> {metadata.readingMinutes} min read</span>}

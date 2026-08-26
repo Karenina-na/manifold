@@ -86,9 +86,9 @@ func newRouter(cfg config.Config, database *store.Store, auditEvents events.Audi
 		api.Get("/content/{slug}", h.getContent)
 		api.Get("/content/{slug}/comments", h.listPublicComments)
 		api.Post("/content/{slug}/comments", h.createComment)
-		api.Get("/content/{slug}/reactions", h.getReactions)
-		api.Put("/content/{slug}/reactions/{kind}", h.putReaction)
-		api.Delete("/content/{slug}/reactions/{kind}", h.deleteReaction)
+		api.Get("/content/{slug}/likes", h.getLikes)
+		api.Put("/content/{slug}/likes", h.putLike)
+		api.Delete("/content/{slug}/likes", h.deleteLike)
 		api.Get("/now", h.now)
 		api.Post("/admin/session", h.login)
 		api.Route("/admin", func(admin chi.Router) {
@@ -335,7 +335,7 @@ func (h *apiHandler) createComment(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusCreated, comment)
 }
 
-func (h *apiHandler) getReactions(w http.ResponseWriter, r *http.Request) {
+func (h *apiHandler) getLikes(w http.ResponseWriter, r *http.Request) {
 	content, err := h.store.GetContent(chi.URLParam(r, "slug"), false)
 	if errors.Is(err, sql.ErrNoRows) {
 		WriteError(w, http.StatusNotFound, "CONTENT_NOT_FOUND", "Content was not found.")
@@ -350,23 +350,23 @@ func (h *apiHandler) getReactions(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusBadRequest, "VISITOR_ID_INVALID", "Visitor ID is invalid.")
 		return
 	}
-	summary, err := h.store.GetReactionSummary(content.ID, visitorID)
+	summary, err := h.store.GetLikeSummary(content.ID, visitorID)
 	if err != nil {
-		WriteError(w, http.StatusInternalServerError, "REACTIONS_UNAVAILABLE", "Reactions are unavailable.")
+		WriteError(w, http.StatusInternalServerError, "LIKES_UNAVAILABLE", "Likes are unavailable.")
 		return
 	}
 	WriteJSON(w, http.StatusOK, summary)
 }
 
-func (h *apiHandler) putReaction(w http.ResponseWriter, r *http.Request) {
-	h.mutateReaction(w, r, true)
+func (h *apiHandler) putLike(w http.ResponseWriter, r *http.Request) {
+	h.mutateLike(w, r, true)
 }
 
-func (h *apiHandler) deleteReaction(w http.ResponseWriter, r *http.Request) {
-	h.mutateReaction(w, r, false)
+func (h *apiHandler) deleteLike(w http.ResponseWriter, r *http.Request) {
+	h.mutateLike(w, r, false)
 }
 
-func (h *apiHandler) mutateReaction(w http.ResponseWriter, r *http.Request, enabled bool) {
+func (h *apiHandler) mutateLike(w http.ResponseWriter, r *http.Request, enabled bool) {
 	content, err := h.store.GetContent(chi.URLParam(r, "slug"), false)
 	if errors.Is(err, sql.ErrNoRows) {
 		WriteError(w, http.StatusNotFound, "CONTENT_NOT_FOUND", "Content was not found.")
@@ -376,33 +376,28 @@ func (h *apiHandler) mutateReaction(w http.ResponseWriter, r *http.Request, enab
 		WriteError(w, http.StatusInternalServerError, "CONTENT_UNAVAILABLE", "Content is unavailable.")
 		return
 	}
-	kind := strings.ToUpper(strings.TrimSpace(chi.URLParam(r, "kind")))
-	if kind != "LIKE" && kind != "FAVORITE" {
-		WriteError(w, http.StatusBadRequest, "REACTION_KIND_INVALID", "Reaction kind must be LIKE or FAVORITE.")
-		return
-	}
 	visitorID, err := visitorID(r, true)
 	if err != nil {
 		WriteError(w, http.StatusBadRequest, "VISITOR_ID_INVALID", "Visitor ID is required and invalid.")
 		return
 	}
 	if enabled {
-		err = h.store.SetReaction(content.ID, visitorID, kind)
+		err = h.store.SetLike(content.ID, visitorID)
 	} else {
-		err = h.store.DeleteReaction(content.ID, visitorID, kind)
+		err = h.store.DeleteLike(content.ID, visitorID)
 	}
 	if err != nil {
-		WriteError(w, http.StatusInternalServerError, "REACTION_UPDATE_FAILED", "Reaction could not be updated.")
+		WriteError(w, http.StatusInternalServerError, "LIKE_UPDATE_FAILED", "Like could not be updated.")
 		return
 	}
 	action := "removed"
 	if enabled {
 		action = "added"
 	}
-	h.audit(r, "reaction."+strings.ToLower(kind)+"."+action, "content", content.ID, nil)
-	summary, err := h.store.GetReactionSummary(content.ID, visitorID)
+	h.audit(r, "content.like."+action, "content", content.ID, nil)
+	summary, err := h.store.GetLikeSummary(content.ID, visitorID)
 	if err != nil {
-		WriteError(w, http.StatusInternalServerError, "REACTIONS_UNAVAILABLE", "Reactions are unavailable.")
+		WriteError(w, http.StatusInternalServerError, "LIKES_UNAVAILABLE", "Likes are unavailable.")
 		return
 	}
 	WriteJSON(w, http.StatusOK, summary)

@@ -8,7 +8,7 @@
 
 Core 不负责页面布局、Markdown HTML 展示、浏览器状态、Admin 表单或 PWA。Web/Admin 只能通过 `packages/sdk` 访问 Core，不能读 SQLite 或导入 Core 的 Go 内部包。
 
-当前产品范围：Home、Thoughts、Writings、Profile、Site、Now、Comments、Reactions、匿名 Presence、Stats。内容只有 `THOUGHT` 与 `ARTICLE` 两种类型；Projects、Technology、Manuscript、ResearchSeries 等是历史或未来规划，不是当前运行时 API。
+当前产品范围：Home、Thoughts、Writings、Profile、Site、Now、Comments、Likes、匿名 Presence、Stats。内容只有 `THOUGHT` 与 `ARTICLE` 两种类型；Projects、Technology、Manuscript、ResearchSeries 等是历史或未来规划，不是当前运行时 API。
 
 ## 2. 架构
 
@@ -114,9 +114,9 @@ Core 使用 `caarlos0/env` 读取 `CORE_` 前缀变量，不自动读取仓库�
 | `GET` | `/api/v1/content/{slug}` | 通过 slug 或 ID 返回已发布详情和 Markdown body；默认记录一次 `content.viewed` 审计事件，内部 metadata 请求可传 `trackView=false` 跳过计数 |
 | `GET` | `/api/v1/content/{slug}/comments` | 只返回 `APPROVED` 评论 |
 | `POST` | `/api/v1/content/{slug}/comments` | 创建 `PENDING` 评论，201 |
-| `GET` | `/api/v1/content/{slug}/reactions` | 反应统计和当前访客状态 |
-| `PUT` | `/api/v1/content/{slug}/reactions/{kind}` | 添加 `LIKE`/`FAVORITE`，200 |
-| `DELETE` | `/api/v1/content/{slug}/reactions/{kind}` | 移除反应，200 |
+| `GET` | `/api/v1/content/{slug}/likes` | 点赞统计和当前访客状态 |
+| `PUT` | `/api/v1/content/{slug}/likes` | 添加点赞，200 |
+| `DELETE` | `/api/v1/content/{slug}/likes` | 移除点赞，200 |
 | `GET` | `/api/v1/now` | `NowStatus` |
 | `GET` | `/api/v1/stats` | 已发布统计 `Stats` |
 | `POST` | `/api/v1/presence` | 使用 `X-Visitor-ID` 更新匿名心跳，返回最近 5 分钟活跃访客数 |
@@ -175,7 +175,7 @@ limit=1..50
 
 Metadata：Thought 使用 `mood/question/context/source`；Article 使用 `readingMinutes/toc/frontmatter/technologies/language/difficulty/repositoryUrl`。保存 ARTICLE 时 Core 会根据 Markdown body 覆盖计算 `readingMinutes`（约 200 个词/分钟，至少 1 分钟）并从二、三级标题重建 `toc`；打开已有数据库时也会回填缺失或过期的这两个派生字段，保留语言等编辑字段；编辑端不应手工提交这两个派生字段。Core 仍会校验 metadata 的类型、长度、TOC 层级、技术标签和难度枚举。
 
-其他表：`profile`、`site_config`、`now_status`、`comments`、`reactions`、`presence`、`audit_events`。`content.view_count` 在公开详情读取时同步原子递增，列表响应直接返回该持久化计数；`likeCount` 从 `reactions` 聚合 `LIKE`。详情读取同时写入 `audit_events(event_name = 'content.viewed', resource_type = 'content')` 供观测使用，审计队列丢弃不会影响浏览量统计。Profile 包含 `resume_url`、`interests_json`、`education_json`、`experience_json`、`series_json`、`contacts_json`；Series 项为 `{name,url,description,category?}`，联系方式为 `{label,url,handle?,icon?}`；Site 是单例配置；评论默认 PENDING；反应有 `(content_id, visitor_id, kind)` 唯一约束；Presence 只保存匿名 visitor ID 的最近心跳时间，过期窗口为 5 分钟。
+其他表：`profile`、`site_config`、`now_status`、`comments`、`likes`、`presence`、`audit_events`。`content.view_count` 在公开详情读取时同步原子递增，列表响应直接返回该持久化计数；`likeCount` 从 `likes` 聚合。详情读取同时写入 `audit_events(event_name = 'content.viewed', resource_type = 'content')` 供观测使用，审计队列丢弃不会影响浏览量统计。Profile 包含 `resume_url`、`interests_json`、`education_json`、`experience_json`、`series_json`、`contacts_json`；Series 项为 `{name,url,description,category?}`，联系方式为 `{label,url,handle?,icon?}`；Site 是单例配置；评论默认 PENDING；点赞有 `(content_id, visitor_id)` 唯一约束；Presence 只保存匿名 visitor ID 的最近心跳时间，过期窗口为 5 分钟。
 
 旧 SQLite content 类型迁移规则：`POST/RESEARCH/TECH/MANUSCRIPT -> ARTICLE`，`NOTE -> THOUGHT`，并重建 kind CHECK 约束。迁移必须保持可重复执行。
 

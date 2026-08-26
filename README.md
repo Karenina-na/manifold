@@ -154,7 +154,7 @@ Admin 的 `VITE_CORE_URL` 必须指向 Core（默认 `http://localhost:8080`）�
 | `GET` | `/api/v1/feed`、`/api/v1/content` | 内容流和筛选列表 |
 | `GET` | `/api/v1/content/:slug` | Markdown 详情 |
 | `GET/POST` | `/api/v1/content/:slug/comments` | 评论读取/提交 |
-| `GET/PUT/DELETE` | `/api/v1/content/:slug/reactions/:kind` | `LIKE`、`FAVORITE` |
+| `GET/PUT/DELETE` | `/api/v1/content/:slug/likes` | 点赞统计、添加和移除 |
 | `GET` | `/api/v1/now`、`/api/v1/stats` | 当前状态、统计 |
 
 管理接口位于 `/api/v1/admin`，除 `POST /session` 外都需要 `Authorization: Bearer <token>`，覆盖 Profile、Site、Content、Comments、Now 和 Stats 的读写。
@@ -174,7 +174,7 @@ Admin 的 `VITE_CORE_URL` 必须指向 Core（默认 `http://localhost:8080`）�
 
 ## 当前边界
 
-P0 聚焦首页、Profile、Site、Now、Thoughts、Writings、Comments、Reactions 和 Stats。跨资源搜索、links、媒体资产、经历详情和 research series 不属于当前产品范围。
+P0 聚焦首页、Profile、Site、Now、Thoughts、Writings、Comments、Likes 和 Stats。跨资源搜索、links、媒体资产、经历详情和 research series 不属于当前产品范围。
 
 ## 贡献
 

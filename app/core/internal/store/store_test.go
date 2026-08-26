@@ -37,6 +37,40 @@ func TestOpenMigratesAuditTraceIDColumn(t *testing.T) {
 	}
 }
 
+func TestOpenDropsLegacyReactionsTable(t *testing.T) {
+	databasePath := filepath.Join(t.TempDir(), "reactions.db")
+	database, err := sql.Open("sqlite", databasePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = database.Exec(`
+CREATE TABLE content (id TEXT PRIMARY KEY, kind TEXT NOT NULL, status TEXT NOT NULL, slug TEXT, title TEXT, summary TEXT NOT NULL DEFAULT '', body TEXT NOT NULL DEFAULT '', tags_json TEXT NOT NULL DEFAULT '[]', metadata_json TEXT NOT NULL DEFAULT '{}', published_at TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, version INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, view_count INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE reactions (id TEXT PRIMARY KEY);
+INSERT INTO content (id, kind, status, slug, title) VALUES ('legacy-content', 'ARTICLE', 'PUBLISHED', 'legacy-content', 'Legacy');
+
+INSERT INTO reactions (id) VALUES ('legacy-reaction');`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	store, err := Open(databasePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	var legacyCount int
+	if err := store.DB.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'reactions'`).Scan(&legacyCount); err != nil {
+		t.Fatal(err)
+	}
+	if legacyCount != 0 {
+		t.Fatalf("expected legacy reactions table to be removed, got %d tables", legacyCount)
+	}
+}
+
 func TestContentMetadataPersistsAcrossReads(t *testing.T) {
 	database, err := Open(":memory:")
 	if err != nil {
