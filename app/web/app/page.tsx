@@ -46,18 +46,18 @@ export default async function Home() {
           <span className={styles.eyebrow}>Profile <span className={styles.eyebrowIndex}>/ 01</span></span>
           <h1 id="intro-heading"><span className={styles.introGreeting}>Hi, I&apos;m</span> <span className={styles.introName}>{profile?.displayName ?? "Manifold"}.</span></h1>
           <p className={styles.introTagline}><span className={styles.taglineRule}>—</span><em>{profile?.headline ?? "Developer, explorer, and lifelong learner."}</em></p>
-          <div className={styles.introBox}>
-            <div className={styles.introBoxHeader}>
-              <div className={styles.introBoxTitle}><span className={styles.sectionIndex}>01</span><h2>Introduction</h2></div>
-              {data.now?.mood && <span className={styles.statusBadge}><span className={styles.statusDot} />{data.now.mood}</span>}
-            </div>
-            <p className={styles.profileBio}>{profile?.bio ?? "I build small, durable tools and keep notes on the questions that sit between software, research, and everyday life. This is where unfinished ideas can stay visible long enough to become useful."}</p>
-            {!!profile?.interests?.length && <div className={styles.interestList}>{profile.interests.map((interest) => <span key={interest}>#{interest}</span>)}</div>}
-          </div>
         </div>
         <div className={styles.profilePortraitWrap}>
           <div className={styles.introPortrait}>{profile?.avatarUrl ? <div role="img" aria-label={`${profile.displayName ?? "Profile"} avatar`} style={{ backgroundImage: `url(${profile.avatarUrl})` }} /> : <span>{initials}</span>}</div>
           {profile?.resumeUrl && <a className={styles.cvLink} href={profile.resumeUrl} download>CV <ArrowUpRight size={12} /></a>}
+        </div>
+        <div className={styles.introBox}>
+          <div className={styles.introBoxHeader}>
+            <div className={styles.introBoxTitle}><span className={styles.sectionIndex}>01</span><h2>Introduction</h2></div>
+            {data.now?.mood && <span className={styles.statusBadge}><span className={styles.statusDot} />{data.now.mood}</span>}
+          </div>
+          <p className={styles.profileBio}>{profile?.bio ?? "I build small, durable tools and keep notes on the questions that sit between software, research, and everyday life. This is where unfinished ideas can stay visible long enough to become useful."}</p>
+          {!!profile?.interests?.length && <div className={styles.interestList}>{profile.interests.map((interest) => <span key={interest}>#{interest}</span>)}</div>}
         </div>
       </section></Reveal>
       <SceneBreak />
