@@ -19,10 +19,9 @@ test("writing detail keeps the back link outside the title surface", () => {
 });
 
 test("writing detail keeps the title surfaces aligned before the three-column layout fits", () => {
-  assert.match(stylesSource, /\.articleBack \{ width: min\(860px, calc\(100% - 434px\)\);/);
-  assert.match(stylesSource, /\.articleTitleBlock \{ width: min\(860px, calc\(100% - 434px\)\);/);
-  assert.match(stylesSource, /@media \(max-width: 1300px\)/);
-  assert.match(stylesSource, /\.articleBack, \.articleTitleBlock \{ width: min\(760px, calc\(100% - 172px\)\);/);
+  assert.ok(stylesSource.includes(".articleBack, .articleTitleBlock { width: min(860px, calc(100% - 434px)); margin-left: 192px; margin-right: 0;"));
+  assert.ok(stylesSource.includes("@media (max-width: 1300px)"));
+  assert.ok(stylesSource.includes(".articleBack, .articleTitleBlock { width: min(760px, calc(100% - 172px)); margin-left: calc(172px + max(0px, calc((100% - 932px) / 2)));"));
 });
 
 test("article end state observes discussion layout changes", () => {
