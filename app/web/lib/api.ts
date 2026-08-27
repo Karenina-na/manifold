@@ -58,6 +58,15 @@ export async function loadHomeData({ includeHistory = true }: { includeHistory?:
   }
 }
 
+export async function loadPapers() {
+  try {
+    const page = await createServerClient().content({ kind: "ARTICLE", limit: 50 });
+    return page.data.map((item) => ({ title: item.title ?? "Untitled writing", href: item.href }));
+  } catch {
+    return [];
+  }
+}
+
 export function formatDate(value: string | null) {
   if (!value) return "Unpublished";
   return new Intl.DateTimeFormat("en", { month: "short", day: "2-digit", year: "numeric" }).format(new Date(value));

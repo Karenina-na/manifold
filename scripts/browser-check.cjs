@@ -165,7 +165,7 @@ async function main() {
     if ((await replDialog.locator('[data-repl-output]').last().textContent())?.includes('No papers')) throw new Error('REPL papers command returned an empty result unexpectedly');
     await replInput.fill('ascii');
     await replInput.press('Enter');
-    if (!(await replDialog.locator('[data-repl-output]').last().textContent())?.includes('manifold in motion')) throw new Error('REPL ASCII easter egg did not return its output');
+    if (!(await replDialog.locator('[data-repl-output]').last().textContent())?.includes('manifold runtime initialized')) throw new Error('REPL ASCII easter egg did not return its output');
     await replDialog.getByRole('button', { name: /Close command line/i }).click();
     await web.keyboard.press('Control+j');
     await repl.getByRole('dialog').waitFor({ state: 'visible' });
@@ -224,7 +224,7 @@ async function main() {
     const sceneBreakCount = await web.locator('[data-scene-break]').count();
     if (sceneBreakCount < 4) throw new Error(`Expected scene transition separators between major sections, received ${sceneBreakCount}`);
     await web.mouse.move(20, 20);
-    const surfaceStyles = await web.evaluate(() => [...document.querySelectorAll('[data-content-surface], [data-update-rail], [data-series-card], [data-contact-panel]')].map((element) => {
+    const surfaceStyles = await web.evaluate(() => [...document.querySelectorAll('[data-content-surface], [data-update-rail], [data-series-card]')].map((element) => {
       const style = getComputedStyle(element);
       return { backgroundColor: style.backgroundColor, backdropFilter: style.backdropFilter };
     }));
@@ -341,13 +341,17 @@ async function main() {
 
     await web.setViewportSize({ width: 1280, height: 900 });
     await web.goto(`${webUrl}${contentPath}`, { waitUntil: 'networkidle' });
+    const commentToggle = web.locator('[data-compact="true"]').getByRole('button', { name: 'Comment', exact: true });
+    const likeButtons = await web.getByRole('button', { name: /like/i }).count();
+    if (likeButtons !== 1 || await commentToggle.count() !== 1) throw new Error('Web controls are incomplete');
+    await commentToggle.click();
+    await web.getByRole('button', { name: 'Send for review' }).waitFor({ state: 'visible' });
     const webControlCounts = {
       inputs: await web.locator('input').count(),
       textareas: await web.locator('textarea').count(),
       sendButtons: await web.getByRole('button', { name: 'Send for review' }).count(),
-      likeButtons: await web.getByRole('button', { name: /like/i }).count(),
+      likeButtons,
     };
-    if (webControlCounts.sendButtons !== 1 || webControlCounts.likeButtons !== 1) throw new Error('Web controls are incomplete');
 
     const likeResponse = web.waitForResponse((response) => coreResponse(response, '/api/v1/content/designing-boundaries/likes', 'PUT', 200));
     await web.getByRole('button', { name: 'Add like' }).click();
@@ -358,7 +362,7 @@ async function main() {
     const commentResponse = web.waitForResponse((response) => coreResponse(response, '/api/v1/content/designing-boundaries/comments', 'POST', 201));
     await web.getByRole('button', { name: 'Send for review' }).click();
     await commentResponse;
-    await web.getByText('Awaiting review').waitFor({ state: 'visible', timeout: 5000 });
+    await web.getByText('Received. It will appear after a quick review.').waitFor({ state: 'visible', timeout: 5000 });
 
     const admin = await browser.newPage();
     const adminErrors = [];

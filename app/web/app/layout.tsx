@@ -6,6 +6,7 @@ import { BackgroundCanvas } from "../components/background-canvas";
 import { SiteFooter } from "../components/site-footer";
 import { FloatingRepl } from "../components/floating-repl";
 import { RouteRefresh } from "../components/route-refresh";
+import { loadPapers } from "../lib/api";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -18,7 +19,8 @@ export const metadata: Metadata = {
   alternates: { canonical: "/" },
 };
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  const papers = await loadPapers();
   return (
     <html lang="en">
       <body>
@@ -27,7 +29,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           <SiteNav />
           <RouteRefresh />
           <div className="siteContent">{children}</div>
-          <FloatingRepl displayName="Manifold" handle="@manifold" focus="Open focus" papers={[]} />
+          <FloatingRepl displayName="Manifold" handle="@manifold" focus="Open focus" papers={papers} />
           <SiteFooter />
         </Providers>
       </body>

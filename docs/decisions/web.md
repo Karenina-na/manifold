@@ -15,7 +15,7 @@ Next Server/Browser Components
           +--> @manifold/contracts
 ```
 
-Server Component 负责首屏数据、详情读取和 SEO；Client Component 负责评论、反应、导航菜单、命令式搜索、主题偏好、错误恢复和局部状态。顶部导航固定为居中 860px 毛玻璃容器，Home/Writings/Thoughts 使用 route-aware pill；搜索通过现有 SDK 的 `feed({ q, kind })` 同时检索两类公开内容，并提供 Profile 的简历链接。主题偏好仅保存在浏览器 `localStorage`，不改变 Core 数据或公共 API。Radix Theme 根节点使用 `hasBackground={false}`，由 Web 的 `--surface-paper` 统一管理页面背景，避免第三方主题默认白色背景形成横向色带。
+Server Component 负责首屏数据、详情读取和 SEO；Client Component 负责评论、反应、导航菜单、命令式搜索、主题偏好、错误恢复和局部状态。顶部导航固定为居中 860px 毛玻璃容器，Home/Writings/Thoughts 使用 route-aware pill；搜索通过现有 SDK 的 `feed({ q, kind })` 同时检索两类公开内容，并提供 Profile 的简历链接。主题偏好仅保存在浏览器 `localStorage`，不改变 Core 数据或公共 API。根布局是 async Server Component，除渲染全局 Chrome（导航、页脚、命令面板 REPL）外，还通过 `loadPapers()` 服务端读取公开 Article 列表（`content({ kind: "ARTICLE", limit: 50 })`）并传给 FloatingRepl 的 `papers` 命令；Core 不可用时回退为空列表，REPL 显示无内容提示而不是报错。Radix Theme 根节点使用 `hasBackground={false}`，由 Web 的 `--surface-paper` 统一管理页面背景，避免第三方主题默认白色背景形成横向色带。
 
 ## 2. 页面与路由
 
