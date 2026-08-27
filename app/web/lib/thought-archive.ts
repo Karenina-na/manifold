@@ -11,8 +11,12 @@ export interface ThoughtMonthGroup {
   year: number;
   month: string;
   label: string;
-  isYearStart: boolean;
   items: ThoughtTimelineItem[];
+}
+
+export interface ThoughtYearGroup {
+  year: number;
+  months: ThoughtMonthGroup[];
 }
 
 export function formatThoughtDate(value: string | null) {
@@ -33,7 +37,6 @@ export function groupThoughtsByMonth(items: Thought[]) {
         year: date.getUTCFullYear(),
         month: new Intl.DateTimeFormat("en", { month: "long", timeZone: "UTC" }).format(date),
         label: new Intl.DateTimeFormat("en", { month: "long", year: "numeric", timeZone: "UTC" }).format(date),
-        isYearStart: !groups.some((candidate) => candidate.year === date.getUTCFullYear()),
         items: [],
       };
       groups.push(group);
@@ -42,4 +45,19 @@ export function groupThoughtsByMonth(items: Thought[]) {
   }
 
   return groups;
+}
+
+export function groupThoughtsByYear(items: Thought[]) {
+  const years: ThoughtYearGroup[] = [];
+
+  for (const group of groupThoughtsByMonth(items)) {
+    let yearGroup = years.at(-1);
+    if (yearGroup?.year !== group.year) {
+      yearGroup = { year: group.year, months: [] };
+      years.push(yearGroup);
+    }
+    yearGroup.months.push(group);
+  }
+
+  return years;
 }

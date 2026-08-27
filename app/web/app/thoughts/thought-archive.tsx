@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useMemo, useRef, useState } from "react";
 import { Reveal } from "../../components/reveal";
 import { createBrowserClient } from "../../lib/api";
-import { formatThoughtDate, groupThoughtsByMonth } from "../../lib/thought-archive";
+import { groupThoughtsByYear, formatThoughtDate } from "../../lib/thought-archive";
 import { previewForContent } from "../../lib/content-preview";
 import styles from "../site.module.css";
 
@@ -39,7 +39,7 @@ export default function ThoughtArchive({ initialArchive }: { initialArchive: Tho
   const [pageError, setPageError] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const timelineRef = useRef<HTMLElement>(null);
-  const groups = useMemo(() => groupThoughtsByMonth(archive?.data ?? []), [archive]);
+  const yearGroups = useMemo(() => groupThoughtsByYear(archive?.data ?? []), [archive]);
 
   const goToPage = async (nextPage: number) => {
     if (!archive || isLoading) return;
@@ -90,29 +90,33 @@ export default function ThoughtArchive({ initialArchive }: { initialArchive: Tho
             <span>{archive.pagination.totalItems} notes</span>
           </div>
 
-          {groups.length ? <div className={styles.thoughtTimeline}>
-            {groups.map((group) => <section className={styles.thoughtMonth} key={group.key} aria-labelledby={`month-${group.key}`}>
-              <div className={styles.thoughtMonthRail}>
-                {group.isYearStart && <strong className={styles.thoughtYear}>{group.year}</strong>}
-                <h3 id={`month-${group.key}`}><span className={styles.thoughtMonthLabel}>{group.month}</span></h3>
-              </div>
-              <div className={styles.thoughtMonthItems}>
-                {group.items.map((item) => <div className={styles.thoughtTimelineRow} key={item.id}>
-                  <time className={styles.thoughtDateMarker} dateTime={item.publishedAt ?? item.createdAt} aria-label={`${group.label} ${item.day}`}>
-                    <span aria-hidden="true" />
-                    <strong>{item.day}</strong>
-                  </time>
-                  <article className={styles.thoughtListCard}>
-                    <div className={styles.thoughtListTop}>
-                      <h3><Link href={item.href}>{item.title || "A thought"}</Link></h3>
-                      <div><span>{tagLabel(item.tags)}</span><time dateTime={item.publishedAt ?? item.createdAt}>{formatThoughtDate(item.publishedAt ?? item.createdAt)}</time></div>
-                    </div>
-                    <ThoughtPreview item={item} />
-                    <footer>
-                      <ThoughtActions item={item} />
-                      <Link className={styles.thoughtReadLink} href={item.href}>Full thought <ArrowRight size={14} aria-hidden="true" /></Link>
-                    </footer>
-                  </article>
+          {yearGroups.length ? <div className={styles.thoughtTimeline}>
+            {yearGroups.map((yearGroup) => <section className={styles.thoughtYear} key={yearGroup.year} aria-labelledby={`year-${yearGroup.year}`}>
+              <header className={styles.thoughtYearHeader} id={`year-${yearGroup.year}`}>
+                <strong>{yearGroup.year}</strong>
+              </header>
+              <div className={styles.thoughtYearMonths}>
+                {yearGroup.months.map((group) => <div className={styles.thoughtMonth} key={group.key}>
+                  <h3 className={styles.thoughtMonthRail} id={`month-${group.key}`}><span className={styles.thoughtMonthLabel}>{group.month}</span></h3>
+                  <div className={styles.thoughtMonthItems}>
+                    {group.items.map((item) => <div className={styles.thoughtTimelineRow} key={item.id}>
+                      <time className={styles.thoughtDateMarker} dateTime={item.publishedAt ?? item.createdAt} aria-label={`${group.label} ${item.day}`}>
+                        <span aria-hidden="true" />
+                        <strong>{item.day}</strong>
+                      </time>
+                      <article className={styles.thoughtListCard}>
+                        <div className={styles.thoughtListTop}>
+                          <h3><Link href={item.href}>{item.title || "A thought"}</Link></h3>
+                          <div><span>{tagLabel(item.tags)}</span><time dateTime={item.publishedAt ?? item.createdAt}>{formatThoughtDate(item.publishedAt ?? item.createdAt)}</time></div>
+                        </div>
+                        <ThoughtPreview item={item} />
+                        <footer>
+                          <ThoughtActions item={item} />
+                          <Link className={styles.thoughtReadLink} href={item.href}>Full thought <ArrowRight size={14} aria-hidden="true" /></Link>
+                        </footer>
+                      </article>
+                    </div>)}
+                  </div>
                 </div>)}
               </div>
             </section>)}

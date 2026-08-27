@@ -22,7 +22,7 @@ Server Component 负责首屏数据、详情读取和 SEO；Client Component 负
 | 路由 | 类型 | Core 数据 | 行为 |
 | --- | --- | --- | --- |
 | `/` | Dynamic Server Component | profile、site、全部公开 Article/Thought 历史、now、stats | Profile/Introduction、Recent Content、Updates、年度 Contribution activity、My Series、Contact |
-| `/thoughts` | Dynamic Server Component + client pagination | `thoughts({ page, limit: 8 })` | Core 配置驱动的置顶 Thought、按月份/日期组织的纵向时间轴和服务端分页 |
+| `/thoughts` | Dynamic Server Component + client pagination | `thoughts({ page, limit: 8 })` | Core 配置驱动的置顶 Thought、按年份/月份/日期分块的纵向时间轴和服务端分页 |
 | `/thoughts/[id]` | Dynamic Server Component | 通过 ID 获取 Thought 详情 | 复用统一阅读器和评论/反应 |
 | `/writing` | Dynamic Server Component + client archive controls | `content({ kind: "ARTICLE", limit: 100 })` | 双栏长文归档、置顶首篇、搜索、标签筛选、最新/最早/最近更新排序与 sticky 侧栏；卡片区分摘要与 Core 正文摘录，并展示聚合的浏览量和点赞数；从详情页通过浏览器历史返回时刷新 RSC 数据 |
 | `/writing/[slug]` | Dynamic Server Component + client reading controls | `contentBySlug(slug)` | 返回 Writing 入口作为标题阅读面的独立上方行；其下为四段同宽的不透明阅读面（标题、正文、讨论、添加评论）、同排日期/阅读时长/语言/统计、Markdown、右侧进度目录、评论和反应；讨论面展示统计、搜索和筛选，添加评论面在接近底部时由桌面/平板左侧紧凑动作卡通过共享布局动画展开；越过激活线后继续下滑保持展开，仅向上越回激活线才恢复左侧，手机端在讨论面之后堆叠 |
@@ -35,7 +35,7 @@ Server Component 负责首屏数据、详情读取和 SEO；Client Component 负
 
 `/thoughts` 首屏读取 Core 的 Thoughts aggregate，翻页时继续通过 SDK 请求对应页。置顶选择、目标有效性、最新项回退、置顶排除、排序和总页数全部由 Core 处理；Web 不再读取 Site composition 或预取完整 Thought 集合。
 
-时间轴每页展示 Core 返回的 8 条非置顶 Thought，Web 只把当前页按 UTC 月份和日期分组，卡片可见日期也固定使用 UTC 以保持月/日刻度一致；页面顶部沿用 Writings 的简洁眉标题与 H1，不额外放置说明性副文案。年份、月份、纵线与日期节点位于列表 surface 外侧，右侧内容 surface 只框住 Thought 卡片，并与下方分页 surface 使用同一左边界。右侧卡片展示标题、tag、日期，并把编辑摘要与正文摘录分开：摘要使用星号标识和灰色文字，Core 提供的纯文本 `excerpt` 使用正文色且最多显示两行；置顶卡可显示四行正文摘录。置顶卡左上显示 `Featured`，右上显示 tags 与日期；置顶和列表底部均在左侧展示 Core 聚合的 `likeCount`、`viewCount`、已审核 `commentCount`，右侧提供全文入口。卡片、时间刻度、全文入口和分页控件都提供 hover/focus 动画，并遵循 `prefers-reduced-motion`。
+时间轴每页展示 Core 返回的 8 条非置顶 Thought，Web 只把当前页按 UTC 年份、月份和日期分块分组，卡片可见日期也固定使用 UTC 以保持年/月/日刻度一致；页面顶部沿用 Writings 的简洁眉标题与 H1，不额外放置说明性副文案。时间轴按年份分块：每个年份以流程内的分节标题行（serif 年份加横贯细线）开始，位于卡片 surface 之外；年份块内的月份标签在左栏右对齐并通过短连接线指向纵轴，纵线与日期节点贯穿该年份的月份区，右侧内容 surface 按年份框住 Thought 卡片，并与下方分页 surface 使用同一左边界。年份、月份标签、纵线与日期节点全部使用常规文档流与层级定位，不使用绝对定位骑跨轴线。右侧卡片展示标题、tag、日期，并把编辑摘要与正文摘录分开：摘要使用星号标识和灰色文字，Core 提供的纯文本 `excerpt` 使用正文色且最多显示两行；置顶卡可显示四行正文摘录。置顶卡左上显示 `Featured`，右上显示 tags 与日期；置顶和列表底部均在左侧展示 Core 聚合的 `likeCount`、`viewCount`、已审核 `commentCount`，右侧提供全文入口。卡片、时间刻度、全文入口和分页控件都提供 hover/focus 动画，并遵循 `prefers-reduced-motion`。
 
 Writings 归档使用相同的信息层级：摘要以星号和灰色文字标识，正文摘录与摘要分开，普通列表最多两行，置顶 Writing 最多四行。Web 不从完整 Markdown 自行生成列表摘录，只消费 Core 的 `excerpt`；兼容旧响应时才回退到已有 `body`。
 

@@ -647,8 +647,8 @@ html { scroll-behavior: smooth; }
   .commentFilter select { flex: 1; }
 }
 
-/* Thoughts archive: one featured note followed by a month-and-day editorial timeline. */
-.thoughtShell { width: min(1120px, calc(100% - 48px)); margin: 0 auto; padding-bottom: 72px; }
+/* Thoughts archive: one featured note followed by a year-blocked month-and-day editorial timeline. */
+.thoughtShell { width: min(960px, calc(100% - 48px)); margin: 0 auto; padding-bottom: 72px; }
 .thoughtHero { padding: 42px 0 30px; }
 .thoughtHero h1 { margin: 8px 0 10px; font-family: var(--app-font-serif); font-size: clamp(42px, 6vw, 64px); font-weight: 400; line-height: 1.12; }
 .featuredThought { position: relative; display: flex; min-height: 0; flex-direction: column; margin-bottom: 46px; padding: clamp(30px, 4vw, 46px) clamp(24px, 5vw, 58px) 34px; border: 1px solid color-mix(in srgb, var(--color-line) 78%, transparent); border-radius: 8px; background: color-mix(in srgb, var(--surface-paper) 92%, white); box-shadow: 0 14px 36px rgba(24, 24, 20, .055); transition: background var(--motion-base) var(--motion-ease), border-color var(--motion-base) var(--motion-ease), box-shadow var(--motion-base) var(--motion-ease), transform var(--motion-base) var(--motion-ease); }
@@ -675,19 +675,22 @@ html { scroll-behavior: smooth; }
 .thoughtSectionHeading h2 { margin: 5px 0 0; font-family: var(--app-font-serif); font-size: 29px; font-weight: 400; }
 .thoughtSectionHeading > span { color: var(--color-muted); font: 10px var(--font-mono); }
 .thoughtTimeline { position: relative; margin-bottom: 12px; padding: 16px 0 8px; }
-.thoughtTimeline::after { content: ""; position: absolute; z-index: 0; top: 0; right: 0; bottom: 0; left: var(--thought-content-offset); border: 1px solid color-mix(in srgb, var(--color-line) 32%, transparent); border-radius: 6px; background: color-mix(in srgb, var(--surface-paper) 92%, white); pointer-events: none; }
+.thoughtYear { position: relative; }
+.thoughtYearHeader { display: flex; align-items: baseline; gap: 16px; padding: 26px 2px 10px; }
+.thoughtYear:first-child .thoughtYearHeader { padding-top: 12px; }
+.thoughtYearHeader strong { color: var(--color-ink); font-family: var(--app-font-serif); font-size: 30px; font-weight: 600; line-height: 1.08; transition: color var(--motion-base) var(--motion-ease); }
+.thoughtYearHeader::after { content: ""; flex: 1; height: 1px; background: var(--color-line); transition: background var(--motion-base) var(--motion-ease); }
+.thoughtYearMonths { position: relative; padding-top: 10px; }
+.thoughtYearMonths::after { content: ""; position: absolute; z-index: 0; top: 0; right: 0; bottom: 0; left: var(--thought-content-offset); border: 1px solid color-mix(in srgb, var(--color-line) 32%, transparent); border-radius: 6px; background: color-mix(in srgb, var(--surface-paper) 92%, white); pointer-events: none; }
 .thoughtMonth { display: grid; grid-template-columns: 132px minmax(0, 1fr); }
-.thoughtMonthRail { position: relative; z-index: 1; min-width: 0; padding: 8px 38px 0 2px; }
-.thoughtYear { position: absolute; z-index: 2; top: 0; right: -59px; display: block; width: 68px; padding: 0 3px; background: var(--surface-paper); color: var(--color-ink); font-family: var(--app-font-serif); font-size: 30px; font-weight: 600; line-height: 1.08; text-align: center; white-space: nowrap; transition: color var(--motion-base) var(--motion-ease), transform var(--motion-base) var(--motion-ease); }
-.thoughtMonthRail h3 { position: relative; margin: 17px 0 0; color: var(--color-muted); font-family: var(--font-mono); font-size: 12px; font-weight: 500; line-height: 1.45; text-align: right; }
-.thoughtMonth:has(.thoughtYear) .thoughtMonthRail h3 { margin-top: 61px; }
-.thoughtMonthRail h3::after { content: ""; position: absolute; top: 50%; left: calc(100% + 10px); width: 53px; height: 1px; background: var(--color-line); transform: translateY(-50%); transition: width var(--motion-base) var(--motion-ease), background var(--motion-base) var(--motion-ease); }
+.thoughtMonthRail { position: relative; z-index: 1; min-width: 0; margin: 0; padding: 20px 38px 0 2px; color: var(--color-muted); font-family: var(--font-mono); font-size: 12px; font-weight: 500; line-height: 1.45; text-align: right; }
+.thoughtMonthRail::after { content: ""; position: absolute; top: calc(20px + 0.725em); left: calc(100% - 28px); width: 53px; height: 1px; background: var(--color-line); transition: width var(--motion-base) var(--motion-ease), background var(--motion-base) var(--motion-ease); }
 .thoughtMonthLabel { transition: color var(--motion-base) var(--motion-ease), transform var(--motion-base) var(--motion-ease); }
 .thoughtMonth:has(.thoughtListCard:hover) .thoughtMonthLabel, .thoughtMonth:has(.thoughtListCard:focus-within) .thoughtMonthLabel { color: var(--color-ink); }
-.thoughtMonth:has(.thoughtListCard:hover) .thoughtMonthRail h3::after, .thoughtMonth:has(.thoughtListCard:focus-within) .thoughtMonthRail h3::after { width: 58px; background: var(--color-accent); }
-.thoughtMonth:has(.thoughtListCard:hover) .thoughtYear, .thoughtMonth:has(.thoughtListCard:focus-within) .thoughtYear { color: var(--color-accent); transform: translateY(-1px); }
+.thoughtMonth:has(.thoughtListCard:hover) .thoughtMonthRail::after, .thoughtMonth:has(.thoughtListCard:focus-within) .thoughtMonthRail::after { width: 58px; background: var(--color-accent); }
+.thoughtYear:has(.thoughtListCard:hover) .thoughtYearHeader strong, .thoughtYear:has(.thoughtListCard:focus-within) .thoughtYearHeader strong { color: var(--color-accent); }
+.thoughtYear:has(.thoughtListCard:hover) .thoughtYearHeader::after, .thoughtYear:has(.thoughtListCard:focus-within) .thoughtYearHeader::after { background: color-mix(in srgb, var(--color-accent) 40%, var(--color-line)); }
 .thoughtMonthItems { position: relative; z-index: 2; min-width: 0; padding: 0 16px 28px 0; }
-.thoughtMonth:has(.thoughtYear) .thoughtMonthItems { padding-top: 52px; }
 .thoughtMonthItems::before { content: ""; position: absolute; top: 0; bottom: 0; left: 25px; width: 1px; background: color-mix(in srgb, var(--color-accent) 34%, var(--color-line)); }
 .thoughtTimelineRow { position: relative; display: grid; grid-template-columns: 52px minmax(0, 1fr); align-items: stretch; min-width: 0; padding-bottom: 13px; }
 .thoughtDateMarker { position: relative; z-index: 3; min-height: 100%; }
@@ -710,7 +713,7 @@ html { scroll-behavior: smooth; }
 .thoughtCollection .paginationSurface:hover, .thoughtCollection .paginationSurface:focus-within { border-color: color-mix(in srgb, var(--color-accent) 34%, var(--color-line)); background: color-mix(in srgb, var(--surface-paper) 96%, var(--color-accent-soft)); }
 .thoughtCollection .pageButton { transition: background var(--motion-base) var(--motion-ease), border-color var(--motion-base) var(--motion-ease), color var(--motion-base) var(--motion-ease), transform var(--motion-base) var(--motion-ease); }
 .thoughtCollection .pageButton:not(:disabled):hover, .thoughtCollection .pageButton:not(:disabled):focus-visible { border-color: var(--color-accent); background: var(--color-accent-soft); color: var(--color-ink); transform: translateY(-2px); }
-.thoughtEmpty { margin: 0 0 12px 184px; padding: 30px; border: 1px solid var(--color-line); border-radius: 6px; color: var(--color-muted); text-align: center; }
+.thoughtEmpty { margin: 0 0 12px var(--thought-content-offset); padding: 30px; border: 1px solid var(--color-line); border-radius: 6px; color: var(--color-muted); text-align: center; }
 
 @media (max-width: 760px) {
   .thoughtShell { width: min(100% - 24px, 620px); padding-bottom: 48px; }
@@ -725,14 +728,13 @@ html { scroll-behavior: smooth; }
   .thoughtSectionHeading { align-items: flex-start; }
   .thoughtSectionHeading h2 { font-size: 25px; }
   .thoughtTimeline { padding: 12px 0 4px; }
+  .thoughtYearHeader { gap: 12px; padding: 20px 0 8px; }
+  .thoughtYear:first-child .thoughtYearHeader { padding-top: 8px; }
+  .thoughtYearHeader strong { font-size: 24px; }
   .thoughtMonth { grid-template-columns: 76px minmax(0, 1fr); }
-  .thoughtMonthRail { padding: 7px 28px 0 0; }
-  .thoughtYear { right: -47px; width: 56px; font-size: 24px; }
-  .thoughtMonthRail h3 { margin-top: 16px; font-size: 10px; }
-  .thoughtMonth:has(.thoughtYear) .thoughtMonthRail h3 { margin-top: 54px; }
-  .thoughtMonthRail h3::after { left: calc(100% + 6px); width: 41px; }
-  .thoughtMonth:has(.thoughtListCard:hover) .thoughtMonthRail h3::after, .thoughtMonth:has(.thoughtListCard:focus-within) .thoughtMonthRail h3::after { width: 45px; }
-  .thoughtMonth:has(.thoughtYear) .thoughtMonthItems { padding-top: 45px; }
+  .thoughtMonthRail { padding: 16px 28px 0 0; font-size: 10px; }
+  .thoughtMonthRail::after { top: calc(16px + 0.725em); left: calc(100% - 22px); width: 41px; }
+  .thoughtMonth:has(.thoughtListCard:hover) .thoughtMonthRail::after, .thoughtMonth:has(.thoughtListCard:focus-within) .thoughtMonthRail::after { width: 45px; }
   .thoughtMonthItems { padding-right: 10px; }
   .thoughtTimelineRow { grid-template-columns: 41px minmax(0, 1fr); }
   .thoughtMonthItems::before { left: 19px; }
@@ -744,7 +746,6 @@ html { scroll-behavior: smooth; }
   .thoughtListTop { flex-direction: column; gap: 10px; }
   .thoughtListTop h3 { font-size: 20px; }
   .thoughtListTop > div { align-items: flex-start; max-width: 100%; text-align: left; }
-  .thoughtCollection .paginationSurface, .thoughtEmpty { margin-left: var(--thought-content-offset); }
   .thoughtCollection .pagination { padding: 13px 0; }
   .thoughtCollection .pageButton { min-width: 30px; padding-inline: 7px; }
 }
