@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -20,11 +21,13 @@ CREATE TABLE IF NOT EXISTS profile (id TEXT PRIMARY KEY, display_name TEXT NOT N
 CREATE TABLE IF NOT EXISTS content (id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK (kind IN ('THOUGHT', 'ARTICLE')), status TEXT NOT NULL DEFAULT 'DRAFT' CHECK (status IN ('DRAFT', 'PUBLISHED', 'DELETED')), slug TEXT UNIQUE, title TEXT, summary TEXT NOT NULL DEFAULT '', body TEXT NOT NULL DEFAULT '', tags_json TEXT NOT NULL DEFAULT '[]', metadata_json TEXT NOT NULL DEFAULT '{}', published_at TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, version INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, view_count INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS now_status (id TEXT PRIMARY KEY, title TEXT NOT NULL, detail TEXT NOT NULL DEFAULT '', mood TEXT NOT NULL DEFAULT 'FOCUSED', updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS site_config (id TEXT PRIMARY KEY, featured_content_json TEXT NOT NULL DEFAULT '[]', navigation_json TEXT NOT NULL DEFAULT '[]', sections_json TEXT NOT NULL DEFAULT '[]', updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS thoughts_config (id TEXT PRIMARY KEY, featured_thought_id TEXT REFERENCES content(id) ON DELETE SET NULL, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS comments (id TEXT PRIMARY KEY, content_id TEXT NOT NULL REFERENCES content(id), author_name TEXT NOT NULL, author_url TEXT NOT NULL DEFAULT '', body TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'APPROVED', 'REJECTED')), reply_to_id TEXT REFERENCES comments(id), created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS likes (id TEXT PRIMARY KEY, content_id TEXT NOT NULL REFERENCES content(id) ON DELETE CASCADE, visitor_id TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE (content_id, visitor_id));
 CREATE TABLE IF NOT EXISTS presence (visitor_id TEXT PRIMARY KEY, last_seen_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS audit_events (id TEXT PRIMARY KEY, event_name TEXT NOT NULL, resource_type TEXT NOT NULL, resource_id TEXT NOT NULL DEFAULT '', actor TEXT NOT NULL DEFAULT 'anonymous', request_id TEXT NOT NULL DEFAULT '', trace_id TEXT NOT NULL DEFAULT '', metadata_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE INDEX IF NOT EXISTS idx_content_publication ON content(status, published_at DESC);
+CREATE INDEX IF NOT EXISTS idx_content_kind_publication ON content(kind, status, published_at DESC);
 CREATE INDEX IF NOT EXISTS idx_comments_content_status ON comments(content_id, status, created_at);
 CREATE INDEX IF NOT EXISTS idx_likes_content ON likes(content_id);
 CREATE INDEX IF NOT EXISTS idx_presence_last_seen ON presence(last_seen_at);
@@ -35,6 +38,63 @@ CREATE INDEX IF NOT EXISTS idx_audit_events_content_views ON audit_events(event_
 type Store struct{ DB *sql.DB }
 
 const presenceTTL = 5 * time.Minute
+
+const contentExcerptMaxRunes = 360
+
+var (
+	markdownImagePattern               = regexp.MustCompile(`!\[[^\]]*\](?:\([^)]*\)|\[[^]]*\])`)
+	markdownLinkPattern                = regexp.MustCompile(`\[([^\]]+)\](?:\([^)]*\)|\[[^]]*\])`)
+	markdownAutolinkPattern            = regexp.MustCompile(`<((?:https?://|mailto:)[^>]+)>`)
+	markdownHTMLPattern                = regexp.MustCompile(`</?[A-Za-z][^>]*>`)
+	markdownCommentPattern             = regexp.MustCompile(`<!--.*?-->`)
+	markdownStrongPattern              = regexp.MustCompile(`(?:\*\*|__)(\S(?:.*?\S)?)(?:\*\*|__)`)
+	markdownStrikePattern              = regexp.MustCompile(`~~(\S(?:.*?\S)?)~~`)
+	markdownCodePattern                = regexp.MustCompile("`([^`]+)`")
+	markdownEscapePattern              = regexp.MustCompile(`\\([\\` + "`" + `*_[\]{}()#+.!<>~-])`)
+	markdownReferenceDefinitionPattern = regexp.MustCompile(`^\[[^\]]+\]:\s*\S+`)
+	markdownSpacePattern               = regexp.MustCompile(`\s+`)
+	markdownExcerptHeadingPattern      = regexp.MustCompile(`^#{1,6}\s+`)
+	markdownQuotePattern               = regexp.MustCompile(`^>\s?`)
+	markdownListPattern                = regexp.MustCompile(`^(?:[-+*]|\d+[.)])\s+`)
+)
+
+func contentExcerpt(body string) string {
+	lines := strings.Split(strings.ReplaceAll(body, "\r\n", "\n"), "\n")
+	parts := make([]string, 0, len(lines))
+	inFence := false
+	for _, line := range lines {
+		text := strings.TrimSpace(line)
+		if strings.HasPrefix(text, "```") || strings.HasPrefix(text, "~~~") {
+			inFence = !inFence
+			continue
+		}
+		if inFence || text == "" || markdownReferenceDefinitionPattern.MatchString(text) {
+			continue
+		}
+		text = markdownExcerptHeadingPattern.ReplaceAllString(text, "")
+		text = markdownQuotePattern.ReplaceAllString(text, "")
+		text = markdownListPattern.ReplaceAllString(text, "")
+		text = markdownImagePattern.ReplaceAllString(text, "")
+		text = markdownLinkPattern.ReplaceAllString(text, "$1")
+		text = markdownAutolinkPattern.ReplaceAllString(text, "$1")
+		text = markdownCommentPattern.ReplaceAllString(text, "")
+		text = markdownHTMLPattern.ReplaceAllString(text, "")
+		text = markdownStrongPattern.ReplaceAllString(text, "$1")
+		text = markdownStrikePattern.ReplaceAllString(text, "$1")
+		text = markdownCodePattern.ReplaceAllString(text, "$1")
+		text = markdownEscapePattern.ReplaceAllString(text, "$1")
+		text = markdownSpacePattern.ReplaceAllString(strings.TrimSpace(text), " ")
+		if text != "" {
+			parts = append(parts, text)
+		}
+	}
+	excerpt := strings.TrimSpace(strings.Join(parts, " "))
+	runes := []rune(excerpt)
+	if len(runes) > contentExcerptMaxRunes {
+		return strings.TrimSpace(string(runes[:contentExcerptMaxRunes]))
+	}
+	return excerpt
+}
 
 var (
 	ErrContentNotFound = errors.New("content not found")
@@ -229,6 +289,10 @@ func migrateLegacyContent(db *sql.DB, hasMetadata, hasViewCount bool) error {
 		_ = tx.Rollback()
 		return rollback(err)
 	}
+	if _, err = tx.Exec(`CREATE INDEX IF NOT EXISTS idx_content_kind_publication ON content(kind, status, published_at DESC)`); err != nil {
+		_ = tx.Rollback()
+		return rollback(err)
+	}
 	if err = tx.Commit(); err != nil {
 		return rollback(err)
 	}
@@ -379,6 +443,18 @@ func (s *Store) seed() error {
 			return err
 		}
 	}
+	if _, err := s.DB.Exec(`INSERT OR IGNORE INTO thoughts_config (id, featured_thought_id, updated_at)
+		SELECT 'thoughts_1', json_extract(featured.value, '$.id'), ?
+		FROM site_config, json_each(site_config.featured_content_json) AS featured
+		WHERE site_config.id = 'site_1'
+			AND json_extract(featured.value, '$.kind') IN ('THOUGHT', 'NOTE')
+			AND EXISTS (SELECT 1 FROM content WHERE content.id = json_extract(featured.value, '$.id') AND content.kind = 'THOUGHT' AND content.status = 'PUBLISHED')
+		LIMIT 1`, now); err != nil {
+		return err
+	}
+	if _, err := s.DB.Exec(`INSERT OR IGNORE INTO thoughts_config (id, featured_thought_id, updated_at) VALUES ('thoughts_1', NULL, ?)`, now); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -449,8 +525,23 @@ func (s *Store) UpdateSiteConfig(config model.SiteConfig) error {
 	return err
 }
 
+func (s *Store) GetThoughtConfig() (model.ThoughtConfig, error) {
+	var config model.ThoughtConfig
+	var featuredThoughtID sql.NullString
+	err := s.DB.QueryRow(`SELECT featured_thought_id, updated_at FROM thoughts_config WHERE id = 'thoughts_1'`).Scan(&featuredThoughtID, &config.UpdatedAt)
+	if featuredThoughtID.Valid {
+		config.FeaturedThoughtID = &featuredThoughtID.String
+	}
+	return config, err
+}
+
+func (s *Store) UpdateThoughtConfig(featuredThoughtID *string) error {
+	_, err := s.DB.Exec(`UPDATE thoughts_config SET featured_thought_id = ?, updated_at = ? WHERE id = 'thoughts_1'`, featuredThoughtID, time.Now().UTC().Format(time.RFC3339))
+	return err
+}
+
 func (s *Store) ListContent(includeDrafts bool, options ContentListOptions) ([]model.Content, bool, error) {
-	query := `SELECT id, kind, status, slug, title, summary, body, tags_json, metadata_json, published_at, created_at, updated_at, version, view_count, (SELECT COUNT(*) FROM likes WHERE content_id = content.id) FROM content WHERE 1 = 1`
+	query := `SELECT id, kind, status, slug, title, summary, body, tags_json, metadata_json, published_at, created_at, updated_at, version, view_count, (SELECT COUNT(*) FROM likes WHERE content_id = content.id), (SELECT COUNT(*) FROM comments WHERE content_id = content.id AND status = 'APPROVED') FROM content WHERE 1 = 1`
 	if !includeDrafts {
 		query += ` AND status = 'PUBLISHED'`
 	} else if options.Status == "" {
@@ -493,7 +584,7 @@ func (s *Store) ListContent(includeDrafts bool, options ContentListOptions) ([]m
 	for rows.Next() && len(items) <= limit {
 		var c model.Content
 		var tags, metadata, published, slug, title sql.NullString
-		if err := rows.Scan(&c.ID, &c.Kind, &c.Status, &slug, &title, &c.Summary, &c.Body, &tags, &metadata, &published, &c.CreatedAt, &c.UpdatedAt, &c.Version, &c.ViewCount, &c.LikeCount); err != nil {
+		if err := rows.Scan(&c.ID, &c.Kind, &c.Status, &slug, &title, &c.Summary, &c.Body, &tags, &metadata, &published, &c.CreatedAt, &c.UpdatedAt, &c.Version, &c.ViewCount, &c.LikeCount, &c.CommentCount); err != nil {
 			return nil, false, err
 		}
 		c.Slug, c.Title = slug.String, title.String
@@ -507,6 +598,7 @@ func (s *Store) ListContent(includeDrafts bool, options ContentListOptions) ([]m
 		} else {
 			c.Href = "/writing/" + c.Slug
 		}
+		c.Excerpt = contentExcerpt(c.Body)
 		if !includeDrafts {
 			c.Body = ""
 		}
@@ -519,14 +611,102 @@ func (s *Store) ListContent(includeDrafts bool, options ContentListOptions) ([]m
 	return items, hasMore, rows.Err()
 }
 
+func (s *Store) ThoughtArchive(requestedPage, pageSize int) (model.ThoughtArchive, error) {
+	config, err := s.GetThoughtConfig()
+	if err != nil {
+		return model.ThoughtArchive{}, err
+	}
+
+	var featured *model.Content
+	if config.FeaturedThoughtID != nil {
+		item, readErr := s.GetContentByID(*config.FeaturedThoughtID, false)
+		if readErr == nil && item.Kind == model.ContentKindThought {
+			item.Body = ""
+			featured = &item
+		} else if readErr != nil && !errors.Is(readErr, sql.ErrNoRows) {
+			return model.ThoughtArchive{}, readErr
+		}
+	}
+	if featured == nil {
+		items, _, listErr := s.ListContent(false, ContentListOptions{Kinds: []model.ContentKind{model.ContentKindThought}, Limit: 1})
+		if listErr != nil {
+			return model.ThoughtArchive{}, listErr
+		}
+		if len(items) > 0 {
+			featured = &items[0]
+		}
+	}
+
+	excludedID := ""
+	if featured != nil {
+		excludedID = featured.ID
+	}
+	var totalItems int
+	if err := s.DB.QueryRow(`SELECT COUNT(*) FROM content WHERE kind = 'THOUGHT' AND status = 'PUBLISHED' AND (? = '' OR id != ?)`, excludedID, excludedID).Scan(&totalItems); err != nil {
+		return model.ThoughtArchive{}, err
+	}
+	totalPages := (totalItems + pageSize - 1) / pageSize
+	if totalPages < 1 {
+		totalPages = 1
+	}
+	page := requestedPage
+	if page < 1 {
+		page = 1
+	}
+	if page > totalPages {
+		page = totalPages
+	}
+
+	rows, err := s.DB.Query(`SELECT id, kind, status, slug, title, summary, body, tags_json, metadata_json, published_at, created_at, updated_at, version, view_count, (SELECT COUNT(*) FROM likes WHERE content_id = content.id), (SELECT COUNT(*) FROM comments WHERE content_id = content.id AND status = 'APPROVED')
+		FROM content
+		WHERE kind = 'THOUGHT' AND status = 'PUBLISHED' AND (? = '' OR id != ?)
+		ORDER BY COALESCE(published_at, created_at) DESC, id DESC
+		LIMIT ? OFFSET ?`, excludedID, excludedID, pageSize, (page-1)*pageSize)
+	if err != nil {
+		return model.ThoughtArchive{}, err
+	}
+	defer rows.Close()
+	items := make([]model.Content, 0, pageSize)
+	for rows.Next() {
+		var item model.Content
+		var tags, metadata, published, slug, title sql.NullString
+		if err := rows.Scan(&item.ID, &item.Kind, &item.Status, &slug, &title, &item.Summary, &item.Body, &tags, &metadata, &published, &item.CreatedAt, &item.UpdatedAt, &item.Version, &item.ViewCount, &item.LikeCount, &item.CommentCount); err != nil {
+			return model.ThoughtArchive{}, err
+		}
+		item.Slug, item.Title = slug.String, title.String
+		item.Tags = decodeStrings(tags.String)
+		item.Metadata = decodeMetadata(metadata.String)
+		if published.Valid {
+			item.PublishedAt = &published.String
+		}
+		item.Href = "/thoughts/" + item.ID
+		item.Excerpt = contentExcerpt(item.Body)
+		item.Body = ""
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return model.ThoughtArchive{}, err
+	}
+	return model.ThoughtArchive{
+		Featured: featured,
+		Data:     items,
+		Pagination: model.PagePagination{
+			Page:       page,
+			PageSize:   pageSize,
+			TotalItems: totalItems,
+			TotalPages: totalPages,
+		},
+	}, nil
+}
+
 func (s *Store) GetContent(slug string, includeDrafts bool) (model.Content, error) {
 	var c model.Content
 	var tags, metadata, published, slugValue, titleValue sql.NullString
-	query := `SELECT id, kind, status, slug, title, summary, body, tags_json, metadata_json, published_at, created_at, updated_at, version, view_count, (SELECT COUNT(*) FROM likes WHERE content_id = content.id) FROM content WHERE (slug = ? OR id = ?) AND status != 'DELETED'`
+	query := `SELECT id, kind, status, slug, title, summary, body, tags_json, metadata_json, published_at, created_at, updated_at, version, view_count, (SELECT COUNT(*) FROM likes WHERE content_id = content.id), (SELECT COUNT(*) FROM comments WHERE content_id = content.id AND status = 'APPROVED') FROM content WHERE (slug = ? OR id = ?) AND status != 'DELETED'`
 	if !includeDrafts {
 		query += ` AND status = 'PUBLISHED'`
 	}
-	err := s.DB.QueryRow(query, slug, slug).Scan(&c.ID, &c.Kind, &c.Status, &slugValue, &titleValue, &c.Summary, &c.Body, &tags, &metadata, &published, &c.CreatedAt, &c.UpdatedAt, &c.Version, &c.ViewCount, &c.LikeCount)
+	err := s.DB.QueryRow(query, slug, slug).Scan(&c.ID, &c.Kind, &c.Status, &slugValue, &titleValue, &c.Summary, &c.Body, &tags, &metadata, &published, &c.CreatedAt, &c.UpdatedAt, &c.Version, &c.ViewCount, &c.LikeCount, &c.CommentCount)
 	c.Slug, c.Title = slugValue.String, titleValue.String
 	c.Tags = decodeStrings(tags.String)
 	c.Metadata = decodeMetadata(metadata.String)
@@ -538,17 +718,18 @@ func (s *Store) GetContent(slug string, includeDrafts bool) (model.Content, erro
 	} else {
 		c.Href = "/writing/" + c.Slug
 	}
+	c.Excerpt = contentExcerpt(c.Body)
 	return c, err
 }
 
 func (s *Store) GetContentByID(id string, includeDrafts bool) (model.Content, error) {
 	var c model.Content
 	var tags, metadata, published, slug, title sql.NullString
-	query := `SELECT id, kind, status, slug, title, summary, body, tags_json, metadata_json, published_at, created_at, updated_at, version, view_count, (SELECT COUNT(*) FROM likes WHERE content_id = content.id) FROM content WHERE id = ? AND status != 'DELETED'`
+	query := `SELECT id, kind, status, slug, title, summary, body, tags_json, metadata_json, published_at, created_at, updated_at, version, view_count, (SELECT COUNT(*) FROM likes WHERE content_id = content.id), (SELECT COUNT(*) FROM comments WHERE content_id = content.id AND status = 'APPROVED') FROM content WHERE id = ? AND status != 'DELETED'`
 	if !includeDrafts {
 		query += ` AND status = 'PUBLISHED'`
 	}
-	err := s.DB.QueryRow(query, id).Scan(&c.ID, &c.Kind, &c.Status, &slug, &title, &c.Summary, &c.Body, &tags, &metadata, &published, &c.CreatedAt, &c.UpdatedAt, &c.Version, &c.ViewCount, &c.LikeCount)
+	err := s.DB.QueryRow(query, id).Scan(&c.ID, &c.Kind, &c.Status, &slug, &title, &c.Summary, &c.Body, &tags, &metadata, &published, &c.CreatedAt, &c.UpdatedAt, &c.Version, &c.ViewCount, &c.LikeCount, &c.CommentCount)
 	c.Slug, c.Title = slug.String, title.String
 	c.Tags = decodeStrings(tags.String)
 	c.Metadata = decodeMetadata(metadata.String)
@@ -560,6 +741,7 @@ func (s *Store) GetContentByID(id string, includeDrafts bool) (model.Content, er
 	} else {
 		c.Href = "/writing/" + c.Slug
 	}
+	c.Excerpt = contentExcerpt(c.Body)
 	return c, err
 }
 
@@ -682,19 +864,10 @@ func (s *Store) DeleteLike(contentID, visitorID string) error {
 	return err
 }
 
-func (s *Store) SetCommentStatus(id, status string) error {
-	result, err := s.DB.Exec(`UPDATE comments SET status = ? WHERE id = ?`, status, id)
-	if err != nil {
-		return err
-	}
-	count, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if count == 0 {
-		return sql.ErrNoRows
-	}
-	return nil
+func (s *Store) SetCommentStatus(id, status string) (string, error) {
+	var contentID string
+	err := s.DB.QueryRow(`UPDATE comments SET status = ? WHERE id = ? RETURNING content_id`, status, id).Scan(&contentID)
+	return contentID, err
 }
 
 func (s *Store) PendingCommentCount() (int, error) {
@@ -726,6 +899,7 @@ func (s *Store) CreateContent(c model.Content) (model.Content, error) {
 	now := time.Now().UTC().Format(time.RFC3339)
 	c.ID, c.Status, c.CreatedAt, c.UpdatedAt, c.Version = "content_"+time.Now().UTC().Format("20060102150405.000000000"), "DRAFT", now, now, 1
 	c.Metadata = normalizeArticleMetadata(string(c.Kind), c.Body, c.Metadata)
+	c.Excerpt = contentExcerpt(c.Body)
 	_, err := s.DB.Exec(`INSERT INTO content (id, kind, status, slug, title, summary, body, tags_json, metadata_json, created_at, updated_at) VALUES (?, ?, ?, NULLIF(?, ''), NULLIF(?, ''), ?, ?, ?, ?, ?, ?)`, c.ID, c.Kind, c.Status, c.Slug, c.Title, c.Summary, c.Body, encodeStrings(c.Tags), encodeJSON(c.Metadata), now, now)
 	return c, err
 }

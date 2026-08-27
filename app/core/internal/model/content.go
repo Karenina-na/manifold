@@ -27,22 +27,24 @@ type Profile struct {
 }
 
 type Content struct {
-	ID          string         `json:"id"`
-	Kind        ContentKind    `json:"kind"`
-	Status      string         `json:"status"`
-	Slug        string         `json:"slug,omitempty"`
-	Title       string         `json:"title,omitempty"`
-	Summary     string         `json:"summary"`
-	Body        string         `json:"body,omitempty"`
-	Tags        []string       `json:"tags"`
-	PublishedAt *string        `json:"publishedAt"`
-	CreatedAt   string         `json:"createdAt"`
-	UpdatedAt   string         `json:"updatedAt"`
-	Version     int            `json:"version"`
-	Href        string         `json:"href,omitempty"`
-	ViewCount   int            `json:"viewCount"`
-	LikeCount   int            `json:"likeCount"`
-	Metadata    map[string]any `json:"metadata"`
+	ID           string         `json:"id"`
+	Kind         ContentKind    `json:"kind"`
+	Status       string         `json:"status"`
+	Slug         string         `json:"slug,omitempty"`
+	Title        string         `json:"title,omitempty"`
+	Summary      string         `json:"summary"`
+	Excerpt      string         `json:"excerpt,omitempty"`
+	Body         string         `json:"body,omitempty"`
+	Tags         []string       `json:"tags"`
+	PublishedAt  *string        `json:"publishedAt"`
+	CreatedAt    string         `json:"createdAt"`
+	UpdatedAt    string         `json:"updatedAt"`
+	Version      int            `json:"version"`
+	Href         string         `json:"href,omitempty"`
+	ViewCount    int            `json:"viewCount"`
+	LikeCount    int            `json:"likeCount"`
+	CommentCount int            `json:"commentCount"`
+	Metadata     map[string]any `json:"metadata"`
 }
 
 type SiteConfig struct {
@@ -60,6 +62,24 @@ type SiteNavigationItem struct {
 	Label    string `json:"label" validate:"required,max=80"`
 	Href     string `json:"href" validate:"required,max=200"`
 	External bool   `json:"external"`
+}
+
+type ThoughtConfig struct {
+	FeaturedThoughtID *string `json:"featuredThoughtId"`
+	UpdatedAt         string  `json:"updatedAt"`
+}
+
+type PagePagination struct {
+	Page       int `json:"page"`
+	PageSize   int `json:"pageSize"`
+	TotalItems int `json:"totalItems"`
+	TotalPages int `json:"totalPages"`
+}
+
+type ThoughtArchive struct {
+	Featured   *Content       `json:"featured"`
+	Data       []Content      `json:"data"`
+	Pagination PagePagination `json:"pagination"`
 }
 
 type NowStatus struct {

@@ -36,6 +36,38 @@ test("encodes collection queries and bearer authentication", async () => {
 	assert.equal(captured?.headers.get("Authorization"), "Bearer token-1");
 });
 
+test("reads the paginated thought archive from Core", async () => {
+	let captured: Request | undefined;
+	const client = new ManifoldClient({
+		baseUrl: "http://core.test",
+		fetch: async (input, init) => {
+			captured = new Request(input, init);
+			return new Response(JSON.stringify({ featured: null, data: [], pagination: { page: 2, pageSize: 8, totalItems: 0, totalPages: 1 } }), { status: 200 });
+		},
+	});
+
+	await client.thoughts({ page: 2, limit: 8 });
+	assert.equal(captured?.url, "http://core.test/api/v1/thoughts?page=2&limit=8");
+});
+
+test("reads and updates the admin thought configuration", async () => {
+	const requests: Request[] = [];
+	const client = new ManifoldClient({
+		baseUrl: "http://core.test",
+		token: "token-1",
+		fetch: async (input, init) => {
+			requests.push(new Request(input, init));
+			return new Response(JSON.stringify({ featuredThoughtId: "thought-1", updatedAt: "2026-08-27T00:00:00Z" }), { status: 200 });
+		},
+	});
+
+	await client.adminThoughtConfig();
+	await client.updateThoughtConfig({ featuredThoughtId: "thought-1" });
+	assert.equal(requests[0]?.url, "http://core.test/api/v1/admin/thoughts/config");
+	assert.equal(requests[1]?.method, "PATCH");
+	assert.deepEqual(await requests[1]?.json(), { featuredThoughtId: "thought-1" });
+});
+
 test("encodes admin status, cursor, and partial update inputs", async () => {
 	const requests: Request[] = [];
 	const client = new ManifoldClient({

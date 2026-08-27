@@ -68,6 +68,9 @@ func TestContentListIncludesViewAndLikeCounts(t *testing.T) {
 	defer database.Close()
 	hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.MinCost)
 	cfg := config.Config{JWTSecret: "test-secret", AdminUsername: "admin", AdminPasswordHash: string(hash), AllowedOrigins: []string{"*"}}
+	if _, err := database.DB.Exec(`INSERT INTO comments (id, content_id, author_name, body, status) VALUES ('approved-comment', 'content_1', 'Reader', 'Public', 'APPROVED'), ('pending-comment', 'content_1', 'Reader', 'Pending', 'PENDING')`); err != nil {
+		t.Fatal(err)
+	}
 	router := handler.Router(cfg, database)
 
 	first := request(t, router, http.MethodGet, "/api/v1/content/designing-boundaries", nil)
@@ -83,12 +86,40 @@ func TestContentListIncludesViewAndLikeCounts(t *testing.T) {
 		t.Fatalf("expected like 200, got %d", liked.Code)
 	}
 	second := request(t, router, http.MethodGet, "/api/v1/content/designing-boundaries", nil)
-	if second.Code != http.StatusOK || !strings.Contains(second.Body.String(), `"viewCount":2`) || !strings.Contains(second.Body.String(), `"likeCount":1`) {
+	if second.Code != http.StatusOK || !strings.Contains(second.Body.String(), `"viewCount":2`) || !strings.Contains(second.Body.String(), `"likeCount":1`) || !strings.Contains(second.Body.String(), `"commentCount":1`) {
 		t.Fatalf("expected cached detail stats to refresh, got %d %s", second.Code, second.Body.String())
 	}
 	list := request(t, router, http.MethodGet, "/api/v1/content", nil)
-	if list.Code != http.StatusOK || !strings.Contains(list.Body.String(), `"viewCount":2`) || !strings.Contains(list.Body.String(), `"likeCount":1`) {
+	if list.Code != http.StatusOK || !strings.Contains(list.Body.String(), `"viewCount":2`) || !strings.Contains(list.Body.String(), `"likeCount":1`) || !strings.Contains(list.Body.String(), `"commentCount":1`) {
 		t.Fatalf("expected list stats, got %d %s", list.Code, list.Body.String())
+	}
+}
+
+func TestApprovingCommentInvalidatesContentCommentCount(t *testing.T) {
+	router := newTestRouter(t)
+	token := adminToken(t, router)
+
+	initial := request(t, router, http.MethodGet, "/api/v1/content/designing-boundaries?trackView=false", nil)
+	if initial.Code != http.StatusOK || !strings.Contains(initial.Body.String(), `"commentCount":0`) {
+		t.Fatalf("expected cached detail without comments, got %d %s", initial.Code, initial.Body.String())
+	}
+	created := request(t, router, http.MethodPost, "/api/v1/content/designing-boundaries/comments", strings.NewReader(`{"authorName":"Reader","body":"A useful note."}`))
+	if created.Code != http.StatusCreated {
+		t.Fatalf("expected comment 201, got %d %s", created.Code, created.Body.String())
+	}
+	var comment struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(created.Body.Bytes(), &comment); err != nil {
+		t.Fatal(err)
+	}
+	approved := adminRequest(t, router, token, http.MethodPost, "/api/v1/admin/comments/"+comment.ID+"/approve", "")
+	if approved.Code != http.StatusNoContent {
+		t.Fatalf("expected approve 204, got %d %s", approved.Code, approved.Body.String())
+	}
+	refreshed := request(t, router, http.MethodGet, "/api/v1/content/designing-boundaries?trackView=false", nil)
+	if refreshed.Code != http.StatusOK || !strings.Contains(refreshed.Body.String(), `"commentCount":1`) {
+		t.Fatalf("expected refreshed approved comment count, got %d %s", refreshed.Code, refreshed.Body.String())
 	}
 }
 
@@ -310,7 +341,7 @@ func TestContentQueryFiltersAndPaginates(t *testing.T) {
 		t.Fatalf("expected filtered content 200, got %d", response.Code)
 	}
 	var payload struct {
-		Data       []struct{ Kind, Slug string } `json:"data"`
+		Data       []struct{ Kind, Slug, Excerpt string } `json:"data"`
 		Pagination struct {
 			NextCursor string `json:"nextCursor"`
 			HasMore    bool   `json:"hasMore"`
@@ -319,8 +350,15 @@ func TestContentQueryFiltersAndPaginates(t *testing.T) {
 	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
 		t.Fatal(err)
 	}
-	if len(payload.Data) != 1 || payload.Data[0].Kind != "THOUGHT" || payload.Data[0].Slug != "a-small-signal" {
+	if len(payload.Data) != 1 || payload.Data[0].Kind != "THOUGHT" || payload.Data[0].Slug != "a-small-signal" || payload.Data[0].Excerpt != "Not every observation needs a system. First decide whether it changes the way you work." {
 		t.Fatalf("unexpected filtered result: %s", response.Body.String())
+	}
+	if strings.Contains(response.Body.String(), `"body"`) {
+		t.Fatalf("public content response must omit body: %s", response.Body.String())
+	}
+	feedResponse := request(t, router, http.MethodGet, "/api/v1/feed?kind=THOUGHT&limit=1", nil)
+	if feedResponse.Code != http.StatusOK || strings.Contains(feedResponse.Body.String(), `"body"`) {
+		t.Fatalf("public feed response must omit body: %d %s", feedResponse.Code, feedResponse.Body.String())
 	}
 	if payload.Pagination.HasMore || payload.Pagination.NextCursor != "" {
 		t.Fatalf("expected a single filtered page, got %s", response.Body.String())
@@ -363,6 +401,82 @@ func TestContentQueryFiltersAndPaginates(t *testing.T) {
 	response = request(t, router, http.MethodGet, "/api/v1/content?limit=0", nil)
 	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "INVALID_QUERY") {
 		t.Fatalf("expected invalid query 400, got %d %s", response.Code, response.Body.String())
+	}
+}
+
+func TestThoughtArchiveIsOwnedByCore(t *testing.T) {
+	database, err := store.Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if _, err := database.DB.Exec(`INSERT INTO content (id, kind, status, title, summary, body, tags_json, metadata_json, published_at, created_at, updated_at) VALUES
+		('thought_newest', 'THOUGHT', 'PUBLISHED', 'Newest', 'Newest summary', 'Newest body', '["notes"]', '{}', '2026-08-27T09:00:00Z', '2026-08-27T09:00:00Z', '2026-08-27T09:00:00Z'),
+		('thought_middle', 'THOUGHT', 'PUBLISHED', 'Middle', 'Middle summary', 'Middle body', '["notes"]', '{}', '2026-07-10T09:00:00Z', '2026-07-10T09:00:00Z', '2026-07-10T09:00:00Z'),
+		('thought_draft', 'THOUGHT', 'DRAFT', 'Draft', '', 'Draft body', '[]', '{}', NULL, '2026-09-01T09:00:00Z', '2026-09-01T09:00:00Z')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.DB.Exec(`UPDATE content SET published_at = '2026-06-03T09:00:00Z', created_at = '2026-06-03T09:00:00Z' WHERE id = 'content_2'`); err != nil {
+		t.Fatal(err)
+	}
+	hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.MinCost)
+	cfg := config.Config{JWTSecret: "test-secret", AdminUsername: "admin", AdminPasswordHash: string(hash), AllowedOrigins: []string{"*"}}
+	router := handler.Router(cfg, database)
+	token := adminToken(t, router)
+
+	fallback := request(t, router, http.MethodGet, "/api/v1/thoughts?page=1&limit=1", nil)
+	if fallback.Code != http.StatusOK || !strings.Contains(fallback.Body.String(), `"featured":{"id":"thought_newest"`) {
+		t.Fatalf("expected latest published thought fallback, got %d %s", fallback.Code, fallback.Body.String())
+	}
+
+	configured := adminRequest(t, router, token, http.MethodPatch, "/api/v1/admin/thoughts/config", `{"featuredThoughtId":"thought_middle"}`)
+	if configured.Code != http.StatusOK || !strings.Contains(configured.Body.String(), `"featuredThoughtId":"thought_middle"`) {
+		t.Fatalf("expected thought configuration update, got %d %s", configured.Code, configured.Body.String())
+	}
+
+	firstPage := request(t, router, http.MethodGet, "/api/v1/thoughts?page=1&limit=1", nil)
+	var payload struct {
+		Featured   struct{ ID, Excerpt string }   `json:"featured"`
+		Data       []struct{ ID, Excerpt string } `json:"data"`
+		Pagination struct {
+			Page, PageSize, TotalItems, TotalPages int
+		} `json:"pagination"`
+	}
+	if err := json.Unmarshal(firstPage.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if firstPage.Code != http.StatusOK || payload.Featured.ID != "thought_middle" || payload.Featured.Excerpt != "Middle body" || len(payload.Data) != 1 || payload.Data[0].ID != "thought_newest" || payload.Data[0].Excerpt != "Newest body" {
+		t.Fatalf("expected configured thought to be excluded from first archive page, got %d %s", firstPage.Code, firstPage.Body.String())
+	}
+	if strings.Contains(firstPage.Body.String(), `"body"`) {
+		t.Fatalf("public thoughts response must omit body: %s", firstPage.Body.String())
+	}
+	if payload.Pagination.Page != 1 || payload.Pagination.PageSize != 1 || payload.Pagination.TotalItems != 2 || payload.Pagination.TotalPages != 2 {
+		t.Fatalf("unexpected thought pagination: %s", firstPage.Body.String())
+	}
+	lastPage := request(t, router, http.MethodGet, "/api/v1/thoughts?page=99&limit=1", nil)
+	if err := json.Unmarshal(lastPage.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if lastPage.Code != http.StatusOK || payload.Pagination.Page != 2 || len(payload.Data) != 1 || payload.Data[0].ID != "content_2" {
+		t.Fatalf("expected out-of-range thought page to clamp to the last page, got %d %s", lastPage.Code, lastPage.Body.String())
+	}
+	for _, invalidQuery := range []string{"page=0", "page=nope", "limit=0", "limit=51"} {
+		response := request(t, router, http.MethodGet, "/api/v1/thoughts?"+invalidQuery, nil)
+		if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "INVALID_QUERY") {
+			t.Fatalf("expected invalid thought query %q to be rejected, got %d %s", invalidQuery, response.Code, response.Body.String())
+		}
+	}
+
+	for _, invalidID := range []string{"content_1", "thought_draft", "missing"} {
+		response := adminRequest(t, router, token, http.MethodPatch, "/api/v1/admin/thoughts/config", fmt.Sprintf(`{"featuredThoughtId":%q}`, invalidID))
+		if response.Code != http.StatusUnprocessableEntity || !strings.Contains(response.Body.String(), "VALIDATION_ERROR") {
+			t.Fatalf("expected invalid featured thought %q to be rejected, got %d %s", invalidID, response.Code, response.Body.String())
+		}
+	}
+	cleared := adminRequest(t, router, token, http.MethodPatch, "/api/v1/admin/thoughts/config", `{"featuredThoughtId":null}`)
+	if cleared.Code != http.StatusOK || !strings.Contains(cleared.Body.String(), `"featuredThoughtId":null`) {
+		t.Fatalf("expected explicit thought configuration to clear, got %d %s", cleared.Code, cleared.Body.String())
 	}
 }
 

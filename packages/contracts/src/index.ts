@@ -9,13 +9,15 @@ export interface ProfileSeriesItem { name: string; url: string; description: str
 export interface ProfileContact { label: string; url: string; handle?: string; icon?: string }
 export interface Profile { id: string; displayName: string; handle: string; headline: string; bio: string; avatarUrl: string; location: string; organization: string; websiteUrl: string; resumeUrl?: string; interests?: string[]; education?: Array<{ institution: string; program: string; period: string }>; experience?: Array<{ organization: string; role: string; period: string }>; series?: ProfileSeriesItem[]; contacts?: ProfileContact[]; updatedAt: string }
 export type ProfileInput = Omit<Profile, "id" | "updatedAt">
-export interface ContentSummary { id: string; kind: ContentKind; status: ContentStatus; slug: string | null; title: string | null; summary: string; tags: string[]; publishedAt: string | null; createdAt: string; updatedAt: string; version: number; href: string; viewCount: number; likeCount: number }
+export interface ContentSummary { id: string; kind: ContentKind; status: ContentStatus; slug: string | null; title: string | null; summary: string; excerpt?: string; tags: string[]; publishedAt: string | null; createdAt: string; updatedAt: string; version: number; href: string; viewCount: number; likeCount: number; commentCount: number }
 export interface ThoughtMetadata { mood?: string; question?: string; context?: string; source?: string }
 export interface ArticleMetadata { readingMinutes?: number; toc?: Array<{ id: string; label: string; level: 2 | 3 }>; frontmatter?: Record<string, string>; technologies?: string[]; language?: string; difficulty?: "BEGINNER" | "INTERMEDIATE" | "ADVANCED"; repositoryUrl?: string }
 export type ContentMetadata = ThoughtMetadata | ArticleMetadata
-type ContentWithMetadata<M, K extends ContentKind> = Omit<ContentSummary, "kind"> & { kind: K; metadata: M; body?: string }
-type ContentDetailWithMetadata<M, K extends ContentKind> = Omit<ContentSummary, "kind"> & { kind: K; metadata: M; body: string }
+type ContentWithMetadata<M, K extends ContentKind> = Omit<ContentSummary, "kind"> & { kind: K; metadata: M }
+type AdminContentWithMetadata<M, K extends ContentKind> = ContentWithMetadata<M, K> & { body: string }
+type ContentDetailWithMetadata<M, K extends ContentKind> = ContentWithMetadata<M, K> & { body: string }
 export type Content = ContentWithMetadata<ThoughtMetadata, "THOUGHT"> | ContentWithMetadata<ArticleMetadata, "ARTICLE">
+export type AdminContent = AdminContentWithMetadata<ThoughtMetadata, "THOUGHT"> | AdminContentWithMetadata<ArticleMetadata, "ARTICLE">
 export type ContentDetail = ContentDetailWithMetadata<ThoughtMetadata, "THOUGHT"> | ContentDetailWithMetadata<ArticleMetadata, "ARTICLE">
 export interface NowStatus { title: string; detail: string; mood: string; updatedAt: string; expiresAt?: string }
 export interface Comment { id: string; contentId: string; authorName: string; authorUrl?: string; body: string; status: CommentStatus; createdAt: string; replyToId?: string }
@@ -28,6 +30,11 @@ export interface SiteConfig { featuredContent: Array<{ id: string; kind: Content
 export type SiteConfigInput = SiteConfig
 export interface Pagination { nextCursor: string | null; hasMore: boolean }
 export interface Collection<T> { data: T[]; pagination: Pagination }
+export interface PagePagination { page: number; pageSize: number; totalItems: number; totalPages: number }
+export interface ThoughtArchive { featured: Extract<Content, { kind: "THOUGHT" }> | null; data: Array<Extract<Content, { kind: "THOUGHT" }>>; pagination: PagePagination }
+export interface ThoughtArchiveQuery { page?: number; limit?: number }
+export interface ThoughtConfig { featuredThoughtId: string | null; updatedAt: string }
+export interface ThoughtConfigInput { featuredThoughtId: string | null }
 export interface ContentQuery { kind?: ContentKind | ContentKind[]; tag?: string; q?: string; cursor?: string; limit?: number }
 export interface AdminContentQuery extends ContentQuery { status?: ContentStatus }
 export interface CommentQuery { status?: CommentStatus; cursor?: string; limit?: number }

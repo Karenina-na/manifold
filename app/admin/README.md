@@ -1,6 +1,6 @@
 # `app/admin`
 
-Manifold 私有管理端，负责登录、Dashboard、Thought/Article 内容编辑、评论审核、Now、Profile 和首页 composition 设置。
+Manifold 私有管理端，负责登录、Dashboard、Thought/Article 内容编辑、评论审核、Now、Profile 和公开 composition 设置；Settings 通过 Core 的独立 Thoughts 配置接口选择公开 Thoughts 页的置顶内容。
 
 当前详细契约见 [`docs/admin.md`](../../docs/admin.md)，其中记录 Vite + React 19、Mantine、TanStack Query、React Hook Form/Zod、Recharts、Lucide、PWA 架构，以及 SDK 调用、会话、query key、表单字段和状态流。
 

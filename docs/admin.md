@@ -69,7 +69,7 @@ Article 模式字段：title、slug、summary、Markdown body、tags、frontmatt
 
 Profile 调用 `GET/PATCH /api/v1/admin/profile`，包含 displayName、handle、headline、bio、avatarUrl、location、organization、websiteUrl、resumeUrl、interests、education、experience、series、contacts。Series 和联系方式在 Settings 以 JSON 编辑；联系方式支持可选的 `icon` Lucide 图标 key（如 `github`、`x`、`mail`、`rss`、`telegram`、`podcast`、`tv`），Web 首页以公开卡片/链接展示，其中 Contact 仅显示居中的图标入口。
 
-Site 调用 `GET/PATCH /api/v1/admin/site`，包含 `featuredContent`、`navigation` 和 `sections`。浏览器先用 Zod 校验 navigation JSON 和 sections，Core 仍做最终校验。
+Site 调用 `GET/PATCH /api/v1/admin/site`，包含 `featuredContent`、`navigation` 和 `sections`。Thoughts 置顶独立调用 `GET/PATCH /api/v1/admin/thoughts/config`；Settings 以每页 50 条按 cursor 读取全部已发布 Thoughts 填充 Pinned thought 选择器。置顶与 Site composition 使用两个独立保存动作和 mutation，避免跨资源部分成功被误报为整体失败；置顶保存将所选 ID 或 `null` 写入 `thoughts_config`，Core 最终校验目标必须是已发布 Thought，清空后公开归档由 Core 回退最新项。浏览器仍用 Zod 校验 navigation JSON 和 sections。
 
 ## 5. Query key 和失效
 
@@ -77,10 +77,12 @@ Site 调用 `GET/PATCH /api/v1/admin/site`，包含 `featuredContent`、`navigat
 | --- | --- | --- |
 | `admin-stats` | `adminStats()` | 评论审核后、Dashboard 手动刷新 |
 | `admin-content` + filter | `adminContent()` | 内容创建、更新、发布、撤回、删除 |
+| `admin-content` + `THOUGHT` + `PUBLISHED` | Settings 的置顶 Thought 选项 | 内容创建、更新、发布、撤回、删除 |
 | `admin-comments` | `adminComments("PENDING")` | Approve/Reject |
 | `now` | `now()` | 更新 Now |
 | `admin-profile` | `adminProfile()` | 保存 Profile |
 | `admin-site` | `adminSite()` | 保存 Site |
+| `admin-thought-config` | `adminThoughtConfig()` | 保存 Thoughts 置顶配置 |
 
 只失效受影响的资源 key，不使用全局清缓存替代资源级更新。
 

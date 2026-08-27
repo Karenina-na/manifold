@@ -19,11 +19,14 @@ app/core JSON <--> packages/contracts <--> packages/sdk <--> Web / Admin
 
 - `ContentKind = "THOUGHT" | "ARTICLE"`
 - `ContentStatus = "DRAFT" | "PUBLISHED" | "DELETED"`
-- `ContentSummary`：列表和轻量内容对象，`slug`、`title` 可为空，并包含 Core 聚合的 `viewCount` 与 `likeCount`。
-- `Content`：摘要对象加可选 `body` 和按 `kind` 判别的 metadata。
+- `ContentSummary`：列表和轻量内容对象，`slug`、`title` 可为空，并包含 Core 从 Markdown 正文派生的可选纯文本 `excerpt`、聚合的 `viewCount`、`likeCount` 与已审核 `commentCount`。`summary` 与 `excerpt` 语义独立。
+- `Content`：公开摘要对象，不含完整 `body`，并按 `kind` 判别 metadata。
+- `AdminContent`：管理端内容对象，包含完整 Markdown `body`。
 - `ContentDetail`：详情对象，`body` 必填。
 - `ContentInput`：创建输入的判别联合：Thought 和 Article 使用不同 metadata。
 - `UpdateContentInput`：带必填 `expectedVersion` 的局部更新，可改变 `kind` 和 `slug`。
+- `ThoughtArchive` / `ThoughtArchiveQuery`：Core 计算的置顶 Thought、非置顶归档页和页码参数。
+- `ThoughtConfig` / `ThoughtConfigInput`：可空 `featuredThoughtId` 的 Admin 配置读写契约。
 
 Article 的 `ArticleMetadata` 字段：
 
@@ -49,6 +52,7 @@ Thought 的 `ThoughtMetadata` 字段为 `mood`、`question`、`context`、`sourc
 - `Comment`、`CommentStatus`、`CreateCommentInput`：评论和审核状态。
 - `LikeSummary`：文章点赞统计和当前访客状态。
 - `Collection<T>`、`Pagination`：统一列表响应。
+- `PagePagination`：Thoughts aggregate 使用的 `page/pageSize/totalItems/totalPages` 页码响应。
 - `ContentQuery`、`AdminContentQuery`、`CommentQuery`：服务端筛选和 cursor 分页参数。
 - `ApiErrorBody`：Core 结构化错误响应字段；SDK 的运行时 `ApiError` 见 [`packages/sdk/README.md`](../sdk/README.md)。
 

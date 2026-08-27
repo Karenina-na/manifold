@@ -44,7 +44,8 @@ const page = await client.content({ kind: "ARTICLE", limit: 20 })
 | `profile()` | GET | `/api/v1/profile` | `Profile` |
 | `site()` | GET | `/api/v1/site` | `SiteComposition` |
 | `feed(query?)` | GET | `/api/v1/feed` | `Collection<Content>` |
-| `content(query?)` | GET | `/api/v1/content` | `Collection<Content>`，内容项包含 `viewCount` / `likeCount` |
+| `content(query?)` | GET | `/api/v1/content` | `Collection<Content>`，内容项包含纯文本 `excerpt`、`viewCount` / `likeCount` / `commentCount` |
+| `thoughts(query?)` | GET | `/api/v1/thoughts` | `ThoughtArchive`，Core 负责置顶、排除、正文摘录和页码分页 |
 | `contentBySlug(slug, options?)` | GET | `/api/v1/content/:slug` | `ContentDetail`；`{ trackView: false }` 用于不计入浏览量的 metadata 读取 |
 | `now()` | GET | `/api/v1/now` | `NowStatus` |
 | `stats()` | GET | `/api/v1/stats` | `Stats` |
@@ -62,10 +63,11 @@ const page = await client.content({ kind: "ARTICLE", limit: 20 })
 | `adminStats()` | GET | `/api/v1/admin/stats` | `AdminStats` |
 | `adminProfile()` / `updateProfile(input)` | GET/PATCH | `/api/v1/admin/profile` | `Profile` |
 | `adminSite()` / `updateSite(input)` | GET/PATCH | `/api/v1/admin/site` | `SiteConfig` |
-| `adminContent(query?)` | GET | `/api/v1/admin/content` | `Collection<Content>`，内容项包含 `viewCount` / `likeCount` |
-| `createContent(input)` | POST | `/api/v1/admin/content` | `Content` |
-| `updateContent(id, input)` | PATCH | `/api/v1/admin/content/:id` | `Content` |
-| `publishContent(id)` / `unpublishContent(id)` | POST | `/publish` `/unpublish` | `Content` |
+| `adminThoughtConfig()` / `updateThoughtConfig(input)` | GET/PATCH | `/api/v1/admin/thoughts/config` | `ThoughtConfig` |
+| `adminContent(query?)` | GET | `/api/v1/admin/content` | `Collection<AdminContent>`，内容项包含完整 `body`、`viewCount` / `likeCount` / `commentCount` |
+| `createContent(input)` | POST | `/api/v1/admin/content` | `AdminContent` |
+| `updateContent(id, input)` | PATCH | `/api/v1/admin/content/:id` | `AdminContent` |
+| `publishContent(id)` / `unpublishContent(id)` | POST | `/publish` `/unpublish` | `AdminContent` |
 | `deleteContent(id)` | DELETE | `/api/v1/admin/content/:id` | `void`，204 |
 | `adminComments(status?)` | GET | `/api/v1/admin/comments` | `Collection<Comment>` |
 | `approveComment(id)` / `rejectComment(id)` | POST | `/api/v1/admin/comments/:id/*` | `void`，204 |

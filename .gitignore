@@ -12,6 +12,8 @@ coverage/
 *.db-wal
 .idea/
 .vscode/
+.playwright-cli/
+output/
 
 # Go local artifacts
 apps/core/data/

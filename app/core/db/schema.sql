@@ -52,6 +52,12 @@ CREATE TABLE IF NOT EXISTS site_config (
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS thoughts_config (
+    id TEXT PRIMARY KEY,
+    featured_thought_id TEXT REFERENCES content(id) ON DELETE SET NULL,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS comments (
     id TEXT PRIMARY KEY,
     content_id TEXT NOT NULL REFERENCES content(id),
@@ -89,6 +95,7 @@ CREATE TABLE IF NOT EXISTS audit_events (
 );
 
 CREATE INDEX IF NOT EXISTS idx_content_publication ON content(status, published_at DESC);
+CREATE INDEX IF NOT EXISTS idx_content_kind_publication ON content(kind, status, published_at DESC);
 CREATE INDEX IF NOT EXISTS idx_comments_content_status ON comments(content_id, status, created_at);
 CREATE INDEX IF NOT EXISTS idx_likes_content ON likes(content_id);
 CREATE INDEX IF NOT EXISTS idx_presence_last_seen ON presence(last_seen_at);

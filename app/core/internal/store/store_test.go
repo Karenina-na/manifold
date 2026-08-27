@@ -37,6 +37,35 @@ func TestOpenMigratesAuditTraceIDColumn(t *testing.T) {
 	}
 }
 
+func TestOpenBackfillsThoughtConfigFromSiteFeaturedContent(t *testing.T) {
+	databasePath := filepath.Join(t.TempDir(), "legacy-site.db")
+	database, err := sql.Open("sqlite", databasePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec(`CREATE TABLE site_config (id TEXT PRIMARY KEY, featured_content_json TEXT NOT NULL DEFAULT '[]', navigation_json TEXT NOT NULL DEFAULT '[]', sections_json TEXT NOT NULL DEFAULT '[]', updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+		INSERT INTO site_config (id, featured_content_json) VALUES ('site_1', '[{"id":"content_2","kind":"THOUGHT"}]')`); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	databaseStore, err := Open(databasePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer databaseStore.Close()
+
+	var featuredThoughtID sql.NullString
+	if err := databaseStore.DB.QueryRow(`SELECT featured_thought_id FROM thoughts_config WHERE id = 'thoughts_1'`).Scan(&featuredThoughtID); err != nil {
+		t.Fatal(err)
+	}
+	if !featuredThoughtID.Valid || featuredThoughtID.String != "content_2" {
+		t.Fatalf("expected legacy featured thought to be backfilled, got %#v", featuredThoughtID)
+	}
+}
+
 func TestOpenDropsLegacyReactionsTable(t *testing.T) {
 	databasePath := filepath.Join(t.TempDir(), "reactions.db")
 	database, err := sql.Open("sqlite", databasePath)
@@ -87,6 +116,26 @@ func TestContentMetadataPersistsAcrossReads(t *testing.T) {
 	}
 	if read.Metadata["language"] != "Go" || read.Metadata["readingMinutes"] != float64(1) {
 		t.Fatalf("expected editorial and derived metadata to persist, got %#v", read.Metadata)
+	}
+}
+
+func TestContentExcerptStripsMarkdownAndCapsLength(t *testing.T) {
+	body := "# Heading\n\nA [useful](https://example.com) **thought** with `code`.\n\n![image](assets/preview.png)\n\n- Keep the signal.\n- Drop the noise."
+	excerpt := contentExcerpt(body)
+	if excerpt != "Heading A useful thought with code. Keep the signal. Drop the noise." {
+		t.Fatalf("unexpected markdown excerpt: %q", excerpt)
+	}
+	long := contentExcerpt(strings.Repeat("word ", 220))
+	if len([]rune(long)) > contentExcerptMaxRunes {
+		t.Fatalf("excerpt exceeded %d runes: %d", contentExcerptMaxRunes, len([]rune(long)))
+	}
+}
+
+func TestContentExcerptPreservesOrdinaryPunctuation(t *testing.T) {
+	body := "#hashtag\n>quote\nsnake_case a < b && c > d a~b C++\n[reference][id]\n[id]: https://example.com"
+	excerpt := contentExcerpt(body)
+	if excerpt != "#hashtag quote snake_case a < b && c > d a~b C++ reference" {
+		t.Fatalf("unexpected punctuation preservation: %q", excerpt)
 	}
 }
 
@@ -176,7 +225,12 @@ func TestOpenMigratesLegacyContentKinds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = database.Exec(`CREATE TABLE content (id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK (kind IN ('POST', 'NOTE', 'RESEARCH')), status TEXT NOT NULL DEFAULT 'DRAFT', slug TEXT NOT NULL UNIQUE, title TEXT NOT NULL, summary TEXT NOT NULL DEFAULT '', body TEXT NOT NULL DEFAULT '', tags_json TEXT NOT NULL DEFAULT '[]', published_at TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, version INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP); INSERT INTO content (id, kind, status, slug, title, body) VALUES ('legacy_1', 'POST', 'PUBLISHED', 'legacy-post', 'Legacy post', 'Body');`)
+	_, err = database.Exec(`CREATE TABLE content (id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK (kind IN ('POST', 'NOTE', 'RESEARCH')), status TEXT NOT NULL DEFAULT 'DRAFT', slug TEXT NOT NULL UNIQUE, title TEXT NOT NULL, summary TEXT NOT NULL DEFAULT '', body TEXT NOT NULL DEFAULT '', tags_json TEXT NOT NULL DEFAULT '[]', published_at TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, version INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+		CREATE TABLE site_config (id TEXT PRIMARY KEY, featured_content_json TEXT NOT NULL DEFAULT '[]', navigation_json TEXT NOT NULL DEFAULT '[]', sections_json TEXT NOT NULL DEFAULT '[]', updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+		INSERT INTO content (id, kind, status, slug, title, body) VALUES
+			('legacy_1', 'POST', 'PUBLISHED', 'legacy-post', 'Legacy post', 'Body'),
+			('legacy_note', 'NOTE', 'PUBLISHED', 'legacy-note', 'Legacy note', 'Note body');
+		INSERT INTO site_config (id, featured_content_json) VALUES ('site_1', '[{"id":"legacy_note","kind":"NOTE"}]');`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -196,6 +250,17 @@ func TestOpenMigratesLegacyContentKinds(t *testing.T) {
 	}
 	if content.Kind != model.ContentKindArticle || content.Metadata == nil {
 		t.Fatalf("expected legacy POST to become ARTICLE metadata, got kind=%q metadata=%#v", content.Kind, content.Metadata)
+	}
+	thoughtConfig, err := store.GetThoughtConfig()
+	if err != nil || thoughtConfig.FeaturedThoughtID == nil || *thoughtConfig.FeaturedThoughtID != "legacy_note" {
+		t.Fatalf("expected legacy NOTE feature to migrate, got config=%#v err=%v", thoughtConfig, err)
+	}
+	var archiveIndexCount int
+	if err := store.DB.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'idx_content_kind_publication'`).Scan(&archiveIndexCount); err != nil {
+		t.Fatal(err)
+	}
+	if archiveIndexCount != 1 {
+		t.Fatalf("expected thought archive index after first migration open, got %d", archiveIndexCount)
 	}
 	var foreignKeys int
 	if err := store.DB.QueryRow(`PRAGMA foreign_keys`).Scan(&foreignKeys); err != nil {

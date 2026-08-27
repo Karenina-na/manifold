@@ -71,11 +71,11 @@
 
 .writingShell { width: min(1120px, calc(100% - 48px)); margin: 0 auto; display: grid; grid-template-columns: minmax(0, 7fr) minmax(240px, 3fr); gap: 56px; align-items: start; }
 .writingMain { min-width: 0; }.writingHero { padding: 42px 0 30px; }.writingHero h1 { margin: 8px 0 10px; font-family: var(--app-font-serif); font-size: clamp(42px, 6vw, 64px); font-weight: 400; }.writingHero p { margin: 0; color: var(--color-muted); line-height: 1.6; }
-.featuredCard { position: relative; display: block; margin-bottom: 34px; padding: 24px; border: 1px solid var(--color-line); border-radius: 10px; background: color-mix(in srgb, var(--surface-paper) 92%, white); box-shadow: 0 12px 34px rgba(24,24,20,.06); }.featuredTop,.featuredFooter { display: flex; justify-content: space-between; gap: 12px; color: var(--color-muted); font: 10px var(--font-mono); }.featuredBadge { padding: 4px 8px; border-radius: 999px; background: var(--color-accent); color: white; letter-spacing: .08em; }.featuredCard h2 { margin: 24px 0 10px; font-family: var(--app-font-serif); font-size: clamp(24px, 3vw, 34px); font-weight: 400; }.featuredCard p { margin: 0 0 24px; color: var(--color-muted); line-height: 1.7; }.featuredFooter { padding-top: 14px; border-top: 1px solid var(--color-line); }.featuredFooter span:last-child { display: inline-flex; align-items: center; gap: 5px; }
+.featuredCard { position: relative; display: block; margin-bottom: 34px; padding: 22px 24px; border: 1px solid var(--color-line); border-radius: 8px; background: color-mix(in srgb, var(--surface-paper) 92%, white); box-shadow: 0 12px 34px rgba(24,24,20,.06); }.featuredTop,.featuredFooter { display: flex; justify-content: space-between; gap: 12px; color: var(--color-muted); font: 10px var(--font-mono); }.featuredBadge { padding: 4px 8px; border-radius: 999px; background: var(--color-accent); color: white; letter-spacing: .08em; }.featuredCard h2 { margin: 20px 0 10px; font-family: var(--app-font-serif); font-size: clamp(24px, 3vw, 34px); font-weight: 400; }.featuredFooter { margin-top: 20px; padding-top: 14px; border-top: 1px solid var(--color-line); }.featuredFooter span:last-child { display: inline-flex; align-items: center; gap: 5px; }
 .writingToolbar { display: flex; justify-content: space-between; align-items: center; padding: 14px 0; color: var(--color-muted); font: 11px var(--font-mono); }.toolbarControls { display: flex; gap: 8px; align-items: center; }.control,.controlActive,.toolbarControls select { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--color-line); border-radius: 999px; padding: 7px 10px; background: transparent; color: var(--color-muted); font-size: 11px; cursor: pointer; }.controlActive { border-color: var(--color-accent); color: var(--color-accent); }.toolbarControls select { border-radius: 6px; }
-.writingList { padding-top: 0; }.writingItem { display: block; padding: 16px 8px; border-bottom: 1px solid var(--color-line); transition: background var(--motion-base) var(--motion-ease), transform var(--motion-base) var(--motion-ease), padding-left var(--motion-base) var(--motion-ease); }.writingItem:hover, .writingItem:focus-visible { background: color-mix(in srgb, var(--color-accent-soft) 62%, transparent); border-radius: 8px; transform: translateX(3px); }.writingItem:focus-visible { outline: 1px solid var(--color-accent); outline-offset: 2px; }.writingItem h3 { margin: 0 0 7px; font-size: 19px; font-weight: 600; }.writingItem p { margin: 0 0 14px; color: var(--color-muted); line-height: 1.6; }.writingItem div { display: flex; gap: 14px; color: var(--color-muted); font: 10px var(--font-mono); }.writingItem div span:nth-child(2) { color: var(--color-accent); }
+.writingList { padding-top: 0; }.writingItem { display: block; padding: 16px 8px; border-bottom: 1px solid var(--color-line); transition: background var(--motion-base) var(--motion-ease), transform var(--motion-base) var(--motion-ease), padding-left var(--motion-base) var(--motion-ease); }.writingItem:hover, .writingItem:focus-visible { background: color-mix(in srgb, var(--color-accent-soft) 62%, transparent); border-radius: 8px; transform: translateX(3px); }.writingItem:focus-visible { outline: 1px solid var(--color-accent); outline-offset: 2px; }.writingItem h3 { margin: 0 0 7px; font-size: 19px; font-weight: 600; }.writingItem div { display: flex; gap: 14px; color: var(--color-muted); font: 10px var(--font-mono); }.writingItem div span:nth-child(2) { color: var(--color-accent); }
 .writingAside { position: sticky; top: 50%; transform: translateY(-50%); display: grid; gap: 24px; padding: 20px; border: 1px solid var(--color-line); border-radius: 6px; background: color-mix(in srgb, var(--surface-paper) 82%, transparent); backdrop-filter: blur(10px); }.writingSearch { display: flex; align-items: center; gap: 8px; padding: 10px 11px; border: 1px solid var(--color-line); border-radius: 7px; color: var(--color-muted); }.writingSearch input { width: 100%; border: 0; outline: 0; background: transparent; color: var(--color-ink); }.tagCloud { display: flex; flex-wrap: wrap; gap: 7px; }.asideLabel { width: 100%; display: flex; align-items: center; gap: 6px; margin-bottom: 3px; color: var(--color-ink); font: 11px var(--font-mono); text-transform: uppercase; letter-spacing: .08em; }.tagPill,.tagPillActive { border: 1px solid var(--color-line); border-radius: 999px; padding: 6px 9px; background: transparent; color: var(--color-muted); font-size: 11px; cursor: pointer; }.tagPillActive { border-color: var(--color-accent); color: var(--color-accent); }.tagPill small { color: var(--color-accent); }.archiveBlock { padding-top: 18px; border-top: 1px solid var(--color-line); }.archiveBlock p { color: var(--color-muted); font-size: 12px; }.archiveBlock a { color: var(--color-accent); font-size: 12px; }
-@media (max-width: 760px) { .writingShell { width: min(100% - 32px, 620px); display: block; }.writingAside { position: static; transform: none; margin-top: 34px; }.writingHero { padding-top: 30px; }.writingToolbar { align-items: flex-start; gap: 10px; flex-direction: column; }.toolbarControls { flex-wrap: wrap; } }
+@media (max-width: 760px) { .writingShell { width: min(100% - 32px, 620px); display: block; }.writingAside { position: static; transform: none; margin-top: 34px; }.writingHero { padding-top: 30px; }.writingToolbar { align-items: flex-start; gap: 10px; flex-direction: column; }.toolbarControls { flex-wrap: wrap; }.writingItem div { flex-wrap: wrap; gap: 8px 12px; }.writingItem div span:last-child { margin-left: 0; } }
 
 /* Typography hierarchy: display serif, italic emphasis, sans reading copy, mono metadata. */
 .eyebrow { display: inline-flex; align-items: baseline; gap: 6px; color: var(--color-accent); font-family: var(--font-mono); font-size: 10px; font-weight: 500; letter-spacing: .08em; text-transform: uppercase; }
@@ -577,7 +577,12 @@ html { scroll-behavior: smooth; }
   .articleSurface { width: calc(100% - 18px); margin-top: 18px; }.articleSurfaceInner { padding-inline: 9px; }.articleBack, .articleTitleBlock { width: 100%; margin-left: 0; }.articleBack { margin-bottom: 10px; padding-top: 16px; }.articleTitleBlock, .articleBodyBlock, .articleEndBlock { box-shadow: none; }.articleSurface .articleHeader { padding: 42px 16px 34px; }.articleSurface .articleHeader h1 { font-size: clamp(38px, 12vw, 58px); }.articleMeta { gap: 8px 12px; }.articleMeta span { white-space: normal; }.articleReadingShell { display: flex; flex-direction: column; gap: 18px; }.articleBodyBlock { padding: 24px 16px 40px; }.articleToc { order: -1; width: 100%; }.articleActionRail { position: sticky; top: 82px; width: 100%; min-height: 180px; order: 0; }.articleEndActionSlot { position: static; order: 4; width: 100%; margin: 0; }.articleEndBlock { order: 3; width: 100%; margin-top: 0; }.articleActionCard { grid-template-columns: auto 1fr 1fr 1fr; align-items: center; gap: 7px; padding: 9px; }.articleActionLabel { grid-column: 1 / -1; }.likeBarCompact { grid-template-columns: 1fr 1fr; }.likeBarCompact .likeButton { width: auto; }.articleActionButton { justify-content: center; }.articleEndInner { padding: 26px 16px 34px; }.articleEndHeading h2 { font-size: 25px; }.articleReadingMainContent .commentSection { margin-top: 70px; }
 }
 
-.writingItem h3 { font-family: var(--app-font-serif); font-size: 17px; font-weight: 400; line-height: 1.3; }.writingItem p { font-family: var(--app-font-sans); font-size: 12px; line-height: 1.55; }.writingItem div { font-size: 9px; letter-spacing: .02em; }
+.writingItem h3 { font-family: var(--app-font-serif); font-size: 17px; font-weight: 400; line-height: 1.3; }.writingItem div { font-size: 9px; letter-spacing: .02em; }
+.writingSummary, .thoughtSummary { display: flex; align-items: flex-start; gap: 7px; margin: 0; color: var(--color-muted); font-family: var(--app-font-sans); font-size: 12px; line-height: 1.55; }
+.writingSummary span, .thoughtSummary span { flex: 0 0 auto; color: color-mix(in srgb, var(--color-muted) 82%, transparent); font-size: 10px; line-height: 1.86; }
+.writingExcerpt, .writingExcerptFeatured, .thoughtExcerpt, .thoughtExcerptFeatured { display: -webkit-box; overflow: hidden; color: var(--color-ink); font-family: var(--app-font-sans); -webkit-box-orient: vertical; }
+.writingExcerpt { margin: 6px 0 14px; font-size: 12px; line-height: 1.55; -webkit-line-clamp: 2; }
+.writingExcerptFeatured { margin: 8px 0 0; font-size: 13px; line-height: 1.62; -webkit-line-clamp: 4; }
 
 .pageStatus { color: var(--color-muted); font-family: var(--font-mono); font-size: 12px; }
 
@@ -640,4 +645,111 @@ html { scroll-behavior: smooth; }
   .commentTools { align-items: stretch; flex-direction: column; }
   .commentSearch, .commentFilter { width: 100%; }
   .commentFilter select { flex: 1; }
+}
+
+/* Thoughts archive: one featured note followed by a month-and-day editorial timeline. */
+.thoughtShell { width: min(1120px, calc(100% - 48px)); margin: 0 auto; padding-bottom: 72px; }
+.thoughtHero { padding: 42px 0 30px; }
+.thoughtHero h1 { margin: 8px 0 10px; font-family: var(--app-font-serif); font-size: clamp(42px, 6vw, 64px); font-weight: 400; line-height: 1.12; }
+.featuredThought { position: relative; display: flex; min-height: 0; flex-direction: column; margin-bottom: 46px; padding: clamp(30px, 4vw, 46px) clamp(24px, 5vw, 58px) 34px; border: 1px solid color-mix(in srgb, var(--color-line) 78%, transparent); border-radius: 8px; background: color-mix(in srgb, var(--surface-paper) 92%, white); box-shadow: 0 14px 36px rgba(24, 24, 20, .055); transition: background var(--motion-base) var(--motion-ease), border-color var(--motion-base) var(--motion-ease), box-shadow var(--motion-base) var(--motion-ease), transform var(--motion-base) var(--motion-ease); }
+.featuredThought:hover, .featuredThought:focus-within { border-color: color-mix(in srgb, var(--color-accent) 42%, var(--color-line)); background: color-mix(in srgb, var(--surface-paper) 96%, var(--color-accent-soft)); box-shadow: 0 18px 42px rgba(24, 24, 20, .085); transform: translateY(-4px); }
+.featuredThoughtTop { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; }
+.featuredThoughtMeta { display: flex; align-items: flex-end; flex: 0 0 auto; flex-direction: column; gap: 5px; max-width: 48%; color: var(--color-muted); font: 9px var(--font-mono); text-align: right; }
+.featuredThoughtMeta span { overflow: hidden; max-width: 100%; color: var(--color-accent); text-overflow: ellipsis; white-space: nowrap; }
+.featuredThought h2 { max-width: 800px; margin: 28px 0 0; font-family: var(--app-font-serif); font-size: clamp(32px, 5vw, 48px); font-weight: 400; line-height: 1.18; }
+.featuredThought h2 a { transition: color var(--motion-base) var(--motion-ease); }
+.featuredThought:hover h2 a, .featuredThought h2 a:focus-visible { color: var(--color-accent); }
+.featuredThought .thoughtSummary { max-width: 760px; margin-top: 13px; font-size: 13px; line-height: 1.62; }
+.thoughtExcerptFeatured { max-width: 780px; margin: 8px 0 25px; font-size: 14px; line-height: 1.68; -webkit-line-clamp: 4; }
+.featuredThoughtFooter, .thoughtListCard footer { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding-top: 16px; border-top: 1px solid var(--color-line); }
+.featuredThoughtFooter { margin-top: auto; }
+.thoughtActions { display: flex; align-items: center; flex-wrap: wrap; gap: 14px; color: var(--color-muted); font: 10px var(--font-mono); }
+.thoughtActions span { display: inline-flex; align-items: center; gap: 5px; transition: color var(--motion-base) var(--motion-ease), transform var(--motion-base) var(--motion-ease); }
+.featuredThought:hover .thoughtActions span, .thoughtListCard:hover .thoughtActions span { color: var(--color-ink); transform: translateY(-1px); }
+.thoughtReadLink { display: inline-flex; align-items: center; gap: 7px; flex-shrink: 0; color: var(--color-muted); font: 11px var(--font-mono); transition: color var(--motion-base) var(--motion-ease), transform var(--motion-base) var(--motion-ease); }
+.thoughtReadLink svg { transition: transform var(--motion-base) var(--motion-ease); }
+.thoughtReadLink:hover, .thoughtReadLink:focus-visible { color: var(--color-accent); transform: translateX(2px); }
+.thoughtReadLink:hover svg, .thoughtReadLink:focus-visible svg, .featuredThought:hover .thoughtReadLink svg, .thoughtListCard:hover .thoughtReadLink svg { transform: translateX(3px); }
+.thoughtCollection { --thought-content-offset: 184px; scroll-margin-top: 96px; }
+.thoughtSectionHeading { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-bottom: 20px; padding: 0 2px 18px; border-bottom: 1px solid var(--color-line); }
+.thoughtSectionHeading h2 { margin: 5px 0 0; font-family: var(--app-font-serif); font-size: 29px; font-weight: 400; }
+.thoughtSectionHeading > span { color: var(--color-muted); font: 10px var(--font-mono); }
+.thoughtTimeline { position: relative; margin-bottom: 12px; padding: 16px 0 8px; }
+.thoughtTimeline::after { content: ""; position: absolute; z-index: 0; top: 0; right: 0; bottom: 0; left: var(--thought-content-offset); border: 1px solid color-mix(in srgb, var(--color-line) 32%, transparent); border-radius: 6px; background: color-mix(in srgb, var(--surface-paper) 92%, white); pointer-events: none; }
+.thoughtMonth { display: grid; grid-template-columns: 132px minmax(0, 1fr); }
+.thoughtMonthRail { position: relative; z-index: 1; min-width: 0; padding: 8px 38px 0 2px; }
+.thoughtYear { position: absolute; z-index: 2; top: 0; right: -59px; display: block; width: 68px; padding: 0 3px; background: var(--surface-paper); color: var(--color-ink); font-family: var(--app-font-serif); font-size: 30px; font-weight: 600; line-height: 1.08; text-align: center; white-space: nowrap; transition: color var(--motion-base) var(--motion-ease), transform var(--motion-base) var(--motion-ease); }
+.thoughtMonthRail h3 { position: relative; margin: 17px 0 0; color: var(--color-muted); font-family: var(--font-mono); font-size: 12px; font-weight: 500; line-height: 1.45; text-align: right; }
+.thoughtMonth:has(.thoughtYear) .thoughtMonthRail h3 { margin-top: 61px; }
+.thoughtMonthRail h3::after { content: ""; position: absolute; top: 50%; left: calc(100% + 10px); width: 53px; height: 1px; background: var(--color-line); transform: translateY(-50%); transition: width var(--motion-base) var(--motion-ease), background var(--motion-base) var(--motion-ease); }
+.thoughtMonthLabel { transition: color var(--motion-base) var(--motion-ease), transform var(--motion-base) var(--motion-ease); }
+.thoughtMonth:has(.thoughtListCard:hover) .thoughtMonthLabel, .thoughtMonth:has(.thoughtListCard:focus-within) .thoughtMonthLabel { color: var(--color-ink); }
+.thoughtMonth:has(.thoughtListCard:hover) .thoughtMonthRail h3::after, .thoughtMonth:has(.thoughtListCard:focus-within) .thoughtMonthRail h3::after { width: 58px; background: var(--color-accent); }
+.thoughtMonth:has(.thoughtListCard:hover) .thoughtYear, .thoughtMonth:has(.thoughtListCard:focus-within) .thoughtYear { color: var(--color-accent); transform: translateY(-1px); }
+.thoughtMonthItems { position: relative; z-index: 2; min-width: 0; padding: 0 16px 28px 0; }
+.thoughtMonth:has(.thoughtYear) .thoughtMonthItems { padding-top: 52px; }
+.thoughtMonthItems::before { content: ""; position: absolute; top: 0; bottom: 0; left: 25px; width: 1px; background: color-mix(in srgb, var(--color-accent) 34%, var(--color-line)); }
+.thoughtTimelineRow { position: relative; display: grid; grid-template-columns: 52px minmax(0, 1fr); align-items: stretch; min-width: 0; padding-bottom: 13px; }
+.thoughtDateMarker { position: relative; z-index: 3; min-height: 100%; }
+.thoughtDateMarker span { position: absolute; z-index: 1; top: 25px; left: 25px; width: 19px; height: 1px; background: var(--color-line); transition: width var(--motion-base) var(--motion-ease), background var(--motion-base) var(--motion-ease); }
+.thoughtDateMarker strong { position: absolute; z-index: 4; top: 9px; left: 8px; display: grid; place-items: center; width: 34px; height: 34px; border: 1px solid var(--color-line); border-radius: 50%; background-color: var(--surface-paper); background-clip: padding-box; box-shadow: 0 0 0 3px var(--surface-paper); isolation: isolate; color: var(--color-muted); font: 10px var(--font-mono); transition: background var(--motion-base) var(--motion-ease), border-color var(--motion-base) var(--motion-ease), color var(--motion-base) var(--motion-ease), transform var(--motion-base) var(--motion-ease); }
+.thoughtTimelineRow:has(.thoughtListCard:hover) .thoughtDateMarker span, .thoughtTimelineRow:has(.thoughtListCard:focus-within) .thoughtDateMarker span { width: 24px; background: var(--color-accent); }
+.thoughtTimelineRow:has(.thoughtListCard:hover) .thoughtDateMarker strong, .thoughtTimelineRow:has(.thoughtListCard:focus-within) .thoughtDateMarker strong { border-color: var(--color-accent); background: var(--color-accent-soft); color: var(--color-ink); transform: scale(1.08); }
+.thoughtListCard { min-width: 0; padding: 20px 22px 18px; border: 1px solid color-mix(in srgb, var(--color-line) 78%, transparent); border-radius: 6px; background: color-mix(in srgb, var(--surface-paper) 91%, white); transition: background var(--motion-base) var(--motion-ease), border-color var(--motion-base) var(--motion-ease), box-shadow var(--motion-base) var(--motion-ease), transform var(--motion-base) var(--motion-ease); }
+.thoughtListCard:hover, .thoughtListCard:focus-within { border-color: color-mix(in srgb, var(--color-accent) 38%, var(--color-line)); background: color-mix(in srgb, var(--surface-paper) 96%, var(--color-accent-soft)); box-shadow: 0 12px 28px rgba(24, 24, 20, .06); transform: translateX(4px); }
+.thoughtListTop { display: flex; align-items: start; justify-content: space-between; gap: 24px; }
+.thoughtListTop h2, .thoughtListTop h3 { min-width: 0; margin: 0; font-family: var(--app-font-serif); font-size: 22px; font-weight: 400; line-height: 1.28; }
+.thoughtListTop h2 a, .thoughtListTop h3 a { transition: color var(--motion-base) var(--motion-ease); }
+.featuredThought:hover .thoughtListTop h2 a, .featuredThought .thoughtListTop h2 a:focus-visible, .thoughtListCard:hover .thoughtListTop h3 a, .thoughtListTop h3 a:focus-visible { color: var(--color-accent); }
+.thoughtListTop > div { display: flex; align-items: flex-end; flex: 0 0 auto; flex-direction: column; gap: 5px; max-width: 42%; color: var(--color-muted); font: 9px var(--font-mono); text-align: right; }
+.thoughtListTop > div span { overflow: hidden; max-width: 100%; color: var(--color-accent); text-overflow: ellipsis; white-space: nowrap; }
+.thoughtListCard .thoughtSummary { margin-top: 13px; }
+.thoughtExcerpt { margin: 6px 0 17px; font-size: 13px; line-height: 1.58; -webkit-line-clamp: 2; }
+.thoughtListCard footer { padding-top: 13px; }
+.thoughtCollection .paginationSurface { margin: 4px 0 0 var(--thought-content-offset); transition: background var(--motion-base) var(--motion-ease), border-color var(--motion-base) var(--motion-ease); }
+.thoughtCollection .paginationSurface:hover, .thoughtCollection .paginationSurface:focus-within { border-color: color-mix(in srgb, var(--color-accent) 34%, var(--color-line)); background: color-mix(in srgb, var(--surface-paper) 96%, var(--color-accent-soft)); }
+.thoughtCollection .pageButton { transition: background var(--motion-base) var(--motion-ease), border-color var(--motion-base) var(--motion-ease), color var(--motion-base) var(--motion-ease), transform var(--motion-base) var(--motion-ease); }
+.thoughtCollection .pageButton:not(:disabled):hover, .thoughtCollection .pageButton:not(:disabled):focus-visible { border-color: var(--color-accent); background: var(--color-accent-soft); color: var(--color-ink); transform: translateY(-2px); }
+.thoughtEmpty { margin: 0 0 12px 184px; padding: 30px; border: 1px solid var(--color-line); border-radius: 6px; color: var(--color-muted); text-align: center; }
+
+@media (max-width: 760px) {
+  .thoughtShell { width: min(100% - 24px, 620px); padding-bottom: 48px; }
+  .thoughtHero { padding: 30px 4px 24px; }
+  .featuredThought { margin-bottom: 38px; padding: 25px 20px 24px; box-shadow: none; }
+  .featuredThoughtTop { gap: 12px; }
+  .featuredThoughtMeta { max-width: 58%; }
+  .featuredThought h2 { margin-top: 24px; font-size: 28px; }
+  .thoughtExcerptFeatured { margin-bottom: 22px; }
+  .featuredThoughtFooter, .thoughtListCard footer { align-items: flex-start; flex-direction: column; gap: 13px; }
+  .thoughtCollection { --thought-content-offset: 117px; }
+  .thoughtSectionHeading { align-items: flex-start; }
+  .thoughtSectionHeading h2 { font-size: 25px; }
+  .thoughtTimeline { padding: 12px 0 4px; }
+  .thoughtMonth { grid-template-columns: 76px minmax(0, 1fr); }
+  .thoughtMonthRail { padding: 7px 28px 0 0; }
+  .thoughtYear { right: -47px; width: 56px; font-size: 24px; }
+  .thoughtMonthRail h3 { margin-top: 16px; font-size: 10px; }
+  .thoughtMonth:has(.thoughtYear) .thoughtMonthRail h3 { margin-top: 54px; }
+  .thoughtMonthRail h3::after { left: calc(100% + 6px); width: 41px; }
+  .thoughtMonth:has(.thoughtListCard:hover) .thoughtMonthRail h3::after, .thoughtMonth:has(.thoughtListCard:focus-within) .thoughtMonthRail h3::after { width: 45px; }
+  .thoughtMonth:has(.thoughtYear) .thoughtMonthItems { padding-top: 45px; }
+  .thoughtMonthItems { padding-right: 10px; }
+  .thoughtTimelineRow { grid-template-columns: 41px minmax(0, 1fr); }
+  .thoughtMonthItems::before { left: 19px; }
+  .thoughtDateMarker { min-height: 100%; }
+  .thoughtDateMarker span { top: 24px; left: 19px; width: 15px; }
+  .thoughtDateMarker strong { top: 9px; left: 3px; width: 32px; height: 32px; }
+  .thoughtListCard { padding: 17px 16px 16px; }
+  .thoughtListCard:hover, .thoughtListCard:focus-within { transform: translateX(2px); }
+  .thoughtListTop { flex-direction: column; gap: 10px; }
+  .thoughtListTop h3 { font-size: 20px; }
+  .thoughtListTop > div { align-items: flex-start; max-width: 100%; text-align: left; }
+  .thoughtCollection .paginationSurface, .thoughtEmpty { margin-left: var(--thought-content-offset); }
+  .thoughtCollection .pagination { padding: 13px 0; }
+  .thoughtCollection .pageButton { min-width: 30px; padding-inline: 7px; }
+}
+
+@media (min-width: 761px) and (max-width: 980px) {
+  .featuredThoughtFooter { align-items: flex-start; flex-wrap: wrap; }
+  .featuredThoughtFooter .thoughtReadLink { margin-left: auto; }
 }

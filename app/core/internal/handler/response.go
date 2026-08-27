@@ -83,6 +83,7 @@ func newRouter(cfg config.Config, database *store.Store, auditEvents events.Audi
 		api.Get("/stats", h.stats)
 		api.Post("/presence", h.presence)
 		api.Get("/content", h.listContent)
+		api.Get("/thoughts", h.thoughts)
 		api.Get("/content/{slug}", h.getContent)
 		api.Get("/content/{slug}/comments", h.listPublicComments)
 		api.Post("/content/{slug}/comments", h.createComment)
@@ -97,6 +98,8 @@ func newRouter(cfg config.Config, database *store.Store, auditEvents events.Audi
 			admin.Patch("/profile", h.adminUpdateProfile)
 			admin.Get("/site", h.adminSite)
 			admin.Patch("/site", h.adminUpdateSite)
+			admin.Get("/thoughts/config", h.adminThoughtConfig)
+			admin.Patch("/thoughts/config", h.adminUpdateThoughtConfig)
 			admin.Get("/content", h.adminListContent)
 			admin.Post("/content", h.adminCreateContent)
 			admin.Patch("/content/{id}", h.adminUpdateContent)
@@ -236,6 +239,20 @@ func (h *apiHandler) listContent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	WriteJSON(w, http.StatusOK, collectionWithCursor(items, options.Offset, options.Limit, hasMore))
+}
+
+func (h *apiHandler) thoughts(w http.ResponseWriter, r *http.Request) {
+	page, limit, err := parseThoughtArchiveOptions(r)
+	if err != nil {
+		WriteError(w, http.StatusBadRequest, "INVALID_QUERY", err.Error())
+		return
+	}
+	archive, err := h.store.ThoughtArchive(page, limit)
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, "THOUGHTS_UNAVAILABLE", "Thoughts are unavailable.")
+		return
+	}
+	WriteJSON(w, http.StatusOK, archive)
 }
 
 func (h *apiHandler) getContent(w http.ResponseWriter, r *http.Request) {
@@ -477,6 +494,46 @@ func (h *apiHandler) adminUpdateSite(w http.ResponseWriter, r *http.Request) {
 	}
 	h.audit(r, "site.updated", "site", "site_1", nil)
 	h.adminSite(w, r)
+}
+
+func (h *apiHandler) adminThoughtConfig(w http.ResponseWriter, _ *http.Request) {
+	config, err := h.store.GetThoughtConfig()
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, "THOUGHT_CONFIG_UNAVAILABLE", "Thought configuration is unavailable.")
+		return
+	}
+	WriteJSON(w, http.StatusOK, config)
+}
+
+func (h *apiHandler) adminUpdateThoughtConfig(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		FeaturedThoughtID json.RawMessage `json:"featuredThoughtId"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil || len(input.FeaturedThoughtID) == 0 {
+		WriteError(w, http.StatusUnprocessableEntity, "VALIDATION_ERROR", "featuredThoughtId is required and may be null.")
+		return
+	}
+	var featuredThoughtID *string
+	if string(input.FeaturedThoughtID) != "null" {
+		var value string
+		if err := json.Unmarshal(input.FeaturedThoughtID, &value); err != nil || strings.TrimSpace(value) == "" || len(value) > 160 {
+			WriteError(w, http.StatusUnprocessableEntity, "VALIDATION_ERROR", "featuredThoughtId must be a content ID or null.")
+			return
+		}
+		value = strings.TrimSpace(value)
+		content, err := h.store.GetContentByID(value, false)
+		if err != nil || content.Kind != model.ContentKindThought {
+			WriteError(w, http.StatusUnprocessableEntity, "VALIDATION_ERROR", "Featured thought must reference published Thought content.")
+			return
+		}
+		featuredThoughtID = &value
+	}
+	if err := h.store.UpdateThoughtConfig(featuredThoughtID); err != nil {
+		WriteError(w, http.StatusInternalServerError, "THOUGHT_CONFIG_UPDATE_FAILED", "Thought configuration could not be updated.")
+		return
+	}
+	h.audit(r, "thoughts.config.updated", "thoughts_config", "thoughts_1", nil)
+	h.adminThoughtConfig(w, r)
 }
 
 type contentInput struct {
@@ -757,11 +814,13 @@ func (h *apiHandler) adminRejectComment(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *apiHandler) setCommentStatus(w http.ResponseWriter, r *http.Request, status string) {
-	if err := h.store.SetCommentStatus(chi.URLParam(r, "id"), status); err != nil {
+	contentID, err := h.store.SetCommentStatus(chi.URLParam(r, "id"), status)
+	if err != nil {
 		WriteError(w, http.StatusNotFound, "COMMENT_NOT_FOUND", "Comment was not found.")
 		return
 	}
 	h.audit(r, "comment."+strings.ToLower(status), "comment", chi.URLParam(r, "id"), nil)
+	h.invalidateContentByID(contentID)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -869,6 +928,25 @@ func parseContentListOptions(r *http.Request, includeDrafts bool) (store.Content
 		options.Status = rawStatus
 	}
 	return options, nil
+}
+
+func parseThoughtArchiveOptions(r *http.Request) (int, int, error) {
+	page, limit := 1, 8
+	if rawPage := strings.TrimSpace(r.URL.Query().Get("page")); rawPage != "" {
+		value, err := strconv.Atoi(rawPage)
+		if err != nil || value < 1 {
+			return page, limit, fmt.Errorf("page must be a positive integer")
+		}
+		page = value
+	}
+	if rawLimit := strings.TrimSpace(r.URL.Query().Get("limit")); rawLimit != "" {
+		value, err := strconv.Atoi(rawLimit)
+		if err != nil || value < 1 || value > 50 {
+			return page, limit, fmt.Errorf("limit must be between 1 and 50")
+		}
+		limit = value
+	}
+	return page, limit, nil
 }
 
 func (h *apiHandler) audit(r *http.Request, eventName, resourceType, resourceID string, metadata map[string]string) {

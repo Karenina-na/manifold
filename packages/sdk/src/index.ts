@@ -1,4 +1,4 @@
-import type { AdminContentQuery, AdminStats, Collection, Comment, CommentQuery, Content, ContentDetail, ContentInput, ContentQuery, CreateCommentInput, HealthStatus, LikeSummary, LoginInput, LoginResponse, NowStatus, PresenceStatus, Profile, ProfileInput, SiteComposition, SiteConfig, SiteConfigInput, Stats, UpdateContentInput } from "@manifold/contracts";
+import type { AdminContent, AdminContentQuery, AdminStats, Collection, Comment, CommentQuery, Content, ContentDetail, ContentInput, ContentQuery, CreateCommentInput, HealthStatus, LikeSummary, LoginInput, LoginResponse, NowStatus, PresenceStatus, Profile, ProfileInput, SiteComposition, SiteConfig, SiteConfigInput, Stats, ThoughtArchive, ThoughtArchiveQuery, ThoughtConfig, ThoughtConfigInput, UpdateContentInput } from "@manifold/contracts";
 
 export class ApiError extends Error {
 	readonly status: number;
@@ -37,6 +37,7 @@ export class ManifoldClient {
 	site() { return this.request<SiteComposition>("/api/v1/site"); }
 	feed(query?: ContentQuery) { return this.request<Collection<Content>>(this.withQuery("/api/v1/feed", query)); }
 	content(query?: ContentQuery) { return this.request<Collection<Content>>(this.withQuery("/api/v1/content", query)); }
+	thoughts(query?: ThoughtArchiveQuery) { return this.request<ThoughtArchive>(this.withQuery("/api/v1/thoughts", query)); }
 	contentBySlug(slug: string, options?: { trackView?: boolean }) { return this.request<ContentDetail>(this.withQuery(`/api/v1/content/${encodeURIComponent(slug)}`, options?.trackView === false ? { trackView: false } : undefined)); }
 	now() { return this.request<NowStatus>("/api/v1/now"); }
 	stats() { return this.request<Stats>("/api/v1/stats"); }
@@ -51,11 +52,13 @@ export class ManifoldClient {
 	updateProfile(input: ProfileInput) { return this.request<Profile>("/api/v1/admin/profile", { method: "PATCH", body: input }); }
 	adminSite() { return this.request<SiteConfig>("/api/v1/admin/site"); }
 	updateSite(input: SiteConfigInput) { return this.request<SiteConfig>("/api/v1/admin/site", { method: "PATCH", body: input }); }
-	adminContent(query?: AdminContentQuery) { return this.request<Collection<Content>>(this.withQuery("/api/v1/admin/content", query)); }
-	createContent(input: ContentInput) { return this.request<Content>("/api/v1/admin/content", { method: "POST", body: input }); }
-	updateContent(id: string, input: UpdateContentInput) { return this.request<Content>(`/api/v1/admin/content/${id}`, { method: "PATCH", body: input }); }
-	publishContent(id: string) { return this.request<Content>(`/api/v1/admin/content/${id}/publish`, { method: "POST" }); }
-	unpublishContent(id: string) { return this.request<Content>(`/api/v1/admin/content/${id}/unpublish`, { method: "POST" }); }
+	adminThoughtConfig() { return this.request<ThoughtConfig>("/api/v1/admin/thoughts/config"); }
+	updateThoughtConfig(input: ThoughtConfigInput) { return this.request<ThoughtConfig>("/api/v1/admin/thoughts/config", { method: "PATCH", body: input }); }
+	adminContent(query?: AdminContentQuery) { return this.request<Collection<AdminContent>>(this.withQuery("/api/v1/admin/content", query)); }
+	createContent(input: ContentInput) { return this.request<AdminContent>("/api/v1/admin/content", { method: "POST", body: input }); }
+	updateContent(id: string, input: UpdateContentInput) { return this.request<AdminContent>(`/api/v1/admin/content/${id}`, { method: "PATCH", body: input }); }
+	publishContent(id: string) { return this.request<AdminContent>(`/api/v1/admin/content/${id}/publish`, { method: "POST" }); }
+	unpublishContent(id: string) { return this.request<AdminContent>(`/api/v1/admin/content/${id}/unpublish`, { method: "POST" }); }
 	deleteContent(id: string) { return this.request<void>(`/api/v1/admin/content/${id}`, { method: "DELETE" }); }
 	adminComments(status = "PENDING") { return this.request<Collection<Comment>>(this.withQuery("/api/v1/admin/comments", { status })); }
 	approveComment(id: string) { return this.request<void>(`/api/v1/admin/comments/${id}/approve`, { method: "POST" }); }
