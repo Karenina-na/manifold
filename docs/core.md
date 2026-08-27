@@ -181,10 +181,11 @@ Metadata：Thought 使用 `mood/question/context/source`；Article 使用 `readi
 
 ## 8. 缓存、审计和关闭
 
+- Core 启动时先绑定 `CORE_ADDR`，成功后才打开 SQLite、执行 schema 初始化和兼容迁移；端口冲突会直接退出且不修改数据库。
 - 内容详情使用最多 256 项的 TTL LRU；Core 启动时预热 Site 精选内容。
 - Stats 使用单条 TTL 快照；内容创建、更新、发布、撤回和删除会清理相关缓存。
 - 审计事件通过有界异步队列写入 `audit_events`；队列满会记录丢弃但不让业务请求失败。
-- `RouterWithLifecycle` 用于生产入口，关闭时最多等待 5 秒排空已接受事件；`Router` 仅用于同步内部调用/测试。
+- `RouterWithLifecycle` 用于生产入口；监听失败会结束进程，正常关闭时最多等待 5 秒排空已接受事件；`Router` 仅用于同步内部调用/测试。公共 HTTP 契约不受启动生命周期影响。
 
 ## 9. 修改与验证清单
 

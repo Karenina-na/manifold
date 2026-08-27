@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "test": "tsc --noEmit"
+    "test": "node --test lib/*.test.mjs && tsc --noEmit"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.1",

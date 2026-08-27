@@ -14,6 +14,7 @@ Manifold 公开阅读端，负责 Home、Thoughts、Writings、Markdown 阅读�
 pnpm --filter @manifold/web dev
 pnpm --filter @manifold/web typecheck
 pnpm --filter @manifold/web lint
+pnpm --filter @manifold/web test
 pnpm --filter @manifold/web build
 pnpm browser-test
 ```

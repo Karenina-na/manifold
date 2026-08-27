@@ -2,7 +2,10 @@ package main
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -21,10 +24,24 @@ func main() {
 		os.Exit(1)
 	}
 
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+	if err := run(ctx, cfg); err != nil {
+		slog.Error("run core", "error", err)
+		os.Exit(1)
+	}
+}
+
+func run(ctx context.Context, cfg config.Config) error {
+	listener, err := net.Listen("tcp", cfg.Addr)
+	if err != nil {
+		return fmt.Errorf("listen on %s: %w", cfg.Addr, err)
+	}
+	defer listener.Close()
+
 	database, err := store.Open(cfg.DatabasePath)
 	if err != nil {
-		slog.Error("open database", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("open database: %w", err)
 	}
 	defer database.Close()
 
@@ -32,18 +49,28 @@ func main() {
 	defer closeRouter()
 
 	server := &http.Server{Addr: cfg.Addr, Handler: router, ReadHeaderTimeout: 5 * time.Second}
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
-
+	serverError := make(chan error, 1)
 	go func() {
-		slog.Info("core listening", "addr", cfg.Addr)
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			slog.Error("server stopped", "error", err)
-		}
+		slog.Info("core listening", "addr", listener.Addr().String())
+		serverError <- server.Serve(listener)
 	}()
 
-	<-ctx.Done()
+	select {
+	case err := <-serverError:
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			return fmt.Errorf("serve core: %w", err)
+		}
+		return nil
+	case <-ctx.Done():
+	}
+
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	_ = server.Shutdown(shutdownCtx)
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		return fmt.Errorf("shut down core: %w", err)
+	}
+	if err := <-serverError; err != nil && !errors.Is(err, http.ErrServerClosed) {
+		return fmt.Errorf("serve core: %w", err)
+	}
+	return nil
 }

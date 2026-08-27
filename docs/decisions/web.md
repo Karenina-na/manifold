@@ -25,7 +25,7 @@ Server Component 负责首屏数据、详情读取和 SEO；Client Component 负
 | `/thoughts` | Dynamic Server Component | `feed({ kind: "THOUGHT" })` | 轻量时间线/标签入口 |
 | `/thoughts/[id]` | Dynamic Server Component | 通过 ID 获取 Thought 详情 | 复用统一阅读器和评论/反应 |
 | `/writing` | Dynamic Server Component + client archive controls | `content({ kind: "ARTICLE", limit: 100 })` | 双栏长文归档、置顶首篇、搜索、标签筛选、最新/最早/最近更新排序与 sticky 侧栏；列表展示 Core 聚合的浏览量和点赞数；从详情页通过浏览器历史返回时刷新 RSC 数据 |
-| `/writing/[slug]` | Dynamic Server Component + client reading controls | `contentBySlug(slug)` | 四段同宽的不透明阅读面（标题、正文、讨论、添加评论）、同排日期/阅读时长/语言/统计、Markdown、右侧进度目录、评论和反应；讨论面展示统计、搜索和筛选，添加评论面在接近底部时由桌面/平板左侧紧凑动作卡通过共享布局动画展开，手机端在讨论面之后堆叠 |
+| `/writing/[slug]` | Dynamic Server Component + client reading controls | `contentBySlug(slug)` | 返回 Writing 入口作为标题阅读面的独立上方行；其下为四段同宽的不透明阅读面（标题、正文、讨论、添加评论）、同排日期/阅读时长/语言/统计、Markdown、右侧进度目录、评论和反应；讨论面展示统计、搜索和筛选，添加评论面在接近底部时由桌面/平板左侧紧凑动作卡通过共享布局动画展开；越过激活线后继续下滑保持展开，仅向上越回激活线才恢复左侧，手机端在讨论面之后堆叠 |
 | `/health` | Route Handler | 无 | Web 进程 liveness，Core 健康检查仍为 `/healthz` |
 | `/feed.xml` | Dynamic Route Handler | profile、2 条 Article、3 条 Thought | 输出同源 RSS 2.0 feed，复用首页 feed 数据 |
 
@@ -61,7 +61,7 @@ Web 和 Admin 使用相同的 Markdown 能力组合：
 
 `app/web/components/markdown-content.tsx` 统一生成 h2/h3 anchor id、代码工具条和复制状态。Core 只存 Markdown，不承诺内容生成的 HTML 安全；禁止使用 `dangerouslySetInnerHTML` 绕过清洗。
 
-Article 的 `metadata.toc` 和 `readingMinutes` 由 Core 在保存时从 Markdown 派生。Web 使用对应 `id` 生成右侧 sticky 目录和阅读进度。阅读结束区域拆为讨论面和添加评论面：讨论面读取公开评论并展示浏览/点赞/评论统计，支持按作者或正文搜索、按是否有网站或最近时间筛选；添加评论面承载点赞、评论和分享。桌面/平板在讨论面尚未接近底部时只显示左侧紧凑动作卡，评论操作可展开同一表单；触发底部观察点后，卡片通过共享布局动画移动到中央添加评论面并默认展开。手机端动作卡先以 sticky 横条出现，添加评论面在讨论面之后堆叠。新增运行时标题 ID 算法时必须同步 Core metadata 约定和 Admin 编辑/生成逻辑。
+Article 的 `metadata.toc` 和 `readingMinutes` 由 Core 在保存时从 Markdown 派生。Web 使用对应 `id` 生成右侧 sticky 目录和阅读进度。阅读结束区域拆为讨论面和添加评论面：讨论面读取公开评论并展示浏览/点赞/评论统计，支持按作者或正文搜索、按是否有网站或最近时间筛选；添加评论面承载点赞、评论和分享。桌面/平板在讨论面尚未接近底部时只显示左侧紧凑动作卡，评论操作可展开同一表单；触发底部观察点后，卡片通过共享布局动画移动到中央添加评论面并默认展开。触发点继续滑过视口顶部时保持底部状态，只有向上滚动并越回同一激活线后才恢复左侧卡片，避免观察点离开视口时发生反向切换；讨论面内容或字体等导致布局变化时由 ResizeObserver 重新计算。手机端动作卡先以 sticky 横条出现，添加评论面在讨论面之后堆叠。新增运行时标题 ID 算法时必须同步 Core metadata 约定和 Admin 编辑/生成逻辑。
 
 ## 5. 评论与反应
 

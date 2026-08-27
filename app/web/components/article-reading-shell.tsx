@@ -4,9 +4,11 @@ import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, LayoutGroup } from "framer-motion";
 import type { ArticleMetadata } from "@manifold/contracts";
 import styles from "../app/site.module.css";
+import { resolveArticleActionsAtEnd } from "../lib/article-end-threshold";
 import { CommentComposer } from "./comment-thread";
 
 type TocItem = NonNullable<ArticleMetadata["toc"]>[number];
+const ARTICLE_END_ACTIVATION_RATIO = 0.76;
 
 function ArticleToc({ items }: { items: TocItem[] }) {
   const [activeId, setActiveId] = useState(items[0]?.id ?? "");
@@ -43,10 +45,38 @@ export function ArticleReadingShell({ children, discussion, toc, slug }: { child
   const [compactExpanded, setCompactExpanded] = useState(false);
   const [bottomExpanded, setBottomExpanded] = useState(true);
   useEffect(() => {
-    if (!discussionEndRef.current) return;
-    const observer = new IntersectionObserver(([entry]) => setAtEnd(entry.isIntersecting), { rootMargin: "0px 0px -24% 0px", threshold: 0.1 });
-    observer.observe(discussionEndRef.current);
-    return () => observer.disconnect();
+    const trigger = discussionEndRef.current;
+    if (!trigger) return;
+    let frame: number | null = null;
+    let currentAtEnd = false;
+    let previousScrollY = window.scrollY;
+    const update = () => {
+      frame = null;
+      const scrollY = window.scrollY;
+      currentAtEnd = resolveArticleActionsAtEnd({
+        atEnd: currentAtEnd,
+        previousScrollY,
+        scrollY,
+        triggerTop: trigger.getBoundingClientRect().top,
+        activationLine: window.innerHeight * ARTICLE_END_ACTIVATION_RATIO,
+      });
+      previousScrollY = scrollY;
+      setAtEnd(currentAtEnd);
+    };
+    const scheduleUpdate = () => {
+      if (frame === null) frame = window.requestAnimationFrame(update);
+    };
+    const resizeObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(scheduleUpdate);
+    if (resizeObserver) resizeObserver.observe(trigger.parentElement ?? trigger);
+    update();
+    window.addEventListener("scroll", scheduleUpdate, { passive: true });
+    window.addEventListener("resize", scheduleUpdate);
+    return () => {
+      window.removeEventListener("scroll", scheduleUpdate);
+      window.removeEventListener("resize", scheduleUpdate);
+      resizeObserver?.disconnect();
+      if (frame !== null) window.cancelAnimationFrame(frame);
+    };
   }, []);
 
   return <LayoutGroup id="article-reading-actions"><div className={styles.articleReadingShell}>
