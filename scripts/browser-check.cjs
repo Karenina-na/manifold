@@ -353,6 +353,8 @@ async function main() {
     await web.getByText('2 articles', { exact: true }).waitFor({ state: 'visible' });
     const writingScrollHint = web.locator('[class*="scrollHint"]');
     await writingScrollHint.waitFor({ state: 'visible' });
+    const writingRevealed = await web.locator('[class*="writingCollection"]').evaluate((el) => el.closest('[data-revealed]')?.getAttribute('data-revealed'));
+    if (writingRevealed !== 'false') throw new Error('Writing list should stay hidden until manual scroll');
     await writingScrollHint.click();
     await writingScrollHint.waitFor({ state: 'detached' });
     await web.setViewportSize({ width: 1280, height: 900 });
@@ -391,6 +393,8 @@ async function main() {
     await thoughtCount.waitFor({ state: 'visible' });
     const thoughtScrollHint = web.locator('[class*="scrollHint"]');
     await thoughtScrollHint.waitFor({ state: 'visible' });
+    const thoughtRevealed = await web.locator('[class*="thoughtCollection"]').evaluate((el) => el.closest('[data-revealed]')?.getAttribute('data-revealed'));
+    if (thoughtRevealed !== 'false') throw new Error('Thoughts list should stay hidden until manual scroll');
     await thoughtScrollHint.click();
     await thoughtScrollHint.waitFor({ state: 'detached' });
     await web.setViewportSize({ width: 1280, height: 900 });

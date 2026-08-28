@@ -88,7 +88,7 @@ export default function ThoughtArchive({ initialArchive, tags, initialQuery = ""
         </article>
       </Reveal>}
 
-      {data === null ? <p className={styles.errorBanner}>The thoughts could not be loaded.</p> : <Reveal className={styles.writingReveal}>
+      {data === null ? <p className={styles.errorBanner}>The thoughts could not be loaded.</p> : <Reveal className={styles.writingReveal} manual={!filtersActive}>
         <section className={styles.thoughtCollection} ref={timelineRef} aria-labelledby="thought-timeline-heading">
           <div className={styles.thoughtSectionHeading}>
             <div>
@@ -151,6 +151,6 @@ export default function ThoughtArchive({ initialArchive, tags, initialQuery = ""
         </section>
       </Reveal>}
     </div>
-    <ScrollHint targetRef={timelineRef} />
+    <ScrollHint manual={!filtersActive} targetRef={timelineRef} />
   </main>;
 }

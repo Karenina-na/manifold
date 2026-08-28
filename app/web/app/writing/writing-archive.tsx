@@ -82,7 +82,7 @@ export default function WritingArchive({ initialList, featured, tags, query, act
         <span className={styles.featuredArrow} aria-hidden="true">→</span>
       </Link>
     </Reveal>}
-    {data === null ? <p className={styles.errorBanner}>The writings could not be loaded.</p> : <Reveal className={styles.writingReveal}>
+    {data === null ? <p className={styles.errorBanner}>The writings could not be loaded.</p> : <Reveal className={styles.writingReveal} manual={showFeatured}>
       <section className={styles.writingCollection} ref={listRef}>
         <div className={styles.writingToolbarSurface}>
           <div className={styles.writingToolbar}>
@@ -138,7 +138,7 @@ export default function WritingArchive({ initialList, featured, tags, query, act
     </aside>
   </div>
 </div>
-<ScrollHint targetRef={listRef} />
+<ScrollHint manual={showFeatured} targetRef={listRef} />
 </main>;
 }
 
