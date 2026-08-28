@@ -111,7 +111,7 @@ Core 使用 `caarlos0/env` 读取 `CORE_` 前缀变量，不自动读取仓库�
 | `GET` | `/api/v1/site` | 首页 profile 引用、精选内容、导航和 sections |
 | `GET` | `/api/v1/feed` | 内容集合，使用与 `/content` 相同的筛选 |
 | `GET` | `/api/v1/content` | 已发布内容摘要集合，包含 Core 从 Markdown 正文派生的纯文本 `excerpt`、`viewCount`、`likeCount` 和已审核 `commentCount` 聚合值 |
-| `GET` | `/api/v1/thoughts` | Thoughts 归档 aggregate：置顶 Thought、排除置顶后的页码分页列表和总数，支持 `tag`/`q` 过滤（只作用于时间轴，置顶不受影响）；内容项同样包含 `excerpt` |
+| `GET` | `/api/v1/thoughts` | Thoughts 归档 aggregate：置顶 Thought、排除置顶后的页码分页列表和总数，支持 `tag`/`q` 过滤（只作用于时间轴，置顶不受影响，多 tag 按 OR 命中任一标签）；内容项同样包含 `excerpt` |
 | `GET` | `/api/v1/tags` | 已发布内容的标签聚合 `Collection<TagSummary>`（`{ name, count }`，按 count 降序、name 升序），可用 `kind=THOUGHT|ARTICLE` 过滤 |
 | `GET` | `/api/v1/content/{slug}` | 通过 slug 或 ID 返回已发布详情和 Markdown body；默认记录一次 `content.viewed` 审计事件，内部 metadata 请求可传 `trackView=false` 跳过计数 |
 | `GET` | `/api/v1/content/{slug}/comments` | 只返回 `APPROVED` 评论 |
@@ -127,7 +127,7 @@ Core 使用 `caarlos0/env` 读取 `CORE_` 前缀变量，不自动读取仓库�
 
 ```text
 kind=THOUGHT|ARTICLE   # 可重复或逗号分隔
-tag=systems             # 标签（最长 80）
+tag=systems             # 标签（单个最长 80）；可重复或逗号分隔多值（最多 10 个），多值按 OR 命中任一标签
 q=boundary              # 标题/摘要/正文搜索（最长 200）
 cursor=<opaque>
 page=1..                # 页码模式；与 cursor 互斥，同时传返回 400
@@ -139,7 +139,7 @@ limit=1..50
 
 `page` 模式下 `pagination` 额外返回 `page/pageSize/totalItems/totalPages`（`totalItems` 仍为过滤后的完整条数，不因 `skipFirst` 减少；超出范围的页码夹紧到最后一页）；cursor 模式的 `pagination` 保持 `{ nextCursor, hasMore }`。
 
-Thoughts 归档参数为 `page`（默认 1）、`limit`（默认 8，范围 1..50）、`tag`（最长 80）和 `q`（最长 200，标题/摘要/正文搜索）。响应为 `{ featured, data, pagination }`，其中 `pagination` 包含 `page/pageSize/totalItems/totalPages`。Core 优先使用 `thoughts_config.featured_thought_id` 指向的已发布 Thought；配置为空、目标撤回/删除或类型已改变时回退到最新已发布 Thought。置顶项不进入 `data`，`totalItems` 也只统计非置顶归档项；`tag`/`q` 只过滤时间轴与 `totalItems`，不影响置顶选择；超出范围的页码会夹紧到最后一页。
+Thoughts 归档参数为 `page`（默认 1）、`limit`（默认 8，范围 1..50）、`tag`（单个最长 80，可重复或逗号分隔多值，最多 10 个，OR 语义）和 `q`（最长 200，标题/摘要/正文搜索）。响应为 `{ featured, data, pagination }`，其中 `pagination` 包含 `page/pageSize/totalItems/totalPages`。Core 优先使用 `thoughts_config.featured_thought_id` 指向的已发布 Thought；配置为空、目标撤回/删除或类型已改变时回退到最新已发布 Thought。置顶项不进入 `data`，`totalItems` 也只统计非置顶归档项；`tag`/`q` 只过滤时间轴与 `totalItems`，不影响置顶选择；超出范围的页码会夹紧到最后一页。
 
 公开列表的 `excerpt` 是 Core 从 `body` 派生的最多 360 个 Unicode 字符的纯文本：移除 Markdown 标题、列表、链接目标、强调、行内代码、HTML 标签与代码围栏，并压缩空白。`summary` 仍是独立的编辑字段；列表响应不暴露完整 Markdown `body`，详情接口继续返回完整正文。
 
@@ -156,7 +156,7 @@ Thoughts 归档参数为 `page`（默认 1）、`limit`（默认 8，范围 1..5
 | `GET/PATCH` | `/api/v1/admin/profile` | 读取/更新 Profile、简历、兴趣、教育、经历、个人 Series 和联系方式 |
 | `GET/PATCH` | `/api/v1/admin/site` | 读取/更新首页 composition |
 | `GET/PATCH` | `/api/v1/admin/thoughts/config` | 读取/更新 Thoughts 置顶配置；PATCH body 为 `{ featuredThoughtId: string \| null }` |
-| `GET` | `/api/v1/admin/content` | 管理内容列表，支持 `kind`、`status`、`tag`、`q`、cursor 以及可选 `sort`/`page`/`aiAssisted`/`skipFirst`，并返回 `viewCount` / `likeCount` / `commentCount` |
+| `GET` | `/api/v1/admin/content` | 管理内容列表，支持 `kind`、`status`、`tag`（单值或多值，OR 语义）、`q`、cursor 以及可选 `sort`/`page`/`aiAssisted`/`skipFirst`，并返回 `viewCount` / `likeCount` / `commentCount` |
 | `POST` | `/api/v1/admin/content` | 创建 DRAFT |
 | `PATCH` | `/api/v1/admin/content/{id}` | 局部更新和类型转换 |
 | `POST` | `/api/v1/admin/content/{id}/publish` | DRAFT -> PUBLISHED |

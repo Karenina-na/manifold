@@ -104,7 +104,7 @@ var (
 type ContentListOptions struct {
 	Kinds      []model.ContentKind
 	Status     string
-	Tag        string
+	Tags       []string
 	Query      string
 	AiAssisted *bool
 	Sort       string
@@ -573,9 +573,13 @@ func contentListWhere(includeDrafts bool, options ContentListOptions) (string, [
 		}
 		query += ` AND kind IN (` + strings.Join(placeholders, ",") + `)`
 	}
-	if options.Tag != "" {
-		query += ` AND EXISTS (SELECT 1 FROM json_each(content.tags_json) WHERE json_each.value = ?)`
-		args = append(args, options.Tag)
+	if len(options.Tags) > 0 {
+		placeholders := make([]string, len(options.Tags))
+		for i, tag := range options.Tags {
+			placeholders[i] = "?"
+			args = append(args, tag)
+		}
+		query += ` AND EXISTS (SELECT 1 FROM json_each(content.tags_json) WHERE json_each.value IN (` + strings.Join(placeholders, ",") + `))`
 	}
 	if options.Query != "" {
 		query += ` AND (LOWER(title) LIKE ? OR LOWER(summary) LIKE ? OR LOWER(body) LIKE ?)`
@@ -702,7 +706,7 @@ func (s *Store) Tags(kind model.ContentKind) ([]model.TagSummary, error) {
 	return tags, rows.Err()
 }
 
-func (s *Store) ThoughtArchive(requestedPage, pageSize int, tag, search string) (model.ThoughtArchive, error) {
+func (s *Store) ThoughtArchive(requestedPage, pageSize int, tags []string, search string) (model.ThoughtArchive, error) {
 	config, err := s.GetThoughtConfig()
 	if err != nil {
 		return model.ThoughtArchive{}, err
@@ -734,9 +738,13 @@ func (s *Store) ThoughtArchive(requestedPage, pageSize int, tag, search string) 
 	}
 	where := `WHERE kind = 'THOUGHT' AND status = 'PUBLISHED' AND (? = '' OR id != ?)`
 	args := []any{excludedID, excludedID}
-	if tag != "" {
-		where += ` AND EXISTS (SELECT 1 FROM json_each(content.tags_json) WHERE json_each.value = ?)`
-		args = append(args, tag)
+	if len(tags) > 0 {
+		placeholders := make([]string, len(tags))
+		for i, tag := range tags {
+			placeholders[i] = "?"
+			args = append(args, tag)
+		}
+		where += ` AND EXISTS (SELECT 1 FROM json_each(content.tags_json) WHERE json_each.value IN (` + strings.Join(placeholders, ",") + `))`
 	}
 	if search != "" {
 		where += ` AND (LOWER(title) LIKE ? OR LOWER(summary) LIKE ? OR LOWER(body) LIKE ?)`

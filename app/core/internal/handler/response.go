@@ -265,12 +265,12 @@ func (h *apiHandler) tags(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *apiHandler) thoughts(w http.ResponseWriter, r *http.Request) {
-	page, limit, tag, search, err := parseThoughtArchiveOptions(r)
+	page, limit, tags, search, err := parseThoughtArchiveOptions(r)
 	if err != nil {
 		WriteError(w, http.StatusBadRequest, "INVALID_QUERY", err.Error())
 		return
 	}
-	archive, err := h.store.ThoughtArchive(page, limit, tag, search)
+	archive, err := h.store.ThoughtArchive(page, limit, tags, search)
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, "THOUGHTS_UNAVAILABLE", "Thoughts are unavailable.")
 		return
@@ -975,9 +975,11 @@ func parseContentListOptions(r *http.Request, includeDrafts bool) (store.Content
 			}
 		}
 	}
-	if options.Tag = strings.TrimSpace(query.Get("tag")); len(options.Tag) > 80 {
-		return options, fmt.Errorf("tag is too long")
+	tags, err := parseTagFilters(query["tag"])
+	if err != nil {
+		return options, err
 	}
+	options.Tags = tags
 	if options.Query = strings.TrimSpace(query.Get("q")); len(options.Query) > 200 {
 		return options, fmt.Errorf("q is too long")
 	}
@@ -990,31 +992,59 @@ func parseContentListOptions(r *http.Request, includeDrafts bool) (store.Content
 	return options, nil
 }
 
-func parseThoughtArchiveOptions(r *http.Request) (page, limit int, tag, search string, err error) {
+func parseThoughtArchiveOptions(r *http.Request) (page, limit int, tags []string, search string, err error) {
 	page, limit = 1, 8
 	if rawPage := strings.TrimSpace(r.URL.Query().Get("page")); rawPage != "" {
 		value, parseErr := strconv.Atoi(rawPage)
 		if parseErr != nil || value < 1 {
-			return page, limit, tag, search, fmt.Errorf("page must be a positive integer")
+			return page, limit, tags, search, fmt.Errorf("page must be a positive integer")
 		}
 		page = value
 	}
 	if rawLimit := strings.TrimSpace(r.URL.Query().Get("limit")); rawLimit != "" {
 		value, parseErr := strconv.Atoi(rawLimit)
 		if parseErr != nil || value < 1 || value > 50 {
-			return page, limit, tag, search, fmt.Errorf("limit must be between 1 and 50")
+			return page, limit, tags, search, fmt.Errorf("limit must be between 1 and 50")
 		}
 		limit = value
 	}
-	tag = strings.TrimSpace(r.URL.Query().Get("tag"))
-	if len(tag) > 80 {
-		return page, limit, tag, search, fmt.Errorf("tag is too long")
+	tags, err = parseTagFilters(r.URL.Query()["tag"])
+	if err != nil {
+		return page, limit, tags, search, err
 	}
 	search = strings.TrimSpace(r.URL.Query().Get("q"))
 	if len(search) > 200 {
-		return page, limit, tag, search, fmt.Errorf("q is too long")
+		return page, limit, tags, search, fmt.Errorf("q is too long")
 	}
-	return page, limit, tag, search, nil
+	return page, limit, tags, search, nil
+}
+
+func parseTagFilters(rawValues []string) ([]string, error) {
+	tags := make([]string, 0, len(rawValues))
+	seen := make(map[string]struct{}, len(rawValues))
+	for _, rawValue := range rawValues {
+		for _, rawTag := range strings.Split(rawValue, ",") {
+			tag := strings.TrimSpace(rawTag)
+			if tag == "" {
+				continue
+			}
+			if len(tag) > 80 {
+				return nil, fmt.Errorf("tag is too long")
+			}
+			if _, exists := seen[tag]; exists {
+				continue
+			}
+			seen[tag] = struct{}{}
+			tags = append(tags, tag)
+			if len(tags) > 10 {
+				return nil, fmt.Errorf("too many tags")
+			}
+		}
+	}
+	if len(tags) == 0 {
+		return nil, nil
+	}
+	return tags, nil
 }
 
 func (h *apiHandler) audit(r *http.Request, eventName, resourceType, resourceID string, metadata map[string]string) {

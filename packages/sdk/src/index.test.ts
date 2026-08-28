@@ -65,6 +65,12 @@ test("requests tag aggregation and encodes content page filters", async () => {
 
 	await client.content({ kind: "ARTICLE", q: "boundary", sort: "updated", aiAssisted: false, page: 3, limit: 10, skipFirst: true });
 	assert.equal(requests[1]?.url, "http://core.test/api/v1/content?kind=ARTICLE&q=boundary&sort=updated&aiAssisted=false&page=3&limit=10&skipFirst=true");
+
+	await client.content({ kind: "ARTICLE", tag: ["systems", "go"] });
+	assert.equal(requests[2]?.url, "http://core.test/api/v1/content?kind=ARTICLE&tag=systems%2Cgo");
+
+	await client.thoughts({ tag: ["notes", "meta"], q: "drift" });
+	assert.equal(requests[3]?.url, "http://core.test/api/v1/thoughts?tag=notes%2Cmeta&q=drift");
 });
 
 test("reads and updates the admin thought configuration", async () => {

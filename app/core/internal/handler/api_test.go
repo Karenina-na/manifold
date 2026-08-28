@@ -502,6 +502,31 @@ func TestContentPageSortFilterAndTags(t *testing.T) {
 		t.Fatalf("expected tag=go to match three articles, got %s", tagged.Body.String())
 	}
 
+	multiTag := request(t, router, http.MethodGet, "/api/v1/content?kind=ARTICLE&tag=go,design&page=1&limit=10", nil)
+	decode(multiTag)
+	if payload.Pagination.TotalItems != 5 || !strings.Contains(multiTag.Body.String(), "article_c") {
+		t.Fatalf("expected tag=go,design to match five articles, got %s", multiTag.Body.String())
+	}
+
+	repeatedTag := request(t, router, http.MethodGet, "/api/v1/content?kind=ARTICLE&tag=go&tag=sqlite&page=1&limit=10", nil)
+	decode(repeatedTag)
+	if payload.Pagination.TotalItems != 4 || !strings.Contains(repeatedTag.Body.String(), "article_b") || !strings.Contains(repeatedTag.Body.String(), "article_c") {
+		t.Fatalf("expected repeated tag params to match four articles, got %s", repeatedTag.Body.String())
+	}
+
+	duplicateTag := request(t, router, http.MethodGet, "/api/v1/content?kind=ARTICLE&tag=go,go&page=1&limit=10", nil)
+	decode(duplicateTag)
+	if payload.Pagination.TotalItems != 3 {
+		t.Fatalf("expected duplicate tags to dedupe, got %s", duplicateTag.Body.String())
+	}
+
+	if tooLongTag := request(t, router, http.MethodGet, "/api/v1/content?kind=ARTICLE&tag="+strings.Repeat("x", 81), nil); tooLongTag.Code != http.StatusBadRequest {
+		t.Fatalf("expected long tag 400, got %d %s", tooLongTag.Code, tooLongTag.Body.String())
+	}
+	if tooManyTags := request(t, router, http.MethodGet, "/api/v1/content?kind=ARTICLE&tag=a,b,c,d,e,f,g,h,i,j,k", nil); tooManyTags.Code != http.StatusBadRequest {
+		t.Fatalf("expected too many tags 400, got %d %s", tooManyTags.Code, tooManyTags.Body.String())
+	}
+
 	skipFirst := request(t, router, http.MethodGet, "/api/v1/content?kind=ARTICLE&page=1&limit=2&skipFirst=true", nil)
 	decode(skipFirst)
 	if got := ids(); len(got) != 2 || got[0] != "article_c" || got[1] != "article_b" || payload.Pagination.TotalItems != 6 || payload.Pagination.TotalPages != 3 {
@@ -582,6 +607,12 @@ func TestThoughtArchiveFilters(t *testing.T) {
 	decode(searched)
 	if payload.Pagination.TotalItems != 1 || len(payload.Data) != 1 || payload.Data[0].ID != "thought_3" {
 		t.Fatalf("expected q=needle to match thought_3, got %s", searched.Body.String())
+	}
+
+	multiTagged := request(t, router, http.MethodGet, "/api/v1/thoughts?tag=notes,work&page=1&limit=10", nil)
+	decode(multiTagged)
+	if payload.Featured.ID != "thought_1" || payload.Pagination.TotalItems != 2 || len(payload.Data) != 2 || payload.Data[0].ID != "thought_2" || payload.Data[1].ID != "thought_3" {
+		t.Fatalf("expected tag=notes,work to match thought_2 and thought_3, got %s", multiTagged.Body.String())
 	}
 
 	empty := request(t, router, http.MethodGet, "/api/v1/thoughts?q=zurich&tag=notes&page=3&limit=8", nil)

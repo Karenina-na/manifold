@@ -32,10 +32,10 @@ export interface Pagination { nextCursor: string | null; hasMore: boolean; page?
 export interface Collection<T> { data: T[]; pagination: Pagination }
 export interface PagePagination { page: number; pageSize: number; totalItems: number; totalPages: number }
 export interface ThoughtArchive { featured: Extract<Content, { kind: "THOUGHT" }> | null; data: Array<Extract<Content, { kind: "THOUGHT" }>>; pagination: PagePagination }
-export interface ThoughtArchiveQuery { page?: number; limit?: number; tag?: string; q?: string }
+export interface ThoughtArchiveQuery { page?: number; limit?: number; tag?: string | string[]; q?: string }
 export interface ThoughtConfig { featuredThoughtId: string | null; updatedAt: string }
 export interface ThoughtConfigInput { featuredThoughtId: string | null }
-export interface ContentQuery { kind?: ContentKind | ContentKind[]; tag?: string; q?: string; cursor?: string; limit?: number; page?: number; sort?: ContentSort; aiAssisted?: boolean; skipFirst?: boolean }
+export interface ContentQuery { kind?: ContentKind | ContentKind[]; tag?: string | string[]; q?: string; cursor?: string; limit?: number; page?: number; sort?: ContentSort; aiAssisted?: boolean; skipFirst?: boolean }
 export interface TagQuery { kind?: ContentKind }
 export interface TagSummary { name: string; count: number }
 export interface AdminContentQuery extends ContentQuery { status?: ContentStatus }

@@ -44,8 +44,8 @@ const page = await client.content({ kind: "ARTICLE", limit: 20 })
 | `profile()` | GET | `/api/v1/profile` | `Profile` |
 | `site()` | GET | `/api/v1/site` | `SiteComposition` |
 | `feed(query?)` | GET | `/api/v1/feed` | `Collection<Content>` |
-| `content(query?)` | GET | `/api/v1/content` | `Collection<Content>`，内容项包含纯文本 `excerpt`、`viewCount` / `likeCount` / `commentCount`；`query` 支持 `kind`、`tag`、`q`、`cursor` 或 `page`（互斥）、`sort`、`aiAssisted`、`skipFirst`（仅 `page` 模式） |
-| `thoughts(query?)` | GET | `/api/v1/thoughts` | `ThoughtArchive`，Core 负责置顶、排除、正文摘录和页码分页；`query` 支持 `page`、`limit`、`tag`、`q` |
+| `content(query?)` | GET | `/api/v1/content` | `Collection<Content>`，内容项包含纯文本 `excerpt`、`viewCount` / `likeCount` / `commentCount`；`query` 支持 `kind`、`tag`（单值或多值 `string[]`，数组序列化为逗号分隔，多值按 OR 命中任一标签）、`q`、`cursor` 或 `page`（互斥）、`sort`、`aiAssisted`、`skipFirst`（仅 `page` 模式） |
+| `thoughts(query?)` | GET | `/api/v1/thoughts` | `ThoughtArchive`，Core 负责置顶、排除、正文摘录和页码分页；`query` 支持 `page`、`limit`、`tag`（单值或多值 `string[]`，OR 语义）、`q` |
 | `tags(query?)` | GET | `/api/v1/tags` | `Collection<TagSummary>` 标签聚合，`query` 支持 `kind = "THOUGHT" \| "ARTICLE"` |
 | `contentBySlug(slug, options?)` | GET | `/api/v1/content/:slug` | `ContentDetail`；`{ trackView: false }` 用于不计入浏览量的 metadata 读取 |
 | `now()` | GET | `/api/v1/now` | `NowStatus` |
