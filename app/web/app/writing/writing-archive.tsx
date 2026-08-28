@@ -1,30 +1,140 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
-import { Eye, Heart, Search, SlidersHorizontal, Tag } from "lucide-react";
+import { Eye, Heart, Search, SlidersHorizontal } from "lucide-react";
 import { formatDate } from "../../lib/api";
-import type { Content } from "@manifold/contracts";
+import { useRef } from "react";
+import type { Content, ContentSort, TagSummary } from "@manifold/contracts";
 import styles from "../site.module.css";
 import { Reveal } from "../../components/reveal";
+import { TagCloud } from "../../components/tag-cloud";
+import { createBrowserClient } from "../../lib/api";
+import { clampPage } from "../../lib/archive-url";
+import { useArchiveFilters } from "../../lib/use-archive-filters";
+import { useCenteredAside } from "../../lib/use-centered-aside";
 import { previewForContent } from "../../lib/content-preview";
 
-export default function WritingArchive({ items }: { items: Content[] | null }) {
-  const [query, setQuery] = useState("");
-  const [tag, setTag] = useState("");
-  const [sort, setSort] = useState("newest");
-  const [noAi, setNoAi] = useState(false);
-  const [page, setPage] = useState(1);
-  const pageSize = 10;
-  const articles = useMemo(() => items ?? [], [items]);
-  const tags = useMemo(() => Array.from(new Set(articles.flatMap((item) => item.tags))).map((name) => ({ name, count: articles.filter((item) => item.tags.includes(name)).length })), [articles]);
-  const filtered = useMemo(() => articles.filter((item) => `${item.title ?? ""} ${item.summary} ${item.tags.join(" ")}`.toLowerCase().includes(query.toLowerCase()) && (!tag || item.tags.includes(tag)) && (!noAi || !("aiAssisted" in item.metadata && item.metadata.aiAssisted))).sort((a, b) => { const get = (item: Content) => sort === "updated" ? item.updatedAt : (item.publishedAt ?? item.createdAt); return (sort === "oldest" ? 1 : -1) * (Date.parse(get(a)) - Date.parse(get(b))); }), [articles, noAi, query, sort, tag]);
-  const totalPages = Math.max(1, Math.ceil(Math.max(0, filtered.length - 1) / pageSize));
-  const currentPage = Math.min(page, totalPages);
-  const pageItems = filtered.slice(1).slice((currentPage - 1) * pageSize, currentPage * pageSize);
-  const goToPage = (value: number) => { setPage(Math.min(totalPages, Math.max(1, value))); };
-  const featured = filtered[0];
-  return <main className={styles.page}><div className={styles.writingShell}><div className={styles.writingMain}><Reveal className={styles.writingReveal}><header className={styles.writingHero}><span className={styles.eyebrow}>Writings</span><h1>Writing</h1></header></Reveal>{featured && <Reveal className={styles.writingReveal}><Link href={featured.href} className={styles.featuredCard}><div className={styles.featuredTop}><span className={styles.featuredBadge}>Featured</span><span>{formatDate(featured.publishedAt ?? featured.createdAt)}</span></div><h2>{featured.title}</h2><WritingPreview item={featured} featured /><div className={styles.featuredFooter}><span>{formatDate(featured.publishedAt ?? featured.createdAt)} · {featured.tags.map((value) => `#${value}`).join(" ")} · {featured.kind === "ARTICLE" && featured.metadata.readingMinutes ? `${featured.metadata.readingMinutes} min read` : "Article"}</span><span><Eye size={14} /> Views {featured.viewCount ?? 0} · <Heart size={14} /> Likes {featured.likeCount ?? 0}</span></div><span className={styles.featuredArrow} aria-hidden="true">→</span></Link></Reveal>}{items === null ? <p className={styles.errorBanner}>The writings could not be loaded.</p> : <Reveal className={styles.writingReveal}><section className={styles.writingCollection}><div className={styles.writingToolbarSurface}><div className={styles.writingToolbar}><span>{filtered.length} articles</span><div className={styles.toolbarControls}><button className={noAi ? styles.controlActive : styles.control} onClick={() => { setNoAi(!noAi); goToPage(1); }}><SlidersHorizontal size={14} /> No AI writing</button><select value={sort} onChange={(event) => { setSort(event.target.value); goToPage(1); }} aria-label="Sort writings"><option value="newest">Newest</option><option value="oldest">Oldest</option><option value="updated">Recently updated</option></select></div></div></div><div className={styles.writingListSurface}><div className={styles.writingList}>{pageItems.map((item) => <Link className={styles.writingItem} key={item.id} href={item.href}><h3>{item.title}</h3><WritingPreview item={item} /><div><span>{formatDate(item.publishedAt ?? item.createdAt)}</span><span>{item.tags.map((value) => `#${value}`).join(" ")}</span><span>{item.kind === "ARTICLE" && item.metadata.readingMinutes ? `${item.metadata.readingMinutes} min read` : "Article"}</span><span><Eye size={12} /> {item.viewCount ?? 0} · <Heart size={12} /> {item.likeCount ?? 0}</span></div></Link>)}</div></div><div className={styles.paginationSurface}><nav className={styles.pagination} aria-label="Writing pages"><button className={styles.pageButton} onClick={() => goToPage(currentPage - 1)} disabled={currentPage === 1}>Previous</button><span className={styles.pageStatus}>Page {currentPage} of {totalPages}</span><button className={styles.pageButton} onClick={() => goToPage(currentPage + 1)} disabled={currentPage === totalPages}>Next</button></nav></div></section></Reveal>}</div><aside className={styles.writingAside}><label className={styles.writingSearch}><Search size={16} /><input value={query} onChange={(event) => { setQuery(event.target.value); goToPage(1); }} placeholder="Search writings" aria-label="Search writings" /></label><div className={styles.tagCloud}><div className={styles.asideLabel}><Tag size={14} /> Tags</div>{tags.map((item) => <button className={tag === item.name ? styles.tagPillActive : styles.tagPill} key={item.name} onClick={() => { setTag(tag === item.name ? "" : item.name); goToPage(1); }}>{item.name} <small>{item.count}</small></button>)}</div><div className={styles.archiveBlock}><div className={styles.asideLabel}>Archive</div><p>{articles.length} writings</p><Link href="#all-tags">View all tags →</Link></div></aside></div></main>;
+const PAGE_SIZE = 10;
+
+type WritingListData = { items: Content[]; totalItems: number; totalPages: number; page: number };
+
+type WritingArchiveProps = {
+  initialList: WritingListData | null;
+  featured: Content | null;
+  tags: TagSummary[] | null;
+  query: string;
+  tag: string;
+  sort: ContentSort;
+  noAi: boolean;
+};
+
+async function fetchWritingPage(state: { query: string; tag: string; page: number }, extra: Record<string, string | undefined>): Promise<WritingListData> {
+  const sort = extra.sort as ContentSort | undefined;
+  const unfiltered = !state.query && !state.tag && extra.noAi !== "1" && (!sort || sort === "newest");
+  const page = await createBrowserClient().content({
+    kind: "ARTICLE",
+    q: state.query || undefined,
+    tag: state.tag || undefined,
+    sort,
+    aiAssisted: extra.noAi === "1" ? false : undefined,
+    page: state.page,
+    limit: PAGE_SIZE,
+    skipFirst: unfiltered || undefined,
+  });
+  return { items: page.data, totalItems: page.pagination.totalItems ?? 0, totalPages: page.pagination.totalPages ?? 1, page: page.pagination.page ?? state.page };
+}
+
+export default function WritingArchive({ initialList, featured, tags, query, tag, sort, noAi }: WritingArchiveProps) {
+  const asideSlotRef = useRef<HTMLDivElement>(null);
+  const asideRef = useRef<HTMLElement>(null);
+  useCenteredAside(asideSlotRef, asideRef);
+  const { input, query: activeQuery, tag: activeTag, extra, data, isPending, error, onSearchInput, toggleTag, goToPage, setExtraParam } = useArchiveFilters<WritingListData>({
+    basePath: "/writing",
+    initialData: initialList,
+    initialQuery: query,
+    initialTag: tag,
+    initialExtra: { sort: sort === "newest" ? undefined : sort, noAi: noAi ? "1" : undefined },
+    fetchPage: fetchWritingPage,
+  });
+  const activeSort = (extra.sort as ContentSort) ?? "newest";
+  const noAiActive = extra.noAi === "1";
+  const showFeatured = !activeQuery && !activeTag && !noAiActive && activeSort === "newest";
+  const articles = data?.items ?? [];
+
+  const changePage = (next: number) => {
+    if (!data || isPending) return;
+    goToPage(clampPage(next, data.totalPages));
+  };
+
+  return <main className={styles.page}><div className={styles.writingShell}><div className={styles.writingMain}>
+    <Reveal className={styles.writingReveal}>
+      <header className={styles.writingHero}><span className={styles.eyebrow}>Writings</span><h1>Writing</h1></header>
+    </Reveal>
+    {showFeatured && featured && <Reveal className={styles.writingReveal}>
+      <Link href={featured.href} className={styles.featuredCard}>
+        <div className={styles.featuredTop}><span className={styles.featuredBadge}>Featured</span><span>{formatDate(featured.publishedAt ?? featured.createdAt)}</span></div>
+        <h2>{featured.title}</h2>
+        <WritingPreview item={featured} featured />
+        <div className={styles.featuredFooter}><span>{formatDate(featured.publishedAt ?? featured.createdAt)} · {featured.tags.map((value) => `#${value}`).join(" ")} · {featured.kind === "ARTICLE" && featured.metadata.readingMinutes ? `${featured.metadata.readingMinutes} min read` : "Article"}</span><span><Eye size={14} /> Views {featured.viewCount ?? 0} · <Heart size={14} /> Likes {featured.likeCount ?? 0}</span></div>
+        <span className={styles.featuredArrow} aria-hidden="true">→</span>
+      </Link>
+    </Reveal>}
+    {data === null ? <p className={styles.errorBanner}>The writings could not be loaded.</p> : <Reveal className={styles.writingReveal}>
+      <section className={styles.writingCollection}>
+        <div className={styles.writingToolbarSurface}>
+          <div className={styles.writingToolbar}>
+            <span>{data.totalItems} articles</span>
+            <div className={styles.toolbarControls}>
+              <button className={noAiActive ? styles.controlActive : styles.control} onClick={() => setExtraParam("noAi", noAiActive ? undefined : "1")}><SlidersHorizontal size={14} /> No AI writing</button>
+              <select value={activeSort} onChange={(event) => setExtraParam("sort", event.target.value === "newest" ? undefined : event.target.value)} aria-label="Sort writings">
+                <option value="newest">Newest</option>
+                <option value="oldest">Oldest</option>
+                <option value="updated">Recently updated</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        <div className={styles.writingListSurface} data-pending={isPending}>
+          <div className={styles.writingList}>
+            {articles.map((item) => <Link className={styles.writingItem} key={item.id} href={item.href}>
+              <h3>{item.title}</h3>
+              <WritingPreview item={item} />
+              <div>
+                <span>{formatDate(item.publishedAt ?? item.createdAt)}</span>
+                <span>{item.tags.map((value) => `#${value}`).join(" ")}</span>
+                <span>{item.kind === "ARTICLE" && item.metadata.readingMinutes ? `${item.metadata.readingMinutes} min read` : "Article"}</span>
+                <span><Eye size={12} /> {item.viewCount ?? 0} · <Heart size={12} /> {item.likeCount ?? 0}</span>
+              </div>
+            </Link>)}
+          </div>
+          {!articles.length && <p className={styles.thoughtEmpty}>No writings match the current filters.</p>}
+        </div>
+        <div className={styles.paginationSurface}>
+          <nav className={styles.pagination} aria-label="Writing pages">
+            <button className={styles.pageButton} onClick={() => changePage(data.page - 1)} disabled={isPending || data.page === 1}>Previous</button>
+            <span className={styles.pageStatus}>Page {data.page} of {data.totalPages}</span>
+            <button className={styles.pageButton} onClick={() => changePage(data.page + 1)} disabled={isPending || data.page === data.totalPages}>Next</button>
+          </nav>
+        </div>
+        {error && <p className={styles.errorBanner}>The latest writing page could not be loaded. Please try again.</p>}
+      </section>
+    </Reveal>}
+  </div>
+    <div className={styles.writingAsideSlot} ref={asideSlotRef}>
+    <aside className={styles.writingAside} ref={asideRef}>
+      <label className={styles.writingSearch}>
+        <Search size={16} />
+        <input value={input} onChange={(event) => onSearchInput(event.target.value)} placeholder="Search writings" aria-label="Search writings" />
+      </label>
+      {tags?.length ? <TagCloud tags={tags} activeTag={activeTag} onToggle={toggleTag} /> : null}
+      <div className={styles.archiveBlock}>
+        <div className={styles.asideLabel}>Archive</div>
+        <p>{data?.totalItems ?? 0} writings</p>
+        <Link href="#all-tags">View all tags →</Link>
+      </div>
+    </aside>
+  </div>
+</div></main>;
 }
 
 function WritingPreview({ item, featured = false }: { item: Content; featured?: boolean }) {

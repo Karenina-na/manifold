@@ -1,11 +1,14 @@
 "use client";
 
-import type { Content, ThoughtArchive as ThoughtArchiveResponse } from "@manifold/contracts";
-import { ArrowRight, Eye, Heart, MessageCircle } from "lucide-react";
+import type { Content, TagSummary, ThoughtArchive as ThoughtArchiveResponse } from "@manifold/contracts";
+import { ArrowRight, Eye, Heart, MessageCircle, Search } from "lucide-react";
 import Link from "next/link";
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef } from "react";
 import { Reveal } from "../../components/reveal";
+import { TagCloud } from "../../components/tag-cloud";
 import { createBrowserClient } from "../../lib/api";
+import { clampPage } from "../../lib/archive-url";
+import { useArchiveFilters } from "../../lib/use-archive-filters";
 import { groupThoughtsByYear, formatThoughtDate } from "../../lib/thought-archive";
 import { previewForContent } from "../../lib/content-preview";
 import styles from "../site.module.css";
@@ -34,26 +37,29 @@ function ThoughtPreview({ item, featured = false }: { item: Thought; featured?: 
   </>;
 }
 
-export default function ThoughtArchive({ initialArchive }: { initialArchive: ThoughtArchiveResponse | null }) {
-  const [archive, setArchive] = useState(initialArchive);
-  const [pageError, setPageError] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const timelineRef = useRef<HTMLElement>(null);
-  const yearGroups = useMemo(() => groupThoughtsByYear(archive?.data ?? []), [archive]);
+type ThoughtArchiveProps = {
+  initialArchive: ThoughtArchiveResponse | null;
+  tags: TagSummary[] | null;
+  initialQuery?: string;
+  initialTag?: string;
+};
 
-  const goToPage = async (nextPage: number) => {
-    if (!archive || isLoading) return;
-    const page = Math.min(archive.pagination.totalPages, Math.max(1, nextPage));
-    setIsLoading(true);
-    setPageError(false);
-    try {
-      setArchive(await createBrowserClient().thoughts({ page, limit: PAGE_SIZE }));
-      window.requestAnimationFrame(() => timelineRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
-    } catch {
-      setPageError(true);
-    } finally {
-      setIsLoading(false);
-    }
+export default function ThoughtArchive({ initialArchive, tags, initialQuery = "", initialTag = "" }: ThoughtArchiveProps) {
+  const timelineRef = useRef<HTMLElement>(null);
+  const { input, query, tag, data, isPending, error, onSearchInput, toggleTag, goToPage } = useArchiveFilters({
+    basePath: "/thoughts",
+    initialData: initialArchive,
+    initialQuery,
+    initialTag,
+    fetchPage: (state) => createBrowserClient().thoughts({ page: state.page, limit: PAGE_SIZE, q: state.query || undefined, tag: state.tag || undefined }),
+    onPageSettled: () => window.requestAnimationFrame(() => timelineRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })),
+  });
+  const filtersActive = Boolean(query || tag);
+  const yearGroups = useMemo(() => groupThoughtsByYear(data?.data ?? []), [data]);
+
+  const changePage = (next: number) => {
+    if (!data || isPending) return;
+    goToPage(clampPage(next, data.pagination.totalPages));
   };
 
   return <main className={styles.page}>
@@ -65,32 +71,42 @@ export default function ThoughtArchive({ initialArchive }: { initialArchive: Tho
         </header>
       </Reveal>
 
-      {archive?.featured && <Reveal className={styles.writingReveal}>
+      {!filtersActive && data?.featured && <Reveal className={styles.writingReveal}>
         <article className={styles.featuredThought}>
           <div className={styles.featuredThoughtTop}>
             <span className={styles.featuredBadge}>Featured</span>
-            <div className={styles.featuredThoughtMeta}><span>{tagLabel(archive.featured.tags)}</span><time dateTime={archive.featured.publishedAt ?? archive.featured.createdAt}>{formatThoughtDate(archive.featured.publishedAt ?? archive.featured.createdAt)}</time></div>
+            <div className={styles.featuredThoughtMeta}><span>{tagLabel(data.featured.tags)}</span><time dateTime={data.featured.publishedAt ?? data.featured.createdAt}>{formatThoughtDate(data.featured.publishedAt ?? data.featured.createdAt)}</time></div>
           </div>
-          <h2><Link href={archive.featured.href}>{archive.featured.title || "A thought"}</Link></h2>
-          <ThoughtPreview item={archive.featured} featured />
+          <h2><Link href={data.featured.href}>{data.featured.title || "A thought"}</Link></h2>
+          <ThoughtPreview item={data.featured} featured />
           <footer className={styles.featuredThoughtFooter}>
-            <ThoughtActions item={archive.featured} />
-            <Link className={styles.thoughtReadLink} href={archive.featured.href}>Full thought <ArrowRight size={15} aria-hidden="true" /></Link>
+            <ThoughtActions item={data.featured} />
+            <Link className={styles.thoughtReadLink} href={data.featured.href}>Full thought <ArrowRight size={15} aria-hidden="true" /></Link>
           </footer>
         </article>
       </Reveal>}
 
-      {archive === null ? <p className={styles.errorBanner}>The thoughts could not be loaded.</p> : <Reveal className={styles.writingReveal}>
+      {data === null ? <p className={styles.errorBanner}>The thoughts could not be loaded.</p> : <Reveal className={styles.writingReveal}>
         <section className={styles.thoughtCollection} ref={timelineRef} aria-labelledby="thought-timeline-heading">
           <div className={styles.thoughtSectionHeading}>
             <div>
               <span className={styles.eyebrow}>Archive</span>
               <h2 id="thought-timeline-heading">Thought timeline</h2>
             </div>
-            <span>{archive.pagination.totalItems} notes</span>
+            <span>{data.pagination.totalItems} notes</span>
           </div>
 
-          {yearGroups.length ? <div className={styles.thoughtTimeline}>
+          <div className={`${styles.writingToolbarSurface} ${styles.thoughtFilterSurface}`}>
+            <div className={styles.thoughtFilterSearch}>
+              <label className={styles.writingSearch}>
+                <Search size={16} aria-hidden="true" />
+                <input value={input} onChange={(event) => onSearchInput(event.target.value)} placeholder="Search thoughts" aria-label="Search thoughts" />
+              </label>
+            </div>
+            {tags?.length ? <TagCloud tags={tags} activeTag={tag} onToggle={toggleTag} /> : null}
+          </div>
+
+          {yearGroups.length ? <div className={styles.thoughtTimeline} data-pending={isPending}>
             {yearGroups.map((yearGroup) => <section className={styles.thoughtYear} key={yearGroup.year} aria-labelledby={`year-${yearGroup.year}`}>
               <header className={styles.thoughtYearHeader} id={`year-${yearGroup.year}`}>
                 <strong>{yearGroup.year}</strong>
@@ -120,16 +136,16 @@ export default function ThoughtArchive({ initialArchive }: { initialArchive: Tho
                 </div>)}
               </div>
             </section>)}
-          </div> : <p className={styles.thoughtEmpty}>No more thoughts have been published yet.</p>}
+          </div> : <p className={styles.thoughtEmpty}>{filtersActive ? "No thoughts match the current filters." : "No more thoughts have been published yet."}</p>}
 
           <div className={styles.paginationSurface}>
             <nav className={styles.pagination} aria-label="Thought pages">
-              <button className={styles.pageButton} type="button" onClick={() => void goToPage(archive.pagination.page - 1)} disabled={isLoading || archive.pagination.page === 1}>Previous</button>
-              <span className={styles.pageStatus}>Page {archive.pagination.page} of {archive.pagination.totalPages}</span>
-              <button className={styles.pageButton} type="button" onClick={() => void goToPage(archive.pagination.page + 1)} disabled={isLoading || archive.pagination.page === archive.pagination.totalPages}>Next</button>
+              <button className={styles.pageButton} type="button" onClick={() => changePage(data.pagination.page - 1)} disabled={isPending || data.pagination.page === 1}>Previous</button>
+              <span className={styles.pageStatus}>Page {data.pagination.page} of {data.pagination.totalPages}</span>
+              <button className={styles.pageButton} type="button" onClick={() => changePage(data.pagination.page + 1)} disabled={isPending || data.pagination.page === data.pagination.totalPages}>Next</button>
             </nav>
           </div>
-          {pageError && <p className={styles.errorBanner}>The next thought page could not be loaded.</p>}
+          {error && <p className={styles.errorBanner}>The latest thought page could not be loaded. Please try again.</p>}
         </section>
       </Reveal>}
     </div>
