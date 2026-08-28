@@ -9,7 +9,7 @@ type UseArchiveFiltersOptions<T> = {
   basePath: string;
   initialData: T | null;
   initialQuery?: string;
-  initialTag?: string;
+  initialTags?: string[];
   initialPage?: number;
   initialExtra?: ArchiveExtraParams;
   fetchPage: (state: ArchiveFilterState, extra: ArchiveExtraParams) => Promise<T>;
@@ -17,10 +17,10 @@ type UseArchiveFiltersOptions<T> = {
 };
 
 export function useArchiveFilters<T>(options: UseArchiveFiltersOptions<T>) {
-  const { basePath, initialData, initialQuery = "", initialTag = "", initialPage = 1, initialExtra } = options;
+  const { basePath, initialData, initialQuery = "", initialTags = [], initialPage = 1, initialExtra } = options;
 
   const [input, setInput] = useState(initialQuery);
-  const [state, setState] = useState<ArchiveFilterState>(() => ({ query: initialQuery, tag: initialTag, page: initialPage }));
+  const [state, setState] = useState<ArchiveFilterState>(() => ({ query: initialQuery, tags: initialTags, page: initialPage }));
   const [extra, setExtra] = useState<ArchiveExtraParams>(() => ({ ...initialExtra }));
   const [data, setData] = useState<T | null>(initialData);
   const [isPending, setIsPending] = useState(false);
@@ -75,13 +75,14 @@ export function useArchiveFilters<T>(options: UseArchiveFiltersOptions<T>) {
     setInput(value);
     clearDebounce();
     timerRef.current = setTimeout(() => {
-      apply({ query: value.trim(), tag: state.tag, page: 1 }, extra, "filter");
+      apply({ query: value.trim(), tags: state.tags, page: 1 }, extra, "filter");
     }, SEARCH_DEBOUNCE_MS);
   }, [apply, clearDebounce, extra, state]);
 
   const toggleTag = useCallback((name: string) => {
     clearDebounce();
-    apply({ query: input.trim(), tag: state.tag === name ? "" : name, page: 1 }, extra, "filter");
+    const tags = state.tags.includes(name) ? state.tags.filter((tag) => tag !== name) : [...state.tags, name];
+    apply({ query: input.trim(), tags, page: 1 }, extra, "filter");
   }, [apply, clearDebounce, extra, input, state]);
 
   const goToPage = useCallback((next: number) => {
@@ -94,5 +95,5 @@ export function useArchiveFilters<T>(options: UseArchiveFiltersOptions<T>) {
     apply({ ...state, query: input.trim(), page: 1 }, { ...extra, [key]: value }, "filter");
   }, [apply, clearDebounce, extra, input, state]);
 
-  return { input, query: state.query, tag: state.tag, page: state.page, extra, data, isPending, error, onSearchInput, toggleTag, goToPage, setExtraParam };
+  return { input, query: state.query, tags: state.tags, page: state.page, extra, data, isPending, error, onSearchInput, toggleTag, goToPage, setExtraParam };
 }

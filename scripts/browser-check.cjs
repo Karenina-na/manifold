@@ -364,6 +364,22 @@ async function main() {
     await web.getByLabel('Sort writings').selectOption('oldest');
     await web.getByRole('heading', { name: 'Designing Boundaries' }).waitFor({ state: 'visible' });
 
+    const writingPickerTrigger = web.getByRole('button', { name: 'View all tags →' });
+    const writingPickerPanel = web.getByRole('group', { name: 'View all tags →' });
+    await writingPickerTrigger.click();
+    await writingPickerPanel.getByRole('button', { name: /design \d/ }).click();
+    await writingPickerPanel.getByRole('button', { name: /systems \d/ }).click();
+    await web.waitForURL((url) => url.searchParams.getAll('tag').join(',') === 'design,systems');
+    await web.getByText('2 articles', { exact: true }).waitFor({ state: 'visible' });
+    await web.getByRole('heading', { name: 'Writing', exact: true }).click();
+    await writingPickerPanel.waitFor({ state: 'detached' });
+    await web.getByRole('button', { name: /systems \d/ }).click();
+    await web.waitForURL((url) => url.searchParams.getAll('tag').join(',') === 'design');
+    await web.getByText('1 articles', { exact: true }).waitFor({ state: 'visible' });
+    await web.getByRole('button', { name: /design \d/ }).click();
+    await web.waitForURL((url) => url.searchParams.getAll('tag').length === 0);
+    await web.getByText('2 articles', { exact: true }).waitFor({ state: 'visible' });
+
     await web.goto(`${webUrl}/thoughts`, { waitUntil: 'networkidle' });
     const thoughtCount = web.getByText('1 notes', { exact: true });
     await thoughtCount.waitFor({ state: 'visible' });
@@ -377,6 +393,18 @@ async function main() {
     await web.getByRole('button', { name: /notes \d/ }).click();
     await web.getByText('0 notes', { exact: true }).waitFor({ state: 'visible' });
     await web.getByRole('button', { name: /notes \d/ }).click();
+    await thoughtCount.waitFor({ state: 'visible' });
+
+    const thoughtPickerTrigger = web.getByRole('button', { name: 'View all tags', exact: true });
+    const thoughtPickerPanel = web.getByRole('group', { name: 'View all tags' });
+    await thoughtPickerTrigger.click();
+    await thoughtPickerPanel.getByRole('button', { name: /thinking \d/ }).click();
+    await web.waitForURL((url) => url.searchParams.getAll('tag').join(',') === 'thinking');
+    await thoughtCount.waitFor({ state: 'visible' });
+    await web.getByRole('heading', { name: 'Thoughts', exact: true }).click();
+    await thoughtPickerPanel.waitFor({ state: 'detached' });
+    await web.getByRole('button', { name: /thinking \d/ }).click();
+    await web.waitForURL((url) => url.searchParams.getAll('tag').length === 0);
     await thoughtCount.waitFor({ state: 'visible' });
 
     await web.setViewportSize({ width: 1280, height: 900 });

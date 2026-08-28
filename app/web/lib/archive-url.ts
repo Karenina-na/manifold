@@ -1,12 +1,14 @@
-export type ArchiveFilterState = { query: string; tag: string; page: number };
+export type ArchiveFilterState = { query: string; tags: string[]; page: number };
 export type ArchiveExtraParams = Record<string, string | undefined>;
 
 export function serializeArchiveParams(state: ArchiveFilterState, extra: ArchiveExtraParams = {}) {
   const params = new URLSearchParams();
   const query = state.query.trim();
-  const tag = state.tag.trim();
   if (query) params.set("q", query);
-  if (tag) params.set("tag", tag);
+  for (const tag of state.tags) {
+    const normalized = tag.trim();
+    if (normalized) params.append("tag", normalized);
+  }
   if (state.page > 1) params.set("page", String(state.page));
   for (const [key, value] of Object.entries(extra)) {
     const normalized = value?.trim();

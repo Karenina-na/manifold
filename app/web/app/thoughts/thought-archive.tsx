@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useMemo, useRef } from "react";
 import { Reveal } from "../../components/reveal";
 import { TagCloud } from "../../components/tag-cloud";
+import { TagPicker } from "../../components/tag-picker";
 import { createBrowserClient } from "../../lib/api";
 import { clampPage } from "../../lib/archive-url";
 import { useArchiveFilters } from "../../lib/use-archive-filters";
@@ -41,20 +42,20 @@ type ThoughtArchiveProps = {
   initialArchive: ThoughtArchiveResponse | null;
   tags: TagSummary[] | null;
   initialQuery?: string;
-  initialTag?: string;
+  initialTags?: string[];
 };
 
-export default function ThoughtArchive({ initialArchive, tags, initialQuery = "", initialTag = "" }: ThoughtArchiveProps) {
+export default function ThoughtArchive({ initialArchive, tags, initialQuery = "", initialTags = [] }: ThoughtArchiveProps) {
   const timelineRef = useRef<HTMLElement>(null);
-  const { input, query, tag, data, isPending, error, onSearchInput, toggleTag, goToPage } = useArchiveFilters({
+  const { input, query, tags: selectedTags, data, isPending, error, onSearchInput, toggleTag, goToPage } = useArchiveFilters({
     basePath: "/thoughts",
     initialData: initialArchive,
     initialQuery,
-    initialTag,
-    fetchPage: (state) => createBrowserClient().thoughts({ page: state.page, limit: PAGE_SIZE, q: state.query || undefined, tag: state.tag || undefined }),
+    initialTags,
+    fetchPage: (state) => createBrowserClient().thoughts({ page: state.page, limit: PAGE_SIZE, q: state.query || undefined, tag: state.tags.length ? state.tags : undefined }),
     onPageSettled: () => window.requestAnimationFrame(() => timelineRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })),
   });
-  const filtersActive = Boolean(query || tag);
+  const filtersActive = Boolean(query || selectedTags.length);
   const yearGroups = useMemo(() => groupThoughtsByYear(data?.data ?? []), [data]);
 
   const changePage = (next: number) => {
@@ -103,7 +104,7 @@ export default function ThoughtArchive({ initialArchive, tags, initialQuery = ""
                 <input value={input} onChange={(event) => onSearchInput(event.target.value)} placeholder="Search thoughts" aria-label="Search thoughts" />
               </label>
             </div>
-            {tags?.length ? <TagCloud tags={tags} activeTag={tag} onToggle={toggleTag} /> : null}
+            {tags?.length ? <TagCloud tags={tags} activeTags={selectedTags} onToggle={toggleTag} action={<TagPicker tags={tags} activeTags={selectedTags} onToggle={toggleTag} label="View all tags" />} /> : null}
           </div>
 
           {yearGroups.length ? <div className={styles.thoughtTimeline} data-pending={isPending}>

@@ -8,6 +8,7 @@ import type { Content, ContentSort, TagSummary } from "@manifold/contracts";
 import styles from "../site.module.css";
 import { Reveal } from "../../components/reveal";
 import { TagCloud } from "../../components/tag-cloud";
+import { TagPicker } from "../../components/tag-picker";
 import { createBrowserClient } from "../../lib/api";
 import { clampPage } from "../../lib/archive-url";
 import { useArchiveFilters } from "../../lib/use-archive-filters";
@@ -23,18 +24,18 @@ type WritingArchiveProps = {
   featured: Content | null;
   tags: TagSummary[] | null;
   query: string;
-  tag: string;
+  activeTags: string[];
   sort: ContentSort;
   noAi: boolean;
 };
 
-async function fetchWritingPage(state: { query: string; tag: string; page: number }, extra: Record<string, string | undefined>): Promise<WritingListData> {
+async function fetchWritingPage(state: { query: string; tags: string[]; page: number }, extra: Record<string, string | undefined>): Promise<WritingListData> {
   const sort = extra.sort as ContentSort | undefined;
-  const unfiltered = !state.query && !state.tag && extra.noAi !== "1" && (!sort || sort === "newest");
+  const unfiltered = !state.query && state.tags.length === 0 && extra.noAi !== "1" && (!sort || sort === "newest");
   const page = await createBrowserClient().content({
     kind: "ARTICLE",
     q: state.query || undefined,
-    tag: state.tag || undefined,
+    tag: state.tags.length ? state.tags : undefined,
     sort,
     aiAssisted: extra.noAi === "1" ? false : undefined,
     page: state.page,
@@ -44,21 +45,21 @@ async function fetchWritingPage(state: { query: string; tag: string; page: numbe
   return { items: page.data, totalItems: page.pagination.totalItems ?? 0, totalPages: page.pagination.totalPages ?? 1, page: page.pagination.page ?? state.page };
 }
 
-export default function WritingArchive({ initialList, featured, tags, query, tag, sort, noAi }: WritingArchiveProps) {
+export default function WritingArchive({ initialList, featured, tags, query, activeTags, sort, noAi }: WritingArchiveProps) {
   const asideSlotRef = useRef<HTMLDivElement>(null);
   const asideRef = useRef<HTMLElement>(null);
   useCenteredAside(asideSlotRef, asideRef);
-  const { input, query: activeQuery, tag: activeTag, extra, data, isPending, error, onSearchInput, toggleTag, goToPage, setExtraParam } = useArchiveFilters<WritingListData>({
+  const { input, query: activeQuery, tags: selectedTags, extra, data, isPending, error, onSearchInput, toggleTag, goToPage, setExtraParam } = useArchiveFilters<WritingListData>({
     basePath: "/writing",
     initialData: initialList,
     initialQuery: query,
-    initialTag: tag,
+    initialTags: activeTags,
     initialExtra: { sort: sort === "newest" ? undefined : sort, noAi: noAi ? "1" : undefined },
     fetchPage: fetchWritingPage,
   });
   const activeSort = (extra.sort as ContentSort) ?? "newest";
   const noAiActive = extra.noAi === "1";
-  const showFeatured = !activeQuery && !activeTag && !noAiActive && activeSort === "newest";
+  const showFeatured = !activeQuery && selectedTags.length === 0 && !noAiActive && activeSort === "newest";
   const articles = data?.items ?? [];
 
   const changePage = (next: number) => {
@@ -126,11 +127,11 @@ export default function WritingArchive({ initialList, featured, tags, query, tag
         <Search size={16} />
         <input value={input} onChange={(event) => onSearchInput(event.target.value)} placeholder="Search writings" aria-label="Search writings" />
       </label>
-      {tags?.length ? <TagCloud tags={tags} activeTag={activeTag} onToggle={toggleTag} /> : null}
+      {tags?.length ? <TagCloud tags={tags} activeTags={selectedTags} onToggle={toggleTag} /> : null}
       <div className={styles.archiveBlock}>
         <div className={styles.asideLabel}>Archive</div>
         <p>{data?.totalItems ?? 0} writings</p>
-        <Link href="#all-tags">View all tags →</Link>
+        {tags?.length ? <TagPicker tags={tags} activeTags={selectedTags} onToggle={toggleTag} label="View all tags →" /> : null}
       </div>
     </aside>
   </div>
