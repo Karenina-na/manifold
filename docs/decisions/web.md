@@ -23,7 +23,7 @@ Server Component 负责首屏数据、详情读取和 SEO；Client Component 负
 | --- | --- | --- | --- |
 | `/` | Dynamic Server Component | profile、site、全部公开 Article/Thought 历史、now、stats | Profile/Introduction、Recent Content、Updates、年度 Contribution activity、My Series、Contact |
 | `/thoughts` | Dynamic Server Component + client archive controls | `thoughts({ page, limit: 8, tag, q })`、`tags({ kind: "THOUGHT" })` | Core 配置驱动的置顶 Thought（仅默认视图展示）、按年份/月份/日期分块的纵向时间轴、服务端分页，以及置顶与时间轴之间的搜索和多 tag 过滤（OR 语义，URL `q`/`tag` 可重复/`page` 同步） |
-| `/thoughts/[id]` | Dynamic Server Component | 通过 ID 获取 Thought 详情 | 复用统一阅读器和评论/反应 |
+| `/thoughts/[id]` | Dynamic Server Component | `contentBySlug(id)` | 专属 Thought 详情页：沿用 Writing 详情的纸面结构（返回行、标题面、正文面、讨论面）但不使用阅读壳；标题面展示 eyebrow、✦ 灰色摘要、日期/mood 徽标/tag 与点赞/观看/评论计数，`question` 作为 serif 反思引言块，`context`/`source` 作 mono 脚注；讨论面（统计、搜索、筛选）与展开的添加评论表单依次置于正文面下方，无目录与浮动动作卡；非 THOUGHT 内容或读取失败一律 404 |
 | `/writing` | Dynamic Server Component + client archive controls | `content({ kind: "ARTICLE", q, tag, sort, aiAssisted, page, skipFirst })`、`content({ kind: "ARTICLE", sort: "newest", limit: 1 })`、`tags({ kind: "ARTICLE" })` | 双栏长文归档、置顶首篇、搜索、多标签筛选（OR 语义）、最新/最早/最近更新排序与悬浮侧栏（视口垂直居中：滚动中随内容冻结，停止后防抖 160ms 重算并动画归位，布局变化同样动画跟随，导航净空 112px，760px 以下回退静态）；两页归档共用 `useArchiveFilters` 客户端取数：搜索/tag/排序/No AI 开关和分页由 Core 在数据层执行，筛选状态经 `history.replaceState` 同步到 URL `q`/`tag`（可重复）/`page`/`sort`/`noAi`；置顶卡固定取全局最新文章且仅在默认视图（无 `q`/`tag`/`noAi` 且 `sort=newest`）展示，此时列表请求以 `skipFirst` 排除该条，其余视图 `skipFirst` 不传；tag 云和计数来自 `/api/v1/tags`，选中的 tag 在云中排最前；卡片区分摘要与 Core 正文摘录，并展示聚合的浏览量和点赞数；从详情页通过浏览器历史返回时刷新 RSC 数据 |
 | `/writing/[slug]` | Dynamic Server Component + client reading controls | `contentBySlug(slug)` | 返回 Writing 入口作为标题阅读面的独立上方行；其下为四段同宽的不透明阅读面（标题、正文、讨论、添加评论）、同排日期/阅读时长/语言/统计、Markdown、右侧进度目录、评论和反应；讨论面展示统计、搜索和筛选，添加评论面在接近底部时由桌面/平板左侧紧凑动作卡通过共享布局动画展开；越过激活线后继续下滑保持展开，仅向上越回激活线才恢复左侧，手机端在讨论面之后堆叠 |
 | `/health` | Route Handler | 无 | Web 进程 liveness，Core 健康检查仍为 `/healthz` |
@@ -79,7 +79,7 @@ Article 的 `metadata.toc` 和 `readingMinutes` 由 Core 在保存时从 Markdow
 
 ### 评论
 
-`ArticleDiscussion` 与 `CommentComposer` 使用 React Hook Form、Zod 和 TanStack Query，`CommentThread` 仅作为 Thought 详情的兼容组合：
+`ArticleDiscussion` 与 `CommentComposer` 使用 React Hook Form、Zod 和 TanStack Query；Thought 详情页直接组合 `ArticleDiscussion` 与展开的 `CommentComposer`，不存在独立的 `CommentThread` 包装：
 
 1. `comments(slug)` 读取 Core 返回的 APPROVED 评论。
 2. 表单要求正文 3 到 4000 字符，作者名/网站可选，附轻量验证码。

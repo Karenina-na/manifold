@@ -1,13 +1,14 @@
 "use client";
 
 import type { Content, TagSummary, ThoughtArchive as ThoughtArchiveResponse } from "@manifold/contracts";
-import { ArrowRight, Eye, Heart, MessageCircle, Search } from "lucide-react";
+import { ArrowRight, Search } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useRef } from "react";
 import { Reveal } from "../../components/reveal";
 import { ScrollHint } from "../../components/scroll-hint";
 import { TagCloud } from "../../components/tag-cloud";
 import { TagPicker } from "../../components/tag-picker";
+import { ThoughtActions } from "../../components/thought-actions";
 import { createBrowserClient } from "../../lib/api";
 import { clampPage } from "../../lib/archive-url";
 import { useArchiveFilters } from "../../lib/use-archive-filters";
@@ -21,14 +22,6 @@ const PAGE_SIZE = 8;
 
 function tagLabel(tags: string[]) {
   return tags.length ? tags.map((tag) => `#${tag}`).join(" · ") : "#thought";
-}
-
-function ThoughtActions({ item }: { item: Thought }) {
-  return <div className={styles.thoughtActions}>
-    <span><Heart size={14} aria-hidden="true" /> Likes {item.likeCount ?? 0}</span>
-    <span><Eye size={14} aria-hidden="true" /> Views {item.viewCount ?? 0}</span>
-    <span><MessageCircle size={14} aria-hidden="true" /> Comments {item.commentCount ?? 0}</span>
-  </div>;
 }
 
 function ThoughtPreview({ item, featured = false }: { item: Thought; featured?: boolean }) {

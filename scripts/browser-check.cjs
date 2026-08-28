@@ -422,6 +422,16 @@ async function main() {
     await web.waitForURL((url) => url.searchParams.getAll('tag').length === 0);
     await thoughtCount.waitFor({ state: 'visible' });
 
+    await web.goto(`${webUrl}/thoughts/content_2`, { waitUntil: 'networkidle' });
+    await web.getByRole('heading', { name: 'A Small Signal' }).waitFor({ state: 'visible' });
+    const thoughtReflection = await web.locator('[class*="thoughtReflection"]').textContent();
+    if (!thoughtReflection?.includes('When is a system justified?')) throw new Error('Thought reflection quote is missing');
+    const thoughtMood = await web.locator('[class*="thoughtMood"]').textContent();
+    if (!thoughtMood?.includes('Curious')) throw new Error('Thought mood badge is missing');
+    if (!(await web.locator('[class*="thoughtActions"]').first().textContent())?.includes('Likes')) throw new Error('Thought counts are missing');
+    await web.getByRole('heading', { name: 'The thread' }).waitFor({ state: 'visible' });
+    await web.getByRole('button', { name: 'Send for review' }).waitFor({ state: 'visible' });
+
     await web.setViewportSize({ width: 1280, height: 900 });
     await web.goto(`${webUrl}${contentPath}`, { waitUntil: 'networkidle' });
     const commentToggle = web.locator('[data-compact="true"]').getByRole('button', { name: 'Comment', exact: true });

@@ -116,10 +116,3 @@ export function CommentComposer({ slug, expanded, compact = false, onExpandedCha
     </AnimatePresence>
   </motion.div>;
 }
-
-export function CommentThread({ slug }: { slug: string }) {
-  return <>
-    <ArticleDiscussion slug={slug} showStats={false} />
-    <CommentComposer slug={slug} expanded />
-  </>;
-}

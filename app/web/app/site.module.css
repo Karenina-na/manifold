@@ -652,6 +652,18 @@ html { scroll-behavior: smooth; }
   .commentFilter select { flex: 1; }
 }
 
+/* Thought detail: keeps the writing paper language without the reading shell, re-centering every block and letting metadata carry the reflective voice. */
+.thoughtDetail .articleBack, .thoughtDetail .articleTitleBlock, .thoughtDetail .articleBodyBlock, .thoughtDetail .articleDiscussionBlock { width: min(860px, 100%); margin-left: auto; margin-right: auto; }
+.thoughtDetail .articleTitleBlock { margin-bottom: 22px; }
+.thoughtDetail .articleDiscussionBlock { margin-top: 22px; }
+.thoughtDetail .thoughtSummary { max-width: 680px; margin: 2px 0 20px; font-size: 14px; line-height: 1.7; }
+.thoughtDetail .articleHeader .thoughtActions { margin-top: 16px; }
+.thoughtDetail .articleComposerCard[data-compact="false"] { margin-top: 26px; padding: 26px 0 0; border-top: 1px solid var(--color-line); }
+.thoughtMood { border: 1px solid color-mix(in srgb, var(--color-accent) 38%, var(--color-line)); border-radius: 999px; background: var(--color-accent-soft); color: var(--color-ink); padding: 1px 9px; }
+.thoughtReflection { max-width: 680px; margin: 22px 0 0; padding: 15px 20px; border-left: 2px solid var(--color-accent); background: color-mix(in srgb, var(--color-accent-soft) 52%, transparent); color: var(--color-ink); font-family: var(--app-font-serif); font-size: 19px; font-style: italic; line-height: 1.6; }
+.thoughtProvenance { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 14px; color: var(--color-muted); font: 11px var(--font-mono); }
+.thoughtProvenance span { display: inline-flex; align-items: center; gap: 6px; }
+
 /* Thoughts archive: one featured note followed by a year-blocked month-and-day editorial timeline. */
 .thoughtShell { width: min(960px, calc(100% - 48px)); margin: 0 auto; padding-bottom: 72px; }
 .thoughtHero { padding: 42px 0 30px; }
