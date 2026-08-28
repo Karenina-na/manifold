@@ -50,6 +50,23 @@ test("reads the paginated thought archive from Core", async () => {
 	assert.equal(captured?.url, "http://core.test/api/v1/thoughts?page=2&limit=8");
 });
 
+test("requests tag aggregation and encodes content page filters", async () => {
+	const requests: Request[] = [];
+	const client = new ManifoldClient({
+		baseUrl: "http://core.test",
+		fetch: async (input, init) => {
+			requests.push(new Request(input, init));
+			return new Response(JSON.stringify({ data: [], pagination: { nextCursor: null, hasMore: false } }), { status: 200 });
+		},
+	});
+
+	await client.tags({ kind: "THOUGHT" });
+	assert.equal(requests[0]?.url, "http://core.test/api/v1/tags?kind=THOUGHT");
+
+	await client.content({ kind: "ARTICLE", q: "boundary", sort: "updated", aiAssisted: false, page: 3, limit: 10, skipFirst: true });
+	assert.equal(requests[1]?.url, "http://core.test/api/v1/content?kind=ARTICLE&q=boundary&sort=updated&aiAssisted=false&page=3&limit=10&skipFirst=true");
+});
+
 test("reads and updates the admin thought configuration", async () => {
 	const requests: Request[] = [];
 	const client = new ManifoldClient({

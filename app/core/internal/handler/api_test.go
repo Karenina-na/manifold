@@ -391,7 +391,7 @@ func TestContentQueryFiltersAndPaginates(t *testing.T) {
 		t.Fatalf("expected repeated kind and tag filters to match, got %d %s", response.Code, response.Body.String())
 	}
 
-	for _, invalidQuery := range []string{"kind=INVALID", "cursor=not-a-cursor", "limit=zero", "status=DELETED"} {
+	for _, invalidQuery := range []string{"kind=INVALID", "cursor=not-a-cursor", "limit=zero", "status=DELETED", "sort=sideways", "aiAssisted=maybe", "page=0", "page=1&cursor=MQ", "skipFirst=true"} {
 		response = request(t, router, http.MethodGet, "/api/v1/content?"+invalidQuery, nil)
 		if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "INVALID_QUERY") {
 			t.Fatalf("expected invalid query 400 for %q, got %d %s", invalidQuery, response.Code, response.Body.String())
@@ -401,6 +401,197 @@ func TestContentQueryFiltersAndPaginates(t *testing.T) {
 	response = request(t, router, http.MethodGet, "/api/v1/content?limit=0", nil)
 	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "INVALID_QUERY") {
 		t.Fatalf("expected invalid query 400, got %d %s", response.Code, response.Body.String())
+	}
+}
+
+func TestContentPageSortFilterAndTags(t *testing.T) {
+	database, err := store.Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if _, err := database.DB.Exec(`INSERT INTO content (id, kind, status, slug, title, summary, body, tags_json, metadata_json, published_at, created_at, updated_at) VALUES
+		('article_a', 'ARTICLE', 'PUBLISHED', 'article-a', 'Alpha', 'Alpha summary', 'Alpha body', '["go","design"]', '{"aiAssisted":true}', '2026-01-01T09:00:00Z', '2026-01-01T09:00:00Z', '2026-06-01T09:00:00Z'),
+		('article_b', 'ARTICLE', 'PUBLISHED', 'article-b', 'Bravo', 'Bravo summary', 'Bravo body', '["go"]', '{}', '2026-02-01T09:00:00Z', '2026-02-01T09:00:00Z', '2026-02-01T09:00:00Z'),
+		('article_c', 'ARTICLE', 'PUBLISHED', 'article-c', 'Charlie', 'Charlie summary', 'Charlie body', '["sqlite","design"]', '{}', '2026-03-01T09:00:00Z', '2026-03-01T09:00:00Z', '2026-03-01T09:00:00Z'),
+		('article_d', 'ARTICLE', 'PUBLISHED', 'article-d', 'Delta', 'Delta summary', 'Delta body', '["go"]', '{}', '2026-04-01T09:00:00Z', '2026-04-01T09:00:00Z', '2026-05-01T09:00:00Z')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.DB.Exec(`UPDATE content SET published_at = '2025-12-01T09:00:00Z', created_at = '2025-12-01T09:00:00Z', updated_at = '2025-12-01T09:00:00Z' WHERE id IN ('content_1', 'content_3')`); err != nil {
+		t.Fatal(err)
+	}
+	hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.MinCost)
+	cfg := config.Config{JWTSecret: "test-secret", AdminUsername: "admin", AdminPasswordHash: string(hash), AllowedOrigins: []string{"*"}}
+	router := handler.Router(cfg, database)
+
+	var payload struct {
+		Data       []struct{ ID string } `json:"data"`
+		Pagination struct {
+			NextCursor                             *string
+			HasMore                                bool
+			Page, PageSize, TotalItems, TotalPages int
+		} `json:"pagination"`
+	}
+	decode := func(response *httptest.ResponseRecorder) {
+		t.Helper()
+		if response.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d %s", response.Code, response.Body.String())
+		}
+		if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ids := func() []string {
+		values := make([]string, 0, len(payload.Data))
+		for _, item := range payload.Data {
+			values = append(values, item.ID)
+		}
+		return values
+	}
+
+	firstPage := request(t, router, http.MethodGet, "/api/v1/content?kind=ARTICLE&page=1&limit=2", nil)
+	decode(firstPage)
+	if got := ids(); len(got) != 2 || got[0] != "article_d" || got[1] != "article_c" {
+		t.Fatalf("unexpected newest page order: %s", firstPage.Body.String())
+	}
+	if payload.Pagination.Page != 1 || payload.Pagination.PageSize != 2 || payload.Pagination.TotalItems != 6 || payload.Pagination.TotalPages != 3 || !payload.Pagination.HasMore {
+		t.Fatalf("unexpected page pagination: %s", firstPage.Body.String())
+	}
+
+	secondPage := request(t, router, http.MethodGet, "/api/v1/content?kind=ARTICLE&page=2&limit=2", nil)
+	decode(secondPage)
+	if got := ids(); len(got) != 2 || got[0] != "article_b" || got[1] != "article_a" || !payload.Pagination.HasMore {
+		t.Fatalf("unexpected second page: %s", secondPage.Body.String())
+	}
+
+	clamped := request(t, router, http.MethodGet, "/api/v1/content?kind=ARTICLE&page=99&limit=2", nil)
+	decode(clamped)
+	clampedIds := ids()
+	if payload.Pagination.Page != 3 || len(clampedIds) != 2 || clampedIds[0] != "content_3" {
+		t.Fatalf("expected out-of-range page to clamp, got %s", clamped.Body.String())
+	}
+
+	oldest := request(t, router, http.MethodGet, "/api/v1/content?kind=ARTICLE&sort=oldest&page=1&limit=2", nil)
+	decode(oldest)
+	if got := ids(); len(got) != 2 || got[0] != "content_1" || got[1] != "content_3" {
+		t.Fatalf("unexpected oldest order: %s", oldest.Body.String())
+	}
+
+	updated := request(t, router, http.MethodGet, "/api/v1/content?kind=ARTICLE&sort=updated&page=1&limit=2", nil)
+	decode(updated)
+	if got := ids(); len(got) != 2 || got[0] != "article_a" || got[1] != "article_d" {
+		t.Fatalf("unexpected updated order: %s", updated.Body.String())
+	}
+
+	noAi := request(t, router, http.MethodGet, "/api/v1/content?kind=ARTICLE&aiAssisted=false&page=1&limit=10", nil)
+	decode(noAi)
+	if payload.Pagination.TotalItems != 5 || strings.Contains(noAi.Body.String(), "article_a") {
+		t.Fatalf("expected aiAssisted=false to exclude article_a, got %s", noAi.Body.String())
+	}
+
+	onlyAi := request(t, router, http.MethodGet, "/api/v1/content?kind=ARTICLE&aiAssisted=true&page=1&limit=10", nil)
+	decode(onlyAi)
+	aiIds := ids()
+	if payload.Pagination.TotalItems != 1 || len(aiIds) != 1 || aiIds[0] != "article_a" {
+		t.Fatalf("expected aiAssisted=true to match only article_a, got %s", onlyAi.Body.String())
+	}
+
+	tagged := request(t, router, http.MethodGet, "/api/v1/content?kind=ARTICLE&tag=go&page=1&limit=10", nil)
+	decode(tagged)
+	if payload.Pagination.TotalItems != 3 || strings.Contains(tagged.Body.String(), "article_c") {
+		t.Fatalf("expected tag=go to match three articles, got %s", tagged.Body.String())
+	}
+
+	skipFirst := request(t, router, http.MethodGet, "/api/v1/content?kind=ARTICLE&page=1&limit=2&skipFirst=true", nil)
+	decode(skipFirst)
+	if got := ids(); len(got) != 2 || got[0] != "article_c" || got[1] != "article_b" || payload.Pagination.TotalItems != 6 || payload.Pagination.TotalPages != 3 {
+		t.Fatalf("expected skipFirst to drop the newest item, got %s", skipFirst.Body.String())
+	}
+	skipLast := request(t, router, http.MethodGet, "/api/v1/content?kind=ARTICLE&page=3&limit=2&skipFirst=true", nil)
+	decode(skipLast)
+	if got := ids(); len(got) != 1 || got[0] != "content_1" || payload.Pagination.HasMore {
+		t.Fatalf("expected skipFirst last page, got %s", skipLast.Body.String())
+	}
+
+	skipOnly := request(t, router, http.MethodGet, "/api/v1/content?kind=ARTICLE&aiAssisted=true&page=1&limit=10&skipFirst=true", nil)
+	decode(skipOnly)
+	if !strings.Contains(skipOnly.Body.String(), `"data":[]`) || payload.Pagination.TotalItems != 1 {
+		t.Fatalf("expected skipFirst-only-match to return an empty data array, got %s", skipOnly.Body.String())
+	}
+
+	thoughtTags := request(t, router, http.MethodGet, "/api/v1/tags?kind=THOUGHT", nil)
+	if thoughtTags.Code != http.StatusOK || !strings.Contains(thoughtTags.Body.String(), `{"name":"thinking","count":1}`) {
+		t.Fatalf("expected thought tags, got %d %s", thoughtTags.Code, thoughtTags.Body.String())
+	}
+	allTags := request(t, router, http.MethodGet, "/api/v1/tags", nil)
+	if allTags.Code != http.StatusOK || !strings.Contains(allTags.Body.String(), `"name":"go","count":3`) || !strings.Contains(allTags.Body.String(), `"name":"design","count":3`) {
+		t.Fatalf("expected aggregated tags, got %d %s", allTags.Code, allTags.Body.String())
+	}
+	if invalidTags := request(t, router, http.MethodGet, "/api/v1/tags?kind=NOPE", nil); invalidTags.Code != http.StatusBadRequest {
+		t.Fatalf("expected invalid tag kind 400, got %d %s", invalidTags.Code, invalidTags.Body.String())
+	}
+}
+
+func TestThoughtArchiveFilters(t *testing.T) {
+	database, err := store.Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if _, err := database.DB.Exec(`INSERT INTO content (id, kind, status, slug, title, summary, body, tags_json, metadata_json, published_at, created_at, updated_at) VALUES
+		('thought_1', 'THOUGHT', 'PUBLISHED', NULL, 'Pinned', 'Pinned summary', 'Pinned body', '["notes"]', '{}', '2026-09-01T09:00:00Z', '2026-09-01T09:00:00Z', '2026-09-01T09:00:00Z'),
+		('thought_2', 'THOUGHT', 'PUBLISHED', NULL, 'Work', 'Work summary', 'Work body', '["work"]', '{}', '2026-07-10T09:00:00Z', '2026-07-10T09:00:00Z', '2026-07-10T09:00:00Z'),
+		('thought_3', 'THOUGHT', 'PUBLISHED', NULL, 'Needle', 'Needle summary', 'A needle in the notes.', '["notes","work"]', '{}', '2026-05-10T09:00:00Z', '2026-05-10T09:00:00Z', '2026-05-10T09:00:00Z')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.DB.Exec(`UPDATE content SET published_at = '2026-01-01T09:00:00Z', created_at = '2026-01-01T09:00:00Z', updated_at = '2026-01-01T09:00:00Z' WHERE id = 'content_2'`); err != nil {
+		t.Fatal(err)
+	}
+	hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.MinCost)
+	cfg := config.Config{JWTSecret: "test-secret", AdminUsername: "admin", AdminPasswordHash: string(hash), AllowedOrigins: []string{"*"}}
+	router := handler.Router(cfg, database)
+	token := adminToken(t, router)
+	if configured := adminRequest(t, router, token, http.MethodPatch, "/api/v1/admin/thoughts/config", `{"featuredThoughtId":"thought_1"}`); configured.Code != http.StatusOK {
+		t.Fatalf("expected thought config update, got %d %s", configured.Code, configured.Body.String())
+	}
+
+	var payload struct {
+		Featured   struct{ ID string }            `json:"featured"`
+		Data       []struct{ ID, Excerpt string } `json:"data"`
+		Pagination struct {
+			Page, PageSize, TotalItems, TotalPages int
+		} `json:"pagination"`
+	}
+	decode := func(response *httptest.ResponseRecorder) {
+		t.Helper()
+		if response.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d %s", response.Code, response.Body.String())
+		}
+		if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	tagged := request(t, router, http.MethodGet, "/api/v1/thoughts?tag=notes&page=1&limit=10", nil)
+	decode(tagged)
+	if payload.Featured.ID != "thought_1" || payload.Pagination.TotalItems != 1 || len(payload.Data) != 1 || payload.Data[0].ID != "thought_3" {
+		t.Fatalf("expected tag=notes to keep featured and match only thought_3, got %s", tagged.Body.String())
+	}
+
+	searched := request(t, router, http.MethodGet, "/api/v1/thoughts?q=needle&page=1&limit=10", nil)
+	decode(searched)
+	if payload.Pagination.TotalItems != 1 || len(payload.Data) != 1 || payload.Data[0].ID != "thought_3" {
+		t.Fatalf("expected q=needle to match thought_3, got %s", searched.Body.String())
+	}
+
+	empty := request(t, router, http.MethodGet, "/api/v1/thoughts?q=zurich&tag=notes&page=3&limit=8", nil)
+	decode(empty)
+	if payload.Featured.ID != "thought_1" || payload.Pagination.TotalItems != 0 || payload.Pagination.Page != 1 || len(payload.Data) != 0 {
+		t.Fatalf("expected empty filter result with featured kept, got %s", empty.Body.String())
+	}
+
+	if tooLong := request(t, router, http.MethodGet, "/api/v1/thoughts?q="+strings.Repeat("x", 201), nil); tooLong.Code != http.StatusBadRequest {
+		t.Fatalf("expected long q 400, got %d %s", tooLong.Code, tooLong.Body.String())
 	}
 }
 

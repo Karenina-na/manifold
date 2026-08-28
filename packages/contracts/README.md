@@ -25,8 +25,9 @@ app/core JSON <--> packages/contracts <--> packages/sdk <--> Web / Admin
 - `ContentDetail`：详情对象，`body` 必填。
 - `ContentInput`：创建输入的判别联合：Thought 和 Article 使用不同 metadata。
 - `UpdateContentInput`：带必填 `expectedVersion` 的局部更新，可改变 `kind` 和 `slug`。
-- `ThoughtArchive` / `ThoughtArchiveQuery`：Core 计算的置顶 Thought、非置顶归档页和页码参数。
+- `ThoughtArchive` / `ThoughtArchiveQuery`：Core 计算的置顶 Thought、非置顶归档页和页码参数；`ThoughtArchiveQuery` 额外接受 `tag`/`q`，只过滤时间轴，不影响置顶。
 - `ThoughtConfig` / `ThoughtConfigInput`：可空 `featuredThoughtId` 的 Admin 配置读写契约。
+- `TagQuery` / `TagSummary`：`/api/v1/tags` 的可选 `kind` 参数和 `{ name, count }` 聚合项。
 
 Article 的 `ArticleMetadata` 字段：
 
@@ -51,9 +52,9 @@ Thought 的 `ThoughtMetadata` 字段为 `mood`、`question`、`context`、`sourc
 - `PresenceStatus`：匿名在线心跳返回的活跃访客数和观测时间；Core 只保留短期心跳，不返回访客身份。
 - `Comment`、`CommentStatus`、`CreateCommentInput`：评论和审核状态。
 - `LikeSummary`：文章点赞统计和当前访客状态。
-- `Collection<T>`、`Pagination`：统一列表响应。
+- `Collection<T>`、`Pagination`：统一列表响应。`Pagination` 在 cursor 模式为 `{ nextCursor, hasMore }`；使用 `page` 参数时额外返回 `page/pageSize/totalItems/totalPages`。
 - `PagePagination`：Thoughts aggregate 使用的 `page/pageSize/totalItems/totalPages` 页码响应。
-- `ContentQuery`、`AdminContentQuery`、`CommentQuery`：服务端筛选和 cursor 分页参数。
+- `ContentQuery`、`AdminContentQuery`、`CommentQuery`：服务端筛选和分页参数。`ContentQuery` 支持 `kind`、`tag`、`q`、cursor 或 `page`（互斥）、`sort = "newest" | "oldest" | "updated"`、`aiAssisted` 布尔过滤和 `skipFirst`（仅 `page` 模式，列表跳过排序后的第一条）。
 - `ApiErrorBody`：Core 结构化错误响应字段；SDK 的运行时 `ApiError` 见 [`packages/sdk/README.md`](../sdk/README.md)。
 
 ## 契约规则

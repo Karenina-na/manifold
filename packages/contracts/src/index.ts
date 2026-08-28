@@ -1,7 +1,7 @@
 export type ContentKind = "THOUGHT" | "ARTICLE";
 export type ContentStatus = "DRAFT" | "PUBLISHED" | "DELETED";
 export type CommentStatus = "PENDING" | "APPROVED" | "REJECTED";
-export type ContentSort = "publishedAt" | "createdAt" | "updatedAt";
+export type ContentSort = "newest" | "oldest" | "updated";
 
 export interface ApiErrorBody { error: { code: string; message: string; details?: unknown; requestId?: string; traceId?: string } }
 export interface HealthStatus { status: "ok"; version: string }
@@ -28,14 +28,16 @@ export interface AdminStats { content: Stats; pendingComments: number }
 export interface SiteComposition { profile: { id: string }; featuredContent: Array<{ id: string; kind: ContentKind }>; navigation: SiteNavigationItem[]; sections: string[] }
 export interface SiteConfig { featuredContent: Array<{ id: string; kind: ContentKind }>; navigation: SiteNavigationItem[]; sections: string[] }
 export type SiteConfigInput = SiteConfig
-export interface Pagination { nextCursor: string | null; hasMore: boolean }
+export interface Pagination { nextCursor: string | null; hasMore: boolean; page?: number; pageSize?: number; totalItems?: number; totalPages?: number }
 export interface Collection<T> { data: T[]; pagination: Pagination }
 export interface PagePagination { page: number; pageSize: number; totalItems: number; totalPages: number }
 export interface ThoughtArchive { featured: Extract<Content, { kind: "THOUGHT" }> | null; data: Array<Extract<Content, { kind: "THOUGHT" }>>; pagination: PagePagination }
-export interface ThoughtArchiveQuery { page?: number; limit?: number }
+export interface ThoughtArchiveQuery { page?: number; limit?: number; tag?: string; q?: string }
 export interface ThoughtConfig { featuredThoughtId: string | null; updatedAt: string }
 export interface ThoughtConfigInput { featuredThoughtId: string | null }
-export interface ContentQuery { kind?: ContentKind | ContentKind[]; tag?: string; q?: string; cursor?: string; limit?: number }
+export interface ContentQuery { kind?: ContentKind | ContentKind[]; tag?: string; q?: string; cursor?: string; limit?: number; page?: number; sort?: ContentSort; aiAssisted?: boolean; skipFirst?: boolean }
+export interface TagQuery { kind?: ContentKind }
+export interface TagSummary { name: string; count: number }
 export interface AdminContentQuery extends ContentQuery { status?: ContentStatus }
 export interface CommentQuery { status?: CommentStatus; cursor?: string; limit?: number }
 export interface CreateCommentInput { authorName?: string; authorUrl?: string; body: string; replyToId?: string }

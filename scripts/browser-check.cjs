@@ -339,6 +339,46 @@ async function main() {
     }
     await web.getByRole('contentinfo').waitFor({ state: 'attached' });
 
+    const adminSessionResponse = await fetch(`${coreUrl}/api/v1/admin/session`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username, password }) });
+    if (!adminSessionResponse.ok) throw new Error(`Admin session for archive checks failed: ${adminSessionResponse.status}`);
+    const { accessToken: archiveToken } = await adminSessionResponse.json();
+    const probeResponse = await fetch(`${coreUrl}/api/v1/admin/content`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${archiveToken}` }, body: JSON.stringify({ kind: 'THOUGHT', title: 'Archive filter probe', summary: 'Probe for archive filters.', body: 'A probe thought exercising archive filters.', tags: ['notes'], metadata: {} }) });
+    if (!probeResponse.ok) throw new Error(`Probe thought creation failed: ${probeResponse.status}`);
+    const probe = await probeResponse.json();
+    const probePublish = await fetch(`${coreUrl}/api/v1/admin/content/${probe.id}/publish`, { method: 'POST', headers: { authorization: `Bearer ${archiveToken}` } });
+    if (!probePublish.ok) throw new Error(`Probe thought publish failed: ${probePublish.status}`);
+
+    await web.setViewportSize({ width: 1280, height: 900 });
+    await web.goto(`${webUrl}/writing`, { waitUntil: 'networkidle' });
+    await web.getByText('2 articles', { exact: true }).waitFor({ state: 'visible' });
+    const writingSearch = web.getByRole('textbox', { name: 'Search writings' });
+    await writingSearch.fill('boundary');
+    await web.waitForURL((url) => url.searchParams.get('q') === 'boundary');
+    await web.getByText('1 articles', { exact: true }).waitFor({ state: 'visible' });
+    await writingSearch.fill('');
+    await web.getByText('2 articles', { exact: true }).waitFor({ state: 'visible' });
+    await web.getByRole('button', { name: /design \d/ }).click();
+    await web.getByText('1 articles', { exact: true }).waitFor({ state: 'visible' });
+    await web.getByRole('button', { name: /design \d/ }).click();
+    await web.getByText('2 articles', { exact: true }).waitFor({ state: 'visible' });
+    await web.getByLabel('Sort writings').selectOption('oldest');
+    await web.getByRole('heading', { name: 'Designing Boundaries' }).waitFor({ state: 'visible' });
+
+    await web.goto(`${webUrl}/thoughts`, { waitUntil: 'networkidle' });
+    const thoughtCount = web.getByText('1 notes', { exact: true });
+    await thoughtCount.waitFor({ state: 'visible' });
+    const thoughtSearch = web.getByRole('textbox', { name: 'Search thoughts' });
+    await thoughtSearch.fill('probe');
+    await web.waitForURL((url) => url.searchParams.get('q') === 'probe');
+    await web.getByText('0 notes', { exact: true }).waitFor({ state: 'visible' });
+    await web.getByText('No thoughts match the current filters.').waitFor({ state: 'visible' });
+    await thoughtSearch.fill('');
+    await thoughtCount.waitFor({ state: 'visible' });
+    await web.getByRole('button', { name: /notes \d/ }).click();
+    await web.getByText('0 notes', { exact: true }).waitFor({ state: 'visible' });
+    await web.getByRole('button', { name: /notes \d/ }).click();
+    await thoughtCount.waitFor({ state: 'visible' });
+
     await web.setViewportSize({ width: 1280, height: 900 });
     await web.goto(`${webUrl}${contentPath}`, { waitUntil: 'networkidle' });
     const commentToggle = web.locator('[data-compact="true"]').getByRole('button', { name: 'Comment', exact: true });

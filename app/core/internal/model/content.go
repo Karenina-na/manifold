@@ -76,6 +76,11 @@ type PagePagination struct {
 	TotalPages int `json:"totalPages"`
 }
 
+type TagSummary struct {
+	Name  string `json:"name"`
+	Count int    `json:"count"`
+}
+
 type ThoughtArchive struct {
 	Featured   *Content       `json:"featured"`
 	Data       []Content      `json:"data"`

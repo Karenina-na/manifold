@@ -1,4 +1,4 @@
-import type { AdminContent, AdminContentQuery, AdminStats, Collection, Comment, CommentQuery, Content, ContentDetail, ContentInput, ContentQuery, CreateCommentInput, HealthStatus, LikeSummary, LoginInput, LoginResponse, NowStatus, PresenceStatus, Profile, ProfileInput, SiteComposition, SiteConfig, SiteConfigInput, Stats, ThoughtArchive, ThoughtArchiveQuery, ThoughtConfig, ThoughtConfigInput, UpdateContentInput } from "@manifold/contracts";
+import type { AdminContent, AdminContentQuery, AdminStats, Collection, Comment, CommentQuery, Content, ContentDetail, ContentInput, ContentQuery, CreateCommentInput, HealthStatus, LikeSummary, LoginInput, LoginResponse, NowStatus, PresenceStatus, Profile, ProfileInput, SiteComposition, SiteConfig, SiteConfigInput, Stats, TagQuery, TagSummary, ThoughtArchive, ThoughtArchiveQuery, ThoughtConfig, ThoughtConfigInput, UpdateContentInput } from "@manifold/contracts";
 
 export class ApiError extends Error {
 	readonly status: number;
@@ -38,6 +38,7 @@ export class ManifoldClient {
 	feed(query?: ContentQuery) { return this.request<Collection<Content>>(this.withQuery("/api/v1/feed", query)); }
 	content(query?: ContentQuery) { return this.request<Collection<Content>>(this.withQuery("/api/v1/content", query)); }
 	thoughts(query?: ThoughtArchiveQuery) { return this.request<ThoughtArchive>(this.withQuery("/api/v1/thoughts", query)); }
+	tags(query?: TagQuery) { return this.request<Collection<TagSummary>>(this.withQuery("/api/v1/tags", query)); }
 	contentBySlug(slug: string, options?: { trackView?: boolean }) { return this.request<ContentDetail>(this.withQuery(`/api/v1/content/${encodeURIComponent(slug)}`, options?.trackView === false ? { trackView: false } : undefined)); }
 	now() { return this.request<NowStatus>("/api/v1/now"); }
 	stats() { return this.request<Stats>("/api/v1/stats"); }

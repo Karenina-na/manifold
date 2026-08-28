@@ -102,12 +102,25 @@ var (
 )
 
 type ContentListOptions struct {
-	Kinds  []model.ContentKind
-	Status string
-	Tag    string
-	Query  string
-	Offset int
-	Limit  int
+	Kinds      []model.ContentKind
+	Status     string
+	Tag        string
+	Query      string
+	AiAssisted *bool
+	Sort       string
+	Page       int
+	Offset     int
+	Limit      int
+	SkipFirst  bool
+}
+
+type ContentListResult struct {
+	Items      []model.Content
+	HasMore    bool
+	Page       int
+	PageSize   int
+	TotalItems int
+	TotalPages int
 }
 
 type ContentUpdate struct {
@@ -540,14 +553,14 @@ func (s *Store) UpdateThoughtConfig(featuredThoughtID *string) error {
 	return err
 }
 
-func (s *Store) ListContent(includeDrafts bool, options ContentListOptions) ([]model.Content, bool, error) {
-	query := `SELECT id, kind, status, slug, title, summary, body, tags_json, metadata_json, published_at, created_at, updated_at, version, view_count, (SELECT COUNT(*) FROM likes WHERE content_id = content.id), (SELECT COUNT(*) FROM comments WHERE content_id = content.id AND status = 'APPROVED') FROM content WHERE 1 = 1`
+func contentListWhere(includeDrafts bool, options ContentListOptions) (string, []any) {
+	query := `WHERE 1 = 1`
+	args := make([]any, 0, 8)
 	if !includeDrafts {
 		query += ` AND status = 'PUBLISHED'`
 	} else if options.Status == "" {
 		query += ` AND status != 'DELETED'`
 	}
-	args := make([]any, 0, len(options.Kinds)+4)
 	if options.Status != "" {
 		query += ` AND status = ?`
 		args = append(args, options.Status)
@@ -569,23 +582,32 @@ func (s *Store) ListContent(includeDrafts bool, options ContentListOptions) ([]m
 		term := "%" + strings.ToLower(options.Query) + "%"
 		args = append(args, term, term, term)
 	}
-	query += ` ORDER BY COALESCE(published_at, created_at) DESC, id DESC LIMIT ? OFFSET ?`
-	limit := options.Limit
-	if limit <= 0 {
-		limit = 20
+	if options.AiAssisted != nil {
+		query += ` AND COALESCE(json_extract(metadata_json, '$.aiAssisted'), 0) IN (1, 'true') = ?`
+		args = append(args, *options.AiAssisted)
 	}
-	args = append(args, limit+1, options.Offset)
-	rows, err := s.DB.Query(query, args...)
-	if err != nil {
-		return nil, false, err
+	return query, args
+}
+
+func contentSortClause(sort string) string {
+	switch sort {
+	case "oldest":
+		return ` ORDER BY COALESCE(published_at, created_at) ASC, id ASC`
+	case "updated":
+		return ` ORDER BY updated_at DESC, id DESC`
+	default:
+		return ` ORDER BY COALESCE(published_at, created_at) DESC, id DESC`
 	}
+}
+
+func scanContentRows(rows *sql.Rows) ([]model.Content, error) {
 	defer rows.Close()
 	var items []model.Content
-	for rows.Next() && len(items) <= limit {
+	for rows.Next() {
 		var c model.Content
 		var tags, metadata, published, slug, title sql.NullString
 		if err := rows.Scan(&c.ID, &c.Kind, &c.Status, &slug, &title, &c.Summary, &c.Body, &tags, &metadata, &published, &c.CreatedAt, &c.UpdatedAt, &c.Version, &c.ViewCount, &c.LikeCount, &c.CommentCount); err != nil {
-			return nil, false, err
+			return nil, err
 		}
 		c.Slug, c.Title = slug.String, title.String
 		c.Tags = decodeStrings(tags.String)
@@ -599,19 +621,88 @@ func (s *Store) ListContent(includeDrafts bool, options ContentListOptions) ([]m
 			c.Href = "/writing/" + c.Slug
 		}
 		c.Excerpt = contentExcerpt(c.Body)
-		if !includeDrafts {
-			c.Body = ""
-		}
 		items = append(items, c)
+	}
+	return items, rows.Err()
+}
+
+func (s *Store) ListContent(includeDrafts bool, options ContentListOptions) (ContentListResult, error) {
+	result := ContentListResult{Page: 1, TotalItems: -1, TotalPages: 1}
+	limit := options.Limit
+	if limit <= 0 {
+		limit = 20
+	}
+	where, args := contentListWhere(includeDrafts, options)
+	if options.Page > 0 {
+		var total int
+		if err := s.DB.QueryRow(`SELECT COUNT(*) FROM content `+where, args...).Scan(&total); err != nil {
+			return result, err
+		}
+		effective := total
+		if options.SkipFirst && effective > 0 {
+			effective--
+		}
+		totalPages := (effective + limit - 1) / limit
+		if totalPages < 1 {
+			totalPages = 1
+		}
+		page := options.Page
+		if page > totalPages {
+			page = totalPages
+		}
+		result.TotalItems, result.TotalPages, result.Page, result.PageSize = total, totalPages, page, limit
+		options.Offset = (page - 1) * limit
+		if options.SkipFirst {
+			options.Offset++
+		}
+	}
+	query := `SELECT id, kind, status, slug, title, summary, body, tags_json, metadata_json, published_at, created_at, updated_at, version, view_count, (SELECT COUNT(*) FROM likes WHERE content_id = content.id), (SELECT COUNT(*) FROM comments WHERE content_id = content.id AND status = 'APPROVED') FROM content ` + where + contentSortClause(options.Sort) + ` LIMIT ? OFFSET ?`
+	rows, err := s.DB.Query(query, append(args, limit+1, options.Offset)...)
+	if err != nil {
+		return result, err
+	}
+	items, err := scanContentRows(rows)
+	if err != nil {
+		return result, err
+	}
+	if !includeDrafts {
+		for i := range items {
+			items[i].Body = ""
+		}
 	}
 	hasMore := len(items) > limit
 	if hasMore {
 		items = items[:limit]
 	}
-	return items, hasMore, rows.Err()
+	result.Items, result.HasMore = items, hasMore
+	return result, nil
 }
 
-func (s *Store) ThoughtArchive(requestedPage, pageSize int) (model.ThoughtArchive, error) {
+func (s *Store) Tags(kind model.ContentKind) ([]model.TagSummary, error) {
+	query := `SELECT json_each.value, COUNT(*) FROM content, json_each(content.tags_json) WHERE content.status = 'PUBLISHED'`
+	args := []any{}
+	if kind != "" {
+		query += ` AND content.kind = ?`
+		args = append(args, kind)
+	}
+	query += ` GROUP BY json_each.value ORDER BY COUNT(*) DESC, json_each.value ASC`
+	rows, err := s.DB.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	tags := []model.TagSummary{}
+	for rows.Next() {
+		var tag model.TagSummary
+		if err := rows.Scan(&tag.Name, &tag.Count); err != nil {
+			return nil, err
+		}
+		tags = append(tags, tag)
+	}
+	return tags, rows.Err()
+}
+
+func (s *Store) ThoughtArchive(requestedPage, pageSize int, tag, search string) (model.ThoughtArchive, error) {
 	config, err := s.GetThoughtConfig()
 	if err != nil {
 		return model.ThoughtArchive{}, err
@@ -628,12 +719,12 @@ func (s *Store) ThoughtArchive(requestedPage, pageSize int) (model.ThoughtArchiv
 		}
 	}
 	if featured == nil {
-		items, _, listErr := s.ListContent(false, ContentListOptions{Kinds: []model.ContentKind{model.ContentKindThought}, Limit: 1})
+		list, listErr := s.ListContent(false, ContentListOptions{Kinds: []model.ContentKind{model.ContentKindThought}, Limit: 1})
 		if listErr != nil {
 			return model.ThoughtArchive{}, listErr
 		}
-		if len(items) > 0 {
-			featured = &items[0]
+		if len(list.Items) > 0 {
+			featured = &list.Items[0]
 		}
 	}
 
@@ -641,8 +732,19 @@ func (s *Store) ThoughtArchive(requestedPage, pageSize int) (model.ThoughtArchiv
 	if featured != nil {
 		excludedID = featured.ID
 	}
+	where := `WHERE kind = 'THOUGHT' AND status = 'PUBLISHED' AND (? = '' OR id != ?)`
+	args := []any{excludedID, excludedID}
+	if tag != "" {
+		where += ` AND EXISTS (SELECT 1 FROM json_each(content.tags_json) WHERE json_each.value = ?)`
+		args = append(args, tag)
+	}
+	if search != "" {
+		where += ` AND (LOWER(title) LIKE ? OR LOWER(summary) LIKE ? OR LOWER(body) LIKE ?)`
+		term := "%" + strings.ToLower(search) + "%"
+		args = append(args, term, term, term)
+	}
 	var totalItems int
-	if err := s.DB.QueryRow(`SELECT COUNT(*) FROM content WHERE kind = 'THOUGHT' AND status = 'PUBLISHED' AND (? = '' OR id != ?)`, excludedID, excludedID).Scan(&totalItems); err != nil {
+	if err := s.DB.QueryRow(`SELECT COUNT(*) FROM content `+where, args...).Scan(&totalItems); err != nil {
 		return model.ThoughtArchive{}, err
 	}
 	totalPages := (totalItems + pageSize - 1) / pageSize
@@ -657,35 +759,20 @@ func (s *Store) ThoughtArchive(requestedPage, pageSize int) (model.ThoughtArchiv
 		page = totalPages
 	}
 
-	rows, err := s.DB.Query(`SELECT id, kind, status, slug, title, summary, body, tags_json, metadata_json, published_at, created_at, updated_at, version, view_count, (SELECT COUNT(*) FROM likes WHERE content_id = content.id), (SELECT COUNT(*) FROM comments WHERE content_id = content.id AND status = 'APPROVED')
-		FROM content
-		WHERE kind = 'THOUGHT' AND status = 'PUBLISHED' AND (? = '' OR id != ?)
+	query := `SELECT id, kind, status, slug, title, summary, body, tags_json, metadata_json, published_at, created_at, updated_at, version, view_count, (SELECT COUNT(*) FROM likes WHERE content_id = content.id), (SELECT COUNT(*) FROM comments WHERE content_id = content.id AND status = 'APPROVED')
+		FROM content ` + where + `
 		ORDER BY COALESCE(published_at, created_at) DESC, id DESC
-		LIMIT ? OFFSET ?`, excludedID, excludedID, pageSize, (page-1)*pageSize)
+		LIMIT ? OFFSET ?`
+	rows, err := s.DB.Query(query, append(args, pageSize, (page-1)*pageSize)...)
 	if err != nil {
 		return model.ThoughtArchive{}, err
 	}
-	defer rows.Close()
-	items := make([]model.Content, 0, pageSize)
-	for rows.Next() {
-		var item model.Content
-		var tags, metadata, published, slug, title sql.NullString
-		if err := rows.Scan(&item.ID, &item.Kind, &item.Status, &slug, &title, &item.Summary, &item.Body, &tags, &metadata, &published, &item.CreatedAt, &item.UpdatedAt, &item.Version, &item.ViewCount, &item.LikeCount, &item.CommentCount); err != nil {
-			return model.ThoughtArchive{}, err
-		}
-		item.Slug, item.Title = slug.String, title.String
-		item.Tags = decodeStrings(tags.String)
-		item.Metadata = decodeMetadata(metadata.String)
-		if published.Valid {
-			item.PublishedAt = &published.String
-		}
-		item.Href = "/thoughts/" + item.ID
-		item.Excerpt = contentExcerpt(item.Body)
-		item.Body = ""
-		items = append(items, item)
-	}
-	if err := rows.Err(); err != nil {
+	items, err := scanContentRows(rows)
+	if err != nil {
 		return model.ThoughtArchive{}, err
+	}
+	for i := range items {
+		items[i].Body = ""
 	}
 	return model.ThoughtArchive{
 		Featured: featured,

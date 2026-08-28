@@ -84,6 +84,7 @@ func newRouter(cfg config.Config, database *store.Store, auditEvents events.Audi
 		api.Post("/presence", h.presence)
 		api.Get("/content", h.listContent)
 		api.Get("/thoughts", h.thoughts)
+		api.Get("/tags", h.tags)
 		api.Get("/content/{slug}", h.getContent)
 		api.Get("/content/{slug}/comments", h.listPublicComments)
 		api.Post("/content/{slug}/comments", h.createComment)
@@ -233,21 +234,43 @@ func (h *apiHandler) listContent(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusBadRequest, "INVALID_QUERY", err.Error())
 		return
 	}
-	items, hasMore, err := h.store.ListContent(false, options)
+	result, err := h.store.ListContent(false, options)
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, "CONTENT_UNAVAILABLE", "Content is unavailable.")
 		return
 	}
-	WriteJSON(w, http.StatusOK, collectionWithCursor(items, options.Offset, options.Limit, hasMore))
+	if options.Page > 0 {
+		items := result.Items
+		if items == nil {
+			items = []model.Content{}
+		}
+		WriteJSON(w, http.StatusOK, map[string]any{"data": items, "pagination": map[string]any{"nextCursor": nil, "hasMore": result.HasMore, "page": result.Page, "pageSize": result.PageSize, "totalItems": result.TotalItems, "totalPages": result.TotalPages}})
+		return
+	}
+	WriteJSON(w, http.StatusOK, collectionWithCursor(result.Items, options.Offset, options.Limit, result.HasMore))
+}
+
+func (h *apiHandler) tags(w http.ResponseWriter, r *http.Request) {
+	kind := model.ContentKind(strings.TrimSpace(r.URL.Query().Get("kind")))
+	if kind != "" && kind != model.ContentKindThought && kind != model.ContentKindArticle {
+		WriteError(w, http.StatusBadRequest, "INVALID_QUERY", "kind is invalid")
+		return
+	}
+	tags, err := h.store.Tags(kind)
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, "TAGS_UNAVAILABLE", "Tags are unavailable.")
+		return
+	}
+	WriteJSON(w, http.StatusOK, collection(tags))
 }
 
 func (h *apiHandler) thoughts(w http.ResponseWriter, r *http.Request) {
-	page, limit, err := parseThoughtArchiveOptions(r)
+	page, limit, tag, search, err := parseThoughtArchiveOptions(r)
 	if err != nil {
 		WriteError(w, http.StatusBadRequest, "INVALID_QUERY", err.Error())
 		return
 	}
-	archive, err := h.store.ThoughtArchive(page, limit)
+	archive, err := h.store.ThoughtArchive(page, limit, tag, search)
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, "THOUGHTS_UNAVAILABLE", "Thoughts are unavailable.")
 		return
@@ -442,12 +465,12 @@ func (h *apiHandler) adminListContent(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusBadRequest, "INVALID_QUERY", err.Error())
 		return
 	}
-	items, hasMore, err := h.store.ListContent(true, options)
+	result, err := h.store.ListContent(true, options)
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, "CONTENT_UNAVAILABLE", "Content is unavailable.")
 		return
 	}
-	WriteJSON(w, http.StatusOK, collectionWithCursor(items, options.Offset, options.Limit, hasMore))
+	WriteJSON(w, http.StatusOK, collectionWithCursor(result.Items, options.Offset, options.Limit, result.HasMore))
 }
 
 func (h *apiHandler) adminProfile(w http.ResponseWriter, _ *http.Request) {
@@ -889,7 +912,9 @@ func parseContentListOptions(r *http.Request, includeDrafts bool) (store.Content
 		}
 		options.Limit = limit
 	}
+	cursorProvided := false
 	if rawCursor := strings.TrimSpace(query.Get("cursor")); rawCursor != "" {
+		cursorProvided = true
 		decoded, err := base64.RawURLEncoding.DecodeString(rawCursor)
 		if err != nil {
 			return options, fmt.Errorf("cursor is invalid")
@@ -899,6 +924,41 @@ func parseContentListOptions(r *http.Request, includeDrafts bool) (store.Content
 			return options, fmt.Errorf("cursor is invalid")
 		}
 		options.Offset = offset
+	}
+	if rawPage := strings.TrimSpace(query.Get("page")); rawPage != "" {
+		page, err := strconv.Atoi(rawPage)
+		if err != nil || page < 1 {
+			return options, fmt.Errorf("page must be a positive integer")
+		}
+		if cursorProvided {
+			return options, fmt.Errorf("page and cursor cannot be combined")
+		}
+		options.Page = page
+	}
+	if rawSort := strings.TrimSpace(query.Get("sort")); rawSort != "" {
+		switch rawSort {
+		case "newest", "oldest", "updated":
+			options.Sort = rawSort
+		default:
+			return options, fmt.Errorf("sort is invalid")
+		}
+	}
+	if rawAiAssisted := strings.TrimSpace(query.Get("aiAssisted")); rawAiAssisted != "" {
+		value, err := strconv.ParseBool(rawAiAssisted)
+		if err != nil {
+			return options, fmt.Errorf("aiAssisted must be a boolean")
+		}
+		options.AiAssisted = &value
+	}
+	if rawSkipFirst := strings.TrimSpace(query.Get("skipFirst")); rawSkipFirst != "" {
+		value, err := strconv.ParseBool(rawSkipFirst)
+		if err != nil {
+			return options, fmt.Errorf("skipFirst must be a boolean")
+		}
+		if options.Page == 0 {
+			return options, fmt.Errorf("skipFirst requires page")
+		}
+		options.SkipFirst = value
 	}
 	for _, rawValue := range query["kind"] {
 		for _, rawKind := range strings.Split(rawValue, ",") {
@@ -930,23 +990,31 @@ func parseContentListOptions(r *http.Request, includeDrafts bool) (store.Content
 	return options, nil
 }
 
-func parseThoughtArchiveOptions(r *http.Request) (int, int, error) {
-	page, limit := 1, 8
+func parseThoughtArchiveOptions(r *http.Request) (page, limit int, tag, search string, err error) {
+	page, limit = 1, 8
 	if rawPage := strings.TrimSpace(r.URL.Query().Get("page")); rawPage != "" {
-		value, err := strconv.Atoi(rawPage)
-		if err != nil || value < 1 {
-			return page, limit, fmt.Errorf("page must be a positive integer")
+		value, parseErr := strconv.Atoi(rawPage)
+		if parseErr != nil || value < 1 {
+			return page, limit, tag, search, fmt.Errorf("page must be a positive integer")
 		}
 		page = value
 	}
 	if rawLimit := strings.TrimSpace(r.URL.Query().Get("limit")); rawLimit != "" {
-		value, err := strconv.Atoi(rawLimit)
-		if err != nil || value < 1 || value > 50 {
-			return page, limit, fmt.Errorf("limit must be between 1 and 50")
+		value, parseErr := strconv.Atoi(rawLimit)
+		if parseErr != nil || value < 1 || value > 50 {
+			return page, limit, tag, search, fmt.Errorf("limit must be between 1 and 50")
 		}
 		limit = value
 	}
-	return page, limit, nil
+	tag = strings.TrimSpace(r.URL.Query().Get("tag"))
+	if len(tag) > 80 {
+		return page, limit, tag, search, fmt.Errorf("tag is too long")
+	}
+	search = strings.TrimSpace(r.URL.Query().Get("q"))
+	if len(search) > 200 {
+		return page, limit, tag, search, fmt.Errorf("q is too long")
+	}
+	return page, limit, tag, search, nil
 }
 
 func (h *apiHandler) audit(r *http.Request, eventName, resourceType, resourceID string, metadata map[string]string) {
