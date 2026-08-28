@@ -5,6 +5,7 @@ import { ArrowRight, Eye, Heart, MessageCircle, Search } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useRef } from "react";
 import { Reveal } from "../../components/reveal";
+import { ScrollHint } from "../../components/scroll-hint";
 import { TagCloud } from "../../components/tag-cloud";
 import { TagPicker } from "../../components/tag-picker";
 import { createBrowserClient } from "../../lib/api";
@@ -150,5 +151,6 @@ export default function ThoughtArchive({ initialArchive, tags, initialQuery = ""
         </section>
       </Reveal>}
     </div>
+    <ScrollHint targetRef={timelineRef} />
   </main>;
 }

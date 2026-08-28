@@ -7,6 +7,7 @@ import { useRef } from "react";
 import type { Content, ContentSort, TagSummary } from "@manifold/contracts";
 import styles from "../site.module.css";
 import { Reveal } from "../../components/reveal";
+import { ScrollHint } from "../../components/scroll-hint";
 import { TagCloud } from "../../components/tag-cloud";
 import { TagPicker } from "../../components/tag-picker";
 import { createBrowserClient } from "../../lib/api";
@@ -48,6 +49,7 @@ async function fetchWritingPage(state: { query: string; tags: string[]; page: nu
 export default function WritingArchive({ initialList, featured, tags, query, activeTags, sort, noAi }: WritingArchiveProps) {
   const asideSlotRef = useRef<HTMLDivElement>(null);
   const asideRef = useRef<HTMLElement>(null);
+  const listRef = useRef<HTMLElement>(null);
   useCenteredAside(asideSlotRef, asideRef);
   const { input, query: activeQuery, tags: selectedTags, extra, data, isPending, error, onSearchInput, toggleTag, goToPage, setExtraParam } = useArchiveFilters<WritingListData>({
     basePath: "/writing",
@@ -81,7 +83,7 @@ export default function WritingArchive({ initialList, featured, tags, query, act
       </Link>
     </Reveal>}
     {data === null ? <p className={styles.errorBanner}>The writings could not be loaded.</p> : <Reveal className={styles.writingReveal}>
-      <section className={styles.writingCollection}>
+      <section className={styles.writingCollection} ref={listRef}>
         <div className={styles.writingToolbarSurface}>
           <div className={styles.writingToolbar}>
             <span>{data.totalItems} articles</span>
@@ -135,7 +137,9 @@ export default function WritingArchive({ initialList, featured, tags, query, act
       </div>
     </aside>
   </div>
-</div></main>;
+</div>
+<ScrollHint targetRef={listRef} />
+</main>;
 }
 
 function WritingPreview({ item, featured = false }: { item: Content; featured?: boolean }) {

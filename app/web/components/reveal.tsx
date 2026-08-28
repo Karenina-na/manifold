@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 
+export const revealObserverOptions: IntersectionObserverInit = { threshold: [0, 0.12], rootMargin: "0px 0px -40px" };
+
 export function Reveal({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   const ref = useRef<HTMLDivElement>(null);
   const [visible, setVisible] = useState(false);
@@ -14,7 +16,7 @@ export function Reveal({ children, className = "" }: { children: React.ReactNode
         setVisible(true);
         observer.disconnect();
       }
-    }, { threshold: 0.12, rootMargin: "0px 0px -40px" });
+    }, revealObserverOptions);
     observer.observe(element);
     return () => observer.disconnect();
   }, []);

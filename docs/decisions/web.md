@@ -37,6 +37,8 @@ Server Component 负责首屏数据、详情读取和 SEO；Client Component 负
 
 两个归档共用 `TagPicker` 弹出式标签选择器：`/writing` 在侧栏 Archive 块内提供 `View all tags →` 触发器，`/thoughts` 把触发器内联在 tag 行末尾（经 `TagCloud` 的 `action` 插槽）。点击触发器展开视口全局居中的固定面板（面板经 React portal 挂载到 `document.body`，避免父级 `backdrop-filter` 影响定位），展示该归档全部 tag 与计数，允许多选且每次点选即时经 `useArchiveFilters` 生效并同步 URL `tag` 参数（可重复）；选中 tag 在弹出面板与 tag 云中始终排最前（writings 竖排即顶部，thoughts 横排即最左）。面板在 `document` 上监听 `pointerdown`，点击面板与触发器之外的任意空白即关闭，Escape 也可关闭；触发器带 `aria-expanded`，面板为 `role="group"`。
 
+两个归档底部列表包在 `Reveal` 渐进浮现块中，首屏未滚动到之前保持透明。列表区块下方叠加 `ScrollHint` 下滑提示：进入归档页约 400ms 后，若列表区块尚未进入 reveal 视界，则在视口底部居中显示呼吸渐进的箭头（内层 span 以 `scrollHintBreath` keyframes 无限循环"淡入—下浮—淡出"）；箭头可点击（`aria-label="Scroll to list"`），点击平滑下滑约一屏。列表区块一旦被与 `Reveal` 相同配置的 IntersectionObserver（共享 `revealObserverOptions`，`threshold: [0, 0.12]`、`rootMargin: 0 0 -40px`）判定进入视界，箭头外层在 480ms 内淡出并卸载；短列表首屏已完整可见或数据错误时箭头不显示。`threshold` 从 `0.12` 改为 `[0, 0.12]`，避免高区块在小视口下因可见比例达不到 12% 而永不浮现。
+
 时间轴每页展示 Core 返回的 8 条非置顶 Thought，Web 只把当前页按 UTC 年份、月份和日期分块分组，卡片可见日期也固定使用 UTC 以保持年/月/日刻度一致；页面顶部沿用 Writings 的简洁眉标题与 H1，不额外放置说明性副文案。时间轴按年份分块：每个年份以流程内的分节标题行（serif 年份加横贯细线）开始，位于卡片 surface 之外；年份块内的月份标签在左栏右对齐并通过短连接线指向纵轴，纵线与日期节点贯穿该年份的月份区，右侧内容 surface 按年份框住 Thought 卡片，并与下方分页 surface 使用同一左边界。年份、月份标签、纵线与日期节点全部使用常规文档流与层级定位，不使用绝对定位骑跨轴线。右侧卡片展示标题、tag、日期，并把编辑摘要与正文摘录分开：摘要使用星号标识和灰色文字，Core 提供的纯文本 `excerpt` 使用正文色且最多显示两行；置顶卡可显示四行正文摘录。置顶卡左上显示 `Featured`，右上显示 tags 与日期；置顶和列表底部均在左侧展示 Core 聚合的 `likeCount`、`viewCount`、已审核 `commentCount`，右侧提供全文入口。卡片、时间刻度、全文入口和分页控件都提供 hover/focus 动画，并遵循 `prefers-reduced-motion`。
 
 Writings 归档使用相同的信息层级：摘要以星号和灰色文字标识，正文摘录与摘要分开，普通列表最多两行，置顶 Writing 最多四行。Web 不从完整 Markdown 自行生成列表摘录，只消费 Core 的 `excerpt`；兼容旧响应时才回退到已有 `body`。

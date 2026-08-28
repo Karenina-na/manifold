@@ -348,9 +348,14 @@ async function main() {
     const probePublish = await fetch(`${coreUrl}/api/v1/admin/content/${probe.id}/publish`, { method: 'POST', headers: { authorization: `Bearer ${archiveToken}` } });
     if (!probePublish.ok) throw new Error(`Probe thought publish failed: ${probePublish.status}`);
 
-    await web.setViewportSize({ width: 1280, height: 900 });
+    await web.setViewportSize({ width: 1280, height: 400 });
     await web.goto(`${webUrl}/writing`, { waitUntil: 'networkidle' });
     await web.getByText('2 articles', { exact: true }).waitFor({ state: 'visible' });
+    const writingScrollHint = web.locator('[class*="scrollHint"]');
+    await writingScrollHint.waitFor({ state: 'visible' });
+    await writingScrollHint.click();
+    await writingScrollHint.waitFor({ state: 'detached' });
+    await web.setViewportSize({ width: 1280, height: 900 });
     const writingSearch = web.getByRole('textbox', { name: 'Search writings' });
     await writingSearch.fill('boundary');
     await web.waitForURL((url) => url.searchParams.get('q') === 'boundary');
@@ -380,9 +385,15 @@ async function main() {
     await web.waitForURL((url) => url.searchParams.getAll('tag').length === 0);
     await web.getByText('2 articles', { exact: true }).waitFor({ state: 'visible' });
 
+    await web.setViewportSize({ width: 1280, height: 400 });
     await web.goto(`${webUrl}/thoughts`, { waitUntil: 'networkidle' });
     const thoughtCount = web.getByText('1 notes', { exact: true });
     await thoughtCount.waitFor({ state: 'visible' });
+    const thoughtScrollHint = web.locator('[class*="scrollHint"]');
+    await thoughtScrollHint.waitFor({ state: 'visible' });
+    await thoughtScrollHint.click();
+    await thoughtScrollHint.waitFor({ state: 'detached' });
+    await web.setViewportSize({ width: 1280, height: 900 });
     const thoughtSearch = web.getByRole('textbox', { name: 'Search thoughts' });
     await thoughtSearch.fill('probe');
     await web.waitForURL((url) => url.searchParams.get('q') === 'probe');
