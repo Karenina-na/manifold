@@ -368,6 +368,10 @@ async function main() {
     const probe = await probeResponse.json();
     const probePublish = await fetch(`${coreUrl}/api/v1/admin/content/${probe.id}/publish`, { method: 'POST', headers: { authorization: `Bearer ${archiveToken}` } });
     if (!probePublish.ok) throw new Error(`Probe thought publish failed: ${probePublish.status}`);
+    for (let index = 0; index < 10; index += 1) {
+      const fillerResponse = await fetch(`${coreUrl}/api/v1/content/designing-boundaries/comments`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ authorName: `Filler ${index + 1}`, body: `Pagination filler comment ${index + 1}.` }) });
+      if (!fillerResponse.ok) throw new Error(`Filler comment creation failed: ${fillerResponse.status}`);
+    }
 
     await web.setViewportSize({ width: 1280, height: 400 });
     await web.goto(`${webUrl}/writing`, { waitUntil: 'networkidle' });
@@ -461,6 +465,7 @@ async function main() {
     if (likeButtons !== 1 || await commentToggle.count() !== 1) throw new Error('Web controls are incomplete');
     await commentToggle.click();
     await web.getByRole('button', { name: 'Send comment' }).waitFor({ state: 'visible' });
+    if (await web.locator('[aria-label="Comment pages"]').count() !== 0) throw new Error('Comment pager should stay hidden on a single page');
     const webControlCounts = {
       inputs: await web.locator('input').count(),
       textareas: await web.locator('textarea').count(),
@@ -480,6 +485,8 @@ async function main() {
     await commentVeil;
     await commentResponse;
     await web.getByText('Your comment has been posted.').waitFor({ state: 'visible', timeout: 5000 });
+    const commentPager = web.locator('[aria-label="Comment pages"]');
+    await commentPager.getByText('Page 2 of 2').waitFor({ state: 'visible', timeout: 5000 });
     const postedBubble = web.locator('[class*="commentBubble"]').filter({ hasText: commentBody }).first();
     await postedBubble.waitFor({ state: 'visible', timeout: 5000 });
     await web.getByRole('button', { name: 'View your comment' }).click();
@@ -501,6 +508,9 @@ async function main() {
     await web.locator('[class*="commentNest"]').filter({ hasText: replyBody }).waitFor({ state: 'visible', timeout: 5000 });
     await web.getByRole('button', { name: 'View your comment' }).click();
     await web.locator('[class*="commentBubble"]:not([class*="commentBubbleWrap"])').filter({ hasText: replyBody }).waitFor({ state: 'visible', timeout: 5000 });
+    await commentPager.getByRole('button', { name: 'Previous' }).click();
+    await commentPager.getByText('Page 1 of 2').waitFor({ state: 'visible', timeout: 5000 });
+    await web.locator('[class*="commentBubble"]').filter({ hasText: 'Pagination filler comment 10.' }).first().waitFor({ state: 'visible', timeout: 5000 });
 
     const admin = await browser.newPage();
     const adminErrors = [];
@@ -539,7 +549,7 @@ async function main() {
     await restoreResponse;
     await refreshedAfterRestore;
     await targetRow.getByRole('button', { name: /^Delete comment from/ }).waitFor({ state: 'visible', timeout: 5000 });
-    if (await admin.locator('.moderation-row').count() !== 2) throw new Error('Admin comment list does not show both comments');
+    if (await admin.locator('.moderation-row').count() !== 12) throw new Error('Admin comment list does not show all comments');
     if (webErrors.length || adminErrors.length) throw new Error(JSON.stringify({ webErrors, adminErrors }));
     console.log(JSON.stringify({ webControlCounts, adminControlCounts, webErrors, adminErrors }));
   } finally {

@@ -14,6 +14,7 @@ import { clampPage } from "../../lib/archive-url";
 import { useArchiveFilters } from "../../lib/use-archive-filters";
 import { groupThoughtsByYear, formatThoughtDate } from "../../lib/thought-archive";
 import { previewForContent } from "../../lib/content-preview";
+import { Pagination } from "../../components/pagination";
 import styles from "../site.module.css";
 
 type Thought = Extract<Content, { kind: "THOUGHT" }>;
@@ -50,6 +51,7 @@ export default function ThoughtArchive({ initialArchive, tags, initialQuery = ""
     onPageSettled: () => window.requestAnimationFrame(() => timelineRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })),
   });
   const filtersActive = Boolean(query || selectedTags.length);
+  const totalPages = data?.pagination.totalPages ?? 1;
   const yearGroups = useMemo(() => groupThoughtsByYear(data?.data ?? []), [data]);
 
   const changePage = (next: number) => {
@@ -133,13 +135,7 @@ export default function ThoughtArchive({ initialArchive, tags, initialQuery = ""
             </section>)}
           </div> : <p className={styles.thoughtEmpty}>{filtersActive ? "No thoughts match the current filters." : "No more thoughts have been published yet."}</p>}
 
-          <div className={styles.paginationSurface}>
-            <nav className={styles.pagination} aria-label="Thought pages">
-              <button className={styles.pageButton} type="button" onClick={() => changePage(data.pagination.page - 1)} disabled={isPending || data.pagination.page === 1}>Previous</button>
-              <span className={styles.pageStatus}>Page {data.pagination.page} of {data.pagination.totalPages}</span>
-              <button className={styles.pageButton} type="button" onClick={() => changePage(data.pagination.page + 1)} disabled={isPending || data.pagination.page === data.pagination.totalPages}>Next</button>
-            </nav>
-          </div>
+          {totalPages > 1 && <Pagination page={data.pagination.page} totalPages={totalPages} onChange={changePage} disabled={isPending} label="Thought pages" />}
           {error && <p className={styles.errorBanner}>The latest thought page could not be loaded. Please try again.</p>}
         </section>
       </Reveal>}

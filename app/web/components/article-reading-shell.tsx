@@ -5,7 +5,7 @@ import { AnimatePresence, LayoutGroup } from "framer-motion";
 import type { ArticleMetadata, Comment } from "@manifold/contracts";
 import styles from "../app/site.module.css";
 import { resolveArticleActionsAtEnd } from "../lib/article-end-threshold";
-import { CommentComposer, ReplyContext, useReplyFocus, type ComposerPhase, type ReplyContextValue } from "./comment-thread";
+import { CommentComposer, CommentsPagingRefContext, ReplyContext, useReplyFocus, type CommentsPagingController, type ComposerPhase, type ReplyContextValue } from "./comment-thread";
 
 type TocItem = NonNullable<ArticleMetadata["toc"]>[number];
 const ARTICLE_END_ACTIVATION_RATIO = 0.76;
@@ -49,6 +49,7 @@ export function ArticleReadingShell({ children, discussion, toc, slug }: { child
   const showBottomComposer = atEnd || composerPinned;
   useReplyFocus(replyTarget);
   const reply = useMemo<ReplyContextValue>(() => ({ replyTarget, startReply: setReplyTarget, cancelReply: () => setReplyTarget(null) }), [replyTarget]);
+  const commentsPagingRef = useRef<CommentsPagingController>({ revealPosted: () => {} });
   useEffect(() => {
     const trigger = discussionEndRef.current;
     if (!trigger) return;
@@ -84,7 +85,7 @@ export function ArticleReadingShell({ children, discussion, toc, slug }: { child
     };
   }, []);
 
-  return <LayoutGroup id="article-reading-actions"><ReplyContext.Provider value={reply}><div className={styles.articleReadingShell}>
+  return <CommentsPagingRefContext.Provider value={commentsPagingRef}><LayoutGroup id="article-reading-actions"><ReplyContext.Provider value={reply}><div className={styles.articleReadingShell}>
     <aside className={styles.articleActionRail} aria-label="Article actions">
       <AnimatePresence initial={false} mode="popLayout">{!atEnd && !composerPinned && <CommentComposer slug={slug} compact expanded={compactExpanded} onExpandedChange={setCompactExpanded} />}</AnimatePresence>
     </aside>
@@ -97,5 +98,5 @@ export function ArticleReadingShell({ children, discussion, toc, slug }: { child
     <section className={styles.articleComposerBlock} data-active={showBottomComposer ? "true" : "false"} aria-label="Add a comment" aria-hidden={!showBottomComposer}>
       <AnimatePresence initial={false} mode="popLayout">{showBottomComposer && <CommentComposer slug={slug} expanded={bottomExpanded} anchorId="comment-composer" onExpandedChange={setBottomExpanded} onPhaseChange={setBottomComposerPhase} />}</AnimatePresence>
     </section>
-  </div></ReplyContext.Provider></LayoutGroup>;
+  </div></ReplyContext.Provider></LayoutGroup></CommentsPagingRefContext.Provider>;
 }

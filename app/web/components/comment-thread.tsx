@@ -1,11 +1,11 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
 import { Eye, Filter, Heart, MessageCircle, Reply, Search, Send, Share2, X } from "lucide-react";
 import { Button, TextArea, TextField } from "@radix-ui/themes";
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import type { Comment } from "@manifold/contracts";
@@ -16,6 +16,7 @@ import { formatRelativeTime } from "../lib/relative-time";
 import styles from "../app/site.module.css";
 import { AvatarPicker, CommentAvatar } from "./comment-avatar";
 import { LikeButton } from "./like-button";
+import { Pagination } from "./pagination";
 
 const commentSchema = z.object({
   authorName: z.string().trim().max(80),
@@ -26,6 +27,8 @@ const commentSchema = z.object({
 type CommentForm = z.infer<typeof commentSchema>;
 
 const MAX_INDENT = 2;
+const COMMENT_PAGE_SIZE = 10;
+const SEARCH_DEBOUNCE_MS = 300;
 const MIN_SUBMIT_VEIL_MS = 350;
 const POSTED_COMMENT_SCROLL_TRIES = 8;
 const POSTED_COMMENT_SCROLL_INTERVAL_MS = 350;
@@ -55,6 +58,10 @@ function useReply() {
   if (!value) throw new Error("Reply components require a ReplyContext provider");
   return value;
 }
+
+export type CommentsPagingController = { revealPosted: (comment: Comment) => void };
+
+export const CommentsPagingRefContext = createContext<RefObject<CommentsPagingController>>({ current: { revealPosted: () => {} } });
 
 export function useReplyFocus(replyTarget: Comment | null) {
   useEffect(() => {
@@ -117,34 +124,67 @@ type ArticleDiscussionProps = { slug: string; viewCount?: number; likeCount?: nu
 
 export function ArticleDiscussion({ slug, viewCount = 0, likeCount = 0, showStats = true }: ArticleDiscussionProps) {
   const client = useMemo(() => createBrowserClient(), []);
+  const pagingRef = useContext(CommentsPagingRefContext);
+  const sectionRef = useRef<HTMLElement>(null);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [page, setPage] = useState(1);
   const [filter, setFilter] = useState<CommentFilter>("all");
   const [visitorId] = useState(() => typeof window === "undefined" ? "" : getVisitorId());
-  const commentsQuery = useQuery({ queryKey: ["comments", slug], queryFn: () => client.comments(slug) });
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedSearch(search), SEARCH_DEBOUNCE_MS);
+    return () => window.clearTimeout(timer);
+  }, [search]);
+  const commentsQuery = useQuery({
+    queryKey: ["comments", slug, page, debouncedSearch],
+    queryFn: () => client.comments(slug, { page, limit: COMMENT_PAGE_SIZE, q: debouncedSearch || undefined }),
+    placeholderData: keepPreviousData,
+  });
   const likesQuery = useQuery({ queryKey: ["likes", slug, visitorId], queryFn: () => client.likes(slug, visitorId), enabled: Boolean(visitorId) });
   const comments = useMemo(() => commentsQuery.data?.data ?? [], [commentsQuery.data]);
-  const visibleComments = useMemo(() => filterComments(comments, search, filter), [comments, search, filter]);
+  const pagination = commentsQuery.data?.pagination;
+  const totalPages = pagination?.totalPages ?? 1;
+  const displayPage = pagination?.page ?? page;
+  const totalComments = pagination?.totalItems ?? comments.length;
+  const visibleComments = useMemo(() => filterComments(comments, "", filter), [comments, filter]);
   const currentLikeCount = likesQuery.data?.likeCount ?? likeCount;
+  useEffect(() => {
+    pagingRef.current.revealPosted = (comment: Comment) => {
+      if (comment.replyToId) return;
+      setSearch("");
+      setDebouncedSearch("");
+      setPage(totalPages);
+    };
+  });
+  const changePage = (next: number) => {
+    setPage(Math.min(Math.max(1, next), totalPages));
+    window.requestAnimationFrame(() => sectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  };
+  const onSearchInput = (value: string) => {
+    setSearch(value);
+    setPage(1);
+  };
 
-  return <section id="comments" className={`${styles.commentSection} ${styles.articleDiscussion}`} aria-labelledby="comments-title">
+  return <section id="comments" ref={sectionRef} className={`${styles.commentSection} ${styles.articleDiscussion}`} aria-labelledby="comments-title">
     <div className={styles.sectionHeading}>
       <div><span className={styles.eyebrow}>Discussion</span><h2 id="comments-title">The thread</h2></div>
-      <span className={styles.commentCount}>{comments.length}</span>
+      <span className={styles.commentCount}>{totalComments}</span>
     </div>
     {showStats && <div className={styles.commentStats} aria-label="Article discussion statistics">
       <span><Eye size={15} aria-hidden="true" /> <strong>{viewCount}</strong> views</span>
       <span><Heart size={15} aria-hidden="true" /> <strong>{currentLikeCount}</strong> likes</span>
-      <span><MessageCircle size={15} aria-hidden="true" /> <strong>{comments.length}</strong> comments</span>
+      <span><MessageCircle size={15} aria-hidden="true" /> <strong>{totalComments}</strong> comments</span>
     </div>}
     <div className={styles.commentTools}>
-      <label className={styles.commentSearch}><Search size={15} aria-hidden="true" /><span className={styles.srOnly}>Search comments</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search comments" /></label>
+      <label className={styles.commentSearch}><Search size={15} aria-hidden="true" /><span className={styles.srOnly}>Search comments</span><input value={search} onChange={(event) => onSearchInput(event.target.value)} placeholder="Search comments" /></label>
       <label className={styles.commentFilter}><Filter size={15} aria-hidden="true" /><span className={styles.srOnly}>Filter comments</span><select value={filter} onChange={(event) => setFilter(event.target.value as CommentFilter)}><option value="all">All comments</option><option value="withWebsite">With website</option><option value="recent">Recent</option></select></label>
     </div>
     {commentsQuery.isLoading && <p className={styles.muted}>Loading responses...</p>}
     {commentsQuery.isError && <p className={styles.errorText}>Responses are unavailable at the moment.</p>}
-    {!commentsQuery.isLoading && !commentsQuery.isError && comments.length === 0 && <p className={styles.muted}>No responses yet. Start the thread.</p>}
-    {!commentsQuery.isLoading && !commentsQuery.isError && comments.length > 0 && visibleComments.length === 0 && <p className={styles.muted}>No comments match this search.</p>}
+    {!commentsQuery.isLoading && !commentsQuery.isError && totalComments === 0 && (debouncedSearch ? <p className={styles.muted}>No comments match this search.</p> : <p className={styles.muted}>No responses yet. Start the thread.</p>)}
+    {!commentsQuery.isLoading && !commentsQuery.isError && comments.length > 0 && visibleComments.length === 0 && <p className={styles.muted}>No comments match this filter on this page.</p>}
     <CommentList comments={visibleComments} />
+    {totalPages > 1 && <Pagination page={displayPage} totalPages={totalPages} onChange={changePage} disabled={commentsQuery.isPending || commentsQuery.isPlaceholderData} label="Comment pages" />}
   </section>;
 }
 
@@ -163,6 +203,7 @@ export function CommentComposer({ slug, expanded, compact = false, anchorId, onE
   const client = useMemo(() => createBrowserClient(), []);
   const queryClient = useQueryClient();
   const { replyTarget, cancelReply } = useReply();
+  const pagingRef = useContext(CommentsPagingRefContext);
   const [visitorId] = useState(() => typeof window === "undefined" ? "" : getVisitorId());
   const [identity, setIdentity] = useState<CommentIdentity>({ name: "", avatarSeed: "" });
   const [postedCommentId, setPostedCommentId] = useState<string | null>(null);
@@ -205,6 +246,7 @@ export function CommentComposer({ slug, expanded, compact = false, anchorId, onE
         form.reset({ authorName: input.authorName || identity.name, authorUrl: "", body: "", captcha: "" });
         setPostedCommentId(comment.id);
         setPostedMissing(false);
+        pagingRef.current.revealPosted(comment);
         updatePhase("success");
       };
       successTimerRef.current = window.setTimeout(finalize, MIN_SUBMIT_VEIL_MS);
@@ -307,12 +349,15 @@ export function CommentsSection({ slug, viewCount, likeCount }: { slug: string; 
   const [replyTarget, setReplyTarget] = useState<Comment | null>(null);
   useReplyFocus(replyTarget);
   const reply = useMemo<ReplyContextValue>(() => ({ replyTarget, startReply: setReplyTarget, cancelReply: () => setReplyTarget(null) }), [replyTarget]);
-  return <ReplyContext.Provider value={reply}>
-    <section className={styles.articleDiscussionBlock} aria-label="Thought discussion">
-      <ArticleDiscussion slug={slug} viewCount={viewCount} likeCount={likeCount} />
-    </section>
-    <section className={styles.articleComposerBlock} data-active="true" aria-label="Add a comment">
-      <CommentComposer slug={slug} expanded anchorId="comment-composer" />
-    </section>
-  </ReplyContext.Provider>;
+  const commentsPagingRef = useRef<CommentsPagingController>({ revealPosted: () => {} });
+  return <CommentsPagingRefContext.Provider value={commentsPagingRef}>
+    <ReplyContext.Provider value={reply}>
+      <section className={styles.articleDiscussionBlock} aria-label="Thought discussion">
+        <ArticleDiscussion slug={slug} viewCount={viewCount} likeCount={likeCount} />
+      </section>
+      <section className={styles.articleComposerBlock} data-active="true" aria-label="Add a comment">
+        <CommentComposer slug={slug} expanded anchorId="comment-composer" />
+      </section>
+    </ReplyContext.Provider>
+  </CommentsPagingRefContext.Provider>;
 }

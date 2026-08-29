@@ -15,6 +15,7 @@ import { clampPage } from "../../lib/archive-url";
 import { useArchiveFilters } from "../../lib/use-archive-filters";
 import { useCenteredAside } from "../../lib/use-centered-aside";
 import { previewForContent } from "../../lib/content-preview";
+import { Pagination } from "../../components/pagination";
 
 const PAGE_SIZE = 10;
 
@@ -112,13 +113,7 @@ export default function WritingArchive({ initialList, featured, tags, query, act
           </div>
           {!articles.length && <p className={styles.thoughtEmpty}>No writings match the current filters.</p>}
         </div>
-        <div className={styles.paginationSurface}>
-          <nav className={styles.pagination} aria-label="Writing pages">
-            <button className={styles.pageButton} onClick={() => changePage(data.page - 1)} disabled={isPending || data.page === 1}>Previous</button>
-            <span className={styles.pageStatus}>Page {data.page} of {data.totalPages}</span>
-            <button className={styles.pageButton} onClick={() => changePage(data.page + 1)} disabled={isPending || data.page === data.totalPages}>Next</button>
-          </nav>
-        </div>
+        {data.totalPages > 1 && <Pagination page={data.page} totalPages={data.totalPages} onChange={changePage} disabled={isPending} label="Writing pages" />}
         {error && <p className={styles.errorBanner}>The latest writing page could not be loaded. Please try again.</p>}
       </section>
     </Reveal>}
