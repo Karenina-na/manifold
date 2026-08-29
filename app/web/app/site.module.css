@@ -579,14 +579,14 @@ html { scroll-behavior: smooth; }
 .articleSurface .articleHeader { width: min(760px, 100%); max-width: none; margin: 0 auto; padding: 62px 0 48px; }.articleSurface .articleHeader h1 { max-width: 760px; }.articleSurface .articleHeader p { max-width: 680px; }
 .articleMeta { align-items: center; gap: 11px 16px; line-height: 1.35; }.articleMeta span { white-space: nowrap; }.articleMetaTag { color: var(--color-accent); }
 .articleReadingShell { display: grid; grid-template-columns: 170px minmax(0, 760px) 190px; gap: clamp(22px, 4vw, 46px); align-items: start; justify-content: center; }.articleReadingMain { min-width: 0; }.articleReadingMainContent { min-width: 0; }
-.articleActionRail { position: sticky; top: 112px; z-index: 3; align-self: start; min-height: 205px; }.articleActionCard { display: grid; gap: 9px; padding: 15px 13px; border: 1px solid color-mix(in srgb, var(--color-line) 72%, transparent); background: color-mix(in srgb, var(--surface-paper) 88%, var(--color-accent-soft)); box-shadow: 0 12px 28px rgba(24, 24, 20, .08); transform-origin: 50% 100%; }.articleActionLabel { color: var(--color-muted); font: 10px var(--font-mono); letter-spacing: .08em; text-transform: uppercase; }.articleActionButton { display: inline-flex; align-items: center; gap: 7px; min-height: 32px; border: 1px solid var(--color-line); padding: 0 9px; background: transparent; color: var(--color-muted); font-size: 12px; text-align: left; cursor: pointer; }.articleActionButton:hover { border-color: var(--color-accent); color: var(--color-accent); }.likeBarCompact { margin-top: 0; padding-top: 0; border-top: 0; display: grid; gap: 7px; }.likeBarCompact .likeButton { justify-content: flex-start; min-height: 32px; width: 100%; padding-inline: 9px; font-size: 12px; }
+.articleActionRail { position: sticky; top: 112px; z-index: 3; align-self: start; min-height: 205px; }.articleActionCard { display: grid; gap: 9px; padding: 15px 13px; border: 1px solid color-mix(in srgb, var(--color-line) 72%, transparent); border-radius: 6px; background: color-mix(in srgb, var(--surface-paper) 88%, var(--color-accent-soft)); box-shadow: 0 12px 28px rgba(24, 24, 20, .08); transform-origin: 50% 100%; }.articleActionLabel { color: var(--color-muted); font: 10px var(--font-mono); letter-spacing: .08em; text-transform: uppercase; }.articleActionButton { display: inline-flex; align-items: center; gap: 7px; min-height: 32px; border: 1px solid var(--color-line); padding: 0 9px; background: transparent; color: var(--color-muted); font-size: 12px; text-align: left; cursor: pointer; }.articleActionButton:hover { border-color: var(--color-accent); color: var(--color-accent); }.likeBarCompact { margin-top: 0; padding-top: 0; border-top: 0; display: grid; gap: 7px; }.likeBarCompact .likeButton { justify-content: flex-start; min-height: 32px; width: 100%; padding-inline: 9px; font-size: 12px; }
 .articleToc { position: sticky; top: 112px; display: grid; gap: 14px; align-self: start; padding-left: 19px; }.articleTocHeading { display: flex; justify-content: space-between; gap: 8px; color: var(--color-muted); font: 11px var(--font-mono); letter-spacing: .08em; text-transform: uppercase; }.articleTocTrack { position: absolute; top: 31px; bottom: 0; left: 2px; width: 2px; min-height: 140px; background: var(--color-line); }.articleTocTrack span { display: block; width: 2px; background: var(--color-accent); transition: height .2s ease; }.articleToc nav { display: grid; gap: 10px; max-height: calc(100vh - 180px); overflow: auto; }.articleToc a { color: var(--color-muted); font-size: 13px; line-height: 1.4; }.articleToc a:hover, .articleTocActive { color: var(--color-accent) !important; }.articleToc .tocNested { padding-left: 13px; font-size: 12px; }
 .articleReadingMainContent .commentSection { margin-top: 96px; }
 
 /* Detail page surfaces follow the archive/home neutral paper instead of a single white card. */
 .articleSurface { width: min(1400px, calc(100% - 32px)); margin: 38px auto 72px; border: 0; background: transparent; box-shadow: none; }
 .articleSurfaceInner { padding: 0 clamp(24px, 4vw, 64px) 72px; }
-.articleTitleBlock, .articleBodyBlock, .articleEndBlock { border: 1px solid color-mix(in srgb, var(--color-line) 72%, transparent); background: color-mix(in srgb, var(--surface-paper) 88%, var(--color-accent-soft)); box-shadow: 0 12px 34px rgba(24, 24, 20, .045); }
+.articleTitleBlock, .articleBodyBlock, .articleEndBlock { border: 1px solid color-mix(in srgb, var(--color-line) 72%, transparent); border-radius: 6px; background: color-mix(in srgb, var(--surface-paper) 88%, var(--color-accent-soft)); box-shadow: 0 12px 34px rgba(24, 24, 20, .045); }
 .articleBack, .articleTitleBlock { width: min(860px, calc(100% - 434px)); margin-left: 192px; margin-right: 0; }.articleTitleBlock { margin-bottom: 22px; }.articleTitleBlock .articleHeader { width: 100%; max-width: none; padding: 42px clamp(34px, 5vw, 64px) 40px; }
 .articleBodyBlock { padding: 36px clamp(34px, 5vw, 64px) 62px; }.articleReadingShell { grid-template-columns: 170px minmax(0, 860px) 220px; gap: 22px; }.articleReadingMain { min-width: 0; grid-column: 2; grid-row: 1; }.articleToc { grid-column: 3; grid-row: 1; }
 .articleEndBlock { grid-column: 2; grid-row: 2; min-width: 0; margin-top: 22px; }.articleEndInner { width: min(860px, 100%); margin: 0 auto; padding: 38px clamp(34px, 5vw, 64px) 50px; }.articleEndHeading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding-bottom: 22px; border-bottom: 1px solid var(--color-line); }.articleEndHeading h2 { margin: 0; font-family: var(--app-font-serif); font-size: 30px; font-weight: 400; }.articleEndBlock .commentSection { margin-top: 28px; padding-top: 0; border-top: 0; }
@@ -613,14 +613,14 @@ html { scroll-behavior: smooth; }
 
 /* Article ending: discussion and composer are separate surfaces with the same paper language as the title and body. */
 .articleActionRail { grid-column: 1; grid-row: 1; }
-.articleDiscussionBlock, .articleComposerBlock { grid-column: 2; min-width: 0; border: 1px solid color-mix(in srgb, var(--color-line) 72%, transparent); background: color-mix(in srgb, var(--surface-paper) 88%, var(--color-accent-soft)); box-shadow: 0 12px 34px rgba(24, 24, 20, .045); }
+.articleDiscussionBlock, .articleComposerBlock { grid-column: 2; min-width: 0; border: 1px solid color-mix(in srgb, var(--color-line) 72%, transparent); border-radius: 6px; background: color-mix(in srgb, var(--surface-paper) 88%, var(--color-accent-soft)); box-shadow: 0 12px 34px rgba(24, 24, 20, .045); }
 .articleDiscussionBlock { grid-row: 2; margin-top: 22px; padding: 32px clamp(34px, 5vw, 64px) 42px; }
 .articleDiscussionBlock .commentSection { margin: 0; padding: 0; border-top: 0; }
 .articleDiscussionBlock .sectionHeading { margin-bottom: 20px; }
-.articleComposerBlock { grid-row: 3; min-height: 570px; margin-top: 22px; padding: 0; }
+.articleComposerBlock { grid-row: 3; margin-top: 22px; padding: 0; }
 .articleComposerBlock[data-active="false"] { visibility: hidden; border-color: transparent; background: transparent; box-shadow: none; pointer-events: none; }
 .articleComposerCard { min-width: 0; }
-.articleComposerCard[data-compact="true"] { display: grid; gap: 10px; width: 100%; padding: 15px 13px; border: 1px solid color-mix(in srgb, var(--color-line) 72%, transparent); background: color-mix(in srgb, var(--surface-paper) 88%, var(--color-accent-soft)); box-shadow: 0 12px 28px rgba(24, 24, 20, .08); transform-origin: 50% 100%; }
+.articleComposerCard[data-compact="true"] { display: grid; gap: 10px; width: 100%; padding: 15px 13px; border: 1px solid color-mix(in srgb, var(--color-line) 72%, transparent); border-radius: 6px; background: color-mix(in srgb, var(--surface-paper) 88%, var(--color-accent-soft)); box-shadow: 0 12px 28px rgba(24, 24, 20, .08); transform-origin: 50% 100%; }
 .articleComposerCard[data-compact="true"][data-expanded="true"] { width: min(360px, calc(100vw - 32px)); }
 .articleComposerCard[data-compact="false"] { padding: 32px clamp(34px, 5vw, 64px) 42px; }
 .articleComposerActions { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; }
@@ -657,7 +657,7 @@ html { scroll-behavior: smooth; }
   .articleBodyBlock .markdown { min-width: 0; max-width: 100%; overflow-x: auto; }
   .articleDiscussionBlock, .articleComposerBlock { width: 100%; margin-top: 0; }
   .articleDiscussionBlock { order: 3; padding: 26px 16px 34px; }
-  .articleComposerBlock { order: 4; min-height: 740px; }
+  .articleComposerBlock { order: 4; }
   .articleComposerCard[data-compact="false"] { padding: 26px 16px 34px; }
   .articleComposerCard[data-compact="false"] .articleComposerActions { display: grid; grid-template-columns: 1fr 1fr; align-items: center; gap: 8px; }
   .articleComposerCard[data-compact="false"] .articleActionLabel { grid-column: 1 / -1; margin: 0 0 8px; }
@@ -674,7 +674,6 @@ html { scroll-behavior: smooth; }
 .thoughtDetail .articleBack, .thoughtDetail .articleTitleBlock, .thoughtDetail .articleBodyBlock, .thoughtDetail .articleDiscussionBlock, .thoughtDetail .articleComposerBlock { width: min(860px, 100%); margin-left: auto; margin-right: auto; }
 .thoughtDetail .articleTitleBlock { margin-bottom: 22px; }
 .thoughtDetail .articleDiscussionBlock { margin-top: 22px; }
-.thoughtDetail .articleComposerBlock { min-height: 0; margin-top: 22px; }
 .thoughtDetail .thoughtSummary { max-width: 680px; margin: 2px 0 20px; font-size: 14px; line-height: 1.7; }
 .thoughtDetail .articleHeader .thoughtActions { margin-top: 16px; }
 .thoughtMood { border: 1px solid color-mix(in srgb, var(--color-accent) 38%, var(--color-line)); border-radius: 999px; background: var(--color-accent-soft); color: var(--color-ink); padding: 1px 9px; }
