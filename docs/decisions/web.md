@@ -87,7 +87,8 @@ Article 的 `metadata.toc` 和 `readingMinutes` 由 Core 在保存时从 Markdow
 4. Reply 点击写入 `ReplyContext`，平滑滚动到 `#comment-composer` 并聚焦正文输入；composer 顶部显示 `Replying to @name` 引用条（灰色引用原文）可取消，提交携带 `replyToId`。
 5. 表单要求正文 3 到 4000 字符，作者名/网站可选，附轻量验证码；Name 字段预填 `lib/identity.ts` 生成的组合词默认名（来自 `manifold.visitorId` 种子，持久化于 `localStorage` 的 `manifold.identity`），头像选择器 `AvatarPicker` 提供 6 个确定性候选可点选，身份随评论提交（`avatarSeed`）并在发送成功后回写本地。
 6. 讨论面在客户端对公开评论执行搜索和筛选，不新增 Core 查询参数；筛选后的列表再组装线程，被筛掉父级的回复提升为顶层。
-7. 添加评论表单提交到 Core，成功后清空表单、取消回复目标并失效 `comments + slug` query；失败时保留输入并显示错误。
+7. 提交是一个显式状态机（`ComposerPhase`：`editing → submitting → success`，composer 私有状态；Writing 详情仅底部 composer 通过 `onPhaseChange` 上报，用于"提交中/成功期间钉住添加评论面"）：点击发送后表单内容渐进淡出并显示遮罩转圈（`commentVeil`/`commentSpinner`，响应返回后至少停留 350ms 防闪烁）；成功后失效 `comments + slug` query 并显示对勾描画动画、"Your comment has been posted." 与两个动作——`View your comment` 用 mutation 返回的评论 ID 平滑滚动到新评论（重试等待 refetch 渲染，重试耗尽则显示刷新提示兜底），`Comment again` 渐进恢复原表单并聚焦正文；失败时回到编辑态并保留输入显示错误。面板会一直停留，直到点击按钮、开始新的回复或刷新页面。
+8. 浏览器端 SDK 一律 `cache: "no-store"`（与服务端客户端一致）：Core 响应不携带缓存指令，新鲜度由 TanStack Query 管辖，避免 HTTP 缓存返回陈旧评论列表。
 8. Query key 为 `comments + slug`，不要把 Admin 的软删状态复制到 Web。
 
 ### 反应

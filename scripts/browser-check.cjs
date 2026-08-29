@@ -109,6 +109,11 @@ function coreResponse(response, path, method, status) {
   return url.origin === coreUrl && url.pathname === path && response.request().method() === method && response.status() === status;
 }
 
+async function closeBrowser(browser) {
+  await Promise.race([browser.close(), new Promise((resolveDone) => setTimeout(resolveDone, 5_000))]).catch(() => undefined);
+  try { browser.process()?.kill('SIGKILL'); } catch { /* process already gone */ }
+}
+
 process.on('unhandledRejection', (reason) => {
   console.error(reason);
   void stopServices().finally(() => { process.exitCode = 1; });
@@ -470,11 +475,17 @@ async function main() {
     await web.locator('textarea').fill(commentBody);
     await web.locator('[data-compact="true"]').getByLabel(/Quick check/).fill('7');
     const commentResponse = web.waitForResponse((response) => coreResponse(response, '/api/v1/content/designing-boundaries/comments', 'POST', 201));
+    const commentVeil = web.locator('[class*="commentSpinner"]').waitFor({ state: 'visible', timeout: 2000 });
     await web.getByRole('button', { name: 'Send comment' }).click();
+    await commentVeil;
     await commentResponse;
-    await web.getByText('Posted. Thank you for adding to the thread.').waitFor({ state: 'visible', timeout: 5000 });
+    await web.getByText('Your comment has been posted.').waitFor({ state: 'visible', timeout: 5000 });
     const postedBubble = web.locator('[class*="commentBubble"]').filter({ hasText: commentBody }).first();
     await postedBubble.waitFor({ state: 'visible', timeout: 5000 });
+    await web.getByRole('button', { name: 'View your comment' }).click();
+    await postedBubble.waitFor({ state: 'visible', timeout: 5000 });
+    await web.getByRole('button', { name: 'Comment again' }).click();
+    await web.locator('#comment-body').waitFor({ state: 'visible', timeout: 5000 });
     await postedBubble.hover();
     await postedBubble.getByRole('button', { name: 'Reply' }).click();
     await web.getByText(/Replying to/).first().waitFor({ state: 'visible', timeout: 5000 });
@@ -482,9 +493,14 @@ async function main() {
     await web.locator('#comment-composer textarea').fill(replyBody);
     await web.locator('#comment-composer').getByLabel(/Quick check/).fill('7');
     const replyResponse = web.waitForResponse((response) => coreResponse(response, '/api/v1/content/designing-boundaries/comments', 'POST', 201));
+    const replyVeil = web.locator('[class*="commentSpinner"]').waitFor({ state: 'visible', timeout: 2000 });
     await web.locator('#comment-composer').getByRole('button', { name: 'Send comment' }).click();
+    await replyVeil;
     await replyResponse;
+    await web.getByText('Your comment has been posted.').waitFor({ state: 'visible', timeout: 5000 });
     await web.locator('[class*="commentNest"]').filter({ hasText: replyBody }).waitFor({ state: 'visible', timeout: 5000 });
+    await web.getByRole('button', { name: 'View your comment' }).click();
+    await web.locator('[class*="commentBubble"]:not([class*="commentBubbleWrap"])').filter({ hasText: replyBody }).waitFor({ state: 'visible', timeout: 5000 });
 
     const admin = await browser.newPage();
     const adminErrors = [];
@@ -527,7 +543,7 @@ async function main() {
     if (webErrors.length || adminErrors.length) throw new Error(JSON.stringify({ webErrors, adminErrors }));
     console.log(JSON.stringify({ webControlCounts, adminControlCounts, webErrors, adminErrors }));
   } finally {
-    await browser.close();
+    await closeBrowser(browser);
     await stopServices();
   }
 }

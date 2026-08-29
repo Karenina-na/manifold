@@ -5,11 +5,10 @@ import { AnimatePresence, LayoutGroup } from "framer-motion";
 import type { ArticleMetadata, Comment } from "@manifold/contracts";
 import styles from "../app/site.module.css";
 import { resolveArticleActionsAtEnd } from "../lib/article-end-threshold";
-import { CommentComposer, ReplyContext, useReplyFocus, type ReplyContextValue } from "./comment-thread";
+import { CommentComposer, ReplyContext, useReplyFocus, type ComposerPhase, type ReplyContextValue } from "./comment-thread";
 
 type TocItem = NonNullable<ArticleMetadata["toc"]>[number];
 const ARTICLE_END_ACTIVATION_RATIO = 0.76;
-
 function ArticleToc({ items }: { items: TocItem[] }) {
   const [activeId, setActiveId] = useState(items[0]?.id ?? "");
   const [progress, setProgress] = useState(0);
@@ -45,7 +44,8 @@ export function ArticleReadingShell({ children, discussion, toc, slug }: { child
   const [compactExpanded, setCompactExpanded] = useState(false);
   const [bottomExpanded, setBottomExpanded] = useState(true);
   const [replyTarget, setReplyTarget] = useState<Comment | null>(null);
-  const composerPinned = replyTarget !== null;
+  const [bottomComposerPhase, setBottomComposerPhase] = useState<ComposerPhase>("editing");
+  const composerPinned = replyTarget !== null || bottomComposerPhase !== "editing";
   const showBottomComposer = atEnd || composerPinned;
   useReplyFocus(replyTarget);
   const reply = useMemo<ReplyContextValue>(() => ({ replyTarget, startReply: setReplyTarget, cancelReply: () => setReplyTarget(null) }), [replyTarget]);
@@ -95,7 +95,7 @@ export function ArticleReadingShell({ children, discussion, toc, slug }: { child
       <div ref={discussionEndRef} className={styles.articleComposerTrigger} aria-hidden="true" />
     </section>
     <section className={styles.articleComposerBlock} data-active={showBottomComposer ? "true" : "false"} aria-label="Add a comment" aria-hidden={!showBottomComposer}>
-      <AnimatePresence initial={false} mode="popLayout">{showBottomComposer && <CommentComposer slug={slug} expanded={bottomExpanded} anchorId="comment-composer" onExpandedChange={setBottomExpanded} />}</AnimatePresence>
+      <AnimatePresence initial={false} mode="popLayout">{showBottomComposer && <CommentComposer slug={slug} expanded={bottomExpanded} anchorId="comment-composer" onExpandedChange={setBottomExpanded} onPhaseChange={setBottomComposerPhase} />}</AnimatePresence>
     </section>
   </div></ReplyContext.Provider></LayoutGroup>;
 }

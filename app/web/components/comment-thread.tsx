@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
 import { Eye, Filter, Heart, MessageCircle, Reply, Search, Send, Share2, X } from "lucide-react";
 import { Button, TextArea, TextField } from "@radix-ui/themes";
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import type { Comment } from "@manifold/contracts";
@@ -26,6 +26,9 @@ const commentSchema = z.object({
 type CommentForm = z.infer<typeof commentSchema>;
 
 const MAX_INDENT = 2;
+const MIN_SUBMIT_VEIL_MS = 350;
+const POSTED_COMMENT_SCROLL_TRIES = 8;
+const POSTED_COMMENT_SCROLL_INTERVAL_MS = 350;
 
 type CommentNode = { comment: Comment; children: CommentNode[] };
 
@@ -40,6 +43,8 @@ function buildThreads(comments: Comment[]) {
   }
   return roots;
 }
+
+export type ComposerPhase = "editing" | "submitting" | "success";
 
 export type ReplyContextValue = { replyTarget: Comment | null; startReply: (comment: Comment) => void; cancelReply: () => void };
 
@@ -79,7 +84,7 @@ export function useReplyFocus(replyTarget: Comment | null) {
 function CommentItem({ node, depth = 0 }: { node: CommentNode; depth?: number }) {
   const { startReply } = useReply();
   const { comment, children } = node;
-  return <motion.article className={styles.commentThreadItem} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
+  return <motion.article id={comment.id} className={styles.commentThreadItem} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
     <div className={styles.commentRow}>
       <CommentAvatar seed={comment.avatarSeed || comment.id} />
       <div className={styles.commentBubbleWrap}>
@@ -152,17 +157,26 @@ function shareArticle() {
   }
 }
 
-type CommentComposerProps = { slug: string; expanded: boolean; compact?: boolean; anchorId?: string; onExpandedChange?: (expanded: boolean) => void };
+type CommentComposerProps = { slug: string; expanded: boolean; compact?: boolean; anchorId?: string; onExpandedChange?: (expanded: boolean) => void; onPhaseChange?: (phase: ComposerPhase) => void };
 
-export function CommentComposer({ slug, expanded, compact = false, anchorId, onExpandedChange }: CommentComposerProps) {
+export function CommentComposer({ slug, expanded, compact = false, anchorId, onExpandedChange, onPhaseChange }: CommentComposerProps) {
   const client = useMemo(() => createBrowserClient(), []);
   const queryClient = useQueryClient();
   const { replyTarget, cancelReply } = useReply();
   const [visitorId] = useState(() => typeof window === "undefined" ? "" : getVisitorId());
   const [identity, setIdentity] = useState<CommentIdentity>({ name: "", avatarSeed: "" });
+  const [postedCommentId, setPostedCommentId] = useState<string | null>(null);
+  const [postedMissing, setPostedMissing] = useState(false);
+  const [composerPhase, setComposerPhase] = useState<ComposerPhase>("editing");
   const [localExpanded, setLocalExpanded] = useState(expanded);
   const isExpanded = onExpandedChange ? expanded : localExpanded;
   const form = useForm<CommentForm>({ resolver: zodResolver(commentSchema), defaultValues: { authorName: "", authorUrl: "", body: "", captcha: "" } });
+  const successTimerRef = useRef<number | null>(null);
+  const viewTimersRef = useRef<number[]>([]);
+  const updatePhase = useCallback((phase: ComposerPhase) => {
+    setComposerPhase(phase);
+    onPhaseChange?.(phase);
+  }, [onPhaseChange]);
   useEffect(() => {
     if (!visitorId) return;
     const frame = window.requestAnimationFrame(() => {
@@ -172,22 +186,74 @@ export function CommentComposer({ slug, expanded, compact = false, anchorId, onE
     });
     return () => window.cancelAnimationFrame(frame);
   }, [visitorId, form]);
+  useEffect(() => {
+    if (!replyTarget) return;
+    const frame = window.requestAnimationFrame(() => updatePhase("editing"));
+    return () => window.cancelAnimationFrame(frame);
+  }, [replyTarget, updatePhase]);
+  useEffect(() => () => {
+    if (successTimerRef.current !== null) window.clearTimeout(successTimerRef.current);
+    for (const timer of viewTimersRef.current) window.clearTimeout(timer);
+  }, []);
   const mutation = useMutation({
     mutationFn: (input: CommentForm) => client.createComment(slug, { authorName: input.authorName, authorUrl: input.authorUrl || undefined, body: input.body, replyToId: replyTarget?.id, avatarSeed: identity.avatarSeed || undefined }),
-    onSuccess: (_result, input) => {
+    onSuccess: (comment, input) => {
       saveIdentity({ name: input.authorName || identity.name, avatarSeed: identity.avatarSeed }, visitorId);
-      cancelReply();
-      form.reset({ authorName: input.authorName || identity.name, authorUrl: "", body: "", captcha: "" });
       void queryClient.invalidateQueries({ queryKey: ["comments", slug] });
+      const finalize = () => {
+        cancelReply();
+        form.reset({ authorName: input.authorName || identity.name, authorUrl: "", body: "", captcha: "" });
+        setPostedCommentId(comment.id);
+        setPostedMissing(false);
+        updatePhase("success");
+      };
+      successTimerRef.current = window.setTimeout(finalize, MIN_SUBMIT_VEIL_MS);
+    },
+    onError: () => {
+      if (successTimerRef.current !== null) {
+        window.clearTimeout(successTimerRef.current);
+        successTimerRef.current = null;
+      }
+      updatePhase("editing");
     },
   });
+  const submitComment = form.handleSubmit((input) => {
+    updatePhase("submitting");
+    mutation.mutate(input);
+  });
+  const commentAgain = () => {
+    mutation.reset();
+    setPostedCommentId(null);
+    setPostedMissing(false);
+    updatePhase("editing");
+    window.setTimeout(() => document.getElementById("comment-body")?.focus({ preventScroll: true }), 420);
+  };
+  const viewPostedComment = () => {
+    if (!postedCommentId) return;
+    setPostedMissing(false);
+    for (const timer of viewTimersRef.current) window.clearTimeout(timer);
+    viewTimersRef.current = [];
+    const attempt = (tries: number) => {
+      const bubble = document.getElementById(postedCommentId);
+      if (bubble) {
+        bubble.scrollIntoView({ behavior: "smooth", block: "center" });
+        return;
+      }
+      if (tries <= 0) {
+        setPostedMissing(true);
+        return;
+      }
+      viewTimersRef.current.push(window.setTimeout(() => attempt(tries - 1), POSTED_COMMENT_SCROLL_INTERVAL_MS));
+    };
+    attempt(POSTED_COMMENT_SCROLL_TRIES);
+  };
   const toggleExpanded = () => onExpandedChange ? onExpandedChange(!expanded) : setLocalExpanded((value) => !value);
   const chooseAvatar = (avatarSeed: string) => {
     setIdentity((current) => ({ ...current, avatarSeed }));
     saveIdentity({ avatarSeed }, visitorId);
   };
 
-  return <motion.div layoutId="article-composer" id={anchorId} className={styles.articleComposerCard} data-compact={compact ? "true" : "false"} data-expanded={isExpanded ? "true" : "false"} data-replying={replyTarget ? "true" : "false"}>
+  return <motion.div layoutId="article-composer" id={anchorId} className={styles.articleComposerCard} data-compact={compact ? "true" : "false"} data-expanded={isExpanded ? "true" : "false"} data-replying={replyTarget ? "true" : "false"} data-phase={composerPhase}>
     <div className={styles.articleComposerActions}>
       <span className={styles.articleActionLabel}>{compact ? "Leave a trace" : "Add a comment"}</span>
       <LikeButton slug={slug} compact={compact} />
@@ -195,24 +261,43 @@ export function CommentComposer({ slug, expanded, compact = false, anchorId, onE
       <button type="button" className={styles.articleActionButton} onClick={shareArticle}><Share2 size={15} /> <span>Share</span></button>
     </div>
     <AnimatePresence initial={false}>
-      {isExpanded && <motion.form className={styles.commentForm} onSubmit={form.handleSubmit((input) => mutation.mutate(input))} initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.38, ease: [0.16, 1, 0.3, 1] }}>
-        {replyTarget && <div className={styles.replyBanner} role="note">
-          <div className={styles.replyBannerBody}>
-            <span>Replying to <strong>{replyTarget.authorName || "Anonymous"}</strong></span>
-            <p>{replyTarget.body}</p>
+      {isExpanded && <motion.form className={styles.commentForm} onSubmit={submitComment} initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.38, ease: [0.16, 1, 0.3, 1] }}>
+        <div className={styles.commentFormBody}>
+          {replyTarget && <div className={styles.replyBanner} role="note">
+            <div className={styles.replyBannerBody}>
+              <span>Replying to <strong>{replyTarget.authorName || "Anonymous"}</strong></span>
+              <p>{replyTarget.body}</p>
+            </div>
+            <button type="button" className={styles.replyBannerCancel} onClick={cancelReply} aria-label="Cancel reply"><X size={14} /></button>
+          </div>}
+          <div className={styles.commentIdentity}>
+            <AvatarPicker seed={identity.avatarSeed || "manifold"} onChange={chooseAvatar} />
+            <label>Name <span>(optional)</span><TextField.Root {...form.register("authorName")} placeholder="Anonymous" autoComplete="name" />{form.formState.errors.authorName && <small>{form.formState.errors.authorName.message}</small>}</label>
           </div>
-          <button type="button" className={styles.replyBannerCancel} onClick={cancelReply} aria-label="Cancel reply"><X size={14} /></button>
-        </div>}
-        <div className={styles.commentIdentity}>
-          <AvatarPicker seed={identity.avatarSeed || "manifold"} onChange={chooseAvatar} />
-          <label>Name <span>(optional)</span><TextField.Root {...form.register("authorName")} placeholder="Anonymous" autoComplete="name" />{form.formState.errors.authorName && <small>{form.formState.errors.authorName.message}</small>}</label>
+          <label>Website <span>(optional)</span><TextField.Root {...form.register("authorUrl")} placeholder="https://" inputMode="url" autoComplete="url" />{form.formState.errors.authorUrl && <small>{form.formState.errors.authorUrl.message}</small>}</label>
+          <label>Comment<TextArea {...form.register("body")} id="comment-body" placeholder="Write a comment" rows={5} />{form.formState.errors.body && <small>{form.formState.errors.body.message}</small>}</label>
+          <label>Quick check <span>(what is 3 + 4?)</span><TextField.Root {...form.register("captcha")} inputMode="numeric" placeholder="7" />{form.formState.errors.captcha && <small>{form.formState.errors.captcha.message}</small>}</label>
+          {mutation.isError && <p className={styles.errorText}>Could not send the comment. Please try again.</p>}
+          <Button className={styles.primaryButton} type="submit" disabled={mutation.isPending}><Send size={15} /> Send comment</Button>
         </div>
-        <label>Website <span>(optional)</span><TextField.Root {...form.register("authorUrl")} placeholder="https://" inputMode="url" autoComplete="url" />{form.formState.errors.authorUrl && <small>{form.formState.errors.authorUrl.message}</small>}</label>
-        <label>Comment<TextArea {...form.register("body")} id="comment-body" placeholder="Write a comment" rows={5} />{form.formState.errors.body && <small>{form.formState.errors.body.message}</small>}</label>
-        <label>Quick check <span>(what is 3 + 4?)</span><TextField.Root {...form.register("captcha")} inputMode="numeric" placeholder="7" />{form.formState.errors.captcha && <small>{form.formState.errors.captcha.message}</small>}</label>
-        {mutation.isError && <p className={styles.errorText}>Could not send the comment. Please try again.</p>}
-        <Button className={styles.primaryButton} type="submit" disabled={mutation.isPending}><Send size={15} /> {mutation.isPending ? "Sending..." : "Send comment"}</Button>
-        {mutation.isSuccess && <p className={styles.successText}>Posted. Thank you for adding to the thread.</p>}
+        <AnimatePresence>
+          {composerPhase === "submitting" && <motion.div key="veil" className={styles.commentVeil} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }} role="status" aria-live="polite">
+            <span className={styles.commentSpinner} aria-hidden="true" />
+            <span className={styles.srOnly}>Posting your comment…</span>
+          </motion.div>}
+          {composerPhase === "success" && <motion.div key="success" className={styles.commentSuccess} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }} role="status">
+            <motion.svg className={styles.commentSuccessCheck} viewBox="0 0 24 24" aria-hidden="true">
+              <motion.circle cx="12" cy="12" r="10.4" pathLength={1} initial={{ pathLength: 0, opacity: 0 }} animate={{ pathLength: 1, opacity: 1 }} transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }} />
+              <motion.path d="M7.4 12.6l3.1 3.1 6.1-6.6" pathLength={1} initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ delay: 0.3, duration: 0.38, ease: [0.16, 1, 0.3, 1] }} />
+            </motion.svg>
+            <p>Your comment has been posted.</p>
+            <div className={styles.commentSuccessActions}>
+              <button type="button" className={styles.primaryButton} onClick={viewPostedComment}>View your comment</button>
+              <button type="button" className={styles.commentGhostButton} onClick={commentAgain}>Comment again</button>
+            </div>
+            {postedMissing && <p className={styles.commentSuccessHint}>If it does not appear, refresh the page.</p>}
+          </motion.div>}
+        </AnimatePresence>
       </motion.form>}
     </AnimatePresence>
   </motion.div>;

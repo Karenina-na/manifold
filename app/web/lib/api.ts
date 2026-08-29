@@ -10,7 +10,7 @@ export function createServerClient() {
 }
 
 export function createBrowserClient() {
-  return new ManifoldClient({ baseUrl: coreUrl });
+  return new ManifoldClient({ baseUrl: coreUrl, fetch: noStoreFetch });
 }
 
 export function getVisitorId() {
