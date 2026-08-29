@@ -37,6 +37,52 @@ func TestOpenMigratesAuditTraceIDColumn(t *testing.T) {
 	}
 }
 
+func TestOpenMigratesLegacyCommentSchema(t *testing.T) {
+	databasePath := filepath.Join(t.TempDir(), "legacy-comments.db")
+	database, err := sql.Open("sqlite", databasePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec(`CREATE TABLE comments (id TEXT PRIMARY KEY, content_id TEXT NOT NULL REFERENCES content(id), author_name TEXT NOT NULL, author_url TEXT NOT NULL DEFAULT '', body TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'APPROVED', 'REJECTED')), reply_to_id TEXT REFERENCES comments(id), created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+		CREATE INDEX idx_comments_content_status ON comments(content_id, status, created_at);
+		INSERT INTO comments (id, content_id, author_name, body, status) VALUES ('legacy_comment_1', 'legacy_content', 'Mina', 'A legacy reply.', 'PENDING')`); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	store, err := Open(databasePath)
+	if err != nil {
+		t.Fatalf("legacy comment schema must still open: %v", err)
+	}
+	defer store.Close()
+
+	for _, column := range []string{"avatar_seed", "deleted_at"} {
+		var columnCount int
+		if err := store.DB.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('comments') WHERE name = ?`, column).Scan(&columnCount); err != nil {
+			t.Fatal(err)
+		}
+		if columnCount != 1 {
+			t.Fatalf("expected %s migration, got %d columns", column, columnCount)
+		}
+	}
+	var legacyIndexCount int
+	if err := store.DB.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'idx_comments_content_status'`).Scan(&legacyIndexCount); err != nil {
+		t.Fatal(err)
+	}
+	if legacyIndexCount != 0 {
+		t.Fatal("expected legacy status index to be dropped")
+	}
+	comments, err := store.ListComments("legacy_content")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(comments) != 1 || comments[0].ID != "legacy_comment_1" {
+		t.Fatalf("expected legacy pending comment to stay visible, got %#v", comments)
+	}
+}
+
 func TestOpenBackfillsThoughtConfigFromSiteFeaturedContent(t *testing.T) {
 	databasePath := filepath.Join(t.TempDir(), "legacy-site.db")
 	database, err := sql.Open("sqlite", databasePath)

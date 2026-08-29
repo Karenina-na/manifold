@@ -28,7 +28,6 @@ CREATE TABLE IF NOT EXISTS presence (visitor_id TEXT PRIMARY KEY, last_seen_at T
 CREATE TABLE IF NOT EXISTS audit_events (id TEXT PRIMARY KEY, event_name TEXT NOT NULL, resource_type TEXT NOT NULL, resource_id TEXT NOT NULL DEFAULT '', actor TEXT NOT NULL DEFAULT 'anonymous', request_id TEXT NOT NULL DEFAULT '', trace_id TEXT NOT NULL DEFAULT '', metadata_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE INDEX IF NOT EXISTS idx_content_publication ON content(status, published_at DESC);
 CREATE INDEX IF NOT EXISTS idx_content_kind_publication ON content(kind, status, published_at DESC);
-CREATE INDEX IF NOT EXISTS idx_comments_content_visibility ON comments(content_id, deleted_at, created_at);
 CREATE INDEX IF NOT EXISTS idx_likes_content ON likes(content_id);
 CREATE INDEX IF NOT EXISTS idx_presence_last_seen ON presence(last_seen_at);
 CREATE INDEX IF NOT EXISTS idx_audit_events_created_at ON audit_events(created_at DESC);
@@ -97,8 +96,8 @@ func contentExcerpt(body string) string {
 }
 
 var (
-	ErrContentNotFound = errors.New("content not found")
-	ErrVersionConflict = errors.New("content version conflict")
+	ErrContentNotFound     = errors.New("content not found")
+	ErrVersionConflict     = errors.New("content version conflict")
 	ErrCommentReplyInvalid = errors.New("comment reply target is invalid")
 )
 
@@ -257,6 +256,14 @@ func ensureCommentSchema(db *sql.DB) error {
 		if _, err := db.Exec(`ALTER TABLE comments ADD COLUMN deleted_at TEXT NOT NULL DEFAULT ''`); err != nil {
 			return err
 		}
+	}
+	// The visibility index references deleted_at, so it cannot live in the bootstrap DDL:
+	// legacy databases would fail to open before the columns above are added.
+	if _, err := db.Exec(`DROP INDEX IF EXISTS idx_comments_content_status`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_comments_content_visibility ON comments(content_id, deleted_at, created_at)`); err != nil {
+		return err
 	}
 	return nil
 }
