@@ -673,6 +673,12 @@ html { scroll-behavior: smooth; }
 /* Thought detail: keeps the writing paper language without the reading shell, re-centering every block and letting metadata carry the reflective voice. */
 .thoughtDetail .articleBack, .thoughtDetail .articleTitleBlock, .thoughtDetail .articleBodyBlock, .thoughtDetail .articleDiscussionBlock, .thoughtDetail .articleComposerBlock { width: min(860px, 100%); margin-left: auto; margin-right: auto; }
 .thoughtDetail .articleTitleBlock { margin-bottom: 22px; }
+/* Reading progress mirrors the writing TOC rail: the wrapper bounds the sticky range to the reading area like the writing shell grid does, and 452px = 430 (half of the 860px column) + 22 gap places the track beside the column. */
+.thoughtReadingArea { position: relative; }
+.thoughtDetail .thoughtProgressRail { position: absolute; top: 0; bottom: 0; left: calc(50% + 452px); width: 150px; }
+@media (max-width: 1300px) {
+  .thoughtDetail .thoughtProgressRail { position: static; width: min(860px, 100%); margin: 0 auto 22px; }
+}
 .thoughtDetail .articleDiscussionBlock { margin-top: 22px; }
 .thoughtDetail .thoughtSummary { max-width: 680px; margin: 2px 0 20px; font-size: 14px; line-height: 1.7; }
 .thoughtDetail .articleHeader .thoughtActions { margin-top: 16px; }
