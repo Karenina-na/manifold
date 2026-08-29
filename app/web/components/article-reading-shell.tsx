@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, LayoutGroup } from "framer-motion";
-import type { ArticleMetadata } from "@manifold/contracts";
+import type { ArticleMetadata, Comment } from "@manifold/contracts";
 import styles from "../app/site.module.css";
 import { resolveArticleActionsAtEnd } from "../lib/article-end-threshold";
-import { CommentComposer } from "./comment-thread";
+import { CommentComposer, ReplyContext, useReplyFocus, type ReplyContextValue } from "./comment-thread";
 
 type TocItem = NonNullable<ArticleMetadata["toc"]>[number];
 const ARTICLE_END_ACTIVATION_RATIO = 0.76;
@@ -44,6 +44,11 @@ export function ArticleReadingShell({ children, discussion, toc, slug }: { child
   const [atEnd, setAtEnd] = useState(false);
   const [compactExpanded, setCompactExpanded] = useState(false);
   const [bottomExpanded, setBottomExpanded] = useState(true);
+  const [replyTarget, setReplyTarget] = useState<Comment | null>(null);
+  const composerPinned = replyTarget !== null;
+  const showBottomComposer = atEnd || composerPinned;
+  useReplyFocus(replyTarget);
+  const reply = useMemo<ReplyContextValue>(() => ({ replyTarget, startReply: setReplyTarget, cancelReply: () => setReplyTarget(null) }), [replyTarget]);
   useEffect(() => {
     const trigger = discussionEndRef.current;
     if (!trigger) return;
@@ -79,9 +84,9 @@ export function ArticleReadingShell({ children, discussion, toc, slug }: { child
     };
   }, []);
 
-  return <LayoutGroup id="article-reading-actions"><div className={styles.articleReadingShell}>
+  return <LayoutGroup id="article-reading-actions"><ReplyContext.Provider value={reply}><div className={styles.articleReadingShell}>
     <aside className={styles.articleActionRail} aria-label="Article actions">
-      <AnimatePresence initial={false} mode="popLayout">{!atEnd && <CommentComposer slug={slug} compact expanded={compactExpanded} onExpandedChange={setCompactExpanded} />}</AnimatePresence>
+      <AnimatePresence initial={false} mode="popLayout">{!atEnd && !composerPinned && <CommentComposer slug={slug} compact expanded={compactExpanded} onExpandedChange={setCompactExpanded} />}</AnimatePresence>
     </aside>
     <div className={styles.articleReadingMain}>{children}</div>
     {toc.length > 0 && <ArticleToc items={toc} />}
@@ -89,8 +94,8 @@ export function ArticleReadingShell({ children, discussion, toc, slug }: { child
       {discussion}
       <div ref={discussionEndRef} className={styles.articleComposerTrigger} aria-hidden="true" />
     </section>
-    <section className={styles.articleComposerBlock} data-active={atEnd ? "true" : "false"} aria-label="Add a comment" aria-hidden={!atEnd}>
-      <AnimatePresence initial={false} mode="popLayout">{atEnd && <CommentComposer slug={slug} expanded={bottomExpanded} onExpandedChange={setBottomExpanded} />}</AnimatePresence>
+    <section className={styles.articleComposerBlock} data-active={showBottomComposer ? "true" : "false"} aria-label="Add a comment" aria-hidden={!showBottomComposer}>
+      <AnimatePresence initial={false} mode="popLayout">{showBottomComposer && <CommentComposer slug={slug} expanded={bottomExpanded} anchorId="comment-composer" onExpandedChange={setBottomExpanded} />}</AnimatePresence>
     </section>
-  </div></LayoutGroup>;
+  </div></ReplyContext.Provider></LayoutGroup>;
 }

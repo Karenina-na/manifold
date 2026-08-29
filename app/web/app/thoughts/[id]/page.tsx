@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, BookOpen, CalendarDays, Compass, Sparkles, Tag } from "lucide-react";
-import { ArticleDiscussion, CommentComposer } from "../../../components/comment-thread";
+import { CommentsSection } from "../../../components/comment-thread";
 import { MarkdownContent } from "../../../components/markdown-content";
 import { ThoughtActions } from "../../../components/thought-actions";
 import { createServerClient, formatDate } from "../../../lib/api";
@@ -49,10 +49,7 @@ export default async function ThoughtDetailPage({ params }: Props) {
         <div className={styles.articleBodyBlock}>
           <div className={styles.markdown}><MarkdownContent content={content.body} hideFirstH1 /></div>
         </div>
-        <section className={styles.articleDiscussionBlock} aria-label="Thought discussion">
-          <ArticleDiscussion slug={slug} viewCount={content.viewCount} likeCount={content.likeCount} />
-          <CommentComposer slug={slug} expanded />
-        </section>
+        <CommentsSection slug={slug} viewCount={content.viewCount} likeCount={content.likeCount} />
       </div>
     </article>
   </main>;

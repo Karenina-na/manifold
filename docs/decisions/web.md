@@ -23,7 +23,7 @@ Server Component 负责首屏数据、详情读取和 SEO；Client Component 负
 | --- | --- | --- | --- |
 | `/` | Dynamic Server Component | profile、site、全部公开 Article/Thought 历史、now、stats | Profile/Introduction、Recent Content、Updates、年度 Contribution activity、My Series、Contact |
 | `/thoughts` | Dynamic Server Component + client archive controls | `thoughts({ page, limit: 8, tag, q })`、`tags({ kind: "THOUGHT" })` | Core 配置驱动的置顶 Thought（仅默认视图展示）、按年份/月份/日期分块的纵向时间轴、服务端分页，以及置顶与时间轴之间的搜索和多 tag 过滤（OR 语义，URL `q`/`tag` 可重复/`page` 同步） |
-| `/thoughts/[id]` | Dynamic Server Component | `contentBySlug(id)` | 专属 Thought 详情页：沿用 Writing 详情的纸面结构（返回行、标题面、正文面、讨论面）但不使用阅读壳；标题面展示 eyebrow、✦ 灰色摘要、日期/mood 徽标/tag 与点赞/观看/评论计数，`question` 作为 serif 反思引言块，`context`/`source` 作 mono 脚注；讨论面（统计、搜索、筛选）与展开的添加评论表单依次置于正文面下方，无目录与浮动动作卡；非 THOUGHT 内容或读取失败一律 404 |
+| `/thoughts/[id]` | Dynamic Server Component | `contentBySlug(id)` | 专属 Thought 详情页：沿用 Writing 详情的纸面结构（返回行、标题面、正文面、讨论面、添加评论面）但不使用阅读壳；标题面展示 eyebrow、✦ 灰色摘要、日期/mood 徽标/tag 与点赞/观看/评论计数，`question` 作为 serif 反思引言块，`context`/`source` 作 mono 脚注；讨论面（统计、搜索、筛选）与添加评论面作为两个独立块依次置于正文面下方，与 Writing 详情同构，无目录与浮动动作卡；非 THOUGHT 内容或读取失败一律 404 |
 | `/writing` | Dynamic Server Component + client archive controls | `content({ kind: "ARTICLE", q, tag, sort, aiAssisted, page, skipFirst })`、`content({ kind: "ARTICLE", sort: "newest", limit: 1 })`、`tags({ kind: "ARTICLE" })` | 双栏长文归档、置顶首篇、搜索、多标签筛选（OR 语义）、最新/最早/最近更新排序与悬浮侧栏（视口垂直居中：滚动中随内容冻结，停止后防抖 160ms 重算并动画归位，布局变化同样动画跟随，导航净空 112px，760px 以下回退静态）；两页归档共用 `useArchiveFilters` 客户端取数：搜索/tag/排序/No AI 开关和分页由 Core 在数据层执行，筛选状态经 `history.replaceState` 同步到 URL `q`/`tag`（可重复）/`page`/`sort`/`noAi`；置顶卡固定取全局最新文章且仅在默认视图（无 `q`/`tag`/`noAi` 且 `sort=newest`）展示，此时列表请求以 `skipFirst` 排除该条，其余视图 `skipFirst` 不传；tag 云和计数来自 `/api/v1/tags`，选中的 tag 在云中排最前；卡片区分摘要与 Core 正文摘录，并展示聚合的浏览量和点赞数；从详情页通过浏览器历史返回时刷新 RSC 数据 |
 | `/writing/[slug]` | Dynamic Server Component + client reading controls | `contentBySlug(slug)` | 返回 Writing 入口作为标题阅读面的独立上方行；其下为四段同宽的不透明阅读面（标题、正文、讨论、添加评论）、同排日期/阅读时长/语言/统计、Markdown、右侧进度目录、评论和反应；讨论面展示统计、搜索和筛选，添加评论面在接近底部时由桌面/平板左侧紧凑动作卡通过共享布局动画展开；越过激活线后继续下滑保持展开，仅向上越回激活线才恢复左侧，手机端在讨论面之后堆叠 |
 | `/health` | Route Handler | 无 | Web 进程 liveness，Core 健康检查仍为 `/healthz` |
@@ -39,7 +39,7 @@ Server Component 负责首屏数据、详情读取和 SEO；Client Component 负
 
 两个归档的底部列表区块在默认着陆视图（无 `q`/`tag`/`noAi`/排序变化）以 `Reveal` 的 manual 模式渲染：首屏只展示页头、置顶卡与下滑提示箭头，列表区块保持透明，直到用户滚动使其顶边越过视口底部上方 40px（共享 `isWithinRevealViewport`，监听 window scroll 判定）才浮现。`ScrollHint` 与列表共用同一判定：manual 模式下进入归档约 400ms 后在视口底部居中显示呼吸渐进的箭头（内层 span 以 `scrollHintBreath` keyframes 无限循环"淡入—下浮—淡出"），列表浮现的同时箭头外层在 480ms 内淡出并卸载；箭头可点击（`aria-label="Scroll to list"`），点击平滑下滑约一屏，滚动本身即触发列表浮现。筛选/排序深链进入，或着陆后筛选状态变化使 `manual` 翻转为 false 时，列表 `Reveal` 与 `ScrollHint` 同步回到 IntersectionObserver 自动浮现逻辑（共享 `revealObserverOptions`，`threshold: [0, 0.12]`、`rootMargin: 0 0 -40px`；`threshold` 从 `0.12` 改为 `[0, 0.12]` 避免高区块在小视口下因可见比例不足而永不浮现）。数据错误（无列表区块）时箭头不显示。
 
-时间轴每页展示 Core 返回的 8 条非置顶 Thought，Web 只把当前页按 UTC 年份、月份和日期分块分组，卡片可见日期也固定使用 UTC 以保持年/月/日刻度一致；页面顶部沿用 Writings 的简洁眉标题与 H1，不额外放置说明性副文案。时间轴按年份分块：每个年份以流程内的分节标题行（serif 年份加横贯细线）开始，位于卡片 surface 之外；年份块内的月份标签在左栏右对齐并通过短连接线指向纵轴，纵线与日期节点贯穿该年份的月份区，右侧内容 surface 按年份框住 Thought 卡片，并与下方分页 surface 使用同一左边界。年份、月份标签、纵线与日期节点全部使用常规文档流与层级定位，不使用绝对定位骑跨轴线。右侧卡片展示标题、tag、日期，并把编辑摘要与正文摘录分开：摘要使用星号标识和灰色文字，Core 提供的纯文本 `excerpt` 使用正文色且最多显示两行；置顶卡可显示四行正文摘录。置顶卡左上显示 `Featured`，右上显示 tags 与日期；置顶和列表底部均在左侧展示 Core 聚合的 `likeCount`、`viewCount`、已审核 `commentCount`，右侧提供全文入口。卡片、时间刻度、全文入口和分页控件都提供 hover/focus 动画，并遵循 `prefers-reduced-motion`。
+时间轴每页展示 Core 返回的 8 条非置顶 Thought，Web 只把当前页按 UTC 年份、月份和日期分块分组，卡片可见日期也固定使用 UTC 以保持年/月/日刻度一致；页面顶部沿用 Writings 的简洁眉标题与 H1，不额外放置说明性副文案。时间轴按年份分块：每个年份以流程内的分节标题行（serif 年份加横贯细线）开始，位于卡片 surface 之外；年份块内的月份标签在左栏右对齐并通过短连接线指向纵轴，纵线与日期节点贯穿该年份的月份区，右侧内容 surface 按年份框住 Thought 卡片，并与下方分页 surface 使用同一左边界。年份、月份标签、纵线与日期节点全部使用常规文档流与层级定位，不使用绝对定位骑跨轴线。右侧卡片展示标题、tag、日期，并把编辑摘要与正文摘录分开：摘要使用星号标识和灰色文字，Core 提供的纯文本 `excerpt` 使用正文色且最多显示两行；置顶卡可显示四行正文摘录。置顶卡左上显示 `Featured`，右上显示 tags 与日期；置顶和列表底部均在左侧展示 Core 聚合的 `likeCount`、`viewCount`、未软删 `commentCount`，右侧提供全文入口。卡片、时间刻度、全文入口和分页控件都提供 hover/focus 动画，并遵循 `prefers-reduced-motion`。
 
 Writings 归档使用相同的信息层级：摘要以星号和灰色文字标识，正文摘录与摘要分开，普通列表最多两行，置顶 Writing 最多四行。Web 不从完整 Markdown 自行生成列表摘录，只消费 Core 的 `excerpt`；兼容旧响应时才回退到已有 `body`。
 
@@ -79,13 +79,16 @@ Article 的 `metadata.toc` 和 `readingMinutes` 由 Core 在保存时从 Markdow
 
 ### 评论
 
-`ArticleDiscussion` 与 `CommentComposer` 使用 React Hook Form、Zod 和 TanStack Query；Thought 详情页直接组合 `ArticleDiscussion` 与展开的 `CommentComposer`，不存在独立的 `CommentThread` 包装：
+`ArticleDiscussion`、`CommentList`/`CommentItem` 与 `CommentComposer` 使用 React Hook Form、Zod 和 TanStack Query；Thought 详情页通过 `CommentsSection` 在同一 `ReplyContext` 下组合讨论面与独立的添加评论面，Writing 详情由 `ArticleReadingShell` 提供同一 Provider：
 
-1. `comments(slug)` 读取 Core 返回的 APPROVED 评论。
-2. 表单要求正文 3 到 4000 字符，作者名/网站可选，附轻量验证码。
-3. 讨论面在客户端对公开评论执行搜索和筛选，不复制 Admin 审核筛选或新增 Core 查询参数。
-4. 添加评论表单提交到 Core，成功后清空表单并失效 `comments + slug` query；失败时保留输入并显示错误。
-5. Query key 为 `comments + slug`，不要把 Admin 审核状态复制到 Web。
+1. `comments(slug)` 读取 Core 返回的公开评论（创建即公开，无审核状态；已软删评论不会出现）。
+2. Web 按平铺的 `createdAt` 升序列表以 `replyToId` 组装线程；父级缺失的回复提升为顶层。回复缩进封顶两级，更深的回复保持同级，由 `.commentNest` 提供竖线缩进。
+3. 评论渲染为点阵头像（`CommentAvatar`，按 `avatarSeed` 或评论 ID 确定性生成）+ 微信式气泡（圆角矩形、左下角尖角）；名字旁以 `formatRelativeTime` 显示英文相对时间。hover 或键盘聚焦气泡时右上淡入 Reply 按钮。
+4. Reply 点击写入 `ReplyContext`，平滑滚动到 `#comment-composer` 并聚焦正文输入；composer 顶部显示 `Replying to @name` 引用条（灰色引用原文）可取消，提交携带 `replyToId`。
+5. 表单要求正文 3 到 4000 字符，作者名/网站可选，附轻量验证码；Name 字段预填 `lib/identity.ts` 生成的组合词默认名（来自 `manifold.visitorId` 种子，持久化于 `localStorage` 的 `manifold.identity`），头像选择器 `AvatarPicker` 提供 6 个确定性候选可点选，身份随评论提交（`avatarSeed`）并在发送成功后回写本地。
+6. 讨论面在客户端对公开评论执行搜索和筛选，不新增 Core 查询参数；筛选后的列表再组装线程，被筛掉父级的回复提升为顶层。
+7. 添加评论表单提交到 Core，成功后清空表单、取消回复目标并失效 `comments + slug` query；失败时保留输入并显示错误。
+8. Query key 为 `comments + slug`，不要把 Admin 的软删状态复制到 Web。
 
 ### 反应
 

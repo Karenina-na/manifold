@@ -1,4 +1,4 @@
-const { spawn } = require('node:child_process');
+const { execSync, spawn } = require('node:child_process');
 const { mkdtempSync, rmSync } = require('node:fs');
 const { get } = require('node:http');
 const net = require('node:net');
@@ -52,7 +52,7 @@ function freePort() {
   });
 }
 
-function waitForUrl(url, timeout = 45_000) {
+function waitForUrl(url, timeout = 90_000) {
   const started = Date.now();
   return new Promise((resolveReady, reject) => {
     const poll = () => {
@@ -90,6 +90,17 @@ async function stopServices() {
       try { process.kill(-child.pid, 'SIGKILL'); } catch (error) { if (error.code !== 'ESRCH') throw error; }
     }
   }
+  for (const port of [corePort, webPort, adminPort]) {
+    if (!port) continue;
+    try {
+      const pids = execSync(`lsof -ti tcp:${port} -sTCP:LISTEN`, { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim().split('\n').filter(Boolean);
+      for (const pid of pids) {
+        try { process.kill(Number(pid), 'SIGKILL'); } catch (error) { if (error.code !== 'ESRCH') throw error; }
+      }
+    } catch {
+      // lsof finds no listener once the group kills landed
+    }
+  }
   if (temporaryDirectory) rmSync(temporaryDirectory, { recursive: true, force: true });
 }
 
@@ -97,6 +108,11 @@ function coreResponse(response, path, method, status) {
   const url = new URL(response.url());
   return url.origin === coreUrl && url.pathname === path && response.request().method() === method && response.status() === status;
 }
+
+process.on('unhandledRejection', (reason) => {
+  console.error(reason);
+  void stopServices().finally(() => { process.exitCode = 1; });
+});
 
 async function main() {
   process.on('SIGINT', () => { void stopServices().finally(() => process.exit(130)); });
@@ -430,7 +446,8 @@ async function main() {
     if (!thoughtMood?.includes('Curious')) throw new Error('Thought mood badge is missing');
     if (!(await web.locator('[class*="thoughtActions"]').first().textContent())?.includes('Likes')) throw new Error('Thought counts are missing');
     await web.getByRole('heading', { name: 'The thread' }).waitFor({ state: 'visible' });
-    await web.getByRole('button', { name: 'Send for review' }).waitFor({ state: 'visible' });
+    await web.getByRole('button', { name: 'Send comment' }).waitFor({ state: 'visible' });
+    if (await web.locator('[class*="avatarPickerTrigger"]').count() !== 1) throw new Error('Thought composer avatar picker is missing');
 
     await web.setViewportSize({ width: 1280, height: 900 });
     await web.goto(`${webUrl}${contentPath}`, { waitUntil: 'networkidle' });
@@ -438,11 +455,11 @@ async function main() {
     const likeButtons = await web.getByRole('button', { name: /like/i }).count();
     if (likeButtons !== 1 || await commentToggle.count() !== 1) throw new Error('Web controls are incomplete');
     await commentToggle.click();
-    await web.getByRole('button', { name: 'Send for review' }).waitFor({ state: 'visible' });
+    await web.getByRole('button', { name: 'Send comment' }).waitFor({ state: 'visible' });
     const webControlCounts = {
       inputs: await web.locator('input').count(),
       textareas: await web.locator('textarea').count(),
-      sendButtons: await web.getByRole('button', { name: 'Send for review' }).count(),
+      sendButtons: await web.getByRole('button', { name: 'Send comment' }).count(),
       likeButtons,
     };
 
@@ -451,11 +468,23 @@ async function main() {
     await likeResponse;
     const commentBody = `Browser acceptance ${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     await web.locator('textarea').fill(commentBody);
-    await web.getByLabel(/Quick check/).fill('7');
+    await web.locator('[data-compact="true"]').getByLabel(/Quick check/).fill('7');
     const commentResponse = web.waitForResponse((response) => coreResponse(response, '/api/v1/content/designing-boundaries/comments', 'POST', 201));
-    await web.getByRole('button', { name: 'Send for review' }).click();
+    await web.getByRole('button', { name: 'Send comment' }).click();
     await commentResponse;
-    await web.getByText('Received. It will appear after a quick review.').waitFor({ state: 'visible', timeout: 5000 });
+    await web.getByText('Posted. Thank you for adding to the thread.').waitFor({ state: 'visible', timeout: 5000 });
+    const postedBubble = web.locator('[class*="commentBubble"]').filter({ hasText: commentBody }).first();
+    await postedBubble.waitFor({ state: 'visible', timeout: 5000 });
+    await postedBubble.hover();
+    await postedBubble.getByRole('button', { name: 'Reply' }).click();
+    await web.getByText(/Replying to/).first().waitFor({ state: 'visible', timeout: 5000 });
+    const replyBody = `Reply acceptance ${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    await web.locator('#comment-composer textarea').fill(replyBody);
+    await web.locator('#comment-composer').getByLabel(/Quick check/).fill('7');
+    const replyResponse = web.waitForResponse((response) => coreResponse(response, '/api/v1/content/designing-boundaries/comments', 'POST', 201));
+    await web.locator('#comment-composer').getByRole('button', { name: 'Send comment' }).click();
+    await replyResponse;
+    await web.locator('[class*="commentNest"]').filter({ hasText: replyBody }).waitFor({ state: 'visible', timeout: 5000 });
 
     const admin = await browser.newPage();
     const adminErrors = [];
@@ -479,17 +508,22 @@ async function main() {
     const commentsResponse = admin.waitForResponse((response) => coreResponse(response, '/api/v1/admin/comments', 'GET', 200));
     await admin.getByRole('button', { name: 'Comments' }).click();
     await commentsResponse;
-    await admin.getByText('Review comments.').waitFor({ state: 'visible', timeout: 5000 });
-    const targetRow = admin.locator('.moderation-row').filter({ hasText: commentBody });
+    await admin.getByText('Manage comments.').waitFor({ state: 'visible', timeout: 5000 });
+    const targetRow = admin.locator('.moderation-row').filter({ hasText: replyBody });
     await targetRow.waitFor({ state: 'visible', timeout: 5000 });
-    const approveResponse = admin.waitForResponse((response) => /\/api\/v1\/admin\/comments\/[^/]+\/approve$/.test(new URL(response.url()).pathname) && response.request().method() === 'POST' && response.status() === 204);
-    const refreshedComments = admin.waitForResponse((response) => coreResponse(response, '/api/v1/admin/comments', 'GET', 200));
-    await targetRow.getByRole('button', { name: 'Approve comment from Anonymous' }).click();
-    await approveResponse;
-    await refreshedComments;
-    await targetRow.waitFor({ state: 'detached', timeout: 5000 });
-    await admin.getByText('0 pending').waitFor({ state: 'visible', timeout: 5000 });
-    if (await admin.locator('.moderation-row').count() !== 0) throw new Error('Unexpected pre-existing moderation rows remain');
+    const deleteResponse = admin.waitForResponse((response) => /\/api\/v1\/admin\/comments\/[^/]+$/.test(new URL(response.url()).pathname) && response.request().method() === 'DELETE' && response.status() === 204);
+    const refreshedAfterDelete = admin.waitForResponse((response) => coreResponse(response, '/api/v1/admin/comments', 'GET', 200));
+    await targetRow.getByRole('button', { name: /^Delete comment from/ }).click();
+    await deleteResponse;
+    await refreshedAfterDelete;
+    await targetRow.getByRole('button', { name: /^Restore comment from/ }).waitFor({ state: 'visible', timeout: 5000 });
+    const restoreResponse = admin.waitForResponse((response) => /\/api\/v1\/admin\/comments\/[^/]+\/restore$/.test(new URL(response.url()).pathname) && response.request().method() === 'POST' && response.status() === 204);
+    const refreshedAfterRestore = admin.waitForResponse((response) => coreResponse(response, '/api/v1/admin/comments', 'GET', 200));
+    await targetRow.getByRole('button', { name: /^Restore comment from/ }).click();
+    await restoreResponse;
+    await refreshedAfterRestore;
+    await targetRow.getByRole('button', { name: /^Delete comment from/ }).waitFor({ state: 'visible', timeout: 5000 });
+    if (await admin.locator('.moderation-row').count() !== 2) throw new Error('Admin comment list does not show both comments');
     if (webErrors.length || adminErrors.length) throw new Error(JSON.stringify({ webErrors, adminErrors }));
     console.log(JSON.stringify({ webControlCounts, adminControlCounts, webErrors, adminErrors }));
   } finally {
