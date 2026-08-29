@@ -913,9 +913,85 @@ func (s *Store) TouchPresence(visitorID string) (int, error) {
 	return activeVisitors, nil
 }
 
-func (s *Store) ListComments(contentID string) ([]model.Comment, error) {
-	query := `SELECT id, content_id, author_name, author_url, body, created_at, reply_to_id, avatar_seed, deleted_at FROM comments WHERE content_id = ? AND deleted_at = '' ORDER BY created_at ASC`
-	return s.scanComments(query, contentID)
+type CommentListOptions struct {
+	Page     int
+	PageSize int
+	Query    string
+}
+
+type CommentListResult struct {
+	Comments   []model.Comment
+	Page       int
+	PageSize   int
+	TotalItems int
+	TotalPages int
+}
+
+const commentColumns = `id, content_id, author_name, author_url, body, created_at, reply_to_id, avatar_seed, deleted_at`
+
+// matchedCommentThreads returns a CTE of top-level comments whose own
+// author/body matches the needle or that own any matching reply, so a hit
+// always exposes the whole thread. An empty needle matches every root.
+func matchedCommentThreads() string {
+	return `WITH matched AS (
+		SELECT id FROM comments
+		WHERE content_id = ? AND deleted_at = '' AND COALESCE(reply_to_id, '') = ''
+		AND (? = '' OR INSTR(LOWER(author_name), ?) > 0 OR INSTR(LOWER(body), ?) > 0
+			OR EXISTS (SELECT 1 FROM comments reply WHERE reply.reply_to_id = comments.id AND reply.deleted_at = '' AND (INSTR(LOWER(reply.author_name), ?) > 0 OR INSTR(LOWER(reply.body), ?) > 0)))
+	)`
+}
+
+func (s *Store) ListComments(contentID string, options CommentListOptions) (CommentListResult, error) {
+	result := CommentListResult{Page: 1, TotalPages: 1}
+	if options.Page <= 0 {
+		comments, err := s.scanComments(`SELECT `+commentColumns+` FROM comments WHERE content_id = ? AND deleted_at = '' ORDER BY created_at ASC`, contentID)
+		if comments == nil {
+			comments = []model.Comment{}
+		}
+		result.Comments = comments
+		result.TotalItems = len(comments)
+		return result, err
+	}
+	pageSize := options.PageSize
+	if pageSize <= 0 {
+		pageSize = 10
+	}
+	needle := strings.ToLower(strings.TrimSpace(options.Query))
+	matched := matchedCommentThreads()
+	matchArgs := []any{contentID, needle, needle, needle, needle, needle}
+
+	var totalItems, totalRoots int
+	if err := s.DB.QueryRow(matched+`SELECT COUNT(*), COALESCE(SUM(CASE WHEN COALESCE(reply_to_id, '') = '' THEN 1 ELSE 0 END), 0) FROM comments WHERE deleted_at = '' AND content_id = ? AND (id IN (SELECT id FROM matched) OR reply_to_id IN (SELECT id FROM matched))`, append(matchArgs, contentID)...).Scan(&totalItems, &totalRoots); err != nil {
+		return result, err
+	}
+	totalPages := (totalRoots + pageSize - 1) / pageSize
+	if totalPages < 1 {
+		totalPages = 1
+	}
+	page := options.Page
+	if page > totalPages {
+		page = totalPages
+	}
+	result.Page, result.PageSize, result.TotalItems, result.TotalPages = page, pageSize, totalItems, totalPages
+
+	offset := (page - 1) * pageSize
+	roots, err := s.scanComments(matched+`SELECT `+commentColumns+` FROM comments WHERE id IN (SELECT id FROM matched) ORDER BY created_at ASC, id ASC LIMIT ? OFFSET ?`, append(matchArgs, pageSize, offset)...)
+	if err != nil {
+		return result, err
+	}
+	if roots == nil {
+		roots = []model.Comment{}
+	}
+	if len(roots) == 0 {
+		result.Comments = roots
+		return result, nil
+	}
+	replies, err := s.scanComments(matched+`SELECT `+commentColumns+` FROM comments WHERE deleted_at = '' AND content_id = ? AND COALESCE(reply_to_id, '') != '' AND reply_to_id IN (SELECT id FROM matched ORDER BY created_at ASC, id ASC LIMIT ? OFFSET ?) ORDER BY created_at ASC, id ASC`, append(matchArgs, contentID, pageSize, offset)...)
+	if err != nil {
+		return result, err
+	}
+	result.Comments = append(roots, replies...)
+	return result, nil
 }
 
 func (s *Store) ListAllComments() ([]model.Comment, error) {

@@ -38,7 +38,7 @@ export interface ContentQuery { kind?: ContentKind | ContentKind[]; tag?: string
 export interface TagQuery { kind?: ContentKind }
 export interface TagSummary { name: string; count: number }
 export interface AdminContentQuery extends ContentQuery { status?: ContentStatus }
-export interface CommentQuery { cursor?: string; limit?: number }
+export interface CommentQuery { cursor?: string; limit?: number; page?: number; q?: string }
 export interface CreateCommentInput { authorName?: string; authorUrl?: string; body: string; replyToId?: string; avatarSeed?: string }
 export interface LoginInput { username: string; password: string }
 export interface LoginResponse { accessToken: string; tokenType: "Bearer"; expiresIn: number; user: { username: string; role: "admin" } }

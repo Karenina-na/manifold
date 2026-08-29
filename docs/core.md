@@ -114,7 +114,7 @@ Core 使用 `caarlos0/env` 读取 `CORE_` 前缀变量，不自动读取仓库�
 | `GET` | `/api/v1/thoughts` | Thoughts 归档 aggregate：置顶 Thought、排除置顶后的页码分页列表和总数，支持 `tag`/`q` 过滤（只作用于时间轴，置顶不受影响，多 tag 按 OR 命中任一标签）；内容项同样包含 `excerpt` |
 | `GET` | `/api/v1/tags` | 已发布内容的标签聚合 `Collection<TagSummary>`（`{ name, count }`，按 count 降序、name 升序），可用 `kind=THOUGHT|ARTICLE` 过滤 |
 | `GET` | `/api/v1/content/{slug}` | 通过 slug 或 ID 返回已发布详情和 Markdown body；默认记录一次 `content.viewed` 审计事件，内部 metadata 请求可传 `trackView=false` 跳过计数 |
-| `GET` | `/api/v1/content/{slug}/comments` | 返回未软删评论，按 `createdAt` 升序平铺（含 `replyToId` 供前端组线程） |
+| `GET` | `/api/v1/content/{slug}/comments` | 返回未软删评论，支持 `page`/`limit`/`q`；平铺返回当前页顶层评论及其全部回复（含 `replyToId` 供前端组线程） |
 | `POST` | `/api/v1/content/{slug}/comments` | 创建评论并立即公开，201 |
 | `GET` | `/api/v1/content/{slug}/likes` | 点赞统计和当前访客状态 |
 | `PUT` | `/api/v1/content/{slug}/likes` | 添加点赞，200 |
@@ -144,6 +144,8 @@ Thoughts 归档参数为 `page`（默认 1）、`limit`（默认 8，范围 1..5
 公开列表的 `excerpt` 是 Core 从 `body` 派生的最多 360 个 Unicode 字符的纯文本：移除 Markdown 标题、列表、链接目标、强调、行内代码、HTML 标签与代码围栏，并压缩空白。`summary` 仍是独立的编辑字段；列表响应不暴露完整 Markdown `body`，详情接口继续返回完整正文。
 
 评论输入：`body` 必填且最多 4000 字符；`authorName` 最多 80 字符，可空时归一化为 `Anonymous`；`authorUrl`、`replyToId` 和 `avatarSeed`（最多 64 字符）可选。`replyToId` 必须指向同一内容下未软删的评论，否则返回 422 `REPLY_TARGET_INVALID`。评论不再有审核状态：创建即公开，admin 只能软删除或恢复。
+
+公开评论列表参数：`page`（默认 1，1 起）、`limit`（每页顶层评论数，默认 10，范围 1..50）和 `q`（最长 200，按作者名或正文做大小写不敏感子串搜索，`cursor` 为预留参数暂被忽略）。分页只作用于顶层评论：响应平铺当前页的顶层评论（`createdAt` 升序）加它们各自的全部回复（回复升序），线程永不跨页拆散；被软删父级的回复随父级一起隐藏。`q` 是线程级搜索——顶层或其任一回复命中即返回整条线程。带 `page` 时 `pagination` 返回 `page/pageSize/totalItems/totalPages`：`totalItems` 为匹配集内全部公开评论（含回复），`totalPages` 按匹配的顶层评论计，超出范围的页码夹紧到最后一页；非法 `page`/`limit`/`q` 返回 400 `INVALID_QUERY`。admin 评论列表不受这些参数影响。
 
 反应请求必须使用 `X-Visitor-ID`，长度 8 到 128，只允许字母、数字、`_`、`-`。PUT/DELETE 对 `(content, visitor, kind)` 幂等。
 

@@ -327,12 +327,17 @@ func (h *apiHandler) listPublicComments(w http.ResponseWriter, r *http.Request) 
 		WriteError(w, http.StatusInternalServerError, "CONTENT_UNAVAILABLE", "Content is unavailable.")
 		return
 	}
-	comments, err := h.store.ListComments(content.ID)
+	options, err := parseCommentListOptions(r)
+	if err != nil {
+		WriteError(w, http.StatusBadRequest, "INVALID_QUERY", err.Error())
+		return
+	}
+	result, err := h.store.ListComments(content.ID, options)
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, "COMMENTS_UNAVAILABLE", "Comments are unavailable.")
 		return
 	}
-	WriteJSON(w, http.StatusOK, collection(comments))
+	WriteJSON(w, http.StatusOK, map[string]any{"data": result.Comments, "pagination": map[string]any{"nextCursor": nil, "hasMore": false, "page": result.Page, "pageSize": result.PageSize, "totalItems": result.TotalItems, "totalPages": result.TotalPages}})
 }
 
 type commentInput struct {
@@ -1030,6 +1035,29 @@ func parseThoughtArchiveOptions(r *http.Request) (page, limit int, tags []string
 		return page, limit, tags, search, fmt.Errorf("q is too long")
 	}
 	return page, limit, tags, search, nil
+}
+
+func parseCommentListOptions(r *http.Request) (store.CommentListOptions, error) {
+	query := r.URL.Query()
+	options := store.CommentListOptions{Page: 1, PageSize: 10}
+	if rawPage := strings.TrimSpace(query.Get("page")); rawPage != "" {
+		value, err := strconv.Atoi(rawPage)
+		if err != nil || value < 1 {
+			return options, fmt.Errorf("page must be a positive integer")
+		}
+		options.Page = value
+	}
+	if rawLimit := strings.TrimSpace(query.Get("limit")); rawLimit != "" {
+		value, err := strconv.Atoi(rawLimit)
+		if err != nil || value < 1 || value > 50 {
+			return options, fmt.Errorf("limit must be between 1 and 50")
+		}
+		options.PageSize = value
+	}
+	if options.Query = strings.TrimSpace(query.Get("q")); len(options.Query) > 200 {
+		return options, fmt.Errorf("q is too long")
+	}
+	return options, nil
 }
 
 func parseTagFilters(rawValues []string) ([]string, error) {

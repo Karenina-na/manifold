@@ -151,6 +151,97 @@ func TestCommentLifecyclePublishesAndSoftDeletes(t *testing.T) {
 	}
 }
 
+func TestPublicCommentsPaginationAndSearch(t *testing.T) {
+	database, err := store.Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.MinCost)
+	cfg := config.Config{JWTSecret: "test-secret", AdminUsername: "admin", AdminPasswordHash: string(hash), AllowedOrigins: []string{"*"}}
+	router := handler.Router(cfg, database)
+	if _, err := database.DB.Exec(`INSERT INTO comments (id, content_id, author_name, body, created_at) VALUES
+		('root-1', 'content_1', 'Ada', 'First root', '2026-01-01T00:00:00Z'),
+		('root-2', 'content_1', 'Grace', 'Second root', '2026-01-02T00:00:00Z'),
+		('root-3', 'content_1', 'Linus', 'Third root', '2026-01-03T00:00:00Z'),
+		('reply-1', 'content_1', 'Ada', 'a needle reply', '2026-01-04T00:00:00Z')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.DB.Exec(`UPDATE comments SET reply_to_id = 'root-1' WHERE id = 'reply-1'`); err != nil {
+		t.Fatal(err)
+	}
+
+	var page struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+		Pagination struct {
+			Page       int `json:"page"`
+			PageSize   int `json:"pageSize"`
+			TotalItems int `json:"totalItems"`
+			TotalPages int `json:"totalPages"`
+		} `json:"pagination"`
+	}
+	load := func(query string) {
+		t.Helper()
+		response := request(t, router, http.MethodGet, "/api/v1/content/designing-boundaries/comments"+query, nil)
+		if response.Code != http.StatusOK {
+			t.Fatalf("expected comments 200 for %s, got %d %s", query, response.Code, response.Body.String())
+		}
+		if err := json.Unmarshal(response.Body.Bytes(), &page); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ids := func() string {
+		values := make([]string, 0, len(page.Data))
+		for _, item := range page.Data {
+			values = append(values, item.ID)
+		}
+		return strings.Join(values, ",")
+	}
+
+	load("?limit=2&page=1")
+	if got, want := ids(), "root-1,root-2,reply-1"; got != want {
+		t.Fatalf("expected first page of roots with replies attached, got %s", got)
+	}
+	if page.Pagination.Page != 1 || page.Pagination.PageSize != 2 || page.Pagination.TotalItems != 4 || page.Pagination.TotalPages != 2 {
+		t.Fatalf("unexpected pagination meta: %+v", page.Pagination)
+	}
+
+	load("?limit=2&page=2")
+	if got, want := ids(), "root-3"; got != want {
+		t.Fatalf("expected second page to hold the last root, got %s", got)
+	}
+
+	load("?limit=2&page=99")
+	if page.Pagination.Page != 2 {
+		t.Fatalf("expected page to clamp to 2, got %d", page.Pagination.Page)
+	}
+
+	load("?limit=2&q=needle")
+	if got, want := ids(), "root-1,reply-1"; got != want {
+		t.Fatalf("expected a reply hit to expose the whole thread, got %s", got)
+	}
+	if page.Pagination.Page != 1 || page.Pagination.TotalItems != 2 || page.Pagination.TotalPages != 1 {
+		t.Fatalf("unexpected search pagination meta: %+v", page.Pagination)
+	}
+
+	load("?q=zzz")
+	if page.Data == nil || len(page.Data) != 0 {
+		t.Fatalf("expected an empty data array for unmatched search, got %#v", page.Data)
+	}
+	if page.Pagination.TotalItems != 0 || page.Pagination.TotalPages != 1 {
+		t.Fatalf("unexpected empty search meta: %+v", page.Pagination)
+	}
+
+	for _, invalidQuery := range []string{"?page=0", "?page=nope", "?limit=0", "?limit=51", "?q=" + strings.Repeat("x", 201)} {
+		response := request(t, router, http.MethodGet, "/api/v1/content/designing-boundaries/comments"+invalidQuery, nil)
+		if response.Code != http.StatusBadRequest {
+			t.Fatalf("expected 400 for %s, got %d", invalidQuery, response.Code)
+		}
+	}
+}
+
 func requestWithVisitor(t *testing.T, router http.Handler, method, path, visitorID string) *httptest.ResponseRecorder {
 	t.Helper()
 	recorder := httptest.NewRecorder()

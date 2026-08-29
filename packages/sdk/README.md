@@ -51,7 +51,7 @@ const page = await client.content({ kind: "ARTICLE", limit: 20 })
 | `now()` | GET | `/api/v1/now` | `NowStatus` |
 | `stats()` | GET | `/api/v1/stats` | `Stats` |
 | `presence(visitorId)` | POST | `/api/v1/presence` | `PresenceStatus` |
-| `comments(slug, query?)` | GET | `/api/v1/content/:slug/comments` | `Collection<Comment>` |
+| `comments(slug, query?)` | GET | `/api/v1/content/:slug/comments` | `Collection<Comment>`，`query` 支持 `page`（1 起）、`limit`（每页顶层评论数，默认 10）和 `q`（按作者或正文搜索，线程级命中）；带 `page` 时 `pagination` 附带 `page/pageSize/totalItems/totalPages`，分页只作用于顶层评论，回复随其顶层同页返回 |
 | `createComment(slug, input)` | POST | `/api/v1/content/:slug/comments` | `Comment` |
 | `likes(slug, visitorId?)` | GET | `/api/v1/content/:slug/likes` | `LikeSummary` |
 | `setLike(slug, visitorId, enabled)` | PUT/DELETE | `/api/v1/content/:slug/likes` | `LikeSummary` |
