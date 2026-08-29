@@ -43,6 +43,10 @@ func (c *ContentCache) Purge() {
 	c.entries.Purge()
 }
 
+func (c *ContentCache) Len() int {
+	return c.entries.Len()
+}
+
 func cloneContent(content model.Content) model.Content {
 	content.Tags = append([]string(nil), content.Tags...)
 	if content.PublishedAt != nil {

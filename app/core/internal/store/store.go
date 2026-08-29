@@ -17,21 +17,25 @@ import (
 
 const schema = `
 DROP TABLE IF EXISTS reactions;
+DROP TABLE IF EXISTS now_status;
 CREATE TABLE IF NOT EXISTS profile (id TEXT PRIMARY KEY, display_name TEXT NOT NULL, handle TEXT NOT NULL DEFAULT '', headline TEXT NOT NULL DEFAULT '', bio TEXT NOT NULL DEFAULT '', location TEXT NOT NULL DEFAULT '', avatar_url TEXT NOT NULL DEFAULT '', organization TEXT NOT NULL DEFAULT '', website_url TEXT NOT NULL DEFAULT '', resume_url TEXT NOT NULL DEFAULT '', interests_json TEXT NOT NULL DEFAULT '[]', education_json TEXT NOT NULL DEFAULT '[]', experience_json TEXT NOT NULL DEFAULT '[]', series_json TEXT NOT NULL DEFAULT '[]', contacts_json TEXT NOT NULL DEFAULT '[]', updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS content (id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK (kind IN ('THOUGHT', 'ARTICLE')), status TEXT NOT NULL DEFAULT 'DRAFT' CHECK (status IN ('DRAFT', 'PUBLISHED', 'DELETED')), slug TEXT UNIQUE, title TEXT, summary TEXT NOT NULL DEFAULT '', body TEXT NOT NULL DEFAULT '', tags_json TEXT NOT NULL DEFAULT '[]', metadata_json TEXT NOT NULL DEFAULT '{}', published_at TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, version INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, view_count INTEGER NOT NULL DEFAULT 0);
-CREATE TABLE IF NOT EXISTS now_status (id TEXT PRIMARY KEY, title TEXT NOT NULL, detail TEXT NOT NULL DEFAULT '', mood TEXT NOT NULL DEFAULT 'FOCUSED', updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS site_config (id TEXT PRIMARY KEY, featured_content_json TEXT NOT NULL DEFAULT '[]', navigation_json TEXT NOT NULL DEFAULT '[]', sections_json TEXT NOT NULL DEFAULT '[]', updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS thoughts_config (id TEXT PRIMARY KEY, featured_thought_id TEXT REFERENCES content(id) ON DELETE SET NULL, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS comments (id TEXT PRIMARY KEY, content_id TEXT NOT NULL REFERENCES content(id), author_name TEXT NOT NULL, author_url TEXT NOT NULL DEFAULT '', body TEXT NOT NULL, reply_to_id TEXT REFERENCES comments(id), avatar_seed TEXT NOT NULL DEFAULT '', deleted_at TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS likes (id TEXT PRIMARY KEY, content_id TEXT NOT NULL REFERENCES content(id) ON DELETE CASCADE, visitor_id TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE (content_id, visitor_id));
 CREATE TABLE IF NOT EXISTS presence (visitor_id TEXT PRIMARY KEY, last_seen_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS audit_events (id TEXT PRIMARY KEY, event_name TEXT NOT NULL, resource_type TEXT NOT NULL, resource_id TEXT NOT NULL DEFAULT '', actor TEXT NOT NULL DEFAULT 'anonymous', request_id TEXT NOT NULL DEFAULT '', trace_id TEXT NOT NULL DEFAULT '', metadata_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS content_view_events (id INTEGER PRIMARY KEY AUTOINCREMENT, content_id TEXT NOT NULL, visitor_id TEXT NOT NULL DEFAULT '', referrer TEXT NOT NULL DEFAULT '', day TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE INDEX IF NOT EXISTS idx_content_publication ON content(status, published_at DESC);
 CREATE INDEX IF NOT EXISTS idx_content_kind_publication ON content(kind, status, published_at DESC);
 CREATE INDEX IF NOT EXISTS idx_likes_content ON likes(content_id);
 CREATE INDEX IF NOT EXISTS idx_presence_last_seen ON presence(last_seen_at);
 CREATE INDEX IF NOT EXISTS idx_audit_events_created_at ON audit_events(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_audit_events_content_views ON audit_events(event_name, resource_id);
+CREATE INDEX IF NOT EXISTS idx_view_events_day ON content_view_events(day);
+CREATE INDEX IF NOT EXISTS idx_view_events_content ON content_view_events(content_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_view_events_dedup ON content_view_events(content_id, visitor_id, day) WHERE visitor_id != '';
 `
 
 type Store struct{ DB *sql.DB }
@@ -470,9 +474,6 @@ func (s *Store) seed() error {
 	if _, err := s.DB.Exec(`UPDATE profile SET bio = 'Technical writings and short thoughts.' WHERE id = 'profile_1' AND bio = 'Technical writings and short thoughtsxxxxx'`); err != nil {
 		return err
 	}
-	if _, err := s.DB.Exec(`UPDATE now_status SET title = 'Balancing current work', detail = 'Current work across software and research.' WHERE id = 'now_1' AND title = 'Building the first garden'`); err != nil {
-		return err
-	}
 	if _, err := s.DB.Exec(`UPDATE content SET summary = 'Notes on designing boundaries in personal systems.' WHERE id = 'content_1' AND summary = 'A field note on keeping a personal system calm and extensible.'`); err != nil {
 		return err
 	}
@@ -480,9 +481,6 @@ func (s *Store) seed() error {
 		return err
 	}
 	if _, err := s.DB.Exec(`UPDATE content SET summary = 'Questions about the relationship between software and daily life.' WHERE id = 'content_3' AND summary = 'A research notebook for questions that sit between engineering and lived experience.'`); err != nil {
-		return err
-	}
-	if _, err := s.DB.Exec(`INSERT OR IGNORE INTO now_status (id, title, detail, mood, updated_at) VALUES ('now_1', 'Balancing current work', 'Current work across software and research.', 'FOCUSED', ?)`, now); err != nil {
 		return err
 	}
 	if _, err := s.DB.Exec(`INSERT OR IGNORE INTO site_config (id, featured_content_json, navigation_json, sections_json, updated_at) VALUES ('site_1', ?, ?, ?, ?)`, encodeJSON([]model.SiteContentRef{{ID: "content_1", Kind: model.ContentKindArticle}}), encodeJSON([]model.SiteNavigationItem{{Label: "Thoughts", Href: "/thoughts"}, {Label: "Writings", Href: "/writing"}}), encodeJSON([]string{"PROFILE", "CV", "RECENT_ACTIVITY"}), now); err != nil {
@@ -884,12 +882,6 @@ func (s *Store) GetContentByID(id string, includeDrafts bool) (model.Content, er
 	return c, err
 }
 
-func (s *Store) GetNow() (model.NowStatus, error) {
-	var n model.NowStatus
-	err := s.DB.QueryRow(`SELECT title, detail, mood, updated_at FROM now_status WHERE id = 'now_1'`).Scan(&n.Title, &n.Detail, &n.Mood, &n.UpdatedAt)
-	return n, err
-}
-
 func (s *Store) Stats() (model.Stats, error) {
 	var stats model.Stats
 	err := s.DB.QueryRow(`SELECT COUNT(*), SUM(kind = 'ARTICLE'), SUM(kind = 'THOUGHT'), COALESCE(SUM(length(body) - length(replace(body, ' ', '')) + 1), 0) FROM content WHERE status = 'PUBLISHED'`).Scan(&stats.ContentCount, &stats.ArticleCount, &stats.ThoughtCount, &stats.WordCount)
@@ -1067,8 +1059,23 @@ func (s *Store) GetLikeSummary(contentID, visitorID string) (model.LikeSummary, 
 	return summary, nil
 }
 
-func (s *Store) RecordContentView(contentID string) (int, int, error) {
+// RecordContentView increments the cumulative public view counter and appends a
+// per-day analytics event. Identified visitors dedupe to one event per
+// content per UTC day via the partial unique index; anonymous views append
+// one row each so traffic totals keep reflecting every request.
+func (s *Store) RecordContentView(contentID, visitorID, referrer string) (int, int, error) {
 	if _, err := s.DB.Exec(`UPDATE content SET view_count = view_count + 1 WHERE id = ?`, contentID); err != nil {
+		return 0, 0, err
+	}
+	now := time.Now().UTC()
+	day := now.Format("2006-01-02")
+	var err error
+	if visitorID == "" {
+		_, err = s.DB.Exec(`INSERT INTO content_view_events (content_id, visitor_id, referrer, day, created_at) VALUES (?, '', ?, ?, ?)`, contentID, referrer, day, now.Format(time.RFC3339))
+	} else {
+		_, err = s.DB.Exec(`INSERT OR IGNORE INTO content_view_events (content_id, visitor_id, referrer, day, created_at) VALUES (?, ?, ?, ?, ?)`, contentID, visitorID, referrer, day, now.Format(time.RFC3339))
+	}
+	if err != nil {
 		return 0, 0, err
 	}
 	var viewCount, likeCount int
@@ -1106,6 +1113,207 @@ func (s *Store) AuditEventCount() (int, error) {
 	var count int
 	err := s.DB.QueryRow(`SELECT COUNT(*) FROM audit_events`).Scan(&count)
 	return count, err
+}
+
+const overviewTrendMonths = 12
+
+func (s *Store) Overview() (model.AdminOverview, error) {
+	overview := model.AdminOverview{Trend: model.AdminOverviewTrend{Monthly: []model.AdminOverviewTrendPoint{}}, TopContent: []model.AdminOverviewContentItem{}, Tags: []model.TagSummary{}}
+	cutoff := time.Now().UTC().Add(-presenceTTL).Format(time.RFC3339)
+	var content model.AdminOverviewContent
+	err := s.DB.QueryRow(`SELECT
+		(SELECT COUNT(*) FROM content WHERE status = 'PUBLISHED'),
+		(SELECT COUNT(*) FROM content WHERE status = 'DRAFT'),
+		(SELECT COUNT(*) FROM content WHERE status = 'PUBLISHED' AND kind = 'ARTICLE'),
+		(SELECT COUNT(*) FROM content WHERE status = 'PUBLISHED' AND kind = 'THOUGHT'),
+		(SELECT COALESCE(SUM(length(body) - length(replace(body, ' ', '')) + 1), 0) FROM content WHERE status = 'PUBLISHED'),
+		(SELECT COALESCE(SUM(view_count), 0) FROM content WHERE status != 'DELETED'),
+		(SELECT COUNT(*) FROM likes),
+		(SELECT COUNT(*) FROM comments WHERE deleted_at = ''),
+		(SELECT COUNT(*) FROM presence WHERE last_seen_at >= ?)`, cutoff).Scan(&content.ContentCount, &content.DraftCount, &content.ArticleCount, &content.ThoughtCount, &content.WordCount, &content.TotalViews, &content.TotalLikes, &content.TotalComments, &content.ActiveVisitors)
+	if err != nil {
+		return overview, err
+	}
+	overview.Content = content
+
+	now := time.Now().UTC()
+	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC).AddDate(0, -(overviewTrendMonths - 1), 0)
+	createdBy, err := s.monthlyCounts(`SELECT strftime('%Y-%m', created_at), COUNT(*) FROM content WHERE status != 'DELETED' AND created_at >= ? GROUP BY 1`, monthStart.Format("2006-01-02"))
+	if err != nil {
+		return overview, err
+	}
+	publishedBy, err := s.monthlyCounts(`SELECT strftime('%Y-%m', published_at), COUNT(*) FROM content WHERE status = 'PUBLISHED' AND published_at IS NOT NULL AND published_at >= ? GROUP BY 1`, monthStart.Format("2006-01-02"))
+	if err != nil {
+		return overview, err
+	}
+	for i := 0; i < overviewTrendMonths; i++ {
+		month := monthStart.AddDate(0, i, 0).Format("2006-01")
+		overview.Trend.Monthly = append(overview.Trend.Monthly, model.AdminOverviewTrendPoint{Month: month, Created: createdBy[month], Published: publishedBy[month]})
+	}
+
+	overview.TopContent, err = s.topPublishedContent(5)
+	if err != nil {
+		return overview, err
+	}
+	tags, err := s.Tags("")
+	if err != nil {
+		return overview, err
+	}
+	if len(tags) > 10 {
+		tags = tags[:10]
+	}
+	overview.Tags = tags
+	return overview, nil
+}
+
+func (s *Store) monthlyCounts(query, from string) (map[string]int, error) {
+	rows, err := s.DB.Query(query, from)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	counts := map[string]int{}
+	for rows.Next() {
+		var month string
+		var count int
+		if err := rows.Scan(&month, &count); err != nil {
+			return nil, err
+		}
+		counts[month] = count
+	}
+	return counts, rows.Err()
+}
+
+func (s *Store) topPublishedContent(limit int) ([]model.AdminOverviewContentItem, error) {
+	rows, err := s.DB.Query(`SELECT id, kind, COALESCE(slug, ''), COALESCE(title, ''), view_count, (SELECT COUNT(*) FROM likes WHERE content_id = content.id), (SELECT COUNT(*) FROM comments WHERE content_id = content.id AND deleted_at = '') FROM content WHERE status = 'PUBLISHED' ORDER BY view_count DESC, id ASC LIMIT ?`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []model.AdminOverviewContentItem{}
+	for rows.Next() {
+		var item model.AdminOverviewContentItem
+		if err := rows.Scan(&item.ID, &item.Kind, &item.Slug, &item.Title, &item.ViewCount, &item.LikeCount, &item.CommentCount); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+const maxAnalyticsDays = 90
+
+func (s *Store) AnalyticsViews(days int) (model.AnalyticsViews, error) {
+	if days <= 0 {
+		days = 30
+	}
+	if days > maxAnalyticsDays {
+		days = maxAnalyticsDays
+	}
+	today := time.Now().UTC()
+	views := model.AnalyticsViews{Range: model.AnalyticsRange{Days: days, From: today.AddDate(0, 0, -(days - 1)).Format("2006-01-02"), To: today.Format("2006-01-02")}, Daily: []model.AnalyticsDay{}, Referrers: []model.AnalyticsReferrer{}}
+	if err := s.DB.QueryRow(`SELECT COUNT(*), COUNT(DISTINCT CASE WHEN visitor_id != '' THEN visitor_id END) FROM content_view_events WHERE day >= ?`, views.Range.From).Scan(&views.TotalViews, &views.UniqueVisitors); err != nil {
+		return views, err
+	}
+	byDay, err := s.viewEventDaily(views.Range.From)
+	if err != nil {
+		return views, err
+	}
+	for i := 0; i < days; i++ {
+		date := today.AddDate(0, 0, -(days - 1 - i)).Format("2006-01-02")
+		if day, ok := byDay[date]; ok {
+			views.Daily = append(views.Daily, day)
+			continue
+		}
+		views.Daily = append(views.Daily, model.AnalyticsDay{Date: date})
+	}
+	views.Referrers, err = s.viewEventReferrers(views.Range.From, 10)
+	return views, err
+}
+
+func (s *Store) viewEventDaily(from string) (map[string]model.AnalyticsDay, error) {
+	rows, err := s.DB.Query(`SELECT day, COUNT(*), COUNT(DISTINCT CASE WHEN visitor_id != '' THEN visitor_id END) FROM content_view_events WHERE day >= ? GROUP BY day`, from)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	days := map[string]model.AnalyticsDay{}
+	for rows.Next() {
+		var day model.AnalyticsDay
+		if err := rows.Scan(&day.Date, &day.Views, &day.UniqueVisitors); err != nil {
+			return nil, err
+		}
+		days[day.Date] = day
+	}
+	return days, rows.Err()
+}
+
+func (s *Store) viewEventReferrers(from string, limit int) ([]model.AnalyticsReferrer, error) {
+	rows, err := s.DB.Query(`SELECT CASE WHEN referrer = '' THEN 'direct' ELSE referrer END, COUNT(*) FROM content_view_events WHERE day >= ? GROUP BY 1 ORDER BY COUNT(*) DESC, 1 ASC LIMIT ?`, from, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	referrers := []model.AnalyticsReferrer{}
+	for rows.Next() {
+		var referrer model.AnalyticsReferrer
+		if err := rows.Scan(&referrer.Source, &referrer.Count); err != nil {
+			return nil, err
+		}
+		referrers = append(referrers, referrer)
+	}
+	return referrers, rows.Err()
+}
+
+// ListAuditEvents returns one page of recent audit events, newest first.
+// The needle filters by event name, actor, or resource id; an empty needle
+// matches everything.
+func (s *Store) ListAuditEvents(page, pageSize int, needle string) ([]model.AuditEvent, int, error) {
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 10
+	}
+	if pageSize > 50 {
+		pageSize = 50
+	}
+	filter := `WHERE (? = '' OR event_name LIKE '%' || ? || '%' OR actor LIKE '%' || ? || '%' OR resource_id LIKE '%' || ? || '%')`
+	args := []any{needle, needle, needle, needle}
+	var total int
+	if err := s.DB.QueryRow(`SELECT COUNT(*) FROM audit_events `+filter, args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+	offset := (page - 1) * pageSize
+	if offset >= total && total > 0 {
+		page = (total + pageSize - 1) / pageSize
+		offset = (page - 1) * pageSize
+	}
+	rows, err := s.DB.Query(`SELECT id, event_name, resource_type, resource_id, actor, metadata_json, created_at FROM audit_events `+filter+` ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`, append(args, pageSize, offset)...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	events := []model.AuditEvent{}
+	for rows.Next() {
+		var event model.AuditEvent
+		if err := rows.Scan(&event.ID, &event.EventName, &event.ResourceType, &event.ResourceID, &event.Actor, &event.MetadataJSON, &event.CreatedAt); err != nil {
+			return nil, 0, err
+		}
+		events = append(events, event)
+	}
+	return events, total, rows.Err()
+}
+
+func (s *Store) DatabaseSizeBytes() (int64, error) {
+	var pageCount, pageSize int64
+	if err := s.DB.QueryRow(`PRAGMA page_count`).Scan(&pageCount); err != nil {
+		return 0, err
+	}
+	if err := s.DB.QueryRow(`PRAGMA page_size`).Scan(&pageSize); err != nil {
+		return 0, err
+	}
+	return pageCount * pageSize, nil
 }
 
 func (s *Store) CreateContent(c model.Content) (model.Content, error) {
@@ -1200,8 +1408,3 @@ func (s *Store) SetContentStatus(id, status string) error {
 }
 
 func (s *Store) DeleteContent(id string) error { return s.SetContentStatus(id, "DELETED") }
-
-func (s *Store) UpdateNow(n model.NowStatus) error {
-	_, err := s.DB.Exec(`UPDATE now_status SET title = ?, detail = ?, mood = ?, updated_at = ? WHERE id = 'now_1'`, n.Title, n.Detail, n.Mood, time.Now().UTC().Format(time.RFC3339))
-	return err
-}

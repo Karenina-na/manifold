@@ -9,7 +9,11 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
+	"os"
+	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -17,6 +21,12 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/cors"
 	"github.com/go-playground/validator/v10"
+	"github.com/shirou/gopsutil/v4/cpu"
+	"github.com/shirou/gopsutil/v4/disk"
+	"github.com/shirou/gopsutil/v4/host"
+	"github.com/shirou/gopsutil/v4/load"
+	"github.com/shirou/gopsutil/v4/mem"
+	"github.com/shirou/gopsutil/v4/process"
 
 	"github.com/manifold-space/manifold/app/core/internal/auth"
 	"github.com/manifold-space/manifold/app/core/internal/cache"
@@ -27,14 +37,20 @@ import (
 )
 
 type apiHandler struct {
-	cfg          config.Config
-	store        *store.Store
-	auth         *auth.Service
-	validate     *validator.Validate
-	contentCache *cache.ContentCache
-	statsCache   *cache.StatsCache
-	auditEvents  events.AuditPublisher
+	cfg           config.Config
+	store         *store.Store
+	auth          *auth.Service
+	validate      *validator.Validate
+	contentCache  *cache.ContentCache
+	statsCache    *cache.StatsCache
+	overviewCache *cache.OverviewCache
+	auditEvents   events.AuditPublisher
 }
+
+// coreVersion is the build version reported by /healthz and the admin system endpoint.
+const coreVersion = "0.1.0"
+
+var processStartedAt = time.Now().UTC()
 
 // Router is retained for internal callers that cannot own a shutdown hook.
 // Production entry points must use RouterWithLifecycle so audit writes are asynchronous and drained on shutdown.
@@ -65,7 +81,7 @@ func newRouter(cfg config.Config, database *store.Store, auditEvents events.Audi
 	if err != nil {
 		panic(err)
 	}
-	h := &apiHandler{cfg: cfg, store: database, auth: authService, validate: validator.New(), contentCache: cache.NewContentCache(cfg.ContentCacheTTL), statsCache: cache.NewStatsCache(cfg.StatsCacheTTL), auditEvents: auditEvents}
+	h := &apiHandler{cfg: cfg, store: database, auth: authService, validate: validator.New(), contentCache: cache.NewContentCache(cfg.ContentCacheTTL), statsCache: cache.NewStatsCache(cfg.StatsCacheTTL), overviewCache: cache.NewOverviewCache(cfg.StatsCacheTTL), auditEvents: auditEvents}
 	h.prewarmFeaturedContent()
 	router := chi.NewRouter()
 	router.Use(requestIDMiddleware)
@@ -91,7 +107,6 @@ func newRouter(cfg config.Config, database *store.Store, auditEvents events.Audi
 		api.Get("/content/{slug}/likes", h.getLikes)
 		api.Put("/content/{slug}/likes", h.putLike)
 		api.Delete("/content/{slug}/likes", h.deleteLike)
-		api.Get("/now", h.now)
 		api.Post("/admin/session", h.login)
 		api.Route("/admin", func(admin chi.Router) {
 			admin.Use(h.auth.RequireAdmin)
@@ -110,9 +125,11 @@ func newRouter(cfg config.Config, database *store.Store, auditEvents events.Audi
 			admin.Get("/comments", h.adminListComments)
 			admin.Delete("/comments/{id}", h.adminDeleteComment)
 			admin.Post("/comments/{id}/restore", h.adminRestoreComment)
-			admin.Get("/now", h.now)
-			admin.Put("/now", h.adminUpdateNow)
 			admin.Get("/stats", h.adminStats)
+			admin.Get("/overview", h.adminOverview)
+			admin.Get("/analytics/views", h.adminAnalyticsViews)
+			admin.Get("/system", h.adminSystem)
+			admin.Get("/audit", h.adminAudit)
 		})
 	})
 	return router
@@ -155,7 +172,7 @@ func WriteError(w http.ResponseWriter, status int, code, message string) {
 }
 
 func Health(w http.ResponseWriter, _ *http.Request) {
-	WriteJSON(w, http.StatusOK, map[string]string{"status": "ok", "version": "0.1.0"})
+	WriteJSON(w, http.StatusOK, map[string]string{"status": "ok", "version": coreVersion, "startedAt": processStartedAt.Format(time.RFC3339)})
 }
 
 func (h *apiHandler) login(w http.ResponseWriter, r *http.Request) {
@@ -294,7 +311,11 @@ func (h *apiHandler) getContent(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if r.URL.Query().Get("trackView") != "false" {
-		viewCount, likeCount, err := h.store.RecordContentView(content.ID)
+		viewerID := ""
+		if id, err := visitorID(r, false); err == nil {
+			viewerID = id
+		}
+		viewCount, likeCount, err := h.store.RecordContentView(content.ID, viewerID, referrerOrigin(r.Referer()))
 		if err != nil {
 			slog.Error("content_view_count_failed", "contentId", content.ID, "error", err)
 		} else {
@@ -308,13 +329,20 @@ func (h *apiHandler) getContent(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusOK, content)
 }
 
-func (h *apiHandler) now(w http.ResponseWriter, _ *http.Request) {
-	status, err := h.store.GetNow()
-	if err != nil {
-		WriteError(w, http.StatusInternalServerError, "NOW_UNAVAILABLE", "Now status is unavailable.")
-		return
+// referrerOrigin reduces a Referer header to scheme://host so analytics
+// grouping stays stable across page paths; unparseable values are truncated.
+func referrerOrigin(header string) string {
+	value := strings.TrimSpace(header)
+	if value == "" {
+		return ""
 	}
-	WriteJSON(w, http.StatusOK, status)
+	if parsed, err := url.Parse(value); err == nil && parsed.Host != "" {
+		return parsed.Scheme + "://" + parsed.Host
+	}
+	if len(value) > 256 {
+		value = value[:256]
+	}
+	return value
 }
 
 func (h *apiHandler) listPublicComments(w http.ResponseWriter, r *http.Request) {
@@ -446,6 +474,7 @@ func (h *apiHandler) mutateLike(w http.ResponseWriter, r *http.Request, enabled 
 		action = "added"
 	}
 	h.audit(r, "content.like."+action, "content", content.ID, nil)
+	h.overviewCache.Purge()
 	summary, err := h.store.GetLikeSummary(content.ID, visitorID)
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, "LIKES_UNAVAILABLE", "Likes are unavailable.")
@@ -696,6 +725,7 @@ func (h *apiHandler) adminCreateContent(w http.ResponseWriter, r *http.Request) 
 	}
 	h.audit(r, "content.created", "content", created.ID, map[string]string{"kind": string(created.Kind)})
 	h.statsCache.Purge()
+	h.overviewCache.Purge()
 	WriteJSON(w, http.StatusCreated, created)
 }
 
@@ -804,6 +834,7 @@ func (h *apiHandler) adminDeleteContent(w http.ResponseWriter, r *http.Request) 
 	}
 	h.audit(r, "content.deleted", "content", chi.URLParam(r, "id"), nil)
 	h.statsCache.Purge()
+	h.overviewCache.Purge()
 	if slug == "" {
 		h.contentCache.Purge()
 	} else {
@@ -822,6 +853,7 @@ func (h *apiHandler) contentSlug(id string) string {
 
 func (h *apiHandler) invalidateContentByID(id string) {
 	h.statsCache.Purge()
+	h.overviewCache.Purge()
 	slug := h.contentSlug(id)
 	if slug == "" {
 		h.contentCache.Purge()
@@ -870,20 +902,6 @@ func (h *apiHandler) setCommentDeleted(w http.ResponseWriter, r *http.Request, d
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *apiHandler) adminUpdateNow(w http.ResponseWriter, r *http.Request) {
-	var input model.NowStatus
-	if err := json.NewDecoder(r.Body).Decode(&input); err != nil || input.Title == "" {
-		WriteError(w, http.StatusUnprocessableEntity, "VALIDATION_ERROR", "Title is required.")
-		return
-	}
-	if err := h.store.UpdateNow(input); err != nil {
-		WriteError(w, http.StatusInternalServerError, "NOW_UPDATE_FAILED", "Now status could not be updated.")
-		return
-	}
-	h.audit(r, "now.updated", "now", "now_1", nil)
-	h.now(w, r)
-}
-
 func (h *apiHandler) adminStats(w http.ResponseWriter, _ *http.Request) {
 	stats, ok := h.statsCache.Get()
 	if !ok {
@@ -896,6 +914,151 @@ func (h *apiHandler) adminStats(w http.ResponseWriter, _ *http.Request) {
 		h.statsCache.Set(stats)
 	}
 	WriteJSON(w, http.StatusOK, map[string]any{"content": stats})
+}
+
+func (h *apiHandler) adminOverview(w http.ResponseWriter, _ *http.Request) {
+	overview, ok := h.overviewCache.Get()
+	if !ok {
+		var err error
+		overview, err = h.store.Overview()
+		if err != nil {
+			WriteError(w, http.StatusInternalServerError, "OVERVIEW_UNAVAILABLE", "Overview is unavailable.")
+			return
+		}
+		h.overviewCache.Set(overview)
+	}
+	WriteJSON(w, http.StatusOK, overview)
+}
+
+func (h *apiHandler) adminAnalyticsViews(w http.ResponseWriter, r *http.Request) {
+	days := 0
+	if rawDays := strings.TrimSpace(r.URL.Query().Get("days")); rawDays != "" {
+		value, err := strconv.Atoi(rawDays)
+		if err != nil || value < 1 {
+			WriteError(w, http.StatusBadRequest, "INVALID_QUERY", "days must be a positive integer")
+			return
+		}
+		days = value
+	}
+	views, err := h.store.AnalyticsViews(days)
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, "ANALYTICS_UNAVAILABLE", "Analytics are unavailable.")
+		return
+	}
+	WriteJSON(w, http.StatusOK, views)
+}
+
+func (h *apiHandler) adminSystem(w http.ResponseWriter, _ *http.Request) {
+	sizeBytes, err := h.store.DatabaseSizeBytes()
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, "SYSTEM_UNAVAILABLE", "System status is unavailable.")
+		return
+	}
+	auditEventCount, err := h.store.AuditEventCount()
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, "SYSTEM_UNAVAILABLE", "System status is unavailable.")
+		return
+	}
+	var memStats runtime.MemStats
+	runtime.ReadMemStats(&memStats)
+	resources, rssBytes := systemResources(h.cfg.DatabasePath)
+	WriteJSON(w, http.StatusOK, model.SystemStatus{
+		Version:         coreVersion,
+		StartedAt:       processStartedAt.Format(time.RFC3339),
+		UptimeSeconds:   int64(time.Since(processStartedAt).Seconds()),
+		Database:        model.SystemDatabase{SizeBytes: sizeBytes},
+		Caches:          model.SystemCaches{ContentEntries: h.contentCache.Len()},
+		Runtime:         model.SystemRuntime{HeapAllocBytes: memStats.HeapAlloc, NumGoroutine: runtime.NumGoroutine(), SysRSSBytes: rssBytes},
+		Resources:       resources,
+		Host:            systemHost(),
+		AuditEventCount: auditEventCount,
+	})
+}
+
+// systemResources samples host metrics via gopsutil. Individual metric failures
+// degrade to zero values: resource sampling is observational data and must not
+// fail the health query the way store reads do. cpu.Percent(0, ...) takes a
+// non-blocking delta sample, so the first call in a process reports 0.
+func systemResources(databasePath string) (model.SystemResources, uint64) {
+	resources := model.SystemResources{}
+	if percents, err := cpu.Percent(0, false); err == nil && len(percents) > 0 {
+		resources.CPUPercent = percents[0]
+	}
+	if counts, err := cpu.Counts(true); err == nil {
+		resources.CPUCores = counts
+	}
+	if vm, err := mem.VirtualMemory(); err == nil {
+		resources.MemTotalBytes = vm.Total
+		resources.MemUsedBytes = vm.Used
+		resources.MemUsedPercent = vm.UsedPercent
+	}
+	if avg, err := load.Avg(); err == nil {
+		resources.LoadAvg1 = avg.Load1
+		resources.LoadAvg5 = avg.Load5
+		resources.LoadAvg15 = avg.Load15
+	}
+	if usage, err := disk.Usage(filepath.Dir(databasePath)); err == nil {
+		resources.DiskTotalBytes = usage.Total
+		resources.DiskUsedBytes = usage.Used
+		resources.DiskUsedPercent = usage.UsedPercent
+	}
+	var rssBytes uint64
+	if proc, err := process.NewProcess(int32(os.Getpid())); err == nil {
+		if info, err := proc.MemoryInfo(); err == nil {
+			rssBytes = info.RSS
+		}
+	}
+	return resources, rssBytes
+}
+
+func systemHost() model.SystemHost {
+	status := model.SystemHost{}
+	if info, err := host.Info(); err == nil {
+		status.Hostname = info.Hostname
+		status.OS = info.OS
+		status.Platform = info.Platform
+		status.KernelArch = info.KernelArch
+	}
+	return status
+}
+
+func (h *apiHandler) adminAudit(w http.ResponseWriter, r *http.Request) {
+	page := 1
+	if rawPage := strings.TrimSpace(r.URL.Query().Get("page")); rawPage != "" {
+		value, err := strconv.Atoi(rawPage)
+		if err != nil || value < 1 {
+			WriteError(w, http.StatusBadRequest, "INVALID_QUERY", "page must be a positive integer")
+			return
+		}
+		page = value
+	}
+	pageSize := 10
+	if rawPageSize := strings.TrimSpace(r.URL.Query().Get("pageSize")); rawPageSize != "" {
+		value, err := strconv.Atoi(rawPageSize)
+		if err != nil || value < 1 || value > 50 {
+			WriteError(w, http.StatusBadRequest, "INVALID_QUERY", "pageSize must be between 1 and 50")
+			return
+		}
+		pageSize = value
+	}
+	needle := strings.TrimSpace(r.URL.Query().Get("q"))
+	if len(needle) > 200 {
+		WriteError(w, http.StatusBadRequest, "INVALID_QUERY", "q is too long")
+		return
+	}
+	events, total, err := h.store.ListAuditEvents(page, pageSize, needle)
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, "AUDIT_UNAVAILABLE", "Audit events are unavailable.")
+		return
+	}
+	totalPages := (total + pageSize - 1) / pageSize
+	if totalPages < 1 {
+		totalPages = 1
+	}
+	if page > totalPages {
+		page = totalPages
+	}
+	WriteJSON(w, http.StatusOK, model.AuditEventList{Events: events, Pagination: model.PagePagination{Page: page, PageSize: pageSize, TotalItems: total, TotalPages: totalPages}})
 }
 
 func collection[T any](items []T) map[string]any {

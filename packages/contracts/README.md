@@ -47,8 +47,11 @@ Thought 的 `ThoughtMetadata` 字段为 `mood`、`question`、`context`、`sourc
 
 - `Profile` / `ProfileInput`：身份、简介、网站、简历、兴趣、教育、经历、个人 Series 和联系方式。`series` 使用 `{ name, url, description, category? }`，`contacts` 使用 `{ label, url, handle?, icon? }`。
 - `SiteComposition` / `SiteConfig`：首页内容引用、导航和 sections。
-- `NowStatus`：当前状态标题、详情、mood 和时间戳。
 - `Stats` / `AdminStats`：公开统计和 Admin 统计包装。
+- `AdminOverview` 及其子类型：Admin 总览聚合（内容计数含草稿、浏览/点赞/评论总量、在线访客、月度趋势、Top 内容、标签分布）。
+- `AnalyticsViews` / `AnalyticsViewsQuery`：去重浏览事件分析（总量、独立访客、逐日曲线、referrer Top N，`days` 默认 30 上限 90）。
+- `SystemStatus`：Core 运行状态（version、startedAt、uptime、DB 体积、缓存条目、heap/goroutine/进程 RSS、`resources` 服务器资源块、`host` 主机信息块、审计事件总数）。
+- `AuditEvent` / `AuditEventCollection` / `AuditQuery`：审计事件服务端分页读取（`page`/`pageSize` 默认 10 上限 50、`q` 过滤），响应附 `PagePagination`。
 - `PresenceStatus`：匿名在线心跳返回的活跃访客数和观测时间；Core 只保留短期心跳，不返回访客身份。
 - `Comment`、`CreateCommentInput`：评论对象与创建输入。评论无审核状态，创建即公开；`Comment` 含 `replyToId`、`avatarSeed`（访客头像种子），admin 视图额外携带 `deletedAt`。
 - `CommentQuery`：公开评论列表参数。`page`（1 起）与 `limit`（每页顶层评论数）用于页码分页，`q` 按作者或正文做大小写不敏感子串搜索；`cursor` 目前为预留字段，Core 忽略。带 `page` 时响应 `pagination` 附带 `page/pageSize/totalItems/totalPages`：`totalItems` 计匹配集内全部公开评论（含回复），`totalPages` 按匹配的顶层评论计。搜索为线程级命中——任一评论命中即整条线程（顶层加全部回复）返回；分页只作用于顶层评论，回复永远随其顶层同页。

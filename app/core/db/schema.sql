@@ -1,4 +1,5 @@
 DROP TABLE IF EXISTS reactions;
+DROP TABLE IF EXISTS now_status;
 
 CREATE TABLE IF NOT EXISTS profile (
     id TEXT PRIMARY KEY,
@@ -34,14 +35,6 @@ CREATE TABLE IF NOT EXISTS content (
     version INTEGER NOT NULL DEFAULT 1,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     view_count INTEGER NOT NULL DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS now_status (
-    id TEXT PRIMARY KEY,
-    title TEXT NOT NULL,
-    detail TEXT NOT NULL DEFAULT '',
-    mood TEXT NOT NULL DEFAULT 'FOCUSED',
-    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS site_config (
@@ -95,9 +88,23 @@ CREATE TABLE IF NOT EXISTS audit_events (
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Anonymous views append one row each; identified visitors dedupe per
+-- content per UTC day through the partial unique index below.
+CREATE TABLE IF NOT EXISTS content_view_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    content_id TEXT NOT NULL,
+    visitor_id TEXT NOT NULL DEFAULT '',
+    referrer TEXT NOT NULL DEFAULT '',
+    day TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE INDEX IF NOT EXISTS idx_content_publication ON content(status, published_at DESC);
 CREATE INDEX IF NOT EXISTS idx_content_kind_publication ON content(kind, status, published_at DESC);
 CREATE INDEX IF NOT EXISTS idx_likes_content ON likes(content_id);
 CREATE INDEX IF NOT EXISTS idx_presence_last_seen ON presence(last_seen_at);
 CREATE INDEX IF NOT EXISTS idx_audit_events_created_at ON audit_events(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_audit_events_content_views ON audit_events(event_name, resource_id);
+CREATE INDEX IF NOT EXISTS idx_view_events_day ON content_view_events(day);
+CREATE INDEX IF NOT EXISTS idx_view_events_content ON content_view_events(content_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_view_events_dedup ON content_view_events(content_id, visitor_id, day) WHERE visitor_id != '';

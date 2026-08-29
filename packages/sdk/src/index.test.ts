@@ -145,6 +145,23 @@ test("sends visitor-scoped like requests", async () => {
 	assert.equal(requests[1]?.headers.get("X-Visitor-ID"), "visitor-123");
 });
 
+test("sends the visitor id on tracked detail reads", async () => {
+	const requests: Request[] = [];
+	const client = new ManifoldClient({
+		baseUrl: "http://core.test",
+		fetch: async (input, init) => {
+			requests.push(new Request(input, init));
+			return new Response(JSON.stringify({ id: "c1" }), { status: 200 });
+		},
+	});
+
+	await client.contentBySlug("a-piece", { visitorId: "visitor-123" });
+	await client.contentBySlug("a-piece");
+	assert.equal(requests[0]?.url, "http://core.test/api/v1/content/a-piece");
+	assert.equal(requests[0]?.headers.get("X-Visitor-ID"), "visitor-123");
+	assert.equal(requests[1]?.headers.get("X-Visitor-ID"), null);
+});
+
 test("sends a presence heartbeat with the visitor id", async () => {
 	let captured: Request | undefined;
 	const client = new ManifoldClient({

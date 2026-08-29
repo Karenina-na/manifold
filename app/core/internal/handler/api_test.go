@@ -24,7 +24,7 @@ func newTestRouter(t *testing.T) http.Handler {
 	}
 	t.Cleanup(func() { _ = database.Close() })
 	hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.MinCost)
-	cfg := config.Config{JWTSecret: "test-secret", AdminUsername: "admin", AdminPasswordHash: string(hash), AllowedOrigins: []string{"*"}}
+	cfg := config.Config{JWTSecret: "test-secret", AdminUsername: "admin", AdminPasswordHash: string(hash), AllowedOrigins: []string{"*"}, AuditEventBuffer: 256}
 	router, closeRouter := handler.RouterWithLifecycle(cfg, database)
 	t.Cleanup(closeRouter)
 	return router
@@ -67,7 +67,7 @@ func TestContentListIncludesViewAndLikeCounts(t *testing.T) {
 	}
 	defer database.Close()
 	hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.MinCost)
-	cfg := config.Config{JWTSecret: "test-secret", AdminUsername: "admin", AdminPasswordHash: string(hash), AllowedOrigins: []string{"*"}}
+	cfg := config.Config{JWTSecret: "test-secret", AdminUsername: "admin", AdminPasswordHash: string(hash), AllowedOrigins: []string{"*"}, AuditEventBuffer: 256}
 	if _, err := database.DB.Exec(`INSERT INTO comments (id, content_id, author_name, body, deleted_at) VALUES ('visible-comment', 'content_1', 'Reader', 'Public', ''), ('visible-comment-two', 'content_1', 'Reader', 'Public', ''), ('deleted-comment', 'content_1', 'Reader', 'Hidden', '2026-01-01T00:00:00Z')`); err != nil {
 		t.Fatal(err)
 	}
@@ -158,7 +158,7 @@ func TestPublicCommentsPaginationAndSearch(t *testing.T) {
 	}
 	defer database.Close()
 	hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.MinCost)
-	cfg := config.Config{JWTSecret: "test-secret", AdminUsername: "admin", AdminPasswordHash: string(hash), AllowedOrigins: []string{"*"}}
+	cfg := config.Config{JWTSecret: "test-secret", AdminUsername: "admin", AdminPasswordHash: string(hash), AllowedOrigins: []string{"*"}, AuditEventBuffer: 256}
 	router := handler.Router(cfg, database)
 	if _, err := database.DB.Exec(`INSERT INTO comments (id, content_id, author_name, body, created_at) VALUES
 		('root-1', 'content_1', 'Ada', 'First root', '2026-01-01T00:00:00Z'),
@@ -397,7 +397,7 @@ func TestWriteOperationsCreateAuditEvents(t *testing.T) {
 	}
 	defer database.Close()
 	hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.MinCost)
-	cfg := config.Config{JWTSecret: "test-secret", AdminUsername: "admin", AdminPasswordHash: string(hash), AllowedOrigins: []string{"*"}}
+	cfg := config.Config{JWTSecret: "test-secret", AdminUsername: "admin", AdminPasswordHash: string(hash), AllowedOrigins: []string{"*"}, AuditEventBuffer: 256}
 	router, closeRouter := handler.RouterWithLifecycle(cfg, database)
 	defer closeRouter()
 
@@ -540,7 +540,7 @@ func TestContentPageSortFilterAndTags(t *testing.T) {
 		t.Fatal(err)
 	}
 	hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.MinCost)
-	cfg := config.Config{JWTSecret: "test-secret", AdminUsername: "admin", AdminPasswordHash: string(hash), AllowedOrigins: []string{"*"}}
+	cfg := config.Config{JWTSecret: "test-secret", AdminUsername: "admin", AdminPasswordHash: string(hash), AllowedOrigins: []string{"*"}, AuditEventBuffer: 256}
 	router := handler.Router(cfg, database)
 
 	var payload struct {
@@ -692,7 +692,7 @@ func TestThoughtArchiveFilters(t *testing.T) {
 		t.Fatal(err)
 	}
 	hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.MinCost)
-	cfg := config.Config{JWTSecret: "test-secret", AdminUsername: "admin", AdminPasswordHash: string(hash), AllowedOrigins: []string{"*"}}
+	cfg := config.Config{JWTSecret: "test-secret", AdminUsername: "admin", AdminPasswordHash: string(hash), AllowedOrigins: []string{"*"}, AuditEventBuffer: 256}
 	router := handler.Router(cfg, database)
 	token := adminToken(t, router)
 	if configured := adminRequest(t, router, token, http.MethodPatch, "/api/v1/admin/thoughts/config", `{"featuredThoughtId":"thought_1"}`); configured.Code != http.StatusOK {
@@ -761,7 +761,7 @@ func TestThoughtArchiveIsOwnedByCore(t *testing.T) {
 		t.Fatal(err)
 	}
 	hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.MinCost)
-	cfg := config.Config{JWTSecret: "test-secret", AdminUsername: "admin", AdminPasswordHash: string(hash), AllowedOrigins: []string{"*"}}
+	cfg := config.Config{JWTSecret: "test-secret", AdminUsername: "admin", AdminPasswordHash: string(hash), AllowedOrigins: []string{"*"}, AuditEventBuffer: 256}
 	router := handler.Router(cfg, database)
 	token := adminToken(t, router)
 
@@ -866,7 +866,7 @@ func TestRouterPrewarmsFeaturedPublishedContent(t *testing.T) {
 	}
 	defer database.Close()
 	hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.MinCost)
-	cfg := config.Config{JWTSecret: "test-secret", AdminUsername: "admin", AdminPasswordHash: string(hash), AllowedOrigins: []string{"*"}}
+	cfg := config.Config{JWTSecret: "test-secret", AdminUsername: "admin", AdminPasswordHash: string(hash), AllowedOrigins: []string{"*"}, AuditEventBuffer: 256}
 	router, closeRouter := handler.RouterWithLifecycle(cfg, database)
 	defer closeRouter()
 
@@ -1072,4 +1072,236 @@ func adminRequest(t *testing.T, router http.Handler, token string, method, path,
 	req.Header.Set("Authorization", "Bearer "+token)
 	router.ServeHTTP(recorder, req)
 	return recorder
+}
+
+func TestNowEndpointsRemoved(t *testing.T) {
+	router := newTestRouter(t)
+	token := adminToken(t, router)
+
+	if response := request(t, router, http.MethodGet, "/api/v1/now", nil); response.Code != http.StatusNotFound {
+		t.Fatalf("expected public now endpoint to be removed, got %d", response.Code)
+	}
+	if response := adminRequest(t, router, token, http.MethodPut, "/api/v1/admin/now", `{"title":"x"}`); response.Code != http.StatusNotFound {
+		t.Fatalf("expected admin now endpoint to be removed, got %d", response.Code)
+	}
+	health := request(t, router, http.MethodGet, "/healthz", nil)
+	if health.Code != http.StatusOK || !strings.Contains(health.Body.String(), `"startedAt"`) {
+		t.Fatalf("expected health to report startedAt, got %d %s", health.Code, health.Body.String())
+	}
+}
+
+func TestAdminOverviewAndAnalytics(t *testing.T) {
+	router := newTestRouter(t)
+	token := adminToken(t, router)
+
+	draft := adminRequest(t, router, token, http.MethodPost, "/api/v1/admin/content", `{"kind":"THOUGHT","title":"Draft only","body":"Draft body","tags":["draft"],"metadata":{}}`)
+	if draft.Code != http.StatusCreated {
+		t.Fatalf("expected draft creation 201, got %d %s", draft.Code, draft.Body.String())
+	}
+	if liked := requestWithVisitor(t, router, http.MethodPut, "/api/v1/content/designing-boundaries/likes", "visitor-a"); liked.Code != http.StatusOK {
+		t.Fatalf("expected like 200, got %d", liked.Code)
+	}
+	if comment := request(t, router, http.MethodPost, "/api/v1/content/designing-boundaries/comments", strings.NewReader(`{"authorName":"Reader","body":"Insightful."}`)); comment.Code != http.StatusCreated {
+		t.Fatalf("expected comment 201, got %d", comment.Code)
+	}
+
+	overview := adminRequest(t, router, token, http.MethodGet, "/api/v1/admin/overview", "")
+	if overview.Code != http.StatusOK {
+		t.Fatalf("expected overview 200, got %d %s", overview.Code, overview.Body.String())
+	}
+	var decoded struct {
+		Content struct {
+			ContentCount  int `json:"contentCount"`
+			DraftCount    int `json:"draftCount"`
+			ArticleCount  int `json:"articleCount"`
+			ThoughtCount  int `json:"thoughtCount"`
+			TotalLikes    int `json:"totalLikes"`
+			TotalComments int `json:"totalComments"`
+		} `json:"content"`
+		TopContent []struct {
+			ID        string `json:"id"`
+			ViewCount int    `json:"viewCount"`
+		} `json:"topContent"`
+		Trend struct {
+			Monthly []struct {
+				Month string `json:"month"`
+			} `json:"monthly"`
+		} `json:"trend"`
+		Tags []struct {
+			Name  string `json:"name"`
+			Count int    `json:"count"`
+		} `json:"tags"`
+	}
+	if err := json.Unmarshal(overview.Body.Bytes(), &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if decoded.Content.ContentCount != 3 || decoded.Content.DraftCount != 1 || decoded.Content.ArticleCount != 2 || decoded.Content.ThoughtCount != 1 || decoded.Content.TotalLikes != 1 || decoded.Content.TotalComments != 1 {
+		t.Fatalf("unexpected overview content counts: %+v", decoded.Content)
+	}
+	if len(decoded.TopContent) != 3 || decoded.TopContent[0].ID != "content_1" {
+		t.Fatalf("expected content_1 first in top content, got %+v", decoded.TopContent)
+	}
+	if len(decoded.Trend.Monthly) != 12 {
+		t.Fatalf("expected 12 trend months, got %d", len(decoded.Trend.Monthly))
+	}
+	if len(decoded.Tags) != 3 || decoded.Tags[0].Name != "systems" || decoded.Tags[0].Count != 2 {
+		t.Fatalf("expected tags ranked with systems first, got %+v", decoded.Tags)
+	}
+
+	if first := requestWithVisitor(t, router, http.MethodGet, "/api/v1/content/designing-boundaries", "visitor-a"); first.Code != http.StatusOK {
+		t.Fatalf("expected identified detail 200, got %d", first.Code)
+	}
+	refererRecorder := httptest.NewRecorder()
+	refererReq := httptest.NewRequest(http.MethodGet, "/api/v1/content/designing-boundaries", nil)
+	refererReq.Header.Set("X-Visitor-ID", "visitor-b")
+	refererReq.Header.Set("Referer", "https://example.com/somewhere?utm=x")
+	router.ServeHTTP(refererRecorder, refererReq)
+	if refererRecorder.Code != http.StatusOK {
+		t.Fatalf("expected referer detail 200, got %d", refererRecorder.Code)
+	}
+	if anonymous := request(t, router, http.MethodGet, "/api/v1/content/designing-boundaries", nil); anonymous.Code != http.StatusOK {
+		t.Fatalf("expected anonymous detail 200, got %d", anonymous.Code)
+	}
+
+	views := adminRequest(t, router, token, http.MethodGet, "/api/v1/admin/analytics/views?days=7", "")
+	if views.Code != http.StatusOK {
+		t.Fatalf("expected analytics 200, got %d %s", views.Code, views.Body.String())
+	}
+	var analytics struct {
+		TotalViews     int `json:"totalViews"`
+		UniqueVisitors int `json:"uniqueVisitors"`
+		Range          struct {
+			Days int `json:"days"`
+		} `json:"range"`
+		Daily []struct {
+			Date string `json:"date"`
+		} `json:"daily"`
+		Referrers []struct {
+			Source string `json:"source"`
+			Count  int    `json:"count"`
+		} `json:"referrers"`
+	}
+	if err := json.Unmarshal(views.Body.Bytes(), &analytics); err != nil {
+		t.Fatal(err)
+	}
+	if analytics.TotalViews != 3 || analytics.UniqueVisitors != 2 {
+		t.Fatalf("expected 3 view events with 2 unique visitors, got %+v", analytics)
+	}
+	if len(analytics.Daily) != 7 {
+		t.Fatalf("expected 7 daily buckets, got %d", len(analytics.Daily))
+	}
+	if len(analytics.Referrers) != 2 {
+		t.Fatalf("expected direct and example.com referrers, got %+v", analytics.Referrers)
+	}
+	sources := map[string]int{}
+	for _, referrer := range analytics.Referrers {
+		sources[referrer.Source] = referrer.Count
+	}
+	if sources["direct"] != 2 || sources["https://example.com"] != 1 {
+		t.Fatalf("expected referrer origins direct and https://example.com, got %+v", sources)
+	}
+
+	detail := request(t, router, http.MethodGet, "/api/v1/content/designing-boundaries?trackView=false", nil)
+	if !strings.Contains(detail.Body.String(), `"viewCount":3`) {
+		t.Fatalf("expected cumulative viewCount 3, got %s", detail.Body.String())
+	}
+
+	system := adminRequest(t, router, token, http.MethodGet, "/api/v1/admin/system", "")
+	if system.Code != http.StatusOK || !strings.Contains(system.Body.String(), `"uptimeSeconds"`) || !strings.Contains(system.Body.String(), `"sizeBytes"`) {
+		t.Fatalf("expected system status, got %d %s", system.Code, system.Body.String())
+	}
+	for _, key := range []string{`"resources"`, `"cpuCores"`, `"memTotalBytes"`, `"diskTotalBytes"`, `"loadAvg1"`, `"host"`, `"hostname"`, `"kernelArch"`, `"sysRssBytes"`} {
+		if !strings.Contains(system.Body.String(), key) {
+			t.Fatalf("expected system status to contain %s, got %s", key, system.Body.String())
+		}
+	}
+
+	// Audit writes are asynchronous. content.created is enqueued before the
+	// view events, so once the search for it settles, all earlier events have
+	// landed and pagination assertions are stable.
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		probe := adminRequest(t, router, token, http.MethodGet, "/api/v1/admin/audit?q=content.created", "")
+		var probeBody struct {
+			Pagination struct {
+				TotalItems int `json:"totalItems"`
+			} `json:"pagination"`
+		}
+		if err := json.Unmarshal(probe.Body.Bytes(), &probeBody); err != nil {
+			t.Fatal(err)
+		}
+		if probeBody.Pagination.TotalItems >= 1 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("expected content.created audit event to settle, got %d", probeBody.Pagination.TotalItems)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	audit := adminRequest(t, router, token, http.MethodGet, "/api/v1/admin/audit?page=1&pageSize=3", "")
+	if audit.Code != http.StatusOK {
+		t.Fatalf("expected audit 200, got %d %s", audit.Code, audit.Body.String())
+	}
+	var events struct {
+		Events []struct {
+			ID        string `json:"id"`
+			EventName string `json:"eventName"`
+		} `json:"events"`
+		Pagination struct {
+			Page       int `json:"page"`
+			PageSize   int `json:"pageSize"`
+			TotalItems int `json:"totalItems"`
+			TotalPages int `json:"totalPages"`
+		} `json:"pagination"`
+	}
+	if err := json.Unmarshal(audit.Body.Bytes(), &events); err != nil {
+		t.Fatal(err)
+	}
+	if len(events.Events) != 3 || events.Pagination.Page != 1 || events.Pagination.PageSize != 3 || events.Pagination.TotalItems < 4 || events.Pagination.TotalPages < 2 {
+		t.Fatalf("expected a full first page with pagination totals, got %+v", events.Pagination)
+	}
+
+	searched := adminRequest(t, router, token, http.MethodGet, "/api/v1/admin/audit?q=content.created", "")
+	if searched.Code != http.StatusOK {
+		t.Fatalf("expected audit search 200, got %d %s", searched.Code, searched.Body.String())
+	}
+	var filtered struct {
+		Events []struct {
+			EventName string `json:"eventName"`
+		} `json:"events"`
+		Pagination struct {
+			TotalItems int `json:"totalItems"`
+		} `json:"pagination"`
+	}
+	if err := json.Unmarshal(searched.Body.Bytes(), &filtered); err != nil {
+		t.Fatal(err)
+	}
+	if filtered.Pagination.TotalItems != 1 || len(filtered.Events) != 1 || filtered.Events[0].EventName != "content.created" {
+		t.Fatalf("expected search to isolate content.created, got %+v", filtered)
+	}
+
+	secondPage := adminRequest(t, router, token, http.MethodGet, "/api/v1/admin/audit?page=2&pageSize=3", "")
+	if secondPage.Code != http.StatusOK {
+		t.Fatalf("expected audit page 2, got %d %s", secondPage.Code, secondPage.Body.String())
+	}
+	var page2 struct {
+		Events []struct {
+			ID        string `json:"id"`
+			EventName string `json:"eventName"`
+		} `json:"events"`
+		Pagination struct {
+			Page       int `json:"page"`
+			TotalPages int `json:"totalPages"`
+		} `json:"pagination"`
+	}
+	if err := json.Unmarshal(secondPage.Body.Bytes(), &page2); err != nil {
+		t.Fatal(err)
+	}
+	if page2.Pagination.Page != 2 || page2.Pagination.TotalPages != events.Pagination.TotalPages || len(page2.Events) == 0 {
+		t.Fatalf("expected page 2 with events and stable totals, got %+v", page2.Pagination)
+	}
+	if page2.Events[0].ID == events.Events[0].ID {
+		t.Fatalf("expected page 2 to start with a different event than page 1, both %s", page2.Events[0].ID)
+	}
 }

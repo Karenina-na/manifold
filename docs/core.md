@@ -106,20 +106,19 @@ Core 使用 `caarlos0/env` 读取 `CORE_` 前缀变量，不自动读取仓库�
 
 | 方法 | 路径 | 返回/行为 |
 | --- | --- | --- |
-| `GET` | `/healthz` | `{ status: "ok", version }` |
+| `GET` | `/healthz` | `{ status: "ok", version, startedAt }`，进程启动时间用于计算 uptime |
 | `GET` | `/api/v1/profile` | `Profile`，包含身份、教育/经历、个人 `series` 和 `contacts` |
 | `GET` | `/api/v1/site` | 首页 profile 引用、精选内容、导航和 sections |
 | `GET` | `/api/v1/feed` | 内容集合，使用与 `/content` 相同的筛选 |
 | `GET` | `/api/v1/content` | 已发布内容摘要集合，包含 Core 从 Markdown 正文派生的纯文本 `excerpt`、`viewCount`、`likeCount` 和未软删 `commentCount` 聚合值 |
 | `GET` | `/api/v1/thoughts` | Thoughts 归档 aggregate：置顶 Thought、排除置顶后的页码分页列表和总数，支持 `tag`/`q` 过滤（只作用于时间轴，置顶不受影响，多 tag 按 OR 命中任一标签）；内容项同样包含 `excerpt` |
 | `GET` | `/api/v1/tags` | 已发布内容的标签聚合 `Collection<TagSummary>`（`{ name, count }`，按 count 降序、name 升序），可用 `kind=THOUGHT|ARTICLE` 过滤 |
-| `GET` | `/api/v1/content/{slug}` | 通过 slug 或 ID 返回已发布详情和 Markdown body；默认记录一次 `content.viewed` 审计事件，内部 metadata 请求可传 `trackView=false` 跳过计数 |
+| `GET` | `/api/v1/content/{slug}` | 通过 slug 或 ID 返回已发布详情和 Markdown body；默认记录一次 `content.viewed` 审计事件并写入浏览事件（识别访客按 `(content, visitor, UTC 日)` 去重，referrer 归一为 origin，匿名浏览每次都记录），内部 metadata 请求可传 `trackView=false` 跳过计数 |
 | `GET` | `/api/v1/content/{slug}/comments` | 返回未软删评论，支持 `page`/`limit`/`q`；平铺返回当前页顶层评论及其全部回复（含 `replyToId` 供前端组线程） |
 | `POST` | `/api/v1/content/{slug}/comments` | 创建评论并立即公开，201 |
 | `GET` | `/api/v1/content/{slug}/likes` | 点赞统计和当前访客状态 |
 | `PUT` | `/api/v1/content/{slug}/likes` | 添加点赞，200 |
 | `DELETE` | `/api/v1/content/{slug}/likes` | 移除点赞，200 |
-| `GET` | `/api/v1/now` | `NowStatus` |
 | `GET` | `/api/v1/stats` | 已发布统计 `Stats` |
 | `POST` | `/api/v1/presence` | 使用 `X-Visitor-ID` 更新匿名心跳，返回最近 5 分钟活跃访客数 |
 
@@ -167,9 +166,13 @@ Thoughts 归档参数为 `page`（默认 1）、`limit`（默认 8，范围 1..5
 | `GET` | `/api/v1/admin/comments` | 全量评论（含已软删，附 `deletedAt`），按 `createdAt` 降序 |
 | `DELETE` | `/api/v1/admin/comments/{id}` | 软删除评论，204 |
 | `POST` | `/api/v1/admin/comments/{id}/restore` | 恢复软删评论，204 |
-| `GET` | `/api/v1/admin/now` | 读取 Now |
-| `PUT` | `/api/v1/admin/now` | 更新 Now |
 | `GET` | `/api/v1/admin/stats` | `AdminStats`，包含 `content` |
+| `GET` | `/api/v1/admin/overview` | `AdminOverview` 聚合：内容计数（含 `draftCount`）、`totalViews`/`totalLikes`/`totalComments`/`activeVisitors`、近 12 个月 `created`/`published` 趋势、浏览量 Top 5 已发布内容和 Top 10 标签；TTL 快照缓存 |
+| `GET` | `/api/v1/admin/analytics/views` | `AnalyticsViews`：`days`（默认 30，上限 90）范围内去重浏览事件总数、独立访客、逐日 `{date, views, uniqueVisitors}`（缺失日补零）和 Top 10 referrer（空记 `direct`） |
+| `GET` | `/api/v1/admin/system` | `SystemStatus`：version、`startedAt`、`uptimeSeconds`、SQLite 体积、内容缓存条目、Go heap/goroutine/进程 RSS（`sysRssBytes`）和审计事件总数；`resources` 块（CPU 占比与逻辑核数、内存 used/total/percent、load average 1/5/15、数据库所在分区的磁盘 used/total/percent）和 `host` 块（`hostname`/`os`/`platform`/`kernelArch`）。资源指标经 gopsutil 采样，单项失败降级为零值不报错；CPU 采用 `cpu.Percent(0, false)` 非阻塞差值采样，进程启动后首次请求 CPU 占比为 0 |
+| `GET` | `/api/v1/admin/audit` | `AuditEventCollection`：审计事件服务端分页，`page`（默认 1）、`pageSize`（默认 10，上限 50）、`q`（OR 匹配 `event_name`/`actor`/`resource_id`，≤200 字符）；响应附 `pagination: PagePagination`，`page` 超界时钳制到最后一页返回，按 `createdAt` 降序 |
+
+> **Now 状态已移除**：`GET /api/v1/now`、`GET/PUT /api/v1/admin/now`、`now_status` 表与 `now.updated` 审计事件在本变更中删除，迁移方式为删除调用方后无数据保留诉求（Web 首页 mood 徽标同步移除）；旧库打开时 Core 会执行 `DROP TABLE IF EXISTS now_status` 清理残留。
 
 内容创建的 Article 必须有非空 `title` 和 `slug`；Thought 两者可为空。PATCH 必须提供 `expectedVersion`，版本不匹配返回 `409 VERSION_CONFLICT`。类型转换为 Article 时，最终 title/slug 也必须满足 Article 规则。
 
@@ -192,7 +195,7 @@ Thoughts 归档参数为 `page`（默认 1）、`limit`（默认 8，范围 1..5
 
 Metadata：Thought 使用 `mood/question/context/source`；Article 使用 `readingMinutes/toc/frontmatter/technologies/language/difficulty/repositoryUrl`。`excerpt` 不是持久化字段，由 Core 在读取边界从正文派生。保存 ARTICLE 时 Core 会根据 Markdown body 覆盖计算 `readingMinutes`（约 200 个词/分钟，至少 1 分钟）并从二、三级标题重建 `toc`；打开已有数据库时也会回填缺失或过期的这两个派生字段，保留语言等编辑字段；编辑端不应手工提交这些派生字段。Core 仍会校验 metadata 的类型、长度、TOC 层级、技术标签和难度枚举。
 
-其他表：`profile`、`site_config`、`thoughts_config`、`now_status`、`comments`、`likes`、`presence`、`audit_events`。`thoughts_config` 是 `thoughts_1` 单例，`featured_thought_id` 是可空的 `content(id)` 外键；Core 为归档查询维护 `(kind,status,published_at DESC)` 索引，旧 content 表重建时也在同一事务内恢复该索引。打开旧数据库时，若新表尚无记录，会从 `site_config.featured_content_json` 的首个已发布 Thought 引用迁移一次，历史 `NOTE` 引用在内容类型迁移为 `THOUGHT` 后同样保留；之后 Thoughts 配置与通用 Site composition 独立维护。`content.view_count` 在公开详情读取时同步原子递增，列表响应直接返回该持久化计数；`likeCount` 从 `likes` 聚合，`commentCount` 只统计未软删评论，评论创建、软删除或恢复时 Core 会失效对应内容详情缓存。详情读取同时写入 `audit_events(event_name = 'content.viewed', resource_type = 'content')` 供观测使用，审计队列丢弃不会影响浏览量统计。Profile 包含 `resume_url`、`interests_json`、`education_json`、`experience_json`、`series_json`、`contacts_json`；Series 项为 `{name,url,description,category?}`，联系方式为 `{label,url,handle?,icon?}`；Site 是单例配置；评论创建即公开（无审核状态，`deleted_at` 软删标记，`avatar_seed` 保存访客头像种子）；打开 `status` 审核时代的旧库时，`ensureCommentSchema` 会补齐 `avatar_seed`/`deleted_at` 列、删除旧 `idx_comments_content_status` 并创建 `idx_comments_content_visibility`（该索引不在引导 DDL 中：引导先于列迁移执行，索引引用 `deleted_at` 会使未迁移旧库直接无法打开，回归测试 `TestOpenMigratesLegacyCommentSchema` 锁定此行为），点赞有 `(content_id, visitor_id)` 唯一约束；Presence 只保存匿名 visitor ID 的最近心跳时间，过期窗口为 5 分钟。
+其他表：`profile`、`site_config`、`thoughts_config`、`comments`、`likes`、`presence`、`audit_events`、`content_view_events`。`content_view_events` 是浏览事件表（`content_id`、`visitor_id`、`referrer`（origin 或空）、`day`（UTC 日期）、`created_at`）：识别访客通过部分唯一索引 `(content_id, visitor_id, day) WHERE visitor_id != ''` 按"同人同内容同 UTC 日"去重，匿名浏览每次插入一条；该表驱动 `GET /admin/analytics/views`，与累计 `view_count` 并存——`view_count` 保持无条件递增（公共契约未变），分析口径只统计去重事件，两者语义差异即匿名与重复访问。`thoughts_config` 是 `thoughts_1` 单例，`featured_thought_id` 是可空的 `content(id)` 外键；Core 为归档查询维护 `(kind,status,published_at DESC)` 索引，旧 content 表重建时也在同一事务内恢复该索引。打开旧数据库时，若新表尚无记录，会从 `site_config.featured_content_json` 的首个已发布 Thought 引用迁移一次，历史 `NOTE` 引用在内容类型迁移为 `THOUGHT` 后同样保留；之后 Thoughts 配置与通用 Site composition 独立维护。`content.view_count` 在公开详情读取时同步原子递增，列表响应直接返回该持久化计数；`likeCount` 从 `likes` 聚合，`commentCount` 只统计未软删评论，评论创建、软删除或恢复时 Core 会失效对应内容详情缓存。详情读取同时写入 `audit_events(event_name = 'content.viewed', resource_type = 'content')` 供观测使用，审计队列丢弃不会影响浏览量统计。Profile 包含 `resume_url`、`interests_json`、`education_json`、`experience_json`、`series_json`、`contacts_json`；Series 项为 `{name,url,description,category?}`，联系方式为 `{label,url,handle?,icon?}`；Site 是单例配置；评论创建即公开（无审核状态，`deleted_at` 软删标记，`avatar_seed` 保存访客头像种子）；打开 `status` 审核时代的旧库时，`ensureCommentSchema` 会补齐 `avatar_seed`/`deleted_at` 列、删除旧 `idx_comments_content_status` 并创建 `idx_comments_content_visibility`（该索引不在引导 DDL 中：引导先于列迁移执行，索引引用 `deleted_at` 会使未迁移旧库直接无法打开，回归测试 `TestOpenMigratesLegacyCommentSchema` 锁定此行为），点赞有 `(content_id, visitor_id)` 唯一约束；Presence 只保存匿名 visitor ID 的最近心跳时间，过期窗口为 5 分钟。
 
 旧 SQLite content 类型迁移规则：`POST/RESEARCH/TECH/MANUSCRIPT -> ARTICLE`，`NOTE -> THOUGHT`，并重建 kind CHECK 约束。迁移必须保持可重复执行。
 
@@ -200,9 +203,15 @@ Metadata：Thought 使用 `mood/question/context/source`；Article 使用 `readi
 
 - Core 启动时先绑定 `CORE_ADDR`，成功后才打开 SQLite、执行 schema 初始化和兼容迁移；端口冲突会直接退出且不修改数据库。
 - 内容详情使用最多 256 项的 TTL LRU；Core 启动时预热 Site 精选内容。
-- Stats 使用单条 TTL 快照；内容创建、更新、发布、撤回和删除会清理相关缓存。
+- Stats 与 Admin Overview 各使用单条 TTL 快照（共用 `CORE_STATS_CACHE_TTL`）；内容创建、更新、发布、撤回、删除、点赞变化会清理相关缓存，评论软删/恢复经内容缓存失效路径一并清理 Overview。
 - 审计事件通过有界异步队列写入 `audit_events`；队列满会记录丢弃但不让业务请求失败。
 - `RouterWithLifecycle` 用于生产入口；监听失败会结束进程，正常关闭时最多等待 5 秒排空已接受事件；`Router` 仅用于同步内部调用/测试。公共 HTTP 契约不受启动生命周期影响。
+
+### 依赖记录：github.com/shirou/gopsutil/v4
+
+- 用途：`GET /admin/system` 的服务器资源与主机信息只读采样（CPU 占比/核数、内存、load average、数据库所在磁盘分区、进程 RSS、hostname/platform/kernelArch）。
+- 替代方案：手写 `/proc` 解析仅覆盖 Linux，否决；gopsutil 是 Go 生态资源采样的事实标准且跨 macOS/Linux。
+- 权衡与安全边界：纯 Go 无 cgo，只读系统信息，无新增攻击面；引入其纯 Go 子依赖树，二进制体积小幅增加，无网络行为。资源采样失败一律降级零值，不影响业务可用性。
 
 ## 9. 修改与验证清单
 

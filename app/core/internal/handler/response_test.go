@@ -2,6 +2,7 @@ package handler
 
 import (
 	"bytes"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -14,8 +15,16 @@ func TestHealth(t *testing.T) {
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", recorder.Code)
 	}
-	if got := recorder.Body.String(); got != "{\"status\":\"ok\",\"version\":\"0.1.0\"}\n" {
-		t.Fatalf("unexpected response: %s", got)
+	var body struct {
+		Status    string `json:"status"`
+		Version   string `json:"version"`
+		StartedAt string `json:"startedAt"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Status != "ok" || body.Version != coreVersion || body.StartedAt == "" {
+		t.Fatalf("unexpected response: %s", recorder.Body.String())
 	}
 }
 

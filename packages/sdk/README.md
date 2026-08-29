@@ -47,8 +47,7 @@ const page = await client.content({ kind: "ARTICLE", limit: 20 })
 | `content(query?)` | GET | `/api/v1/content` | `Collection<Content>`，内容项包含纯文本 `excerpt`、`viewCount` / `likeCount` / `commentCount`；`query` 支持 `kind`、`tag`（单值或多值 `string[]`，数组序列化为逗号分隔，多值按 OR 命中任一标签）、`q`、`cursor` 或 `page`（互斥）、`sort`、`aiAssisted`、`skipFirst`（仅 `page` 模式） |
 | `thoughts(query?)` | GET | `/api/v1/thoughts` | `ThoughtArchive`，Core 负责置顶、排除、正文摘录和页码分页；`query` 支持 `page`、`limit`、`tag`（单值或多值 `string[]`，OR 语义）、`q` |
 | `tags(query?)` | GET | `/api/v1/tags` | `Collection<TagSummary>` 标签聚合，`query` 支持 `kind = "THOUGHT" \| "ARTICLE"` |
-| `contentBySlug(slug, options?)` | GET | `/api/v1/content/:slug` | `ContentDetail`；`{ trackView: false }` 用于不计入浏览量的 metadata 读取 |
-| `now()` | GET | `/api/v1/now` | `NowStatus` |
+| `contentBySlug(slug, options?)` | GET | `/api/v1/content/:slug` | `ContentDetail`；`{ trackView: false }` 用于不计入浏览量的 metadata 读取，`{ referrer }` 传 origin 形式的来源供浏览事件分析，`{ visitorId }` 附带 `X-Visitor-ID` 供 Core 按"同人同内容同 UTC 日"去重浏览事件（三者可组合） |
 | `stats()` | GET | `/api/v1/stats` | `Stats` |
 | `presence(visitorId)` | POST | `/api/v1/presence` | `PresenceStatus` |
 | `comments(slug, query?)` | GET | `/api/v1/content/:slug/comments` | `Collection<Comment>`，`query` 支持 `page`（1 起）、`limit`（每页顶层评论数，默认 10）和 `q`（按作者或正文搜索，线程级命中）；带 `page` 时 `pagination` 附带 `page/pageSize/totalItems/totalPages`，分页只作用于顶层评论，回复随其顶层同页返回 |
@@ -62,6 +61,10 @@ const page = await client.content({ kind: "ARTICLE", limit: 20 })
 | --- | --- | --- | --- |
 | `login(input)` | POST | `/api/v1/admin/session` | `LoginResponse` |
 | `adminStats()` | GET | `/api/v1/admin/stats` | `AdminStats` |
+| `adminOverview()` | GET | `/api/v1/admin/overview` | `AdminOverview`（TTL 缓存聚合） |
+| `adminAnalyticsViews(query?)` | GET | `/api/v1/admin/analytics/views` | `AnalyticsViews` |
+| `adminSystem()` | GET | `/api/v1/admin/system` | `SystemStatus` |
+| `adminAudit(query?)` | GET | `/api/v1/admin/audit` | `AuditEventCollection`（服务端分页：`page`/`pageSize`/`q` + `pagination`） |
 | `adminProfile()` / `updateProfile(input)` | GET/PATCH | `/api/v1/admin/profile` | `Profile` |
 | `adminSite()` / `updateSite(input)` | GET/PATCH | `/api/v1/admin/site` | `SiteConfig` |
 | `adminThoughtConfig()` / `updateThoughtConfig(input)` | GET/PATCH | `/api/v1/admin/thoughts/config` | `ThoughtConfig` |
@@ -73,7 +76,6 @@ const page = await client.content({ kind: "ARTICLE", limit: 20 })
 | `adminComments(query?)` | GET | `/api/v1/admin/comments` | `Collection<Comment>`，含已软删（`deletedAt`） |
 | `deleteComment(id)` | DELETE | `/api/v1/admin/comments/:id` | `void`，204，软删除 |
 | `restoreComment(id)` | POST | `/api/v1/admin/comments/:id/restore` | `void`，204 |
-| `updateNow(input)` | PUT | `/api/v1/admin/now` | `NowStatus` |
 
 SDK 当前没有自动提供重试、轮询、分页迭代器或 token refresh；这些职责由调用方的 React Query、Server Component 或 session 层承担。
 

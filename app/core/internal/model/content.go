@@ -87,14 +87,6 @@ type ThoughtArchive struct {
 	Pagination PagePagination `json:"pagination"`
 }
 
-type NowStatus struct {
-	Title     string `json:"title"`
-	Detail    string `json:"detail"`
-	Mood      string `json:"mood"`
-	UpdatedAt string `json:"updatedAt"`
-	ExpiresAt string `json:"expiresAt,omitempty"`
-}
-
 type Comment struct {
 	ID         string  `json:"id"`
 	ContentID  string  `json:"contentId"`
@@ -123,4 +115,130 @@ type Stats struct {
 type PresenceStatus struct {
 	ActiveVisitors int    `json:"activeVisitors"`
 	ObservedAt     string `json:"observedAt"`
+}
+
+type AdminOverviewContent struct {
+	ContentCount   int `json:"contentCount"`
+	DraftCount     int `json:"draftCount"`
+	ArticleCount   int `json:"articleCount"`
+	ThoughtCount   int `json:"thoughtCount"`
+	WordCount      int `json:"wordCount"`
+	TotalViews     int `json:"totalViews"`
+	TotalLikes     int `json:"totalLikes"`
+	TotalComments  int `json:"totalComments"`
+	ActiveVisitors int `json:"activeVisitors"`
+}
+
+type AdminOverviewContentItem struct {
+	ID           string      `json:"id"`
+	Kind         ContentKind `json:"kind"`
+	Slug         string      `json:"slug"`
+	Title        string      `json:"title"`
+	ViewCount    int         `json:"viewCount"`
+	LikeCount    int         `json:"likeCount"`
+	CommentCount int         `json:"commentCount"`
+}
+
+type AdminOverviewTrendPoint struct {
+	Month     string `json:"month"`
+	Created   int    `json:"created"`
+	Published int    `json:"published"`
+}
+
+type AdminOverview struct {
+	Content    AdminOverviewContent       `json:"content"`
+	Trend      AdminOverviewTrend         `json:"trend"`
+	TopContent []AdminOverviewContentItem `json:"topContent"`
+	Tags       []TagSummary               `json:"tags"`
+}
+
+type AdminOverviewTrend struct {
+	Monthly []AdminOverviewTrendPoint `json:"monthly"`
+}
+
+type AnalyticsRange struct {
+	Days int    `json:"days"`
+	From string `json:"from"`
+	To   string `json:"to"`
+}
+
+type AnalyticsDay struct {
+	Date           string `json:"date"`
+	Views          int    `json:"views"`
+	UniqueVisitors int    `json:"uniqueVisitors"`
+}
+
+type AnalyticsReferrer struct {
+	Source string `json:"source"`
+	Count  int    `json:"count"`
+}
+
+type AnalyticsViews struct {
+	TotalViews     int                 `json:"totalViews"`
+	UniqueVisitors int                 `json:"uniqueVisitors"`
+	Range          AnalyticsRange      `json:"range"`
+	Daily          []AnalyticsDay      `json:"daily"`
+	Referrers      []AnalyticsReferrer `json:"referrers"`
+}
+
+type SystemDatabase struct {
+	SizeBytes int64 `json:"sizeBytes"`
+}
+
+type SystemCaches struct {
+	ContentEntries int `json:"contentEntries"`
+}
+
+type SystemRuntime struct {
+	HeapAllocBytes uint64 `json:"heapAllocBytes"`
+	NumGoroutine   int    `json:"numGoroutine"`
+	SysRSSBytes    uint64 `json:"sysRssBytes"`
+}
+
+type SystemResources struct {
+	CPUPercent      float64 `json:"cpuPercent"`
+	CPUCores        int     `json:"cpuCores"`
+	MemTotalBytes   uint64  `json:"memTotalBytes"`
+	MemUsedBytes    uint64  `json:"memUsedBytes"`
+	MemUsedPercent  float64 `json:"memUsedPercent"`
+	LoadAvg1        float64 `json:"loadAvg1"`
+	LoadAvg5        float64 `json:"loadAvg5"`
+	LoadAvg15       float64 `json:"loadAvg15"`
+	DiskTotalBytes  uint64  `json:"diskTotalBytes"`
+	DiskUsedBytes   uint64  `json:"diskUsedBytes"`
+	DiskUsedPercent float64 `json:"diskUsedPercent"`
+}
+
+type SystemHost struct {
+	Hostname   string `json:"hostname"`
+	OS         string `json:"os"`
+	Platform   string `json:"platform"`
+	KernelArch string `json:"kernelArch"`
+}
+
+type SystemStatus struct {
+	Version         string          `json:"version"`
+	StartedAt       string          `json:"startedAt"`
+	UptimeSeconds   int64           `json:"uptimeSeconds"`
+	Database        SystemDatabase  `json:"database"`
+	Caches          SystemCaches    `json:"caches"`
+	Runtime         SystemRuntime   `json:"runtime"`
+	Resources       SystemResources `json:"resources"`
+	Host            SystemHost      `json:"host"`
+	AuditEventCount int             `json:"auditEventCount"`
+}
+
+type AuditEvent struct {
+	ID           string `json:"id"`
+	EventName    string `json:"eventName"`
+	ResourceType string `json:"resourceType"`
+	ResourceID   string `json:"resourceId"`
+	Actor        string `json:"actor"`
+	MetadataJSON string `json:"metadataJson"`
+	CreatedAt    string `json:"createdAt"`
+}
+
+type AuditEventList struct {
+	Events     []AuditEvent   `json:"events"`
+	Pagination PagePagination `json:"pagination"`
 }

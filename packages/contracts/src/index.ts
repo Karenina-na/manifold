@@ -3,7 +3,7 @@ export type ContentStatus = "DRAFT" | "PUBLISHED" | "DELETED";
 export type ContentSort = "newest" | "oldest" | "updated";
 
 export interface ApiErrorBody { error: { code: string; message: string; details?: unknown; requestId?: string; traceId?: string } }
-export interface HealthStatus { status: "ok"; version: string }
+export interface HealthStatus { status: "ok"; version: string; startedAt: string }
 export interface ProfileSeriesItem { name: string; url: string; description: string; category?: string }
 export interface ProfileContact { label: string; url: string; handle?: string; icon?: string }
 export interface Profile { id: string; displayName: string; handle: string; headline: string; bio: string; avatarUrl: string; location: string; organization: string; websiteUrl: string; resumeUrl?: string; interests?: string[]; education?: Array<{ institution: string; program: string; period: string }>; experience?: Array<{ organization: string; role: string; period: string }>; series?: ProfileSeriesItem[]; contacts?: ProfileContact[]; updatedAt: string }
@@ -18,12 +18,21 @@ type ContentDetailWithMetadata<M, K extends ContentKind> = ContentWithMetadata<M
 export type Content = ContentWithMetadata<ThoughtMetadata, "THOUGHT"> | ContentWithMetadata<ArticleMetadata, "ARTICLE">
 export type AdminContent = AdminContentWithMetadata<ThoughtMetadata, "THOUGHT"> | AdminContentWithMetadata<ArticleMetadata, "ARTICLE">
 export type ContentDetail = ContentDetailWithMetadata<ThoughtMetadata, "THOUGHT"> | ContentDetailWithMetadata<ArticleMetadata, "ARTICLE">
-export interface NowStatus { title: string; detail: string; mood: string; updatedAt: string; expiresAt?: string }
 export interface Comment { id: string; contentId: string; authorName: string; authorUrl?: string; body: string; createdAt: string; replyToId?: string; avatarSeed?: string; deletedAt?: string }
 export interface LikeSummary { likeCount: number; viewerLiked: boolean }
 export interface Stats { contentCount: number; articleCount: number; thoughtCount: number; wordCount: number; updatedAt: string }
 export interface PresenceStatus { activeVisitors: number; observedAt: string }
 export interface AdminStats { content: Stats }
+export interface AdminOverviewContent { contentCount: number; draftCount: number; articleCount: number; thoughtCount: number; wordCount: number; totalViews: number; totalLikes: number; totalComments: number; activeVisitors: number }
+export interface AdminOverviewContentItem { id: string; kind: ContentKind; slug: string; title: string; viewCount: number; likeCount: number; commentCount: number }
+export interface AdminOverviewTrendPoint { month: string; created: number; published: number }
+export interface AdminOverview { content: AdminOverviewContent; trend: { monthly: AdminOverviewTrendPoint[] }; topContent: AdminOverviewContentItem[]; tags: TagSummary[] }
+export interface AnalyticsViewsQuery { days?: number }
+export interface AnalyticsViews { totalViews: number; uniqueVisitors: number; range: { days: number; from: string; to: string }; daily: Array<{ date: string; views: number; uniqueVisitors: number }>; referrers: Array<{ source: string; count: number }> }
+export interface SystemStatus { version: string; startedAt: string; uptimeSeconds: number; database: { sizeBytes: number }; caches: { contentEntries: number }; runtime: { heapAllocBytes: number; numGoroutine: number; sysRssBytes: number }; resources: { cpuPercent: number; cpuCores: number; memTotalBytes: number; memUsedBytes: number; memUsedPercent: number; loadAvg1: number; loadAvg5: number; loadAvg15: number; diskTotalBytes: number; diskUsedBytes: number; diskUsedPercent: number }; host: { hostname: string; os: string; platform: string; kernelArch: string }; auditEventCount: number }
+export interface AuditEvent { id: string; eventName: string; resourceType: string; resourceId: string; actor: string; metadataJson: string; createdAt: string }
+export interface AuditEventCollection { events: AuditEvent[]; pagination: PagePagination }
+export interface AuditQuery { page?: number; pageSize?: number; q?: string }
 export interface SiteComposition { profile: { id: string }; featuredContent: Array<{ id: string; kind: ContentKind }>; navigation: SiteNavigationItem[]; sections: string[] }
 export interface SiteConfig { featuredContent: Array<{ id: string; kind: ContentKind }>; navigation: SiteNavigationItem[]; sections: string[] }
 export type SiteConfigInput = SiteConfig

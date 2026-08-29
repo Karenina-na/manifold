@@ -1,4 +1,4 @@
-import type { AdminContent, AdminContentQuery, AdminStats, Collection, Comment, CommentQuery, Content, ContentDetail, ContentInput, ContentQuery, CreateCommentInput, HealthStatus, LikeSummary, LoginInput, LoginResponse, NowStatus, PresenceStatus, Profile, ProfileInput, SiteComposition, SiteConfig, SiteConfigInput, Stats, TagQuery, TagSummary, ThoughtArchive, ThoughtArchiveQuery, ThoughtConfig, ThoughtConfigInput, UpdateContentInput } from "@manifold/contracts";
+import type { AdminContent, AdminContentQuery, AdminOverview, AdminStats, AnalyticsViews, AnalyticsViewsQuery, AuditEventCollection, AuditQuery, Collection, Comment, CommentQuery, Content, ContentDetail, ContentInput, ContentQuery, CreateCommentInput, HealthStatus, LikeSummary, LoginInput, LoginResponse, PresenceStatus, Profile, ProfileInput, SiteComposition, SiteConfig, SiteConfigInput, Stats, SystemStatus, TagQuery, TagSummary, ThoughtArchive, ThoughtArchiveQuery, ThoughtConfig, ThoughtConfigInput, UpdateContentInput } from "@manifold/contracts";
 
 export class ApiError extends Error {
 	readonly status: number;
@@ -39,8 +39,11 @@ export class ManifoldClient {
 	content(query?: ContentQuery) { return this.request<Collection<Content>>(this.withQuery("/api/v1/content", query)); }
 	thoughts(query?: ThoughtArchiveQuery) { return this.request<ThoughtArchive>(this.withQuery("/api/v1/thoughts", query)); }
 	tags(query?: TagQuery) { return this.request<Collection<TagSummary>>(this.withQuery("/api/v1/tags", query)); }
-	contentBySlug(slug: string, options?: { trackView?: boolean }) { return this.request<ContentDetail>(this.withQuery(`/api/v1/content/${encodeURIComponent(slug)}`, options?.trackView === false ? { trackView: false } : undefined)); }
-	now() { return this.request<NowStatus>("/api/v1/now"); }
+	contentBySlug(slug: string, options?: { trackView?: boolean; referrer?: string; visitorId?: string }) {
+		const headers = options?.visitorId ? { "X-Visitor-ID": options.visitorId } : undefined;
+		const url = this.withQuery(`/api/v1/content/${encodeURIComponent(slug)}`, options ? { trackView: options.trackView === false ? false : undefined, referrer: options.referrer } : undefined);
+		return this.request<ContentDetail>(url, { headers });
+	}
 	stats() { return this.request<Stats>("/api/v1/stats"); }
 	presence(visitorId: string) { return this.request<PresenceStatus>("/api/v1/presence", { method: "POST", headers: { "X-Visitor-ID": visitorId } }); }
 	comments(slug: string, query?: CommentQuery) { return this.request<Collection<Comment>>(this.withQuery(`/api/v1/content/${encodeURIComponent(slug)}/comments`, query)); }
@@ -64,7 +67,10 @@ export class ManifoldClient {
 	adminComments(query?: CommentQuery) { return this.request<Collection<Comment>>(this.withQuery("/api/v1/admin/comments", query)); }
 	deleteComment(id: string) { return this.request<void>(`/api/v1/admin/comments/${id}`, { method: "DELETE" }); }
 	restoreComment(id: string) { return this.request<void>(`/api/v1/admin/comments/${id}/restore`, { method: "POST" }); }
-	updateNow(input: NowStatus) { return this.request<NowStatus>("/api/v1/admin/now", { method: "PUT", body: input }); }
+	adminOverview() { return this.request<AdminOverview>("/api/v1/admin/overview"); }
+	adminAnalyticsViews(query?: AnalyticsViewsQuery) { return this.request<AnalyticsViews>(this.withQuery("/api/v1/admin/analytics/views", query)); }
+	adminSystem() { return this.request<SystemStatus>("/api/v1/admin/system"); }
+	adminAudit(query?: AuditQuery) { return this.request<AuditEventCollection>(this.withQuery("/api/v1/admin/audit", query)); }
 
 	private withQuery(path: string, query?: object) {
 		if (!query) return path;
