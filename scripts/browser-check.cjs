@@ -219,14 +219,15 @@ async function main() {
     if (seriesCardGeometry.height > 150 || !seriesCardGeometry.tooltipVisible || seriesCardGeometry.tooltipLayer !== '1000') {
       throw new Error(`My Series card is not compact or its tooltip is hidden: ${JSON.stringify(seriesCardGeometry)}`);
     }
-    await web.locator('[data-contact-item]').first().hover();
+    const githubContact = web.locator('[data-contact-item][aria-label="GitHub"]');
+    await githubContact.hover();
     const contactTooltip = web.locator('[data-contact-tooltip]');
     await contactTooltip.waitFor({ state: 'visible' });
     const contactTooltipText = await contactTooltip.textContent();
     if (!contactTooltipText?.includes('GitHub') || !contactTooltipText.includes('manifold-space')) {
       throw new Error(`Contact tooltip is missing contact details: ${contactTooltipText}`);
     }
-    const contactGeometry = await web.locator('[data-contact-item]').first().evaluate((element) => {
+    const contactGeometry = await githubContact.evaluate((element) => {
       const rect = element.getBoundingClientRect();
       const tooltip = document.querySelector('[data-contact-tooltip]');
       const tooltipRect = tooltip?.getBoundingClientRect();
@@ -526,14 +527,14 @@ async function main() {
     await admin.getByLabel('Username').fill(username);
     await admin.locator('input[type="password"]').fill(password);
     const loginResponse = admin.waitForResponse((response) => coreResponse(response, '/api/v1/admin/session', 'POST', 200));
-    const statsResponse = admin.waitForResponse((response) => coreResponse(response, '/api/v1/admin/stats', 'GET', 200));
+    const overviewResponse = admin.waitForResponse((response) => coreResponse(response, '/api/v1/admin/overview', 'GET', 200));
+    const dashboardCommentsResponse = admin.waitForResponse((response) => coreResponse(response, '/api/v1/admin/comments', 'GET', 200));
     await admin.getByRole('button', { name: 'Enter workspace' }).click();
     await loginResponse;
-    await statsResponse;
+    await overviewResponse;
+    await dashboardCommentsResponse;
     await admin.getByRole('heading', { name: 'Dashboard' }).waitFor({ state: 'visible', timeout: 5000 });
-    const commentsResponse = admin.waitForResponse((response) => coreResponse(response, '/api/v1/admin/comments', 'GET', 200));
     await admin.getByRole('button', { name: 'Comments' }).click();
-    await commentsResponse;
     await admin.getByText('Manage comments.').waitFor({ state: 'visible', timeout: 5000 });
     const targetRow = admin.locator('.moderation-row').filter({ hasText: replyBody });
     await targetRow.waitFor({ state: 'visible', timeout: 5000 });

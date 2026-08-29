@@ -1,6 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Alert, Button, PasswordInput, TextInput } from '@mantine/core'
-import { LayoutDashboard, FileText, LogOut, Menu, MessageCircle, Send, Settings2, SlidersHorizontal } from 'lucide-react'
+import { LayoutDashboard, FileText, LogOut, Menu, MessageCircle, Feather, Send, SlidersHorizontal, User } from 'lucide-react'
 import { lazy, Suspense, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useMutation } from '@tanstack/react-query'
@@ -8,13 +8,14 @@ import { z } from 'zod'
 import { clearSession, createAdminClient, readStoredSession, storeSession } from './api'
 import './App.css'
 
-type View = 'dashboard' | 'content' | 'comments' | 'now' | 'settings'
+type View = 'dashboard' | 'profile' | 'writings' | 'thoughts' | 'comments' | 'settings'
 type Session = { accessToken: string; username: string; expiresAt: number }
 
 const DashboardWorkspace = lazy(() => import('./workspaces/DashboardWorkspace'))
-const ContentWorkspace = lazy(() => import('./workspaces/ContentWorkspace'))
+const ProfileWorkspace = lazy(() => import('./workspaces/ProfileWorkspace'))
+const WritingsWorkspace = lazy(() => import('./workspaces/WritingsWorkspace'))
+const ThoughtsWorkspace = lazy(() => import('./workspaces/ThoughtsWorkspace'))
 const CommentsWorkspace = lazy(() => import('./workspaces/CommentsWorkspace'))
-const NowWorkspace = lazy(() => import('./workspaces/NowWorkspace'))
 const SettingsWorkspace = lazy(() => import('./SettingsWorkspace').then(({ SettingsWorkspace }) => ({ default: SettingsWorkspace })))
 
 const loginSchema = z.object({ username: z.string().trim().min(1, 'Username is required.'), password: z.string().min(8, 'Password must be at least 8 characters.') })
@@ -27,7 +28,7 @@ function LoginScreen({ onLogin }: { onLogin: (session: Session) => void }) {
 }
 
 function Sidebar({ view, setView, onLogout, collapsed, setCollapsed }: { view: View; setView: (view: View) => void; onLogout: () => void; collapsed: boolean; setCollapsed: (value: boolean) => void }) {
-  const items: Array<{ id: View; label: string; icon: typeof LayoutDashboard }> = [{ id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard }, { id: 'content', label: 'Content', icon: FileText }, { id: 'comments', label: 'Comments', icon: MessageCircle }, { id: 'now', label: 'Now', icon: Settings2 }, { id: 'settings', label: 'Settings', icon: SlidersHorizontal }]
+  const items: Array<{ id: View; label: string; icon: typeof LayoutDashboard }> = [{ id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard }, { id: 'profile', label: 'Profile', icon: User }, { id: 'writings', label: 'Writings', icon: FileText }, { id: 'thoughts', label: 'Thoughts', icon: Feather }, { id: 'comments', label: 'Comments', icon: MessageCircle }, { id: 'settings', label: 'Settings', icon: SlidersHorizontal }]
   return <aside className={`sidebar ${collapsed ? 'sidebar-collapsed' : ''}`}><div className="sidebar-top"><div className="brand-mark">m<span>.</span></div><button className="icon-button" type="button" aria-label="Toggle sidebar" onClick={() => setCollapsed(!collapsed)}><Menu size={18} /></button></div><nav className="side-nav">{items.map(({ id, label, icon: Icon }) => <button key={id} className={view === id ? 'side-link active' : 'side-link'} type="button" onClick={() => setView(id)}><Icon size={18} /><span>{label}</span></button>)}</nav><button className="side-link side-logout" type="button" onClick={onLogout}><LogOut size={18} /><span>Sign out</span></button></aside>
 }
 
@@ -41,7 +42,7 @@ function App() {
   const [collapsed, setCollapsed] = useState(false)
   if (!session) return <LoginScreen onLogin={setSession} />
   const logout = () => { clearSession(); setSession(null) }
-  return <div className="admin-shell"><Sidebar view={view} setView={setView} onLogout={logout} collapsed={collapsed} setCollapsed={setCollapsed} /><main className="admin-main"><header className="topbar"><span className="mobile-brand">manifold.</span><span className="operator"><span className="operator-dot" /> {session.username}</span></header><Suspense fallback={<WorkspaceFallback />}>{view === 'dashboard' && <DashboardWorkspace token={session.accessToken} />}{view === 'content' && <ContentWorkspace token={session.accessToken} />}{view === 'comments' && <CommentsWorkspace token={session.accessToken} />}{view === 'now' && <NowWorkspace token={session.accessToken} />}{view === 'settings' && <SettingsWorkspace token={session.accessToken} />}</Suspense></main></div>
+  return <div className="admin-shell"><Sidebar view={view} setView={setView} onLogout={logout} collapsed={collapsed} setCollapsed={setCollapsed} /><main className="admin-main"><header className="topbar"><span className="mobile-brand">manifold.</span><span className="operator"><span className="operator-dot" /> {session.username}</span></header><Suspense fallback={<WorkspaceFallback />}>{view === 'dashboard' && <DashboardWorkspace token={session.accessToken} />}{view === 'profile' && <ProfileWorkspace token={session.accessToken} />}{view === 'writings' && <WritingsWorkspace token={session.accessToken} />}{view === 'thoughts' && <ThoughtsWorkspace token={session.accessToken} />}{view === 'comments' && <CommentsWorkspace token={session.accessToken} />}{view === 'settings' && <SettingsWorkspace token={session.accessToken} />}</Suspense></main></div>
 }
 
 export default App
