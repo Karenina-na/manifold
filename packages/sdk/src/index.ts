@@ -61,9 +61,9 @@ export class ManifoldClient {
 	publishContent(id: string) { return this.request<AdminContent>(`/api/v1/admin/content/${id}/publish`, { method: "POST" }); }
 	unpublishContent(id: string) { return this.request<AdminContent>(`/api/v1/admin/content/${id}/unpublish`, { method: "POST" }); }
 	deleteContent(id: string) { return this.request<void>(`/api/v1/admin/content/${id}`, { method: "DELETE" }); }
-	adminComments(status = "PENDING") { return this.request<Collection<Comment>>(this.withQuery("/api/v1/admin/comments", { status })); }
-	approveComment(id: string) { return this.request<void>(`/api/v1/admin/comments/${id}/approve`, { method: "POST" }); }
-	rejectComment(id: string) { return this.request<void>(`/api/v1/admin/comments/${id}/reject`, { method: "POST" }); }
+	adminComments(query?: CommentQuery) { return this.request<Collection<Comment>>(this.withQuery("/api/v1/admin/comments", query)); }
+	deleteComment(id: string) { return this.request<void>(`/api/v1/admin/comments/${id}`, { method: "DELETE" }); }
+	restoreComment(id: string) { return this.request<void>(`/api/v1/admin/comments/${id}/restore`, { method: "POST" }); }
 	updateNow(input: NowStatus) { return this.request<NowStatus>("/api/v1/admin/now", { method: "PUT", body: input }); }
 
 	private withQuery(path: string, query?: object) {

@@ -70,8 +70,9 @@ const page = await client.content({ kind: "ARTICLE", limit: 20 })
 | `updateContent(id, input)` | PATCH | `/api/v1/admin/content/:id` | `AdminContent` |
 | `publishContent(id)` / `unpublishContent(id)` | POST | `/publish` `/unpublish` | `AdminContent` |
 | `deleteContent(id)` | DELETE | `/api/v1/admin/content/:id` | `void`，204 |
-| `adminComments(status?)` | GET | `/api/v1/admin/comments` | `Collection<Comment>` |
-| `approveComment(id)` / `rejectComment(id)` | POST | `/api/v1/admin/comments/:id/*` | `void`，204 |
+| `adminComments(query?)` | GET | `/api/v1/admin/comments` | `Collection<Comment>`，含已软删（`deletedAt`） |
+| `deleteComment(id)` | DELETE | `/api/v1/admin/comments/:id` | `void`，204，软删除 |
+| `restoreComment(id)` | POST | `/api/v1/admin/comments/:id/restore` | `void`，204 |
 | `updateNow(input)` | PUT | `/api/v1/admin/now` | `NowStatus` |
 
 SDK 当前没有自动提供重试、轮询、分页迭代器或 token refresh；这些职责由调用方的 React Query、Server Component 或 session 层承担。

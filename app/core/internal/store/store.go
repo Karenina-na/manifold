@@ -22,13 +22,13 @@ CREATE TABLE IF NOT EXISTS content (id TEXT PRIMARY KEY, kind TEXT NOT NULL CHEC
 CREATE TABLE IF NOT EXISTS now_status (id TEXT PRIMARY KEY, title TEXT NOT NULL, detail TEXT NOT NULL DEFAULT '', mood TEXT NOT NULL DEFAULT 'FOCUSED', updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS site_config (id TEXT PRIMARY KEY, featured_content_json TEXT NOT NULL DEFAULT '[]', navigation_json TEXT NOT NULL DEFAULT '[]', sections_json TEXT NOT NULL DEFAULT '[]', updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS thoughts_config (id TEXT PRIMARY KEY, featured_thought_id TEXT REFERENCES content(id) ON DELETE SET NULL, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
-CREATE TABLE IF NOT EXISTS comments (id TEXT PRIMARY KEY, content_id TEXT NOT NULL REFERENCES content(id), author_name TEXT NOT NULL, author_url TEXT NOT NULL DEFAULT '', body TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'APPROVED', 'REJECTED')), reply_to_id TEXT REFERENCES comments(id), created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS comments (id TEXT PRIMARY KEY, content_id TEXT NOT NULL REFERENCES content(id), author_name TEXT NOT NULL, author_url TEXT NOT NULL DEFAULT '', body TEXT NOT NULL, reply_to_id TEXT REFERENCES comments(id), avatar_seed TEXT NOT NULL DEFAULT '', deleted_at TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS likes (id TEXT PRIMARY KEY, content_id TEXT NOT NULL REFERENCES content(id) ON DELETE CASCADE, visitor_id TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE (content_id, visitor_id));
 CREATE TABLE IF NOT EXISTS presence (visitor_id TEXT PRIMARY KEY, last_seen_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS audit_events (id TEXT PRIMARY KEY, event_name TEXT NOT NULL, resource_type TEXT NOT NULL, resource_id TEXT NOT NULL DEFAULT '', actor TEXT NOT NULL DEFAULT 'anonymous', request_id TEXT NOT NULL DEFAULT '', trace_id TEXT NOT NULL DEFAULT '', metadata_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE INDEX IF NOT EXISTS idx_content_publication ON content(status, published_at DESC);
 CREATE INDEX IF NOT EXISTS idx_content_kind_publication ON content(kind, status, published_at DESC);
-CREATE INDEX IF NOT EXISTS idx_comments_content_status ON comments(content_id, status, created_at);
+CREATE INDEX IF NOT EXISTS idx_comments_content_visibility ON comments(content_id, deleted_at, created_at);
 CREATE INDEX IF NOT EXISTS idx_likes_content ON likes(content_id);
 CREATE INDEX IF NOT EXISTS idx_presence_last_seen ON presence(last_seen_at);
 CREATE INDEX IF NOT EXISTS idx_audit_events_created_at ON audit_events(created_at DESC);
@@ -99,6 +99,7 @@ func contentExcerpt(body string) string {
 var (
 	ErrContentNotFound = errors.New("content not found")
 	ErrVersionConflict = errors.New("content version conflict")
+	ErrCommentReplyInvalid = errors.New("comment reply target is invalid")
 )
 
 type ContentListOptions struct {
@@ -165,6 +166,10 @@ func Open(path string) (*Store, error) {
 		_ = db.Close()
 		return nil, err
 	}
+	if err := ensureCommentSchema(db); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
 	s := &Store{DB: db}
 	if err := s.seed(); err != nil {
 		_ = db.Close()
@@ -222,6 +227,38 @@ func ensureContentSchema(db *sql.DB) error {
 		return err
 	}
 	return backfillArticleMetadata(db)
+}
+
+func ensureCommentSchema(db *sql.DB) error {
+	rows, err := db.Query(`PRAGMA table_info(comments)`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	columns := map[string]bool{}
+	for rows.Next() {
+		var cid, notNull, primaryKey int
+		var name, columnType string
+		var defaultValue sql.NullString
+		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
+			return err
+		}
+		columns[name] = true
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if !columns["avatar_seed"] {
+		if _, err := db.Exec(`ALTER TABLE comments ADD COLUMN avatar_seed TEXT NOT NULL DEFAULT ''`); err != nil {
+			return err
+		}
+	}
+	if !columns["deleted_at"] {
+		if _, err := db.Exec(`ALTER TABLE comments ADD COLUMN deleted_at TEXT NOT NULL DEFAULT ''`); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func backfillArticleMetadata(db *sql.DB) error {
@@ -660,7 +697,7 @@ func (s *Store) ListContent(includeDrafts bool, options ContentListOptions) (Con
 			options.Offset++
 		}
 	}
-	query := `SELECT id, kind, status, slug, title, summary, body, tags_json, metadata_json, published_at, created_at, updated_at, version, view_count, (SELECT COUNT(*) FROM likes WHERE content_id = content.id), (SELECT COUNT(*) FROM comments WHERE content_id = content.id AND status = 'APPROVED') FROM content ` + where + contentSortClause(options.Sort) + ` LIMIT ? OFFSET ?`
+	query := `SELECT id, kind, status, slug, title, summary, body, tags_json, metadata_json, published_at, created_at, updated_at, version, view_count, (SELECT COUNT(*) FROM likes WHERE content_id = content.id), (SELECT COUNT(*) FROM comments WHERE content_id = content.id AND deleted_at = '') FROM content ` + where + contentSortClause(options.Sort) + ` LIMIT ? OFFSET ?`
 	rows, err := s.DB.Query(query, append(args, limit+1, options.Offset)...)
 	if err != nil {
 		return result, err
@@ -767,7 +804,7 @@ func (s *Store) ThoughtArchive(requestedPage, pageSize int, tags []string, searc
 		page = totalPages
 	}
 
-	query := `SELECT id, kind, status, slug, title, summary, body, tags_json, metadata_json, published_at, created_at, updated_at, version, view_count, (SELECT COUNT(*) FROM likes WHERE content_id = content.id), (SELECT COUNT(*) FROM comments WHERE content_id = content.id AND status = 'APPROVED')
+	query := `SELECT id, kind, status, slug, title, summary, body, tags_json, metadata_json, published_at, created_at, updated_at, version, view_count, (SELECT COUNT(*) FROM likes WHERE content_id = content.id), (SELECT COUNT(*) FROM comments WHERE content_id = content.id AND deleted_at = '')
 		FROM content ` + where + `
 		ORDER BY COALESCE(published_at, created_at) DESC, id DESC
 		LIMIT ? OFFSET ?`
@@ -797,7 +834,7 @@ func (s *Store) ThoughtArchive(requestedPage, pageSize int, tags []string, searc
 func (s *Store) GetContent(slug string, includeDrafts bool) (model.Content, error) {
 	var c model.Content
 	var tags, metadata, published, slugValue, titleValue sql.NullString
-	query := `SELECT id, kind, status, slug, title, summary, body, tags_json, metadata_json, published_at, created_at, updated_at, version, view_count, (SELECT COUNT(*) FROM likes WHERE content_id = content.id), (SELECT COUNT(*) FROM comments WHERE content_id = content.id AND status = 'APPROVED') FROM content WHERE (slug = ? OR id = ?) AND status != 'DELETED'`
+	query := `SELECT id, kind, status, slug, title, summary, body, tags_json, metadata_json, published_at, created_at, updated_at, version, view_count, (SELECT COUNT(*) FROM likes WHERE content_id = content.id), (SELECT COUNT(*) FROM comments WHERE content_id = content.id AND deleted_at = '') FROM content WHERE (slug = ? OR id = ?) AND status != 'DELETED'`
 	if !includeDrafts {
 		query += ` AND status = 'PUBLISHED'`
 	}
@@ -820,7 +857,7 @@ func (s *Store) GetContent(slug string, includeDrafts bool) (model.Content, erro
 func (s *Store) GetContentByID(id string, includeDrafts bool) (model.Content, error) {
 	var c model.Content
 	var tags, metadata, published, slug, title sql.NullString
-	query := `SELECT id, kind, status, slug, title, summary, body, tags_json, metadata_json, published_at, created_at, updated_at, version, view_count, (SELECT COUNT(*) FROM likes WHERE content_id = content.id), (SELECT COUNT(*) FROM comments WHERE content_id = content.id AND status = 'APPROVED') FROM content WHERE id = ? AND status != 'DELETED'`
+	query := `SELECT id, kind, status, slug, title, summary, body, tags_json, metadata_json, published_at, created_at, updated_at, version, view_count, (SELECT COUNT(*) FROM likes WHERE content_id = content.id), (SELECT COUNT(*) FROM comments WHERE content_id = content.id AND deleted_at = '') FROM content WHERE id = ? AND status != 'DELETED'`
 	if !includeDrafts {
 		query += ` AND status = 'PUBLISHED'`
 	}
@@ -869,14 +906,17 @@ func (s *Store) TouchPresence(visitorID string) (int, error) {
 	return activeVisitors, nil
 }
 
-func (s *Store) ListComments(contentID, status string) ([]model.Comment, error) {
-	query := `SELECT id, content_id, author_name, author_url, body, status, created_at, reply_to_id FROM comments WHERE content_id = ?`
-	args := []any{contentID}
-	if status != "" {
-		query += ` AND status = ?`
-		args = append(args, status)
-	}
-	query += ` ORDER BY created_at ASC`
+func (s *Store) ListComments(contentID string) ([]model.Comment, error) {
+	query := `SELECT id, content_id, author_name, author_url, body, created_at, reply_to_id, avatar_seed, deleted_at FROM comments WHERE content_id = ? AND deleted_at = '' ORDER BY created_at ASC`
+	return s.scanComments(query, contentID)
+}
+
+func (s *Store) ListAllComments() ([]model.Comment, error) {
+	query := `SELECT id, content_id, author_name, author_url, body, created_at, reply_to_id, avatar_seed, deleted_at FROM comments ORDER BY created_at DESC`
+	return s.scanComments(query)
+}
+
+func (s *Store) scanComments(query string, args ...any) ([]model.Comment, error) {
 	rows, err := s.DB.Query(query, args...)
 	if err != nil {
 		return nil, err
@@ -885,43 +925,50 @@ func (s *Store) ListComments(contentID, status string) ([]model.Comment, error) 
 	var items []model.Comment
 	for rows.Next() {
 		var c model.Comment
-		if err := rows.Scan(&c.ID, &c.ContentID, &c.AuthorName, &c.AuthorURL, &c.Body, &c.Status, &c.CreatedAt, &c.ReplyToID); err != nil {
+		var replyToID, avatarSeed, deletedAt sql.NullString
+		if err := rows.Scan(&c.ID, &c.ContentID, &c.AuthorName, &c.AuthorURL, &c.Body, &c.CreatedAt, &replyToID, &avatarSeed, &deletedAt); err != nil {
 			return nil, err
 		}
+		if replyToID.Valid && replyToID.String != "" {
+			c.ReplyToID = &replyToID.String
+		}
+		c.AvatarSeed = avatarSeed.String
+		c.DeletedAt = deletedAt.String
 		items = append(items, c)
 	}
 	return items, rows.Err()
 }
 
-func (s *Store) ListAllComments(status string) ([]model.Comment, error) {
-	query := `SELECT id, content_id, author_name, author_url, body, status, created_at, reply_to_id FROM comments`
-	args := []any{}
-	if status != "" {
-		query += ` WHERE status = ?`
-		args = append(args, status)
-	}
-	query += ` ORDER BY created_at DESC`
-	rows, err := s.DB.Query(query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []model.Comment
-	for rows.Next() {
-		var c model.Comment
-		if err := rows.Scan(&c.ID, &c.ContentID, &c.AuthorName, &c.AuthorURL, &c.Body, &c.Status, &c.CreatedAt, &c.ReplyToID); err != nil {
-			return nil, err
+func (s *Store) CreateComment(contentID, authorName, authorURL, body string, replyToID *string, avatarSeed string) (model.Comment, error) {
+	if replyToID != nil && *replyToID != "" {
+		var replyContentID, deletedAt string
+		err := s.DB.QueryRow(`SELECT content_id, deleted_at FROM comments WHERE id = ?`, *replyToID).Scan(&replyContentID, &deletedAt)
+		if errors.Is(err, sql.ErrNoRows) {
+			return model.Comment{}, ErrCommentReplyInvalid
 		}
-		items = append(items, c)
+		if err != nil {
+			return model.Comment{}, err
+		}
+		if replyContentID != contentID || deletedAt != "" {
+			return model.Comment{}, ErrCommentReplyInvalid
+		}
 	}
-	return items, rows.Err()
-}
-
-func (s *Store) CreateComment(contentID, authorName, authorURL, body string, replyToID *string) (model.Comment, error) {
 	id := "comment_" + time.Now().UTC().Format("20060102150405.000000000")
 	created := time.Now().UTC().Format(time.RFC3339)
-	_, err := s.DB.Exec(`INSERT INTO comments (id, content_id, author_name, author_url, body, reply_to_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`, id, contentID, authorName, authorURL, body, replyToID, created)
-	return model.Comment{ID: id, ContentID: contentID, AuthorName: authorName, AuthorURL: authorURL, Body: body, Status: "PENDING", CreatedAt: created, ReplyToID: replyToID}, err
+	_, err := s.DB.Exec(`INSERT INTO comments (id, content_id, author_name, author_url, body, reply_to_id, avatar_seed, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, id, contentID, authorName, authorURL, body, replyToID, avatarSeed, created)
+	return model.Comment{ID: id, ContentID: contentID, AuthorName: authorName, AuthorURL: authorURL, Body: body, CreatedAt: created, ReplyToID: replyToID, AvatarSeed: avatarSeed}, err
+}
+
+func (s *Store) SoftDeleteComment(id string) (string, error) {
+	var contentID string
+	err := s.DB.QueryRow(`UPDATE comments SET deleted_at = ? WHERE id = ? AND deleted_at = '' RETURNING content_id`, time.Now().UTC().Format(time.RFC3339), id).Scan(&contentID)
+	return contentID, err
+}
+
+func (s *Store) RestoreComment(id string) (string, error) {
+	var contentID string
+	err := s.DB.QueryRow(`UPDATE comments SET deleted_at = '' WHERE id = ? AND deleted_at != '' RETURNING content_id`, id).Scan(&contentID)
+	return contentID, err
 }
 
 func (s *Store) GetLikeSummary(contentID, visitorID string) (model.LikeSummary, error) {
@@ -957,18 +1004,6 @@ func (s *Store) SetLike(contentID, visitorID string) error {
 func (s *Store) DeleteLike(contentID, visitorID string) error {
 	_, err := s.DB.Exec(`DELETE FROM likes WHERE content_id = ? AND visitor_id = ?`, contentID, visitorID)
 	return err
-}
-
-func (s *Store) SetCommentStatus(id, status string) (string, error) {
-	var contentID string
-	err := s.DB.QueryRow(`UPDATE comments SET status = ? WHERE id = ? RETURNING content_id`, status, id).Scan(&contentID)
-	return contentID, err
-}
-
-func (s *Store) PendingCommentCount() (int, error) {
-	var count int
-	err := s.DB.QueryRow(`SELECT COUNT(*) FROM comments WHERE status = 'PENDING'`).Scan(&count)
-	return count, err
 }
 
 func (s *Store) RecordAuditEvent(eventName, resourceType, resourceID, actor, requestID, traceID string, metadata map[string]string) error {

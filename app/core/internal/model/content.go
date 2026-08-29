@@ -101,9 +101,10 @@ type Comment struct {
 	AuthorName string  `json:"authorName"`
 	AuthorURL  string  `json:"authorUrl,omitempty"`
 	Body       string  `json:"body"`
-	Status     string  `json:"status"`
 	CreatedAt  string  `json:"createdAt"`
 	ReplyToID  *string `json:"replyToId,omitempty"`
+	AvatarSeed string  `json:"avatarSeed,omitempty"`
+	DeletedAt  string  `json:"deletedAt,omitempty"`
 }
 
 type LikeSummary struct {

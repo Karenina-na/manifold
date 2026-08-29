@@ -109,7 +109,6 @@ button { cursor: pointer; }
 .status-dot.deleted { background: var(--danger); }
 .mini-button { display: inline-grid; place-items: center; width: 30px; height: 30px; color: var(--muted); background: transparent; border-radius: 2px; }
 .mini-button:hover { color: var(--ink); background: var(--accent-soft); }
-.mini-button.approve { color: var(--success); }
 .mini-button.danger { color: var(--danger); }
 .editor-panel { position: sticky; top: 18px; }
 .form-grid { display: grid; grid-template-columns: 0.7fr 1.3fr; gap: 14px; }
@@ -120,6 +119,9 @@ button { cursor: pointer; }
 .queue-badge { display: inline-flex; align-items: center; gap: 7px; padding: 8px 10px; color: var(--accent); background: var(--accent-soft); }
 .moderation-panel { padding: 0; overflow: hidden; }
 .moderation-row { padding: 20px 24px; }
+.moderation-row-deleted { opacity: .55; }
+.moderation-row-deleted .moderation-body p { text-decoration: line-through; }
+.reply-tag { padding: 1px 6px; color: var(--accent); background: var(--accent-soft); font-size: 10px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
 .comment-avatar { display: grid; place-items: center; flex: 0 0 auto; width: 34px; height: 34px; color: var(--accent); background: var(--accent-soft); font-weight: 800; }
 .moderation-body { min-width: 0; flex: 1; }
 .moderation-body p { margin: 9px 0 0; color: var(--ink); font-size: 14px; line-height: 1.6; }

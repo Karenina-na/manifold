@@ -19,7 +19,7 @@ app/core JSON <--> packages/contracts <--> packages/sdk <--> Web / Admin
 
 - `ContentKind = "THOUGHT" | "ARTICLE"`
 - `ContentStatus = "DRAFT" | "PUBLISHED" | "DELETED"`
-- `ContentSummary`：列表和轻量内容对象，`slug`、`title` 可为空，并包含 Core 从 Markdown 正文派生的可选纯文本 `excerpt`、聚合的 `viewCount`、`likeCount` 与已审核 `commentCount`。`summary` 与 `excerpt` 语义独立。
+- `ContentSummary`：列表和轻量内容对象，`slug`、`title` 可为空，并包含 Core 从 Markdown 正文派生的可选纯文本 `excerpt`、聚合的 `viewCount`、`likeCount` 与未软删 `commentCount`。`summary` 与 `excerpt` 语义独立。
 - `Content`：公开摘要对象，不含完整 `body`，并按 `kind` 判别 metadata。
 - `AdminContent`：管理端内容对象，包含完整 Markdown `body`。
 - `ContentDetail`：详情对象，`body` 必填。
@@ -48,13 +48,13 @@ Thought 的 `ThoughtMetadata` 字段为 `mood`、`question`、`context`、`sourc
 - `Profile` / `ProfileInput`：身份、简介、网站、简历、兴趣、教育、经历、个人 Series 和联系方式。`series` 使用 `{ name, url, description, category? }`，`contacts` 使用 `{ label, url, handle?, icon? }`。
 - `SiteComposition` / `SiteConfig`：首页内容引用、导航和 sections。
 - `NowStatus`：当前状态标题、详情、mood 和时间戳。
-- `Stats` / `AdminStats`：公开统计和 Admin 待审核评论数量。
+- `Stats` / `AdminStats`：公开统计和 Admin 统计包装。
 - `PresenceStatus`：匿名在线心跳返回的活跃访客数和观测时间；Core 只保留短期心跳，不返回访客身份。
-- `Comment`、`CommentStatus`、`CreateCommentInput`：评论和审核状态。
+- `Comment`、`CreateCommentInput`：评论对象与创建输入。评论无审核状态，创建即公开；`Comment` 含 `replyToId`、`avatarSeed`（访客头像种子），admin 视图额外携带 `deletedAt`。
 - `LikeSummary`：文章点赞统计和当前访客状态。
 - `Collection<T>`、`Pagination`：统一列表响应。`Pagination` 在 cursor 模式为 `{ nextCursor, hasMore }`；使用 `page` 参数时额外返回 `page/pageSize/totalItems/totalPages`。
 - `PagePagination`：Thoughts aggregate 使用的 `page/pageSize/totalItems/totalPages` 页码响应。
-- `ContentQuery`、`AdminContentQuery`、`CommentQuery`：服务端筛选和分页参数。`ContentQuery` 支持 `kind`、`tag`（单值或多值 `string[]`，多值按 OR 命中任一标签）、`q`、cursor 或 `page`（互斥）、`sort = "newest" | "oldest" | "updated"`、`aiAssisted` 布尔过滤和 `skipFirst`（仅 `page` 模式，列表跳过排序后的第一条）。
+- `ContentQuery`、`AdminContentQuery`：服务端筛选和分页参数。`ContentQuery` 支持 `kind`、`tag`（单值或多值 `string[]`，多值按 OR 命中任一标签）、`q`、cursor 或 `page`（互斥）、`sort = "newest" | "oldest" | "updated"`、`aiAssisted` 布尔过滤和 `skipFirst`（仅 `page` 模式，列表跳过排序后的第一条）。
 - `ApiErrorBody`：Core 结构化错误响应字段；SDK 的运行时 `ApiError` 见 [`packages/sdk/README.md`](../sdk/README.md)。
 
 ## 契约规则

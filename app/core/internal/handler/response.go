@@ -108,8 +108,8 @@ func newRouter(cfg config.Config, database *store.Store, auditEvents events.Audi
 			admin.Post("/content/{id}/unpublish", h.adminUnpublishContent)
 			admin.Delete("/content/{id}", h.adminDeleteContent)
 			admin.Get("/comments", h.adminListComments)
-			admin.Post("/comments/{id}/approve", h.adminApproveComment)
-			admin.Post("/comments/{id}/reject", h.adminRejectComment)
+			admin.Delete("/comments/{id}", h.adminDeleteComment)
+			admin.Post("/comments/{id}/restore", h.adminRestoreComment)
 			admin.Get("/now", h.now)
 			admin.Put("/now", h.adminUpdateNow)
 			admin.Get("/stats", h.adminStats)
@@ -327,7 +327,7 @@ func (h *apiHandler) listPublicComments(w http.ResponseWriter, r *http.Request) 
 		WriteError(w, http.StatusInternalServerError, "CONTENT_UNAVAILABLE", "Content is unavailable.")
 		return
 	}
-	comments, err := h.store.ListComments(content.ID, "APPROVED")
+	comments, err := h.store.ListComments(content.ID)
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, "COMMENTS_UNAVAILABLE", "Comments are unavailable.")
 		return
@@ -340,6 +340,7 @@ type commentInput struct {
 	AuthorURL  string  `json:"authorUrl"`
 	Body       string  `json:"body" validate:"required,max=4000"`
 	ReplyToID  *string `json:"replyToId"`
+	AvatarSeed string  `json:"avatarSeed" validate:"max=64"`
 }
 
 type loginInput struct {
@@ -366,12 +367,17 @@ func (h *apiHandler) createComment(w http.ResponseWriter, r *http.Request) {
 	if authorName == "" {
 		authorName = "Anonymous"
 	}
-	comment, err := h.store.CreateComment(content.ID, authorName, strings.TrimSpace(input.AuthorURL), strings.TrimSpace(input.Body), input.ReplyToID)
+	comment, err := h.store.CreateComment(content.ID, authorName, strings.TrimSpace(input.AuthorURL), strings.TrimSpace(input.Body), input.ReplyToID, strings.TrimSpace(input.AvatarSeed))
+	if errors.Is(err, store.ErrCommentReplyInvalid) {
+		WriteError(w, http.StatusUnprocessableEntity, "REPLY_TARGET_INVALID", "The comment you replied to is no longer available.")
+		return
+	}
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, "COMMENT_CREATE_FAILED", "Comment could not be created.")
 		return
 	}
 	h.audit(r, "comment.created", "comment", comment.ID, map[string]string{"contentId": content.ID})
+	h.invalidateContentByID(content.ID)
 	WriteJSON(w, http.StatusCreated, comment)
 }
 
@@ -819,8 +825,8 @@ func (h *apiHandler) invalidateContentByID(id string) {
 	h.contentCache.Remove(slug)
 }
 
-func (h *apiHandler) adminListComments(w http.ResponseWriter, r *http.Request) {
-	comments, err := h.store.ListAllComments(r.URL.Query().Get("status"))
+func (h *apiHandler) adminListComments(w http.ResponseWriter, _ *http.Request) {
+	comments, err := h.store.ListAllComments()
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, "COMMENTS_UNAVAILABLE", "Comments are unavailable.")
 		return
@@ -828,21 +834,33 @@ func (h *apiHandler) adminListComments(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusOK, collection(comments))
 }
 
-func (h *apiHandler) adminApproveComment(w http.ResponseWriter, r *http.Request) {
-	h.setCommentStatus(w, r, "APPROVED")
+func (h *apiHandler) adminDeleteComment(w http.ResponseWriter, r *http.Request) {
+	h.setCommentDeleted(w, r, true)
 }
 
-func (h *apiHandler) adminRejectComment(w http.ResponseWriter, r *http.Request) {
-	h.setCommentStatus(w, r, "REJECTED")
+func (h *apiHandler) adminRestoreComment(w http.ResponseWriter, r *http.Request) {
+	h.setCommentDeleted(w, r, false)
 }
 
-func (h *apiHandler) setCommentStatus(w http.ResponseWriter, r *http.Request, status string) {
-	contentID, err := h.store.SetCommentStatus(chi.URLParam(r, "id"), status)
+func (h *apiHandler) setCommentDeleted(w http.ResponseWriter, r *http.Request, deleted bool) {
+	var (
+		contentID string
+		err       error
+	)
+	if deleted {
+		contentID, err = h.store.SoftDeleteComment(chi.URLParam(r, "id"))
+	} else {
+		contentID, err = h.store.RestoreComment(chi.URLParam(r, "id"))
+	}
 	if err != nil {
 		WriteError(w, http.StatusNotFound, "COMMENT_NOT_FOUND", "Comment was not found.")
 		return
 	}
-	h.audit(r, "comment."+strings.ToLower(status), "comment", chi.URLParam(r, "id"), nil)
+	event := "comment.deleted"
+	if !deleted {
+		event = "comment.restored"
+	}
+	h.audit(r, event, "comment", chi.URLParam(r, "id"), nil)
 	h.invalidateContentByID(contentID)
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -872,12 +890,7 @@ func (h *apiHandler) adminStats(w http.ResponseWriter, _ *http.Request) {
 		}
 		h.statsCache.Set(stats)
 	}
-	pending, err := h.store.PendingCommentCount()
-	if err != nil {
-		WriteError(w, http.StatusInternalServerError, "STATS_UNAVAILABLE", "Stats are unavailable.")
-		return
-	}
-	WriteJSON(w, http.StatusOK, map[string]any{"content": stats, "pendingComments": pending})
+	WriteJSON(w, http.StatusOK, map[string]any{"content": stats})
 }
 
 func collection[T any](items []T) map[string]any {

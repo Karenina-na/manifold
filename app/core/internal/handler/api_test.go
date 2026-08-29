@@ -68,7 +68,7 @@ func TestContentListIncludesViewAndLikeCounts(t *testing.T) {
 	defer database.Close()
 	hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.MinCost)
 	cfg := config.Config{JWTSecret: "test-secret", AdminUsername: "admin", AdminPasswordHash: string(hash), AllowedOrigins: []string{"*"}}
-	if _, err := database.DB.Exec(`INSERT INTO comments (id, content_id, author_name, body, status) VALUES ('approved-comment', 'content_1', 'Reader', 'Public', 'APPROVED'), ('pending-comment', 'content_1', 'Reader', 'Pending', 'PENDING')`); err != nil {
+	if _, err := database.DB.Exec(`INSERT INTO comments (id, content_id, author_name, body, deleted_at) VALUES ('visible-comment', 'content_1', 'Reader', 'Public', ''), ('visible-comment-two', 'content_1', 'Reader', 'Public', ''), ('deleted-comment', 'content_1', 'Reader', 'Hidden', '2026-01-01T00:00:00Z')`); err != nil {
 		t.Fatal(err)
 	}
 	router := handler.Router(cfg, database)
@@ -86,16 +86,16 @@ func TestContentListIncludesViewAndLikeCounts(t *testing.T) {
 		t.Fatalf("expected like 200, got %d", liked.Code)
 	}
 	second := request(t, router, http.MethodGet, "/api/v1/content/designing-boundaries", nil)
-	if second.Code != http.StatusOK || !strings.Contains(second.Body.String(), `"viewCount":2`) || !strings.Contains(second.Body.String(), `"likeCount":1`) || !strings.Contains(second.Body.String(), `"commentCount":1`) {
+	if second.Code != http.StatusOK || !strings.Contains(second.Body.String(), `"viewCount":2`) || !strings.Contains(second.Body.String(), `"likeCount":1`) || !strings.Contains(second.Body.String(), `"commentCount":2`) {
 		t.Fatalf("expected cached detail stats to refresh, got %d %s", second.Code, second.Body.String())
 	}
 	list := request(t, router, http.MethodGet, "/api/v1/content", nil)
-	if list.Code != http.StatusOK || !strings.Contains(list.Body.String(), `"viewCount":2`) || !strings.Contains(list.Body.String(), `"likeCount":1`) || !strings.Contains(list.Body.String(), `"commentCount":1`) {
+	if list.Code != http.StatusOK || !strings.Contains(list.Body.String(), `"viewCount":2`) || !strings.Contains(list.Body.String(), `"likeCount":1`) || !strings.Contains(list.Body.String(), `"commentCount":2`) {
 		t.Fatalf("expected list stats, got %d %s", list.Code, list.Body.String())
 	}
 }
 
-func TestApprovingCommentInvalidatesContentCommentCount(t *testing.T) {
+func TestCommentLifecyclePublishesAndSoftDeletes(t *testing.T) {
 	router := newTestRouter(t)
 	token := adminToken(t, router)
 
@@ -103,23 +103,51 @@ func TestApprovingCommentInvalidatesContentCommentCount(t *testing.T) {
 	if initial.Code != http.StatusOK || !strings.Contains(initial.Body.String(), `"commentCount":0`) {
 		t.Fatalf("expected cached detail without comments, got %d %s", initial.Code, initial.Body.String())
 	}
-	created := request(t, router, http.MethodPost, "/api/v1/content/designing-boundaries/comments", strings.NewReader(`{"authorName":"Reader","body":"A useful note."}`))
+	created := request(t, router, http.MethodPost, "/api/v1/content/designing-boundaries/comments", strings.NewReader(`{"authorName":"Reader","body":"A useful note.","avatarSeed":"seed-123"}`))
 	if created.Code != http.StatusCreated {
 		t.Fatalf("expected comment 201, got %d %s", created.Code, created.Body.String())
 	}
 	var comment struct {
-		ID string `json:"id"`
+		ID         string `json:"id"`
+		AvatarSeed string `json:"avatarSeed"`
 	}
 	if err := json.Unmarshal(created.Body.Bytes(), &comment); err != nil {
 		t.Fatal(err)
 	}
-	approved := adminRequest(t, router, token, http.MethodPost, "/api/v1/admin/comments/"+comment.ID+"/approve", "")
-	if approved.Code != http.StatusNoContent {
-		t.Fatalf("expected approve 204, got %d %s", approved.Code, approved.Body.String())
+	if comment.AvatarSeed != "seed-123" {
+		t.Fatalf("expected avatar seed to round-trip, got %q", comment.AvatarSeed)
+	}
+	published := request(t, router, http.MethodGet, "/api/v1/content/designing-boundaries?trackView=false", nil)
+	if published.Code != http.StatusOK || !strings.Contains(published.Body.String(), `"commentCount":1`) {
+		t.Fatalf("expected created comment to count immediately, got %d %s", published.Code, published.Body.String())
+	}
+	reply := request(t, router, http.MethodPost, "/api/v1/content/designing-boundaries/comments", strings.NewReader(fmt.Sprintf(`{"authorName":"Other","body":"A reply.","replyToId":%q}`, comment.ID)))
+	if reply.Code != http.StatusCreated {
+		t.Fatalf("expected reply 201, got %d %s", reply.Code, reply.Body.String())
+	}
+	invalidReply := request(t, router, http.MethodPost, "/api/v1/content/designing-boundaries/comments", strings.NewReader(`{"authorName":"Other","body":"A reply.","replyToId":"missing-comment"}`))
+	if invalidReply.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected invalid reply 422, got %d %s", invalidReply.Code, invalidReply.Body.String())
+	}
+	deleted := adminRequest(t, router, token, http.MethodDelete, "/api/v1/admin/comments/"+comment.ID, "")
+	if deleted.Code != http.StatusNoContent {
+		t.Fatalf("expected delete 204, got %d %s", deleted.Code, deleted.Body.String())
+	}
+	hidden := request(t, router, http.MethodGet, "/api/v1/content/designing-boundaries?trackView=false", nil)
+	if hidden.Code != http.StatusOK || !strings.Contains(hidden.Body.String(), `"commentCount":1`) {
+		t.Fatalf("expected deleted comment to drop from count, got %d %s", hidden.Code, hidden.Body.String())
+	}
+	adminList := adminRequest(t, router, token, http.MethodGet, "/api/v1/admin/comments", "")
+	if adminList.Code != http.StatusOK || !strings.Contains(adminList.Body.String(), `"deletedAt":"20`) {
+		t.Fatalf("expected admin list to expose deleted comments, got %d %s", adminList.Code, adminList.Body.String())
+	}
+	restored := adminRequest(t, router, token, http.MethodPost, "/api/v1/admin/comments/"+comment.ID+"/restore", "")
+	if restored.Code != http.StatusNoContent {
+		t.Fatalf("expected restore 204, got %d %s", restored.Code, restored.Body.String())
 	}
 	refreshed := request(t, router, http.MethodGet, "/api/v1/content/designing-boundaries?trackView=false", nil)
-	if refreshed.Code != http.StatusOK || !strings.Contains(refreshed.Body.String(), `"commentCount":1`) {
-		t.Fatalf("expected refreshed approved comment count, got %d %s", refreshed.Code, refreshed.Body.String())
+	if refreshed.Code != http.StatusOK || !strings.Contains(refreshed.Body.String(), `"commentCount":2`) {
+		t.Fatalf("expected restored comment to count again, got %d %s", refreshed.Code, refreshed.Body.String())
 	}
 }
 

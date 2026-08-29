@@ -4,7 +4,7 @@
 
 ## 1. 背景与边界
 
-`app/admin` 是单一 owner 使用的私有管理端，负责登录、内容发布、评论审核、Now、Profile、首页 composition 和统计。它是独立的 Vite/React 应用，不复用 Web 页面组件、不访问 Core SQLite、不复制 Core 业务规则。
+`app/admin` 是单一 owner 使用的私有管理端，负责登录、内容发布、评论管理（软删除/恢复）、Now、Profile、首页 composition 和统计。它是独立的 Vite/React 应用，不复用 Web 页面组件、不访问 Core SQLite、不复制 Core 业务规则。
 
 Core 负责最终鉴权和状态转换；Admin 只持有 session token，组织表单、查询缓存和用户反馈。
 
@@ -39,7 +39,7 @@ Dashboard、Content、Comments、Now、Settings 通过 lazy chunk 加载，登�
 
 ### Dashboard
 
-调用 `GET /api/v1/admin/stats`，读取 `AdminStats.content` 的 `contentCount`、`articleCount`、`thoughtCount`、`wordCount`，以及 `pendingComments`。图表只展示 Core 聚合，不在浏览器重新统计。刷新只重新请求 `admin-stats`。
+调用 `GET /api/v1/admin/stats`，读取 `AdminStats.content` 的 `contentCount`、`articleCount`、`thoughtCount`、`wordCount`。图表只展示 Core 聚合，不在浏览器重新统计。刷新只重新请求 `admin-stats`。
 
 ### Content
 
@@ -59,7 +59,7 @@ Article 模式字段：title、slug、summary、Markdown body、tags、frontmatt
 
 ### Comments
 
-`adminComments("PENDING")` 读取审核队列；Approve/Reject 分别调用 `POST /api/v1/admin/comments/{id}/approve|reject`，成功为 204。成功后失效 `admin-comments` 和 `admin-stats`。
+`adminComments()` 读取全量评论（含已软删，按 `createdAt` 降序）；Delete 调用 `DELETE /api/v1/admin/comments/{id}`（软删除），Restore 调用 `POST /api/v1/admin/comments/{id}/restore`，成功均为 204。操作后失效 `admin-comments` 和 `admin-stats`。评论创建即公开，这里只做软删除/恢复管理。
 
 ### Now
 
@@ -75,10 +75,10 @@ Site 调用 `GET/PATCH /api/v1/admin/site`，包含 `featuredContent`、`navigat
 
 | Query key | 来源 | 写入后失效 |
 | --- | --- | --- |
-| `admin-stats` | `adminStats()` | 评论审核后、Dashboard 手动刷新 |
+| `admin-stats` | `adminStats()` | 评论软删除/恢复后、Dashboard 手动刷新 |
 | `admin-content` + filter | `adminContent()` | 内容创建、更新、发布、撤回、删除 |
 | `admin-content` + `THOUGHT` + `PUBLISHED` | Settings 的置顶 Thought 选项 | 内容创建、更新、发布、撤回、删除 |
-| `admin-comments` | `adminComments("PENDING")` | Approve/Reject |
+| `admin-comments` | `adminComments()` | 软删除/恢复评论 |
 | `now` | `now()` | 更新 Now |
 | `admin-profile` | `adminProfile()` | 保存 Profile |
 | `admin-site` | `adminSite()` | 保存 Site |
@@ -100,7 +100,7 @@ pnpm --filter @manifold/admin build
 pnpm --filter @manifold/admin preview
 ```
 
-根目录 `pnpm browser-test` 会启动隔离 Core/Web/Admin，验证登录、stats、反应、评论提交和审核。
+根目录 `pnpm browser-test` 会启动隔离 Core/Web/Admin，验证登录、stats、反应、评论提交与回复、软删除和恢复。
 
 ## 7. 修改规则
 
