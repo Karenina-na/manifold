@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { cookies, headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { ArticleMeta } from "../../../components/article-meta";
@@ -12,6 +13,8 @@ import type { ArticleMetadata } from "@manifold/contracts";
 
 type Props = { params: Promise<{ slug: string }> };
 
+export const dynamic = "force-dynamic";
+
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
   const content = await createServerClient().contentBySlug(slug, { trackView: false }).catch(() => null);
@@ -21,7 +24,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function WritingDetailPage({ params }: Props) {
   const { slug } = await params;
-  const content = await createServerClient().contentBySlug(slug).catch(() => null);
+  const referer = (await headers()).get("referer") ?? undefined;
+  const visitorId = (await cookies()).get("manifold-vid")?.value;
+  const content = await createServerClient().contentBySlug(slug, { referrer: referer, visitorId }).catch(() => null);
   if (!content) return <main className={styles.page}><div className={styles.shell}><section className={styles.section}><Link href="/writing"><ArrowLeft size={15} /> Back to writing</Link><h1>That piece is not here.</h1><p className={styles.muted}>It may be unpublished or the link may have changed.</p></section></div></main>;
   if (content.kind !== "ARTICLE") notFound();
   const metadata = content.metadata as ArticleMetadata;

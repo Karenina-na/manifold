@@ -4,7 +4,7 @@
 
 ## 1. 项目定位
 
-Web 是公开阅读端，负责把 Profile、Now、Stats、Thoughts 和 Writings 组合成个人数字花园。它不持有业务数据，不读 SQLite，不导入 Admin 或 Core Go 包，所有 Core 请求都通过 `@manifold/sdk`。
+Web 是公开阅读端，负责把 Profile、Stats、Thoughts 和 Writings 组合成个人数字花园。它不持有业务数据，不读 SQLite，不导入 Admin 或 Core Go 包，所有 Core 请求都通过 `@manifold/sdk`。
 
 运行时边界：
 
@@ -21,15 +21,17 @@ Server Component 负责首屏数据、详情读取和 SEO；Client Component 负
 
 | 路由 | 类型 | Core 数据 | 行为 |
 | --- | --- | --- | --- |
-| `/` | Dynamic Server Component | profile、site、全部公开 Article/Thought 历史、now、stats | Profile/Introduction、Recent Content、Updates、年度 Contribution activity、My Series、Contact |
+| `/` | Dynamic Server Component | profile、site、全部公开 Article/Thought 历史、stats | Profile/Introduction、Background、Recent Content、Updates、年度 Contribution activity、My Series、Contact |
 | `/thoughts` | Dynamic Server Component + client archive controls | `thoughts({ page, limit: 8, tag, q })`、`tags({ kind: "THOUGHT" })` | Core 配置驱动的置顶 Thought（仅默认视图展示）、按年份/月份/日期分块的纵向时间轴、服务端分页，以及置顶与时间轴之间的搜索和多 tag 过滤（OR 语义，URL `q`/`tag` 可重复/`page` 同步） |
-| `/thoughts/[id]` | Dynamic Server Component | `contentBySlug(id)` | 专属 Thought 详情页：沿用 Writing 详情的纸面结构（返回行、标题面、正文面、讨论面、添加评论面）但不使用阅读壳；标题面展示 eyebrow、✦ 灰色摘要、日期/mood 徽标/tag 与点赞/观看/评论计数，`question` 作为 serif 反思引言块，`context`/`source` 作 mono 脚注；标题面与正文面之间渲染 `components/reading-progress.tsx` 的阅读进度轨（复用 Writing 右侧目录的轨道与百分比视觉，无目录链接：宽屏为正文右侧吸附竖轨，≤1300px 退化为正文面上方的横向进度行）；讨论面（统计、搜索、筛选）与添加评论面作为两个独立块依次置于正文面下方，与 Writing 详情同构，无目录链接与浮动动作卡；非 THOUGHT 内容或读取失败一律 404 |
+| `/thoughts/[id]` | Dynamic Server Component | `contentBySlug(id, { referrer, visitorId })` | 专属 Thought 详情页：沿用 Writing 详情的纸面结构（返回行、标题面、正文面、讨论面、添加评论面）但不使用阅读壳；标题面展示 eyebrow、✦ 灰色摘要、日期/tag 与点赞/观看/评论计数，`question` 作为 serif 反思引言块，`context`/`source` 作 mono 脚注；标题面与正文面之间渲染 `components/reading-progress.tsx` 的阅读进度轨（复用 Writing 右侧目录的轨道与百分比视觉，无目录链接：宽屏为正文右侧吸附竖轨，≤1300px 退化为正文面上方的横向进度行）；讨论面（统计、搜索、筛选）与添加评论面作为两个独立块依次置于正文面下方，与 Writing 详情同构，无目录链接与浮动动作卡；非 THOUGHT 内容或读取失败一律 404 |
 | `/writing` | Dynamic Server Component + client archive controls | `content({ kind: "ARTICLE", q, tag, sort, aiAssisted, page, skipFirst })`、`content({ kind: "ARTICLE", sort: "newest", limit: 1 })`、`tags({ kind: "ARTICLE" })` | 双栏长文归档、置顶首篇、搜索、多标签筛选（OR 语义）、最新/最早/最近更新排序与悬浮侧栏（视口垂直居中：滚动中随内容冻结，停止后防抖 160ms 重算并动画归位，布局变化同样动画跟随，导航净空 112px，760px 以下回退静态）；两页归档共用 `useArchiveFilters` 客户端取数：搜索/tag/排序/No AI 开关和分页由 Core 在数据层执行，筛选状态经 `history.replaceState` 同步到 URL `q`/`tag`（可重复）/`page`/`sort`/`noAi`；置顶卡固定取全局最新文章且仅在默认视图（无 `q`/`tag`/`noAi` 且 `sort=newest`）展示，此时列表请求以 `skipFirst` 排除该条，其余视图 `skipFirst` 不传；tag 云和计数来自 `/api/v1/tags`，选中的 tag 在云中排最前；卡片区分摘要与 Core 正文摘录，并展示聚合的浏览量和点赞数；从详情页通过浏览器历史返回时刷新 RSC 数据 |
-| `/writing/[slug]` | Dynamic Server Component + client reading controls | `contentBySlug(slug)` | 返回 Writing 入口作为标题阅读面的独立上方行；其下为四段同宽的不透明阅读面（标题、正文、讨论、添加评论）、同排日期/阅读时长/语言/统计、Markdown、右侧进度目录、评论和反应；讨论面展示统计、搜索和筛选，添加评论面在接近底部时由桌面/平板左侧紧凑动作卡通过共享布局动画展开；越过激活线后继续下滑保持展开，仅向上越回激活线才恢复左侧，手机端在讨论面之后堆叠 |
+| `/writing/[slug]` | Dynamic Server Component + client reading controls | `contentBySlug(slug, { referrer, visitorId })` | 返回 Writing 入口作为标题阅读面的独立上方行；其下为四段同宽的不透明阅读面（标题、正文、讨论、添加评论）、同排日期/阅读时长/语言/统计、Markdown、右侧进度目录、评论和反应；讨论面展示统计、搜索和筛选，添加评论面在接近底部时由桌面/平板左侧紧凑动作卡通过共享布局动画展开；越过激活线后继续下滑保持展开，仅向上越回激活线才恢复左侧，手机端在讨论面之后堆叠 |
 | `/health` | Route Handler | 无 | Web 进程 liveness，Core 健康检查仍为 `/healthz` |
 | `/feed.xml` | Dynamic Route Handler | profile、2 条 Article、3 条 Thought | 输出同源 RSS 2.0 feed，复用首页 feed 数据 |
 
 详情页根据 content kind 选择返回路径：Thought 用 `/thoughts/{id}`，Article 用 `/writing/{slug}`。Core 返回的 `href` 是列表链接的来源，页面不自行重建业务 URL。
+
+详情页的浏览事件归因：SSR 读取 `manifold-vid` cookie 并经 `contentBySlug` 的 `visitorId` 附带 `X-Visitor-ID`，Core 按"同人同内容同 UTC 日"去重统计独立访客。访客 ID 唯一来源是 localStorage `manifold.visitorId`（`getVisitorId()`），每次客户端挂载时镜像到 `manifold-vid` cookie（`path=/`、1 年 sliding、`samesite=lax`）；Server Component 无法读 localStorage，浏览器首次直接深链详情页时 cookie 尚未生成，该次浏览按匿名事件计入，完成任一页面的客户端挂载后开始去重。
 
 ### Thoughts 归档
 
@@ -54,13 +56,12 @@ profile()
 site()
 feed({ limit: 50, kind: "ARTICLE", cursor })  // repeat until pagination ends or 1000 items
 feed({ limit: 50, kind: "THOUGHT", cursor })  // repeat until pagination ends or 1000 items
-now()
 stats()
 ```
 
-两组内容在 Web 内按 `publishedAt ?? createdAt` 倒序混排，最多保留每类 1000 条历史副本并按 `updatedAt` 提供给年度 Contribution activity；首个分页请求失败时首页显示 Core unavailable，后续历史页失败则保留已获取数据，不阻断主页。统计、发布状态和内容计数只使用 Core 返回值；Contribution activity 只在 Web 展示边界按 UTC 日期聚合更新次数，不改变 Core 统计。任一首屏请求失败时，首页显示 Core unavailable 状态，不暴露内部错误。
+两组内容在 Web 内按 `publishedAt ?? createdAt` 倒序混排，最多保留每类 1000 条历史副本并按 `updatedAt` 提供给年度 Contribution activity；首个分页请求失败时首页显示 Core unavailable，后续历史页失败则保留已获取数据，不阻断主页。统计、发布状态和内容计数只使用 Core 返回值；Contribution activity 只在 Web 展示边界按 UTC 日期聚合更新次数，不改变 Core 统计。任一首屏请求失败时，首页显示 Core unavailable 状态，不暴露内部错误。Now 状态数据源已随 Core 契约移除，首页不再请求 `now()`，Introduction 的 mood 状态徽标一并删除。
 
-首页将 Profile 与 Introduction 合并为首屏画像模块，Introduction 使用不透明 surface；状态徽标使用 `now.mood`（无值时隐藏），并将 feed 在展示边界拆分为左右两列的 Writings/Thoughts 竖向时间线（各最多 3 条），保留 Core 返回的 `href`。其下展示按 `updatedAt` 倒序选取最近 10 个内容的横向 update rail：月份覆盖数据范围且等距分布，节点在对应月份区间内按日期比例定位；同一天的多个更新合并为一个日期节点，鼠标 hover 或键盘 focus 后在竖向预览中依次展示当天每条更新的标题、类型、摘要、时间和链接。Update rail 下方展示 GitHub 风格的 Contribution activity：年份下拉框切换完整年度，按 UTC 日期聚合内容 `updatedAt`，以 7 行周历网格和 0-4 级颜色表达当天更新数量，并在移动端只允许网格自身横向滚动。后续展示 Profile 的紧凑 My Series 索引卡片和纯图标 Contact rail；Series/Contact 的 hover/focus 详情由 Web Client Component 通过 `createPortal` 渲染到 `document.body`，使用视口边界夹紧和最高层级，避免被 section 动画或其他文本遮挡，并通过 `aria-describedby` 关联到对应入口。SiteFooter 使用匿名 `manifold.visitorId` 每 60 秒向 Core presence 发送心跳，展示最近 5 分钟活跃访客数，不使用 mock 数字。以上共同信息的排版参考仓库根目录 `1.html`，但内容仍以 Core 返回值为准；滚动渐显由 Web Client Component 的 IntersectionObserver 提供，不改变 Core 状态。
+首页将 Profile 与 Introduction 合并为首屏画像模块（bio 上方渲染 organization，空则省略该行），Introduction 使用不透明 surface。其下新增 Background 区块：Education 与 Experience 双列、行式条目（period 弱化行 + 主行 + 次行），任一为空显示空态提示；首页区块编号固定为 01 Profile / 02 Background / 03 Recent content / 04 Updates / 05 My Series / 06 Contact。随后将 feed 在展示边界拆分为左右两列的 Writings/Thoughts 竖向时间线（各最多 3 条），保留 Core 返回的 `href`。其下展示按 `updatedAt` 倒序选取最近 10 个内容的横向 update rail：月份覆盖数据范围且等距分布，节点在对应月份区间内按日期比例定位；同一天的多个更新合并为一个日期节点，鼠标 hover 或键盘 focus 后在竖向预览中依次展示当天每条更新的标题、类型、摘要、时间和链接。Update rail 下方展示 GitHub 风格的 Contribution activity：年份下拉框切换完整年度，按 UTC 日期聚合内容 `updatedAt`，以 7 行周历网格和 0-4 级颜色表达当天更新数量，并在移动端只允许网格自身横向滚动。后续展示 Profile 的紧凑 My Series 索引卡片和纯图标 Contact rail；Contact 在列表前渲染 `profile.websiteUrl` 合成的 Website 条目（Globe 图标、tooltip 显示去协议 URL），websiteUrl 与 contacts 均为空才显示空态；Series/Contact 的 hover/focus 详情由 Web Client Component 通过 `createPortal` 渲染到 `document.body`，使用视口边界夹紧和最高层级，避免被 section 动画或其他文本遮挡，并通过 `aria-describedby` 关联到对应入口。SiteFooter 使用匿名 `manifold.visitorId` 每 60 秒向 Core presence 发送心跳，展示最近 5 分钟活跃访客数，不使用 mock 数字。以上共同信息的排版参考仓库根目录 `1.html`，但内容仍以 Core 返回值为准；滚动渐显由 Web Client Component 的 IntersectionObserver 提供，不改变 Core 状态。
 
 ## 4. Markdown 阅读器
 

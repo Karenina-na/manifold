@@ -16,9 +16,11 @@ export function createBrowserClient() {
 export function getVisitorId() {
   const storageKey = "manifold.visitorId";
   const stored = window.localStorage.getItem(storageKey);
-  if (stored) return stored;
-  const value = typeof crypto.randomUUID === "function" ? crypto.randomUUID() : `visitor-${Math.random().toString(36).slice(2)}-${Date.now()}`;
-  window.localStorage.setItem(storageKey, value);
+  const value = stored ?? (typeof crypto.randomUUID === "function" ? crypto.randomUUID() : `visitor-${Math.random().toString(36).slice(2)}-${Date.now()}`);
+  if (!stored) window.localStorage.setItem(storageKey, value);
+  // Server Components cannot read localStorage; mirroring the id into a cookie
+  // lets detail pages attribute view events for per-visitor dedup analytics.
+  document.cookie = `manifold-vid=${value}; path=/; max-age=31536000; samesite=lax`;
   return value;
 }
 
@@ -47,14 +49,14 @@ export async function loadHomeData({ includeHistory = true }: { includeHistory?:
   const client = createServerClient();
   try {
     const fetchContent = (kind: Content["kind"]) => fetchPublicContent(client, kind, includeHistory);
-    const [profile, site, writings, thoughts, now, stats] = await Promise.all([
-      client.profile(), client.site(), fetchContent("ARTICLE"), fetchContent("THOUGHT"), client.now(), client.stats(),
+    const [profile, site, writings, thoughts, stats] = await Promise.all([
+      client.profile(), client.site(), fetchContent("ARTICLE"), fetchContent("THOUGHT"), client.stats(),
     ]);
     const contentHistory = [...writings, ...thoughts].sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
     const feed = [...contentHistory].sort((a, b) => Date.parse(b.publishedAt ?? b.createdAt) - Date.parse(a.publishedAt ?? a.createdAt));
-    return { profile, site, feed, contentHistory, now, stats, error: null };
+    return { profile, site, feed, contentHistory, stats, error: null };
   } catch {
-    return { profile: null, site: null, feed: null, contentHistory: [], now: null, stats: null, error: "Core is unavailable right now. Please try again in a moment." };
+    return { profile: null, site: null, feed: null, contentHistory: [], stats: null, error: "Core is unavailable right now. Please try again in a moment." };
   }
 }
 

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { cookies, headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { ArrowLeft, BookOpen, CalendarDays, Compass, Sparkles, Tag } from "lucide-react";
 import { CommentsSection } from "../../../components/comment-thread";
@@ -12,6 +13,8 @@ import type { ThoughtMetadata } from "@manifold/contracts";
 
 type Props = { params: Promise<{ id: string }> };
 
+export const dynamic = "force-dynamic";
+
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { id } = await params;
   const content = await createServerClient().contentBySlug(id, { trackView: false }).catch(() => null);
@@ -21,7 +24,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function ThoughtDetailPage({ params }: Props) {
   const { id } = await params;
-  const content = await createServerClient().contentBySlug(id).catch(() => null);
+  const referer = (await headers()).get("referer") ?? undefined;
+  const visitorId = (await cookies()).get("manifold-vid")?.value;
+  const content = await createServerClient().contentBySlug(id, { referrer: referer, visitorId }).catch(() => null);
   if (!content || content.kind !== "THOUGHT") notFound();
   const metadata = content.metadata as ThoughtMetadata;
   const slug = content.slug ?? content.id;

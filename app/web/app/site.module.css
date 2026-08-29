@@ -156,11 +156,13 @@ html { scroll-behavior: smooth; }
   .navLinks { display: none; }
   .navLinksOpen { display: flex; }
   .streamColumns, .seriesGrid, .contactGrid { grid-template-columns: 1fr; }
+  .backgroundColumns { grid-template-columns: 1fr; gap: 22px; }
   .updateRail { margin-top: 44px; }
   .updateTrack { grid-template-columns: 1fr; gap: 14px; margin-left: 3px; }
   .updateTrack::before { top: 4px; bottom: 4px; left: 4px; width: 1px; height: auto; right: auto; }
   .updateNode { grid-template-columns: 10px 1fr; }
   .seriesSection, .contactSection { padding-top: 48px; }
+  .backgroundSection { padding-top: 30px; }
 }
 @keyframes revealIn { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
 
@@ -206,6 +208,15 @@ html { scroll-behavior: smooth; }
 .statusBadge { display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px; border: 1px solid var(--color-line); border-radius: 999px; color: var(--color-muted); background: color-mix(in srgb, var(--color-ink) 4%, transparent); font-family: var(--font-mono); font-size: 9px; white-space: nowrap; }
 .statusDot { width: 6px; height: 6px; border-radius: 50%; background: var(--color-success); box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-success) 20%, transparent); }
 .profileBio { margin: 0; color: var(--color-muted); font-size: 14px; line-height: 1.7; }
+.profileOrg { margin: 0 0 10px; color: var(--color-accent); font-family: var(--font-mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; }
+.backgroundSection { padding-top: 40px; }
+.backgroundColumns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 38px; }
+.backgroundColumnTitle { margin: 0 0 4px; color: var(--color-accent); font-family: var(--font-mono); font-size: 9px; font-weight: 500; letter-spacing: .08em; text-transform: uppercase; }
+.backgroundItem { display: grid; gap: 3px; padding: 14px 10px; border-bottom: 1px solid var(--color-line); transition: background .2s ease, transform .2s ease; }
+.backgroundItem:hover { background: color-mix(in srgb, var(--color-ink) 3%, transparent); transform: translateX(2px); }
+.backgroundPeriod { color: var(--color-muted); font-family: var(--font-mono); font-size: 11px; }
+.backgroundItem strong { color: var(--color-ink); font-size: 15px; font-weight: 500; }
+.backgroundItem > span:last-child { color: var(--color-muted); font-size: 13px; line-height: 1.5; }
 .introBox .interestList { margin-top: 12px; }
 .introBox .interestList span { border: 0; border-radius: 4px; background: color-mix(in srgb, var(--color-ink) 5%, transparent); color: var(--color-muted); }
 .timelineHeading { border-bottom: 1px solid var(--color-line); }

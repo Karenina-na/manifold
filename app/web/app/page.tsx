@@ -31,9 +31,15 @@ export default async function Home() {
   const initials = profile?.displayName?.slice(0, 1).toUpperCase() ?? "M";
   const updateTimeline = buildUpdateTimeline(data.feed ?? []);
   const contributionItems = data.contentHistory?.map(({ updatedAt, publishedAt, createdAt }) => ({ updatedAt, publishedAt, createdAt })) ?? [];
-  const currentFocus = data.now?.mood ?? data.now?.title ?? "Open focus";
+  const currentFocus = "Open focus";
   const location = profile?.location?.split(",")[0]?.trim() || "Shanghai";
   const gitSha = process.env.NEXT_PUBLIC_GIT_SHA?.slice(0, 7) ?? "local";
+  const contactLinks = [
+    ...(profile?.websiteUrl ? [{ label: "Website", url: profile.websiteUrl, icon: "globe" }] : []),
+    ...(profile?.contacts ?? []),
+  ];
+  const education = profile?.education ?? [];
+  const experience = profile?.experience ?? [];
 
   return <main className={styles.page}>
     <MinimalMetadata focus={currentFocus} location={location} gitSha={gitSha} />
@@ -52,16 +58,39 @@ export default async function Home() {
         <div className={styles.introBox}>
           <div className={styles.introBoxHeader}>
             <div className={styles.introBoxTitle}><span className={styles.sectionIndex}>01</span><h2>Introduction</h2></div>
-            {data.now?.mood && <span className={styles.statusBadge}><span className={styles.statusDot} />{data.now.mood}</span>}
           </div>
+          {profile?.organization && <p className={styles.profileOrg}>{profile.organization}</p>}
           <p className={styles.profileBio}>{profile?.bio ?? "I build small, durable tools and keep notes on the questions that sit between software, research, and everyday life. This is where unfinished ideas can stay visible long enough to become useful."}</p>
           {!!profile?.interests?.length && <div className={styles.interestList}>{profile.interests.map((interest) => <span key={interest}>#{interest}</span>)}</div>}
         </div>
       </section></Reveal>
       <SceneBreak />
 
+      <Reveal className={styles.sectionReveal}><section className={styles.backgroundSection} id="background-section" aria-labelledby="background-heading">
+        <div className={styles.sectionHeading}><div><span className={styles.eyebrow}>◇ Background <span className={styles.eyebrowIndex}>/ 02</span></span><h2 id="background-heading">Background</h2></div><span className={styles.sectionHint}>Education and experience</span></div>
+        <div className={styles.backgroundColumns}>
+          <div className={styles.backgroundColumn}>
+            <h3 className={styles.backgroundColumnTitle}>Education</h3>
+            {education.length ? education.map((item, index) => <div className={styles.backgroundItem} key={`${item.institution}-${index}`}>
+              <span className={styles.backgroundPeriod}>{item.period}</span>
+              <strong>{item.program}</strong>
+              <span>{item.institution}</span>
+            </div>) : <p className={styles.muted}>Education history will appear here.</p>}
+          </div>
+          <div className={styles.backgroundColumn}>
+            <h3 className={styles.backgroundColumnTitle}>Experience</h3>
+            {experience.length ? experience.map((item, index) => <div className={styles.backgroundItem} key={`${item.organization}-${index}`}>
+              <span className={styles.backgroundPeriod}>{item.period}</span>
+              <strong>{item.role}</strong>
+              <span>{item.organization}</span>
+            </div>) : <p className={styles.muted}>Experience will appear here.</p>}
+          </div>
+        </div>
+      </section></Reveal>
+      <SceneBreak />
+
       <Reveal className={styles.sectionReveal}><section className={styles.streamSection} id="recent-content-section" aria-labelledby="stream-heading">
-        <div className={styles.sectionHeading}><div><span className={styles.eyebrow}>✦ Recent content <span className={styles.eyebrowIndex}>/ 02</span></span><h2 id="stream-heading">Writings <em>and</em> thoughts</h2></div><span className={styles.sectionHint}>{data.stats?.contentCount ?? 0} published notes</span></div>
+        <div className={styles.sectionHeading}><div><span className={styles.eyebrow}>✦ Recent content <span className={styles.eyebrowIndex}>/ 03</span></span><h2 id="stream-heading">Writings <em>and</em> thoughts</h2></div><span className={styles.sectionHint}>{data.stats?.contentCount ?? 0} published notes</span></div>
         <div className={styles.contentSurface} data-content-surface>
           <div className={styles.streamColumns}>
             <TimelineColumn title="Writings" icon="✍" href="/writing" items={writings} empty="No writings published yet." />
@@ -72,24 +101,24 @@ export default async function Home() {
       <SceneBreak />
 
       <Reveal className={styles.sectionReveal}><section className={styles.updateRail} id="updates-section" data-update-rail aria-labelledby="updates-heading">
-        <div className={styles.updateRailHeader}><div><span className={styles.eyebrow}>↗ Updates <span className={styles.eyebrowIndex}>/ 03</span></span><h2 id="updates-heading" className={styles.updateTitle}>A small record of what moved</h2></div><span className={styles.sectionHint}>Last 10 content updates</span></div>
+        <div className={styles.updateRailHeader}><div><span className={styles.eyebrow}>↗ Updates <span className={styles.eyebrowIndex}>/ 04</span></span><h2 id="updates-heading" className={styles.updateTitle}>A small record of what moved</h2></div><span className={styles.sectionHint}>Last 10 content updates</span></div>
         <UpdateTimelineView timeline={updateTimeline} />
         <ContributionHeatmap items={contributionItems} />
       </section></Reveal>
       <SceneBreak />
 
       <Reveal className={styles.sectionReveal}><section className={styles.seriesSection} id="series-section" aria-labelledby="series-heading">
-        <div className={styles.sectionHeading}><div><span className={styles.eyebrow}>◈ My Series <span className={styles.eyebrowIndex}>/ 04</span></span><h2 id="series-heading">My Series</h2></div><span className={styles.sectionHint}>Services and tools</span></div>
+        <div className={styles.sectionHeading}><div><span className={styles.eyebrow}>◈ My Series <span className={styles.eyebrowIndex}>/ 05</span></span><h2 id="series-heading">My Series</h2></div><span className={styles.sectionHint}>Services and tools</span></div>
         <SeriesLinks series={profile?.series ?? []} />
         {!(profile?.series?.length) && <p className={styles.muted}>Series will appear here as they take shape.</p>}
       </section></Reveal>
       <SceneBreak />
 
       <Reveal className={styles.sectionReveal}><section className={styles.contactSection} id="contact-section" aria-labelledby="contact-heading">
-        <div className={styles.sectionHeading}><div><span className={styles.eyebrow}>↘ Contact <span className={styles.eyebrowIndex}>/ 05</span></span><h2 id="contact-heading">Contact</h2></div><span className={styles.sectionHint}>Public links</span></div>
+        <div className={styles.sectionHeading}><div><span className={styles.eyebrow}>↘ Contact <span className={styles.eyebrowIndex}>/ 06</span></span><h2 id="contact-heading">Contact</h2></div><span className={styles.sectionHint}>Public links</span></div>
         <div className={styles.contactPanel} data-contact-panel>
-          <ContactLinks contacts={profile?.contacts ?? []} />
-          {!(profile?.contacts?.length) && <p className={styles.muted}>No public links yet.</p>}
+          <ContactLinks contacts={contactLinks} />
+          {!contactLinks.length && <p className={styles.muted}>No public links yet.</p>}
         </div>
       </section></Reveal>
 
