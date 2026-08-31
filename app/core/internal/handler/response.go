@@ -117,6 +117,7 @@ func newRouter(cfg config.Config, database *store.Store, auditEvents events.Audi
 			admin.Get("/thoughts/config", h.adminThoughtConfig)
 			admin.Patch("/thoughts/config", h.adminUpdateThoughtConfig)
 			admin.Get("/content", h.adminListContent)
+			admin.Get("/content/{id}", h.adminGetContent)
 			admin.Post("/content", h.adminCreateContent)
 			admin.Patch("/content/{id}", h.adminUpdateContent)
 			admin.Post("/content/{id}/publish", h.adminPublishContent)
@@ -805,6 +806,10 @@ func (h *apiHandler) adminPublishContent(w http.ResponseWriter, r *http.Request)
 
 func (h *apiHandler) adminUnpublishContent(w http.ResponseWriter, r *http.Request) {
 	h.setContentStatus(w, r, "DRAFT")
+}
+
+func (h *apiHandler) adminGetContent(w http.ResponseWriter, r *http.Request) {
+	h.writeAdminContent(w, r)
 }
 
 func (h *apiHandler) setContentStatus(w http.ResponseWriter, r *http.Request, status string) {

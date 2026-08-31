@@ -59,6 +59,7 @@ export class ManifoldClient {
 	adminThoughtConfig() { return this.request<ThoughtConfig>("/api/v1/admin/thoughts/config"); }
 	updateThoughtConfig(input: ThoughtConfigInput) { return this.request<ThoughtConfig>("/api/v1/admin/thoughts/config", { method: "PATCH", body: input }); }
 	adminContent(query?: AdminContentQuery) { return this.request<Collection<AdminContent>>(this.withQuery("/api/v1/admin/content", query)); }
+	adminContentItem(id: string) { return this.request<AdminContent>(`/api/v1/admin/content/${encodeURIComponent(id)}`); }
 	createContent(input: ContentInput) { return this.request<AdminContent>("/api/v1/admin/content", { method: "POST", body: input }); }
 	updateContent(id: string, input: UpdateContentInput) { return this.request<AdminContent>(`/api/v1/admin/content/${id}`, { method: "PATCH", body: input }); }
 	publishContent(id: string) { return this.request<AdminContent>(`/api/v1/admin/content/${id}/publish`, { method: "POST" }); }

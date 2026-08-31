@@ -158,6 +158,7 @@ Thoughts 归档参数为 `page`（默认 1）、`limit`（默认 8，范围 1..5
 | `GET/PATCH` | `/api/v1/admin/site` | 读取/更新首页 composition |
 | `GET/PATCH` | `/api/v1/admin/thoughts/config` | 读取/更新 Thoughts 置顶配置；PATCH body 为 `{ featuredThoughtId: string \| null }` |
 | `GET` | `/api/v1/admin/content` | 管理内容列表，支持 `kind`、`status`、`tag`（单值或多值，OR 语义）、`q`、cursor 以及可选 `sort`/`page`/`aiAssisted`/`skipFirst`，并返回 `viewCount` / `likeCount` / `commentCount` |
+| `GET` | `/api/v1/admin/content/{id}` | 读取单条管理内容（含完整 body 与 metadata），供 Admin 详情页直接刷新恢复 |
 | `POST` | `/api/v1/admin/content` | 创建 DRAFT |
 | `PATCH` | `/api/v1/admin/content/{id}` | 局部更新和类型转换 |
 | `POST` | `/api/v1/admin/content/{id}/publish` | DRAFT -> PUBLISHED |
@@ -193,7 +194,7 @@ Thoughts 归档参数为 `page`（默认 1）、`limit`（默认 8，范围 1..5
 | `published_at/created_at/updated_at/version` | 生命周期、时间和乐观并发 |
 | `view_count` | 公开详情读取时同步递增的持久化浏览量 |
 
-Metadata：Thought 使用 `mood/question/context/source`；Article 使用 `readingMinutes/toc/frontmatter/technologies/language/difficulty/repositoryUrl`。`excerpt` 不是持久化字段，由 Core 在读取边界从正文派生。保存 ARTICLE 时 Core 会根据 Markdown body 覆盖计算 `readingMinutes`（约 200 个词/分钟，至少 1 分钟）并从二、三级标题重建 `toc`；打开已有数据库时也会回填缺失或过期的这两个派生字段，保留语言等编辑字段；编辑端不应手工提交这些派生字段。Core 仍会校验 metadata 的类型、长度、TOC 层级、技术标签和难度枚举。
+Metadata：Thought 使用 `mood/question/context/source`；Article 使用 `readingMinutes/toc/frontmatter/technologies/language/difficulty/repositoryUrl/aiAssisted`。`excerpt` 不是持久化字段，由 Core 在读取边界从正文派生。保存 ARTICLE 时 Core 会根据 Markdown body 覆盖计算 `readingMinutes`（约 200 个词/分钟，至少 1 分钟）并从二、三级标题重建 `toc`；打开已有数据库时也会回填缺失或过期的这两个派生字段，保留语言等编辑字段；编辑端不应手工提交这些派生字段。`aiAssisted` 由 Admin 编辑端写入 metadata_json，Core 不做枚举校验、仅按布尔语义透传（公开列表 `aiAssisted=false` 过滤时缺省视为 false）。Core 仍会校验 metadata 的类型、长度、TOC 层级、技术标签和难度枚举。
 
 其他表：`profile`、`site_config`、`thoughts_config`、`comments`、`likes`、`presence`、`audit_events`、`content_view_events`。`content_view_events` 是浏览事件表（`content_id`、`visitor_id`、`referrer`（origin 或空）、`day`（UTC 日期）、`created_at`）：识别访客通过部分唯一索引 `(content_id, visitor_id, day) WHERE visitor_id != ''` 按"同人同内容同 UTC 日"去重，匿名浏览每次插入一条；该表驱动 `GET /admin/analytics/views`，与累计 `view_count` 并存——`view_count` 保持无条件递增（公共契约未变），分析口径只统计去重事件，两者语义差异即匿名与重复访问。`thoughts_config` 是 `thoughts_1` 单例，`featured_thought_id` 是可空的 `content(id)` 外键；Core 为归档查询维护 `(kind,status,published_at DESC)` 索引，旧 content 表重建时也在同一事务内恢复该索引。打开旧数据库时，若新表尚无记录，会从 `site_config.featured_content_json` 的首个已发布 Thought 引用迁移一次，历史 `NOTE` 引用在内容类型迁移为 `THOUGHT` 后同样保留；之后 Thoughts 配置与通用 Site composition 独立维护。`content.view_count` 在公开详情读取时同步原子递增，列表响应直接返回该持久化计数；`likeCount` 从 `likes` 聚合，`commentCount` 只统计未软删评论，评论创建、软删除或恢复时 Core 会失效对应内容详情缓存。详情读取同时写入 `audit_events(event_name = 'content.viewed', resource_type = 'content')` 供观测使用，审计队列丢弃不会影响浏览量统计。Profile 包含 `resume_url`、`interests_json`、`education_json`、`experience_json`、`series_json`、`contacts_json`；Series 项为 `{name,url,description,category?}`，联系方式为 `{label,url,handle?,icon?}`；Site 是单例配置；评论创建即公开（无审核状态，`deleted_at` 软删标记，`avatar_seed` 保存访客头像种子）；打开 `status` 审核时代的旧库时，`ensureCommentSchema` 会补齐 `avatar_seed`/`deleted_at` 列、删除旧 `idx_comments_content_status` 并创建 `idx_comments_content_visibility`（该索引不在引导 DDL 中：引导先于列迁移执行，索引引用 `deleted_at` 会使未迁移旧库直接无法打开，回归测试 `TestOpenMigratesLegacyCommentSchema` 锁定此行为），点赞有 `(content_id, visitor_id)` 唯一约束；Presence 只保存匿名 visitor ID 的最近心跳时间，过期窗口为 5 分钟。
 

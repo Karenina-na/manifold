@@ -978,6 +978,64 @@ func TestAdminContentPatchUsesExpectedVersion(t *testing.T) {
 	}
 }
 
+func TestAdminContentGetByID(t *testing.T) {
+	router := newTestRouter(t)
+	login := request(t, router, http.MethodPost, "/api/v1/admin/session", strings.NewReader(`{"username":"admin","password":"password"}`))
+	var session struct {
+		AccessToken string `json:"accessToken"`
+	}
+	if err := json.Unmarshal(login.Body.Bytes(), &session); err != nil {
+		t.Fatal(err)
+	}
+
+	create := httptest.NewRecorder()
+	createRequest := httptest.NewRequest(http.MethodPost, "/api/v1/admin/content", strings.NewReader(`{"kind":"THOUGHT","title":"Single fetch","summary":"Summary line.","body":"Single fetch body.","tags":["probe"],"metadata":{"mood":"calm"}}`))
+	createRequest.Header.Set("Authorization", "Bearer "+session.AccessToken)
+	router.ServeHTTP(create, createRequest)
+	if create.Code != http.StatusCreated {
+		t.Fatalf("expected create 201, got %d %s", create.Code, create.Body.String())
+	}
+	var content struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(create.Body.Bytes(), &content); err != nil {
+		t.Fatal(err)
+	}
+
+	unauthorized := httptest.NewRecorder()
+	router.ServeHTTP(unauthorized, httptest.NewRequest(http.MethodGet, "/api/v1/admin/content/"+content.ID, nil))
+	if unauthorized.Code != http.StatusUnauthorized {
+		t.Fatalf("expected unauthorized 401, got %d %s", unauthorized.Code, unauthorized.Body.String())
+	}
+
+	fetched := httptest.NewRecorder()
+	fetchRequest := httptest.NewRequest(http.MethodGet, "/api/v1/admin/content/"+content.ID, nil)
+	fetchRequest.Header.Set("Authorization", "Bearer "+session.AccessToken)
+	router.ServeHTTP(fetched, fetchRequest)
+	if fetched.Code != http.StatusOK {
+		t.Fatalf("expected get 200, got %d %s", fetched.Code, fetched.Body.String())
+	}
+	var item struct {
+		ID      string `json:"id"`
+		Body    string `json:"body"`
+		Version int    `json:"version"`
+	}
+	if err := json.Unmarshal(fetched.Body.Bytes(), &item); err != nil {
+		t.Fatal(err)
+	}
+	if item.ID != content.ID || item.Body != "Single fetch body." || item.Version != 1 {
+		t.Fatalf("unexpected fetched content: %+v", item)
+	}
+
+	missing := httptest.NewRecorder()
+	missingRequest := httptest.NewRequest(http.MethodGet, "/api/v1/admin/content/does-not-exist", nil)
+	missingRequest.Header.Set("Authorization", "Bearer "+session.AccessToken)
+	router.ServeHTTP(missing, missingRequest)
+	if missing.Code != http.StatusNotFound {
+		t.Fatalf("expected missing content 404, got %d %s", missing.Code, missing.Body.String())
+	}
+}
+
 func TestAdminContentMetadataIsTypedByKind(t *testing.T) {
 	router := newTestRouter(t)
 	token := adminToken(t, router)

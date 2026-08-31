@@ -69,6 +69,7 @@ const page = await client.content({ kind: "ARTICLE", limit: 20 })
 | `adminSite()` / `updateSite(input)` | GET/PATCH | `/api/v1/admin/site` | `SiteConfig` |
 | `adminThoughtConfig()` / `updateThoughtConfig(input)` | GET/PATCH | `/api/v1/admin/thoughts/config` | `ThoughtConfig` |
 | `adminContent(query?)` | GET | `/api/v1/admin/content` | `Collection<AdminContent>`，内容项包含完整 `body`、`viewCount` / `likeCount` / `commentCount` |
+| `adminContentItem(id)` | GET | `/api/v1/admin/content/{id}` | `AdminContent`，单条管理内容（含完整 body 与 metadata） |
 | `createContent(input)` | POST | `/api/v1/admin/content` | `AdminContent` |
 | `updateContent(id, input)` | PATCH | `/api/v1/admin/content/:id` | `AdminContent` |
 | `publishContent(id)` / `unpublishContent(id)` | POST | `/publish` `/unpublish` | `AdminContent` |

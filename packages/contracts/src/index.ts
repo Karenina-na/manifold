@@ -10,7 +10,7 @@ export interface Profile { id: string; displayName: string; handle: string; head
 export type ProfileInput = Omit<Profile, "id" | "updatedAt">
 export interface ContentSummary { id: string; kind: ContentKind; status: ContentStatus; slug: string | null; title: string | null; summary: string; excerpt?: string; tags: string[]; publishedAt: string | null; createdAt: string; updatedAt: string; version: number; href: string; viewCount: number; likeCount: number; commentCount: number }
 export interface ThoughtMetadata { mood?: string; question?: string; context?: string; source?: string }
-export interface ArticleMetadata { readingMinutes?: number; toc?: Array<{ id: string; label: string; level: 2 | 3 }>; frontmatter?: Record<string, string>; technologies?: string[]; language?: string; difficulty?: "BEGINNER" | "INTERMEDIATE" | "ADVANCED"; repositoryUrl?: string }
+export interface ArticleMetadata { readingMinutes?: number; toc?: Array<{ id: string; label: string; level: 2 | 3 }>; frontmatter?: Record<string, string>; technologies?: string[]; language?: string; difficulty?: "BEGINNER" | "INTERMEDIATE" | "ADVANCED"; repositoryUrl?: string; aiAssisted?: boolean }
 export type ContentMetadata = ThoughtMetadata | ArticleMetadata
 type ContentWithMetadata<M, K extends ContentKind> = Omit<ContentSummary, "kind"> & { kind: K; metadata: M }
 type AdminContentWithMetadata<M, K extends ContentKind> = ContentWithMetadata<M, K> & { body: string }

@@ -40,6 +40,7 @@ Article 的 `ArticleMetadata` 字段：
 | `language` | `string` | 文章主要语言 |
 | `difficulty` | `BEGINNER \| INTERMEDIATE \| ADVANCED` | 难度 |
 | `repositoryUrl` | `string` | 可选仓库地址字符串 |
+| `aiAssisted` | `boolean` | AI 辅助标记。Admin 编辑端写入 `metadata_json`，Core 透传保存；公开列表 `aiAssisted=false` 过滤据此生效，缺省视为 false |
 
 Thought 的 `ThoughtMetadata` 字段为 `mood`、`question`、`context`、`source`，全部可选字符串。
 
