@@ -165,7 +165,7 @@ export function ArticleDiscussion({ slug, viewCount = 0, likeCount = 0, showStat
     setPage(1);
   };
 
-  return <section id="comments" ref={sectionRef} className={`${styles.commentSection} ${styles.articleDiscussion}`} aria-labelledby="comments-title">
+  return <section id="comments" ref={sectionRef} className={styles.commentSection} aria-labelledby="comments-title">
     <div className={styles.sectionHeading}>
       <div><span className={styles.eyebrow}>Discussion</span><h2 id="comments-title">The thread</h2></div>
       <span className={styles.commentCount}>{totalComments}</span>
@@ -352,10 +352,10 @@ export function CommentsSection({ slug, viewCount, likeCount }: { slug: string; 
   const commentsPagingRef = useRef<CommentsPagingController>({ revealPosted: () => {} });
   return <CommentsPagingRefContext.Provider value={commentsPagingRef}>
     <ReplyContext.Provider value={reply}>
-      <section className={styles.articleDiscussionBlock} aria-label="Thought discussion">
+      <section className="articleDiscussionBlock" aria-label="Thought discussion">
         <ArticleDiscussion slug={slug} viewCount={viewCount} likeCount={likeCount} />
       </section>
-      <section className={styles.articleComposerBlock} data-active="true" aria-label="Add a comment">
+      <section className="articleComposerBlock" data-active="true" aria-label="Add a comment">
         <CommentComposer slug={slug} expanded anchorId="comment-composer" />
       </section>
     </ReplyContext.Provider>
