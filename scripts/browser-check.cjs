@@ -130,6 +130,7 @@ async function main() {
     webUrl ??= `http://127.0.0.1:${webPort}`;
     adminUrl ??= `http://127.0.0.1:${adminPort}`;
     temporaryDirectory = mkdtempSync(join('/tmp', 'manifold-browser-'));
+    execSync(`node ${JSON.stringify(join(root, 'app/admin/scripts/sync-vditor.mjs'))}`);
     spawnService('go', ['run', './cmd/server'], join(root, 'app/core'), {
       CORE_ADDR: `:${corePort}`,
       CORE_DATABASE_PATH: join(temporaryDirectory, 'manifold.db'),
@@ -551,6 +552,101 @@ async function main() {
     await refreshedAfterRestore;
     await targetRow.getByRole('button', { name: /^Delete comment from/ }).waitFor({ state: 'visible', timeout: 5000 });
     if (await admin.locator('.moderation-row').count() !== 12) throw new Error('Admin comment list does not show all comments');
+
+    await admin.getByRole('button', { name: 'Writings' }).click();
+    await admin.getByText('Writings worth returning to.').waitFor({ state: 'visible', timeout: 5000 });
+    const adminWritingSearch = admin.getByRole('textbox', { name: 'Search writings' });
+    await adminWritingSearch.waitFor({ state: 'visible', timeout: 5000 });
+    await adminWritingSearch.fill('boundary');
+    await admin.locator('.content-row').filter({ hasText: 'Designing Boundaries' }).first().waitFor({ state: 'visible', timeout: 5000 });
+    await adminWritingSearch.fill('');
+
+    // list-row publish confirmation popover on the probe thought from the archive section
+    // (kept simple: covered in the thoughts flow below)
+
+    await admin.getByRole('button', { name: 'New writing' }).click();
+    await admin.waitForFunction(() => window.location.hash === '#/writings/new', undefined, { timeout: 5000 });
+    await admin.getByLabel('Title').fill('Browser check writing');
+    await admin.getByLabel('Summary').fill('A probe writing created by the browser check.');
+    await admin.waitForFunction(() => document.querySelector('input[placeholder="a-readable-url"]')?.value === 'browser-check-writing', undefined, { timeout: 5000 });
+
+    // Context tab: vditor instant-rendering editor (3.11.x renders a
+    // pre.vditor-reset contenteditable inside the ir pane)
+    await admin.getByRole('tab', { name: 'Context' }).click();
+    await admin.locator('.vditor-ir .vditor-reset[contenteditable="true"]').first().waitFor({ state: 'visible', timeout: 15000 });
+    await admin.locator('.vditor-ir .vditor-reset[contenteditable="true"]').first().click();
+    await admin.keyboard.type('## Browser check heading');
+    await admin.keyboard.press('Enter');
+    await admin.keyboard.type('Probe body paragraph.');
+
+    const writingCreateResponse = admin.waitForResponse((response) => coreResponse(response, '/api/v1/admin/content', 'POST', 201));
+    await admin.getByRole('button', { name: 'Save draft' }).click();
+    const writingCreated = await writingCreateResponse;
+    const writingBody = await writingCreated.json();
+    if (!writingBody.body.includes('## Browser check heading') || !writingBody.body.includes('Probe body paragraph.')) throw new Error('vditor input was not saved as markdown: ' + JSON.stringify(writingBody.body));
+    await admin.waitForFunction(() => window.location.hash.startsWith('#/writings/'), undefined, { timeout: 5000 });
+
+    // Render tab mirrors the web reading surface
+    await admin.getByRole('tab', { name: 'Render' }).click();
+    await admin.locator('.editor-render .articleTitleBlock h1').filter({ hasText: 'Browser check writing' }).waitFor({ state: 'visible', timeout: 8000 });
+    await admin.locator('.editor-render .markdown h2').filter({ hasText: 'Browser check heading' }).waitFor({ state: 'visible', timeout: 8000 });
+    if (await admin.locator('.editor-render .articleToc nav a').count() < 1) throw new Error('Render TOC is missing');
+
+    // detail-page publish popover flow
+    await admin.getByRole('tab', { name: 'Meta' }).click();
+    await admin.getByRole('button', { name: 'Publish', exact: false }).first().click();
+    await admin.getByText('Publish this writing to the public site?').waitFor({ state: 'visible', timeout: 5000 });
+    const writingPublishResponse = admin.waitForResponse((response) => /\/api\/v1\/admin\/content\/[^/]+\/publish$/.test(new URL(response.url()).pathname) && response.request().method() === 'POST' && response.status() === 200);
+    await admin.getByRole('button', { name: 'Publish now' }).click();
+    await writingPublishResponse;
+
+    // lock/unlock with dirty guard
+    await admin.getByRole('button', { name: 'Lock' }).click();
+    await admin.locator('fieldset.editor-locked[disabled]').first().waitFor({ state: 'visible', timeout: 5000 });
+    await admin.getByRole('button', { name: 'Edit' }).click();
+    await admin.getByLabel('Summary').fill('A probe writing with unsaved edits.');
+    await admin.getByRole('button', { name: 'Back to writings' }).click();
+    await admin.getByRole('dialog').waitFor({ state: 'visible', timeout: 5000 });
+    await admin.getByRole('dialog').getByRole('button', { name: 'Discard and leave' }).click();
+    await admin.waitForFunction(() => window.location.hash === '#/writings', undefined, { timeout: 5000 });
+    const writingRow = admin.locator('.content-row').filter({ hasText: 'Browser check writing' });
+    await writingRow.waitFor({ state: 'visible', timeout: 5000 });
+
+    // list-row delete popover flow
+    await writingRow.getByRole('button', { name: 'Delete Browser check writing' }).click();
+    await admin.getByText('Delete this piece? It leaves the public site immediately.').waitFor({ state: 'visible', timeout: 5000 });
+    const writingDeleteResponse = admin.waitForResponse((response) => /\/api\/v1\/admin\/content\/[^/]+$/.test(new URL(response.url()).pathname) && response.request().method() === 'DELETE' && response.status() === 204);
+    await admin.getByRole('button', { name: 'Delete', exact: true }).last().click();
+    await writingDeleteResponse;
+    await admin.waitForFunction(() => !window.location.hash.includes('writings/'), undefined, { timeout: 1000 }).catch(() => {});
+
+    await admin.getByRole('button', { name: 'Thoughts' }).click();
+    await admin.getByText('Capture as you go.').waitFor({ state: 'visible', timeout: 5000 });
+    await admin.getByRole('button', { name: 'New thought' }).click();
+    await admin.waitForFunction(() => window.location.hash === '#/thoughts/new', undefined, { timeout: 5000 });
+    await admin.getByLabel('Summary').fill('Probe summary for the thought workbench.');
+    await admin.getByLabel('Mood', { exact: true }).fill('focused');
+    await admin.getByRole('tab', { name: 'Context' }).click();
+    await admin.locator('.vditor-ir .vditor-reset[contenteditable="true"]').first().waitFor({ state: 'visible', timeout: 15000 });
+    await admin.locator('.vditor-ir .vditor-reset[contenteditable="true"]').first().click();
+    await admin.keyboard.type('Probe body for the thought workbench.');
+    const thoughtCreateResponse = admin.waitForResponse((response) => coreResponse(response, '/api/v1/admin/content', 'POST', 201));
+    await admin.getByRole('button', { name: 'Save draft' }).click();
+    const thoughtCreated = await thoughtCreateResponse;
+    const thoughtBody = await thoughtCreated.json();
+    if (!thoughtBody.body.includes('Probe body for the thought workbench.')) throw new Error('Thought body missing from vditor: ' + JSON.stringify(thoughtBody.body));
+    await admin.waitForFunction(() => window.location.hash.startsWith('#/thoughts/'), undefined, { timeout: 5000 });
+    await admin.getByRole('button', { name: 'Back to thoughts' }).click();
+    await admin.waitForFunction(() => window.location.hash === '#/thoughts', undefined, { timeout: 5000 });
+    const thoughtRow = admin.locator('.content-row').filter({ hasText: 'Probe summary for the thought workbench.' });
+    await thoughtRow.waitFor({ state: 'visible', timeout: 5000 });
+    await thoughtRow.getByRole('button', { name: /^Delete/ }).click();
+    await admin.getByText('Delete this piece? It leaves the public site immediately.').waitFor({ state: 'visible', timeout: 5000 });
+    const thoughtDeleteResponse = admin.waitForResponse((response) => /\/api\/v1\/admin\/content\/[^/]+$/.test(new URL(response.url()).pathname) && response.request().method() === 'DELETE' && response.status() === 204);
+    await admin.getByRole('button', { name: 'Delete', exact: true }).last().click();
+    await thoughtDeleteResponse;
+    await admin.getByRole('dialog').waitFor({ state: 'hidden', timeout: 5000 }).catch(() => {});
+
     if (webErrors.length || adminErrors.length) throw new Error(JSON.stringify({ webErrors, adminErrors }));
     console.log(JSON.stringify({ webControlCounts, adminControlCounts, webErrors, adminErrors }));
   } finally {
