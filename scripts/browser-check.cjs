@@ -385,7 +385,7 @@ async function main() {
 
     await web.setViewportSize({ width: 1280, height: 400 });
     await web.goto(`${webUrl}/writing`, { waitUntil: 'networkidle' });
-    await web.getByText('2 articles', { exact: true }).waitFor({ state: 'visible' });
+    await web.getByText('1 articles', { exact: true }).waitFor({ state: 'visible' });
     const writingScrollHint = web.locator('[class*="scrollHint"]');
     await writingScrollHint.waitFor({ state: 'visible' });
     const writingRevealed = await web.locator('[class*="writingCollection"]').evaluate((el) => el.closest('[data-revealed]')?.getAttribute('data-revealed'));
@@ -398,11 +398,11 @@ async function main() {
     await web.waitForURL((url) => url.searchParams.get('q') === 'boundary');
     await web.getByText('1 articles', { exact: true }).waitFor({ state: 'visible' });
     await writingSearch.fill('');
-    await web.getByText('2 articles', { exact: true }).waitFor({ state: 'visible' });
+    await web.getByText('1 articles', { exact: true }).waitFor({ state: 'visible' });
     await web.getByRole('button', { name: /design \d/ }).click();
     await web.getByText('1 articles', { exact: true }).waitFor({ state: 'visible' });
     await web.getByRole('button', { name: /design \d/ }).click();
-    await web.getByText('2 articles', { exact: true }).waitFor({ state: 'visible' });
+    await web.getByText('1 articles', { exact: true }).waitFor({ state: 'visible' });
     await web.getByLabel('Sort writings').selectOption('oldest');
     await web.getByRole('heading', { name: 'Designing Boundaries' }).waitFor({ state: 'visible' });
 
@@ -412,7 +412,7 @@ async function main() {
     await writingPickerPanel.getByRole('button', { name: /design \d/ }).click();
     await writingPickerPanel.getByRole('button', { name: /systems \d/ }).click();
     await web.waitForURL((url) => url.searchParams.getAll('tag').join(',') === 'design,systems');
-    await web.getByText('2 articles', { exact: true }).waitFor({ state: 'visible' });
+    await web.getByText('1 articles', { exact: true }).waitFor({ state: 'visible' });
     await web.getByRole('heading', { name: 'Writing', exact: true }).click();
     await writingPickerPanel.waitFor({ state: 'detached' });
     await web.getByRole('button', { name: /systems \d/ }).click();
@@ -420,7 +420,7 @@ async function main() {
     await web.getByText('1 articles', { exact: true }).waitFor({ state: 'visible' });
     await web.getByRole('button', { name: /design \d/ }).click();
     await web.waitForURL((url) => url.searchParams.getAll('tag').length === 0);
-    await web.getByText('2 articles', { exact: true }).waitFor({ state: 'visible' });
+    await web.getByText('1 articles', { exact: true }).waitFor({ state: 'visible' });
 
     await web.setViewportSize({ width: 1280, height: 400 });
     await web.goto(`${webUrl}/thoughts`, { waitUntil: 'networkidle' });
@@ -751,7 +751,7 @@ async function main() {
     await mediaDeleteResponse;
     await admin.getByText('No images uploaded yet — drop files above or paste into the editor.').waitFor({ state: 'visible', timeout: 5000 });
 
-    // Settings round-trip: identity, navigation, comments toggle, homepage composition
+    // Settings round-trip: identity, navigation, comments toggle
     await admin.getByRole('button', { name: 'Settings' }).click();
     await admin.getByRole('heading', { name: 'Site settings.' }).waitFor({ state: 'visible', timeout: 5000 });
     await admin.getByLabel('Site title').fill('Garden Settings Probe');
@@ -761,21 +761,16 @@ async function main() {
     await navRow.getByPlaceholder('Label', { exact: true }).fill('Garden Home');
     await navRow.getByPlaceholder('Label or /path, or full URL').fill('/');
     await admin.locator('#site-comments').getByRole('switch').click();
-    const featuredInput = admin.getByPlaceholder('Pin a writing or thought to the top of its homepage column');
-    await featuredInput.click();
-    await featuredInput.press('ArrowDown');
-    await admin.keyboard.press('Enter');
     const siteSaveResponse = admin.waitForResponse((response) => coreResponse(response, '/api/v1/admin/site', 'PATCH', 200));
     await admin.getByRole('button', { name: 'Save site settings' }).click();
     await siteSaveResponse;
-    await admin.getByRole('button', { name: 'Saved' }).waitFor({ state: 'visible', timeout: 5000 });
+    await admin.locator('.save-bar').waitFor({ state: 'detached', timeout: 5000 });
 
     await web.goto(`${webUrl}/`, { waitUntil: 'networkidle' });
     const publicTitle = await web.title();
     if (!publicTitle.includes('Garden Settings Probe')) throw new Error('Site title did not reach the web document title: ' + publicTitle);
     await web.getByRole('navigation', { name: 'Primary navigation' }).getByRole('link', { name: 'Garden Home' }).waitFor({ state: 'visible', timeout: 5000 });
     await web.locator('[class*="siteFooterBottom"]').getByText('Notes anchored in the garden.').waitFor({ state: 'visible', timeout: 5000 });
-    await web.locator('[title="Pinned in site settings"]').first().waitFor({ state: 'visible', timeout: 5000 });
 
     await web.goto(`${webUrl}/writing/designing-boundaries`, { waitUntil: 'networkidle' });
     if (await web.locator('#comments').count() !== 0) throw new Error('Discussion block should disappear when comments are disabled');
@@ -786,6 +781,34 @@ async function main() {
     await siteRestoreResponse;
     await web.goto(`${webUrl}/writing/designing-boundaries`, { waitUntil: 'networkidle' });
     await web.locator('#comments').waitFor({ state: 'visible', timeout: 10000 });
+
+    // Archive pins: toggle from each list, verify the public archive featured card, clear via the editor switch
+    await admin.getByRole('button', { name: 'Writings', exact: true }).click();
+    await admin.getByText('Writings worth returning to.').waitFor({ state: 'visible', timeout: 5000 });
+    const pinButton = admin.getByRole('button', { name: 'Pin Designing Boundaries' });
+    await pinButton.waitFor({ state: 'visible', timeout: 5000 });
+    const writingPinResponse = admin.waitForResponse((response) => coreResponse(response, '/api/v1/admin/writings/config', 'PATCH', 200));
+    await pinButton.click();
+    await writingPinResponse;
+    await admin.getByRole('button', { name: 'Unpin Designing Boundaries' }).waitFor({ state: 'visible', timeout: 5000 });
+
+    await web.goto(`${webUrl}/writing`, { waitUntil: 'networkidle' });
+    await web.getByText('Designing Boundaries').first().waitFor({ state: 'visible', timeout: 5000 });
+
+    await admin.getByRole('button', { name: 'Thoughts' }).click();
+    await admin.getByText('Capture as you go.').waitFor({ state: 'visible', timeout: 5000 });
+    const thoughtPinButton = admin.getByRole('button', { name: 'Pin A Small Signal' });
+    await thoughtPinButton.waitFor({ state: 'visible', timeout: 5000 });
+    const thoughtPinResponse = admin.waitForResponse((response) => coreResponse(response, '/api/v1/admin/thoughts/config', 'PATCH', 200));
+    await thoughtPinButton.click();
+    await thoughtPinResponse;
+    await admin.getByRole('button', { name: 'Unpin A Small Signal' }).waitFor({ state: 'visible', timeout: 5000 });
+
+    await web.goto(`${webUrl}/thoughts`, { waitUntil: 'networkidle' });
+    await web.getByText('A Small Signal').first().waitFor({ state: 'visible', timeout: 5000 });
+
+    await admin.getByRole('button', { name: 'Unpin A Small Signal' }).click();
+    await admin.waitForResponse((response) => coreResponse(response, '/api/v1/admin/thoughts/config', 'PATCH', 200));
 
     if (webErrors.length || adminErrors.length) throw new Error(JSON.stringify({ webErrors, adminErrors }));
     console.log(JSON.stringify({ webControlCounts, adminControlCounts, webErrors, adminErrors }));
