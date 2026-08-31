@@ -6,7 +6,7 @@
 
 | 导出 | 用途 |
 | --- | --- |
-| `MarkdownContent` | Markdown 正文渲染：GFM、数学公式（KaTeX）、代码高亮、sanitize、标题锚点（`data-content-heading`）、CodeBlock 复制按钮 |
+| `MarkdownContent` | Markdown 正文渲染：GFM、数学公式（KaTeX）、代码高亮、sanitize、标题锚点（`data-content-heading`）、CodeBlock 复制按钮、图片块级展示（显式 sanitize schema 允许 `img`，组件注入 `loading="lazy" decoding="async"`，`render.css` 提供边框圆角与自适应宽度） |
 | `ArticleToc` / `ReadingProgress` | TOC 侧栏（scrollspy + 进度）与阅读进度轨 |
 | `ReadingShell` | 长文阅读三栏网格骨架；web 通过 `rail/discussion/composer` slots 注入评论编排，admin 只传正文与 TOC。未传 `rail` 时自动切到 `no-rail` 网格（正文列 + TOC，无预留 rail 列） |
 | `ArticleSurface` / `ThoughtSurface` / `ThoughtHeader` / `ThoughtBody` | 文章与 Thought 的详情面组成件（标题块、meta 行、溯源组） |

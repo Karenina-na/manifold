@@ -9,9 +9,20 @@ import { Check, Copy } from "lucide-react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import rehypeKatex from "rehype-katex";
-import rehypeSanitize from "rehype-sanitize";
+import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
+
+// Pin the image parts of the sanitize schema instead of trusting the default:
+// uploads render through img, and an upstream schema change must not silently
+// turn every embedded image back into a plain link.
+const renderSchema = {
+  ...defaultSchema,
+  attributes: {
+    ...defaultSchema.attributes,
+    img: [...(defaultSchema.attributes?.img ?? []), "srcSet", "width", "height", "loading", "decoding"],
+  },
+};
 
 const headingId = (value: React.ReactNode) => String(value).toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]+/g, "-").replace(/(^-|-$)/g, "");
 
@@ -74,6 +85,7 @@ function createComponents(content: string, headingIds: string[] = [], hideFirstH
     h2: ({ children, node }) => <h2 id={nextHeadingId(children, node)} data-content-heading>{children}</h2>,
     h3: ({ children, node }) => <h3 id={nextHeadingId(children, node)} data-content-heading>{children}</h3>,
     pre: ({ children }) => <CodeBlock>{children}</CodeBlock>,
+    img: (props) => <img {...props} loading="lazy" decoding="async" />,
   };
 }
 
@@ -81,7 +93,7 @@ export function MarkdownContent({ content, headingIds, hideFirstH1 = false }: { 
   return (
     <ReactMarkdown
       remarkPlugins={[remarkGfm, remarkMath]}
-      rehypePlugins={[rehypeSanitize, rehypeKatex, rehypeHighlight]}
+      rehypePlugins={[[rehypeSanitize, renderSchema], rehypeKatex, rehypeHighlight]}
       components={createComponents(content, headingIds, hideFirstH1)}
     >
       {content}
