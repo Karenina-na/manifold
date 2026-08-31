@@ -13,6 +13,7 @@
   "dependencies": {
     "@hookform/resolvers": "^5.9.1",
     "@manifold/contracts": "workspace:*",
+    "@manifold/render": "workspace:*",
     "@manifold/sdk": "workspace:*",
     "@radix-ui/themes": "^3.3.0",
     "@tanstack/react-query": "^5.101.4",

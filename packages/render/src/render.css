@@ -1,0 +1,111 @@
+/* Shared reading-surface styles for @manifold/render — consumed by app/web
+   and app/admin. This file is the SINGLE SOURCE for how public content is
+   rendered; never fork these rules into an app. Token defaults mirror the
+   web light theme; web maps --mdr-* to its live tokens in globals.css. */
+
+/* Token defaults mirror the web light theme. Web overrides these on
+   html:root (higher specificity) to bind them to its live theme tokens. */
+:root {
+  --mdr-accent: #c56473;
+  --mdr-accent-soft: #f0efeb;
+  --mdr-ink: #24231f;
+  --mdr-muted: #5c5a55;
+  --mdr-line: #d0cec6;
+  --mdr-paper: #f9f8f5;
+  --mdr-serif: "Noto Serif CJK SC", "Source Han Serif SC", Georgia, serif;
+  --mdr-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --mdr-code-line: #36453d;
+  --mdr-code-muted: #b8c5bb;
+  --mdr-code-keyword: #f0a6a1;
+  --mdr-code-string: #c4d79b;
+  --mdr-code-number: #e8c58c;
+  --mdr-code-title: #9fc9dd;
+}
+
+/* Long-form reading surface: the page stays quiet while the article gets a clear paper boundary. */
+.articleSurface { width: min(1400px, calc(100% - 32px)); margin: 38px auto 72px; border: 1px solid color-mix(in srgb, var(--mdr-line) 68%, transparent); background: color-mix(in srgb, #fff 94%, var(--mdr-paper)); box-shadow: 0 24px 70px rgba(24, 24, 20, .08); }
+.articleSurfaceInner { padding: 0 clamp(24px, 4vw, 64px) 72px; }
+.articleBack { width: min(860px, calc(100% - 434px)); margin: 0 auto 14px; padding-top: 24px; }.articleBack a { display: inline-flex; align-items: center; gap: 6px; color: var(--mdr-muted); font: 11px var(--mdr-mono); }.articleBack a:hover { color: var(--mdr-accent); }
+.articleSurface .articleHeader { width: min(760px, 100%); max-width: none; margin: 0 auto; padding: 62px 0 48px; }.articleSurface .articleHeader h1 { max-width: 760px; }.articleSurface .articleHeader p { max-width: 680px; }
+.articleMeta { align-items: center; gap: 11px 16px; line-height: 1.35; }.articleMeta span { white-space: nowrap; }.articleMetaTag { color: var(--mdr-accent); }
+.articleReadingShell { display: grid; grid-template-columns: 170px minmax(0, 760px) 190px; gap: clamp(22px, 4vw, 46px); align-items: start; justify-content: center; }.articleReadingMain { min-width: 0; }.articleReadingMainContent { min-width: 0; }
+.articleActionRail { position: sticky; top: 112px; z-index: 3; align-self: start; min-height: 205px; }
+.articleToc { position: sticky; top: 112px; display: grid; gap: 14px; align-self: start; padding-left: 19px; }.articleTocHeading { display: flex; justify-content: space-between; gap: 8px; color: var(--mdr-muted); font: 11px var(--mdr-mono); letter-spacing: .08em; text-transform: uppercase; }.articleTocTrack { position: absolute; top: 31px; bottom: 0; left: 2px; width: 2px; min-height: 140px; background: var(--mdr-line); }.articleTocTrack span { display: block; width: 2px; background: var(--mdr-accent); transition: height .2s ease; }.articleToc nav { display: grid; gap: 10px; max-height: calc(100vh - 180px); overflow: auto; }.articleToc a { color: var(--mdr-muted); font-size: 13px; line-height: 1.4; }.articleToc a:hover, .articleTocActive { color: var(--mdr-accent) !important; }.articleToc .tocNested { padding-left: 13px; font-size: 12px; }
+
+/* Detail page surfaces follow the archive/home neutral paper instead of a single white card. */
+.articleSurface { width: min(1400px, calc(100% - 32px)); margin: 38px auto 72px; border: 0; background: transparent; box-shadow: none; }
+.articleSurfaceInner { padding: 0 clamp(24px, 4vw, 64px) 72px; }
+.articleTitleBlock, .articleBodyBlock { border: 1px solid color-mix(in srgb, var(--mdr-line) 72%, transparent); border-radius: 6px; background: color-mix(in srgb, var(--mdr-paper) 88%, var(--mdr-accent-soft)); box-shadow: 0 12px 34px rgba(24, 24, 20, .045); }
+.articleBack, .articleTitleBlock { width: min(860px, calc(100% - 434px)); margin-left: 192px; margin-right: 0; }.articleTitleBlock { margin-bottom: 22px; }.articleTitleBlock .articleHeader { width: 100%; max-width: none; padding: 42px clamp(34px, 5vw, 64px) 40px; }
+.articleBodyBlock { padding: 36px clamp(34px, 5vw, 64px) 62px; }.articleReadingShell { grid-template-columns: 170px minmax(0, 860px) 220px; gap: 22px; }.articleReadingMain { min-width: 0; grid-column: 2; grid-row: 1; }.articleToc { grid-column: 3; grid-row: 1; }
+/* No-rail variant (admin render preview): the reserved rail column collapses
+   and the article column takes its place next to the TOC. */
+.articleReadingShell.no-rail { grid-template-columns: minmax(0, 860px) 220px; }.articleReadingShell.no-rail .articleReadingMain { grid-column: 1; grid-row: 1; }.articleReadingShell.no-rail .articleToc { grid-column: 2; grid-row: 1; }
+/* Titles rendered inside the shell's article column skip the out-of-shell
+   rail alignment offsets. */
+.articleReadingMain .articleTitleBlock { width: auto; margin-left: 0; margin-right: 0; }
+
+@media (max-width: 1300px) {
+  .articleBack, .articleTitleBlock { width: min(760px, calc(100% - 172px)); margin-left: calc(172px + max(0px, calc((100% - 932px) / 2))); margin-right: 0; }.articleReadingShell { grid-template-columns: 150px minmax(0, 760px); }.articleToc { grid-column: 1 / -1; grid-row: 1; position: static; display: block; padding: 0 0 18px 0; border-bottom: 1px solid var(--mdr-line); }.articleReadingMain { grid-column: 2; grid-row: 2; }.articleTocHeading { margin-bottom: 10px; }.articleTocTrack { display: none; }.articleToc nav { display: flex; flex-wrap: wrap; gap: 8px 14px; max-height: none; }.articleToc .tocNested { padding-left: 0; }
+  .articleBodyBlock { padding-inline: 28px; }
+  .articleReadingShell.no-rail { grid-template-columns: minmax(0, 760px); }.articleReadingShell.no-rail .articleReadingMain { grid-column: 1; grid-row: 2; }.articleReadingShell.no-rail .articleToc { grid-column: 1 / -1; grid-row: 1; }
+}
+@media (max-width: 760px) {
+  .articleSurface { width: calc(100% - 18px); margin-top: 18px; }.articleSurfaceInner { padding-inline: 9px; }.articleBack, .articleTitleBlock { width: 100%; margin-left: 0; }.articleBack { margin-bottom: 10px; padding-top: 16px; }.articleTitleBlock, .articleBodyBlock { box-shadow: none; }.articleSurface .articleHeader { padding: 42px 16px 34px; }.articleSurface .articleHeader h1 { font-size: clamp(38px, 12vw, 58px); }.articleMeta { gap: 8px 12px; }.articleMeta span { white-space: normal; }.articleReadingShell { display: flex; flex-direction: column; gap: 18px; }.articleBodyBlock { padding: 24px 16px 40px; }.articleToc { order: -1; width: 100%; }.articleActionRail { position: sticky; top: 82px; width: 100%; min-height: 180px; order: 0; }
+}
+
+/* Article ending: discussion and composer share the same paper language as the title and body. */
+.articleActionRail { grid-column: 1; grid-row: 1; }
+.articleDiscussionBlock, .articleComposerBlock { grid-column: 2; min-width: 0; border: 1px solid color-mix(in srgb, var(--mdr-line) 72%, transparent); border-radius: 6px; background: color-mix(in srgb, var(--mdr-paper) 88%, var(--mdr-accent-soft)); box-shadow: 0 12px 34px rgba(24, 24, 20, .045); }
+.articleDiscussionBlock { grid-row: 2; margin-top: 22px; padding: 32px clamp(34px, 5vw, 64px) 42px; }
+.articleComposerBlock { grid-row: 3; margin-top: 22px; padding: 0; }
+.articleComposerBlock[data-active="false"] { visibility: hidden; border-color: transparent; background: transparent; box-shadow: none; pointer-events: none; }
+.articleComposerTrigger { height: 1px; margin-bottom: -1px; }
+
+@media (max-width: 1050px) {
+  .articleActionRail { grid-column: 1; grid-row: 2; }
+  .articleDiscussionBlock { grid-column: 2; grid-row: 3; }
+  .articleComposerBlock { grid-column: 2; grid-row: 4; }
+}
+
+@media (max-width: 760px) {
+  .articleActionRail { grid-column: auto; grid-row: auto; }
+  .articleReadingMain, .articleBodyBlock, .articleDiscussionBlock, .articleComposerBlock { width: 100%; max-width: 100%; }
+  .articleBodyBlock { overflow: hidden; }
+  .articleBodyBlock .markdown { min-width: 0; max-width: 100%; overflow-x: auto; }
+  .articleDiscussionBlock, .articleComposerBlock { width: 100%; margin-top: 0; }
+  .articleDiscussionBlock { order: 3; padding: 26px 16px 34px; }
+  .articleComposerBlock { order: 4; }
+}
+
+/* Detail-page header: eyebrow and meta line. */
+.articleHeader { padding: 58px 0 44px; max-width: 820px; }.articleHeader h1 { font-family: var(--mdr-serif); font-size: clamp(42px, 6vw, 72px); line-height: 1.04; font-weight: 400; margin: 0 0 18px; }.articleHeader p { color: var(--mdr-muted); font-size: 18px; line-height: 1.7; margin: 0 0 22px; }
+.articleHeader .eyebrow { display: inline-flex; align-items: baseline; gap: 6px; color: var(--mdr-accent); font-family: var(--mdr-mono); font-size: 10px; font-weight: 500; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 8px; }
+.articleMeta { display: flex; flex-wrap: wrap; gap: 15px; color: var(--mdr-muted); font-size: 12px; }.articleMeta span { display: inline-flex; align-items: center; gap: 5px; }
+
+/* Long-form markdown typography. */
+.markdown { max-width: 760px; padding-top: 10px; font-size: 17px; line-height: 1.85; }.markdown h2, .markdown h3 { font-family: var(--mdr-serif); font-weight: 400; line-height: 1.2; margin: 40px 0 12px; }.markdown h2 { font-size: 32px; }.markdown h3 { font-size: 25px; }.markdown p, .markdown ul, .markdown ol, .markdown blockquote, .markdown pre { margin: 0 0 22px; }.markdown ul, .markdown ol { padding-left: 24px; }.markdown a { color: var(--mdr-accent); text-decoration: underline; text-underline-offset: 3px; }.markdown blockquote { border-left: 2px solid var(--mdr-accent); padding-left: 18px; color: var(--mdr-muted); font-family: var(--mdr-serif); font-size: 20px; }.markdown code { font-family: var(--mdr-mono); font-size: .86em; background: var(--mdr-accent-soft); padding: 2px 5px; }.markdown pre { overflow-x: auto; padding: 18px; background: var(--mdr-ink); color: var(--mdr-paper); }.markdown pre code { background: transparent; padding: 0; }
+.markdown pre { border: 1px solid var(--mdr-code-line); }
+.markdown table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; margin: 0 0 22px; font-size: 15px; }.markdown th, .markdown td { border: 1px solid var(--mdr-line); padding: 8px 12px; text-align: left; vertical-align: top; }.markdown thead th { background: color-mix(in srgb, var(--mdr-line) 26%, transparent); font-weight: 600; white-space: nowrap; }
+/* Keep horizontal overflow discoverable: overlay scrollbars hide the fact
+   that a long line or wide table continues past the clip edge. */
+.markdown pre { scrollbar-width: thin; scrollbar-color: var(--mdr-code-muted) transparent; }.markdown pre::-webkit-scrollbar { height: 8px; }.markdown pre::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--mdr-code-muted) 70%, transparent); border-radius: 4px; }.markdown pre::-webkit-scrollbar-track { background: transparent; }
+.markdown table { scrollbar-width: thin; scrollbar-color: var(--mdr-line) transparent; }.markdown table::-webkit-scrollbar { height: 8px; }.markdown table::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--mdr-line) 80%, transparent); border-radius: 4px; }.markdown table::-webkit-scrollbar-track { background: transparent; }
+.codeFrame { margin: 0 0 22px; border: 1px solid var(--mdr-code-line); background: var(--mdr-ink); }.codeToolbar { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border-bottom: 1px solid var(--mdr-code-line); color: var(--mdr-code-muted); font-family: var(--mdr-mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; }.codeCopy { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--mdr-code-muted); background: transparent; color: var(--mdr-paper); padding: 5px 8px; cursor: pointer; font-size: 11px; text-transform: none; letter-spacing: 0; }.codeCopy:hover { border-color: var(--mdr-code-muted); }.codeFrame pre { margin: 0; border: 0; }.markdown .katex { font-size: 1em; }.markdown .katex-display { overflow-x: auto; overflow-y: hidden; padding: 8px 0; }.markdown .hljs-comment, .markdown .hljs-quote { color: var(--mdr-code-muted); }.markdown .hljs-keyword, .markdown .hljs-selector-tag, .markdown .hljs-built_in { color: var(--mdr-code-keyword); }.markdown .hljs-string, .markdown .hljs-attr, .markdown .hljs-template-tag { color: var(--mdr-code-string); }.markdown .hljs-number, .markdown .hljs-literal { color: var(--mdr-code-number); }.markdown .hljs-title, .markdown .hljs-section, .markdown .hljs-name { color: var(--mdr-code-title); }
+
+/* Thought detail: header adornments and the reading-progress rail. */
+.thoughtSummary { display: flex; align-items: flex-start; gap: 7px; margin: 0; color: var(--mdr-muted); font-size: 12px; line-height: 1.55; }
+.thoughtSummary span { flex: 0 0 auto; color: color-mix(in srgb, var(--mdr-muted) 82%, transparent); font-size: 10px; line-height: 1.86; }
+.thoughtDetail .articleBack, .thoughtDetail .articleTitleBlock, .thoughtDetail .articleBodyBlock, .thoughtDetail .articleDiscussionBlock, .thoughtDetail .articleComposerBlock { width: min(860px, 100%); margin-left: auto; margin-right: auto; }
+.thoughtDetail .articleTitleBlock { margin-bottom: 22px; }
+.thoughtReadingArea { position: relative; }
+.thoughtDetail .thoughtProgressRail { position: absolute; top: 0; bottom: 0; left: calc(50% + 452px); width: 150px; }
+@media (max-width: 1300px) {
+  .thoughtDetail .thoughtProgressRail { position: static; width: min(860px, 100%); margin: 0 auto 22px; }
+}
+.thoughtDetail .articleDiscussionBlock { margin-top: 22px; }
+.thoughtDetail .thoughtSummary { max-width: 680px; margin: 2px 0 20px; font-size: 14px; line-height: 1.7; }
+.thoughtMood { border: 1px solid color-mix(in srgb, var(--mdr-accent) 38%, var(--mdr-line)); border-radius: 999px; background: var(--mdr-accent-soft); color: var(--mdr-ink); padding: 1px 9px; }
+.thoughtReflection { max-width: 680px; margin: 22px 0 0; padding: 15px 20px; border-left: 2px solid var(--mdr-accent); background: color-mix(in srgb, var(--mdr-accent-soft) 52%, transparent); color: var(--mdr-ink); font-family: var(--mdr-serif); font-size: 19px; font-style: italic; line-height: 1.6; }
+.thoughtProvenance { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 14px; color: var(--mdr-muted); font: 11px var(--mdr-mono); }
+.thoughtProvenance span { display: inline-flex; align-items: center; gap: 6px; }
