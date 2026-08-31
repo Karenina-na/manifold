@@ -5,7 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "predev": "pnpm run sync-vditor",
     "build": "tsc -b && vite build",
+    "prebuild": "pnpm run sync-vditor",
+    "sync-vditor": "node scripts/sync-vditor.mjs",
     "lint": "oxlint",
     "preview": "vite preview",
     "typecheck": "tsc -b --pretty false",
@@ -14,6 +17,7 @@
   "dependencies": {
     "@hookform/resolvers": "^5.9.1",
     "@manifold/contracts": "workspace:*",
+    "@manifold/render": "workspace:*",
     "@manifold/sdk": "workspace:*",
     "@mantine/core": "^9.5.1",
     "@mantine/hooks": "^9.5.1",
@@ -30,6 +34,7 @@
     "rehype-sanitize": "^6.0.0",
     "remark-gfm": "^4.0.1",
     "remark-math": "^6.0.0",
+    "vditor": "^3.11.2",
     "vite-plugin-pwa": "^1.3.0",
     "zod": "^4.4.3"
   },

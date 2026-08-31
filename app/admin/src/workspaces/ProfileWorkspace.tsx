@@ -7,6 +7,7 @@ import { useFieldArray, useForm, type UseFormReturn } from 'react-hook-form'
 import { z } from 'zod'
 import type { Profile } from '@manifold/contracts'
 import { createAdminClient } from '../api'
+import { ChipsInput } from '../components/ChipsInput'
 
 const optionalUrl = z.string().trim().max(500).refine((value) => value === '' || /^https?:\/\//i.test(value), 'Use an http(s) URL')
 const contactUrl = z.string().trim().min(1, 'URL is required').max(500).refine((value) => /^https?:\/\//i.test(value) || value.startsWith('mailto:'), 'Use an http(s) or mailto URL')
@@ -150,41 +151,6 @@ function ListRowActions({ index, count, move, remove }: { index: number; count: 
     <button type="button" className="mini-button" aria-label="Move up" disabled={index === 0} onClick={() => move(index, index - 1)}><ChevronUp size={14} /></button>
     <button type="button" className="mini-button" aria-label="Move down" disabled={index === count - 1} onClick={() => move(index, index + 1)}><ChevronDown size={14} /></button>
     <button type="button" className="mini-button danger" aria-label="Remove" onClick={() => remove(index)}><Trash2 size={14} /></button>
-  </div>
-}
-
-function ChipsInput({ value, onChange }: { value: string[]; onChange: (next: string[]) => void }) {
-  const [draft, setDraft] = useState('')
-  const commit = () => {
-    const trimmed = draft.trim()
-    if (!trimmed) return
-    if (!value.includes(trimmed)) onChange([...value, trimmed])
-    setDraft('')
-  }
-  return <div className="chips-row">
-    {value.map((chip) => <span className="chip" key={chip}>{chip}<button type="button" aria-label={`Remove ${chip}`} onClick={() => onChange(value.filter((item) => item !== chip))}>×</button></span>)}
-    <input
-      className="chip-input"
-      value={draft}
-      placeholder="Add interest and press Enter"
-      onChange={(event) => {
-        if (event.target.value.endsWith(',')) {
-          setDraft(event.target.value.slice(0, -1))
-          commit()
-          return
-        }
-        setDraft(event.target.value)
-      }}
-      onKeyDown={(event) => {
-        if (event.key === 'Enter') {
-          event.preventDefault()
-          commit()
-        } else if (event.key === 'Backspace' && !draft && value.length) {
-          onChange(value.slice(0, -1))
-        }
-      }}
-      onBlur={commit}
-    />
   </div>
 }
 
@@ -379,7 +345,7 @@ export function ProfileWorkspace({ token }: { token: string }) {
           <section className="panel" id="profile-interests">
             <div className="panel-heading"><div><p className="kicker">Interests</p><h2>Interests</h2></div></div>
             <div className="form-stack">
-              <div><label>Tags</label><ChipsInput value={watched.interests} onChange={(next) => profileForm.setValue('interests', next, { shouldDirty: true })} /></div>
+              <div><label>Tags</label><ChipsInput value={watched.interests} onChange={(next) => profileForm.setValue('interests', next, { shouldDirty: true })} placeholder="Add interest and press Enter" /></div>
               <p className="icon-hint">Rendered as #tags under the introduction.</p>
             </div>
           </section>

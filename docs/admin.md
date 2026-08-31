@@ -18,11 +18,13 @@ Vite + React 19
 ├── TanStack Query: server state and invalidation
 ├── Recharts: Dashboard chart
 ├── Lucide React: actions and navigation icons
+├── vditor (IR mode): Context tab markdown editor
+├── @manifold/render: shared reading surface for the Render tab
 ├── vite-plugin-pwa: manifest / service worker
 └── @manifold/sdk -> Core /api/v1/admin
 ```
 
-主要模块：`src/App.tsx` 管理登录和工作区；`src/api.ts` 创建 SDK client；`SettingsWorkspace.tsx` 管理 Site composition；`workspaces/` 下分别负责 Dashboard（数据总览）、Profile、Writings、Thoughts 和评论管理；`ErrorBoundary.tsx` 负责渲染恢复。
+主要模块：`src/App.tsx` 管理登录、hash 路由（`#/writings`、`#/writings/{id}` 等二级页面）和未保存离开确认；`src/api.ts` 创建 SDK client；`src/lib/` 提供 hash 路由、dirty 守卫和 Core 派生规则的浏览器镜像（`content-derive.ts`）；`src/components/` 提供内容工作区共享组件（`ContentListPanel`/`ContentEditorShell`/`SaveBar`/`ChipsInput`/`ConfirmButton`/`MarkdownEditor`）；`SettingsWorkspace.tsx` 管理 Site composition；`workspaces/` 下分别负责 Dashboard（数据总览）、Profile、Writings、Thoughts 和评论管理；`ErrorBoundary.tsx` 负责渲染恢复。组件文件用 PascalCase，工具与 hook 用 kebab-case。
 
 Dashboard、Profile、Writings、Thoughts、Comments、Settings 通过 lazy chunk 加载，登录壳同步加载。
 
@@ -67,25 +69,34 @@ Refresh 按钮同时 refetch 四个 query。Now 状态功能已整体移除（Co
 
 ### Writings
 
-Writings 工作区固定 `kind: 'ARTICLE'`，列表调用 `adminContent({ kind: 'ARTICLE' })`，query key 为 `['admin-content', 'ARTICLE']`。
+Writings 工作区为二级页面结构，路由走 hash：列表页 `#/writings`，详情页 `#/writings/new`（新建）与 `#/writings/{id}`（编辑/查看）。固定 `kind: 'ARTICLE'`，列表由共享 `ContentListPanel` 驱动，调用 `adminContent({ kind: 'ARTICLE', status?, q?, sort?, page? })`，query key 为 `['admin-content', 'ARTICLE', { status, q, sort, page }]`（失效仍走 `['admin-content']` 前缀）。列表页为全宽单栏：顶部工具栏（搜索 `q` 300ms 防抖、状态 chips All/Drafts/Published、排序 newest/oldest/updated、总数），下方行列表 + 服务端分页；行内容镜像 Web 归档卡（状态点、标题、`✦` summary 或派生 excerpt、日期、tags、views/likes/comments），行内操作为编辑（整行点击跳详情）、发布/撤回、删除和已发布项“在 Web 打开”外链（`VITE_WEB_URL`，默认 `http://localhost:3000`）；发布/撤回/删除均为 `ConfirmButton` 的内联 Popover 二次确认（不再使用 Modal）。
 
 | 操作 | SDK/Core |
 | --- | --- |
-| 列表 | `adminContent({ kind: 'ARTICLE' })`，列表项显示 Core 返回的浏览量和点赞数 |
+| 列表 | `adminContent({ kind: 'ARTICLE', status?, q?, sort?, page? })` |
+| 单条读取 | `adminContentItem(id)` → `GET /api/v1/admin/content/{id}`（详情页刷新/深链恢复） |
 | 创建草稿 | `createContent(ContentInput)` |
 | 编辑 | `updateContent(id, UpdateContentInput)` |
-| 发布/撤回 | `publishContent(id)` / `unpublishContent(id)` |
-| 删除 | `deleteContent(id)`，Core 返回 204 |
+| 发布/撤回 | `publishContent(id)` / `unpublishContent(id)`（列表行与详情页头均可） |
+| 删除 | `deleteContent(id)`（`ConfirmButton` Popover 二次确认），Core 返回 204 |
 
-编辑器字段：title、slug（均必填）、summary、Markdown body、tags、frontmatter JSON、technologies、language（下拉选择）、difficulty。阅读时长和目录由 Core 在保存时根据 Markdown 自动计算，编辑器以只读状态展示预计时长；右侧使用 `react-markdown`、GFM、数学公式、代码高亮和 sanitize 进行实时预览。
+详情页由共享 `ContentEditorShell` 渲染：顶部返回链接（dirty 时经 App 确认 Modal）、状态标签、发布/撤回（Popover 确认）、Web 外链和删除；标题区带 **编辑态/锁定态切换**——查看已有内容默认锁定（`<fieldset disabled>` 整体只读，chips 移除按钮隐藏），点 Edit 解锁，点 Lock 且存在未保存修改时弹确认（放弃修改并锁定）；新建直接进入编辑态，首次保存后 `history.replaceState` 换成 `#/writings/{id}`（不产生回退步骤）。内容区分三个 Mantine Tab：
+
+- **Meta（元信息）**：表单 `#writing-form`，按 Web 可见性分组——title、slug（新建时从 title 自动生成建议，描述行实时预览公开 URL）、summary、tags（chip 输入）、language（下拉）；`aiAssisted` 开关（写入 `metadata.aiAssisted`，Web 归档的 “No AI writing” 过滤据此生效）；派生只读展示（预计阅读时长，由 `content-derive.ts` 复刻 Core 规则）；`frontmatter`/`technologies`/`difficulty`/`repositoryUrl` 已从 UI 移除，因 Core PATCH 对 metadata 整体替换，保存时未编辑字段从已加载内容原样透传；
+- **Context（正文）**：vditor IR（instant-rendering，MarkText 式）全宽编辑器，输入即得纯 Markdown 存入表单 `body`；锁定态经 `fieldset disabled` + `editor.disabled()` 只读。vditor 通过 `cdn: '/vditor'` 从 Admin 自身加载 lute/图标/语言包（`scripts/sync-vditor.mjs` 在 dev/build/browser-test 前把 `node_modules/vditor/dist` 的子集复制到 `public/vditor/`，gitignore 掉产物）；编辑器内部预览不求渲染公式/图表/代码高亮，权威渲染以 `@manifold/render` 为准；
+- **Render（渲染的）**：直接复用 `@manifold/render` 的 `ArticleSurface`（标题块、meta 行、TOC、`MarkdownContent` 正文），与 Web 阅读面同源组件；外层包 `.articleSurface/.articleSurfaceInner` 容器（Admin 侧收起横向内边距）。ArticleSurface 不传 rail slot，ReadingShell 自动切到 `no-rail` 网格——正文列（≤860px）与 220px TOC 并列居中，≤1300px 时 TOC 变为顶部横带；标题块随正文同列对齐。Context tab 的编辑器限宽 860px 居中，与正文列视觉一致。
+
+保存使用底部 sticky save bar（仅编辑态且 dirty 时出现；`Cmd/Ctrl+S`/`Cmd/Ctrl+Enter` 触发）。因为 Tab 面板 `keepMounted={false}` 会在切换时卸载表单，SaveBar 按钮与快捷键都通过 workspace 传入的 `onSubmitRequest`（RHF `handleSubmit` 回调）提交，并短暂让出事件循环以收集 vditor 防抖中的最后输入。保存成功后停留在详情页并更新 version；409 版本冲突弹 “Saved elsewhere” Modal 提供重载。详情页数据来自 `['admin-content-item', 'ARTICLE', id]`。
 
 ### Thoughts
 
-Thoughts 工作区固定 `kind: 'THOUGHT'`，列表调用 `adminContent({ kind: 'THOUGHT' })`，query key 为 `['admin-content', 'THOUGHT']`。操作表与 Writings 相同（创建/编辑/发布/撤回/删除）。
+Thoughts 工作区为同构的二级页面（`#/thoughts`、`#/thoughts/new`、`#/thoughts/{id}`），固定 `kind: 'THOUGHT'`，列表调用 `adminContent({ kind: 'THOUGHT', status?, q?, sort?, page? })`，query key 为 `['admin-content', 'THOUGHT', { status, q, sort, page }]`。操作表与 Writings 相同。
 
-编辑器字段：正文必填，title、slug 可选（为空时 Core 使用 ID）；tags、mood、question、context、source。
+Meta tab 字段：正文在 Context tab（vditor IR）必填；title、slug 可选（slug 为空时 Core 使用 ID，更新时置空即清除）；summary（`✦` 标记，Web 卡片与详情均渲染）；tags（chip 输入）；溯源组按 Web 图标语义分组——mood（Sparkles）、question（反引 blockquote）、context（Compass）、source（BookOpen）。Render tab 直接复用 `@manifold/render` 的 `ThoughtSurface`（含 ReadingProgress）。保存条、锁定切换、快捷键、vditor 提交时序与 409 处理与 Writings 一致；详情数据来自 `['admin-content-item', 'THOUGHT', id]`。
 
-规则：所有更新带 `expectedVersion`；新建总是 DRAFT；两个内容工作区的写入失效统一使用 `['admin-content']` 前缀并同步失效 `admin-overview`，保证 Writings、Thoughts、Settings 的置顶选择器和 Dashboard 指标互相同步。
+共享模块：`lib/useHashRoute.ts`（hash 解析/导航/受守卫的 `requestNavigate`）、`lib/dirty-guard.ts`（编辑器注册 dirty 检查，App 侧栏与返回链接共用确认 Modal）、`lib/content-derive.ts`（excerpt/阅读时长/TOC 的 Core 规则浏览器镜像）、`components/ContentListPanel.tsx`（列表面板、行、状态/排序/分页）、`components/ChipsInput.tsx`（标签 chips 输入）、`components/SaveBar.tsx`（未保存横条与跨 Tab 提交按钮）、`components/ContentEditorShell.tsx`（详情页壳：三 Tab、锁定切换、状态操作、409 Modal）、`components/ConfirmButton.tsx`（Popover 内联二次确认，支持 icon-only）与 `components/MarkdownEditor.tsx`（vditor IR 封装：初始化就绪门槛 `after()`、`input`/`setValue` 值桥、锁定 `disabled()/enable()`）。`ProfileWorkspace` 的 interests chip 输入复用同一 `ChipsInput`；`lib/content-derive.ts` 与 Core 的派生实现必须保持同步；日期展示统一使用 `@manifold/render` 的 `formatDate`。
+
+规则：所有更新带 `expectedVersion`；新建总是 DRAFT；两个内容工作区的写入失效统一使用 `['admin-content']` 前缀并同步失效 `admin-overview`（Thoughts 另失效 `admin-thought-config`，保证置顶选择器同步）。
 
 ### Comments
 
@@ -106,9 +117,10 @@ Site 调用 `GET/PATCH /api/v1/admin/site`，包含 `featuredContent`、`navigat
 | `admin-system` | `adminSystem()` | Dashboard 手动刷新 |
 | `admin-comments` | `adminComments()`（Dashboard 评论面板与 Comments 工作区共享） | 软删除/恢复评论、Dashboard 手动刷新 |
 | `admin-audit` + page + q | `adminAudit({ page, pageSize: 10, q })` | Dashboard 手动刷新 |
-| `admin-content` + `ARTICLE` | Writings 列表 `adminContent({ kind: 'ARTICLE' })` | 内容创建、更新、发布、撤回、删除（统一失效 `['admin-content']` 前缀） |
-| `admin-content` + `THOUGHT` | Thoughts 列表 `adminContent({ kind: 'THOUGHT' })` | 同上 |
+| `admin-content` + `ARTICLE` + `{ status, q, sort, page }` | Writings 列表 `adminContent({ kind: 'ARTICLE', … })` | 内容创建、更新、发布、撤回、删除（统一失效 `['admin-content']` 前缀） |
+| `admin-content` + `THOUGHT` + `{ status, q, sort, page }` | Thoughts 列表 `adminContent({ kind: 'THOUGHT', … })` | 同上 |
 | `admin-content` + `THOUGHT` + `PUBLISHED` | Settings 的置顶 Thought 选项 | 同上 |
+| `admin-content-item` + kind + id | 详情页 `adminContentItem(id)` | 单条保存、发布/撤回后直接 setDraft 更新；重载时失效该 key |
 | `admin-profile` | `adminProfile()` | 保存 Profile |
 | `admin-site` | `adminSite()` | 保存 Site |
 | `admin-thought-config` | `adminThoughtConfig()` | 保存 Thoughts 置顶配置 |
@@ -120,6 +132,7 @@ Site 调用 `GET/PATCH /api/v1/admin/site`，包含 `featuredContent`、`navigat
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
 | `VITE_CORE_URL` | `http://localhost:8080` | Core API 地址 |
+| `VITE_WEB_URL` | `http://localhost:3000` | 公开站点地址，用于内容行的“在 Web 打开”外链 |
 
 ```bash
 pnpm --filter @manifold/admin dev
@@ -129,7 +142,7 @@ pnpm --filter @manifold/admin build
 pnpm --filter @manifold/admin preview
 ```
 
-根目录 `pnpm browser-test` 会启动隔离 Core/Web/Admin，验证登录、stats、反应、评论提交与回复、软删除和恢复。
+根目录 `pnpm browser-test` 会启动隔离 Core/Web/Admin，验证登录、stats、反应、评论提交与回复、软删除和恢复，以及 Writings/Thoughts 的二级页面流程：列表搜索、hash 路由跳转、slug 建议、Meta/Context/Render 三 Tab、vditor 输入保存为 Markdown、Render Tab 与 Web 阅读面同构（标题/正文/TOC）、aiAssisted/summary 保存、发布 Popover、锁定态切换、dirty 离开确认和行内删除 Popover。
 
 ## 7. 修改规则
 
@@ -138,6 +151,10 @@ pnpm --filter @manifold/admin preview
 1. 先更新 `packages/contracts` 和 `packages/sdk`，再更新工作区。
 2. 同步本文、`docs/core.md` 和 Web 文档中受影响的调用方。
 3. 更新对应 query key、错误态、loading 态和浏览器验收。
-4. 新增依赖时记录用途、包体和替代方案；当前 Markdown 依赖的用途见 `docs/decisions/web.md`。
+4. 新增依赖时记录用途、包体和替代方案；当前 Markdown 渲染依赖的用途见 `docs/decisions/web.md`，vditor 与 `@manifold/render` 的同步规则见下。
+
+**vditor（^3.11）**：Context tab 的写作编辑器，IR 模式提供 MarkText 式所见即所得输入，产出纯 Markdown；替代方案 milkdown（更重、插件生态更碎）与 CodeMirror 裸编辑（无即时渲染）。包体约 +360KB gzip 进入 admin chunk；运行时资源（lute wasm、图标、语言包）由 `scripts/sync-vditor.mjs` 本地化到 `public/vditor/`，不依赖第三方 CDN，且被 PWA precache 排除（`workbox.globIgnores`）。安全边界：编辑器只是输入辅助，产出的 Markdown 在渲染边界（`@manifold/render` 的 `MarkdownContent`）统一 sanitize。
+
+**@manifold/render**：Web 与 Admin 共用的阅读面渲染包（`MarkdownContent`/`ReadingShell`/`ArticleSurface`/`ThoughtSurface` 等）。修改渲染必须在包内进行并按 `packages/render/README.md` 同步验证两端，禁止在 Web/Admin 复制渲染逻辑或样式。
 
 管理控件优先使用 Mantine/Lucide，保持键盘访问、loading、error、empty 状态；设计令牌遵循 `docs/design-system/`。

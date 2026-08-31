@@ -20,6 +20,11 @@ export default defineConfig({
           { src: '/favicon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any maskable' },
         ],
       },
+      workbox: {
+        // The vendored vditor runtime (lute alone is ~3.7 MB) is loaded on
+        // demand; precaching it would blow past workbox's size limits.
+        globIgnores: ['vditor/**'],
+      },
     }),
   ],
 })
