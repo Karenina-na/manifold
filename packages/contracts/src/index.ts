@@ -19,6 +19,7 @@ export type Content = ContentWithMetadata<ThoughtMetadata, "THOUGHT"> | ContentW
 export type AdminContent = AdminContentWithMetadata<ThoughtMetadata, "THOUGHT"> | AdminContentWithMetadata<ArticleMetadata, "ARTICLE">
 export type ContentDetail = ContentDetailWithMetadata<ThoughtMetadata, "THOUGHT"> | ContentDetailWithMetadata<ArticleMetadata, "ARTICLE">
 export interface Comment { id: string; contentId: string; authorName: string; authorUrl?: string; body: string; createdAt: string; replyToId?: string; avatarSeed?: string; deletedAt?: string }
+export type AdminComment = Comment & { contentTitle: string; contentSlug?: string; contentKind: ContentKind }
 export interface LikeSummary { likeCount: number; viewerLiked: boolean }
 export interface Stats { contentCount: number; articleCount: number; thoughtCount: number; wordCount: number; updatedAt: string }
 export interface PresenceStatus { activeVisitors: number; observedAt: string }
@@ -50,6 +51,7 @@ export interface Media { id: string; url: string; mime: string; size: number; fi
 export interface MediaQuery { page?: number; pageSize?: number; q?: string }
 export interface AdminContentQuery extends ContentQuery { status?: ContentStatus }
 export interface CommentQuery { cursor?: string; limit?: number; page?: number; q?: string }
+export interface AdminCommentQuery { contentId?: string; q?: string; page?: number; pageSize?: number; focus?: string }
 export interface CreateCommentInput { authorName?: string; authorUrl?: string; body: string; replyToId?: string; avatarSeed?: string }
 export interface LoginInput { username: string; password: string }
 export interface LoginResponse { accessToken: string; tokenType: "Bearer"; expiresIn: number; user: { username: string; role: "admin" } }

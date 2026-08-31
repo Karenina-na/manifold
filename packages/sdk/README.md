@@ -77,7 +77,8 @@ const page = await client.content({ kind: "ARTICLE", limit: 20 })
 | `updateContent(id, input)` | PATCH | `/api/v1/admin/content/:id` | `AdminContent` |
 | `publishContent(id)` / `unpublishContent(id)` | POST | `/publish` `/unpublish` | `AdminContent` |
 | `deleteContent(id)` | DELETE | `/api/v1/admin/content/:id` | `void`，204 |
-| `adminComments(query?)` | GET | `/api/v1/admin/comments` | `Collection<Comment>`，含已软删（`deletedAt`） |
+| `adminComments(query?)` | GET | `/api/v1/admin/comments` | `Collection<AdminComment>`，线程分页（`AdminCommentQuery`：`contentId`/`q`/`page`/`pageSize`/`focus`），含已软删（`deletedAt`），行内附内容字段 |
+| `adminCreateComment(contentId, input)` | POST | `/api/v1/admin/content/:id/comments` | `Comment`，201；可在草稿上创建，作者为空归一化为 `Anonymous` |
 | `deleteComment(id)` | DELETE | `/api/v1/admin/comments/:id` | `void`，204，软删除 |
 | `restoreComment(id)` | POST | `/api/v1/admin/comments/:id/restore` | `void`，204 |
 

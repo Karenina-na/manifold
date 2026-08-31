@@ -99,6 +99,13 @@ type Comment struct {
 	DeletedAt  string  `json:"deletedAt,omitempty"`
 }
 
+type AdminComment struct {
+	Comment
+	ContentTitle string      `json:"contentTitle"`
+	ContentSlug  string      `json:"contentSlug,omitempty"`
+	ContentKind  ContentKind `json:"contentKind"`
+}
+
 type LikeSummary struct {
 	LikeCount   int  `json:"likeCount"`
 	ViewerLiked bool `json:"viewerLiked"`

@@ -925,10 +925,12 @@ const commentColumns = `id, content_id, author_name, author_url, body, created_a
 
 // matchedCommentThreads returns a CTE of top-level comments whose own
 // author/body matches the needle or that own any matching reply, so a hit
-// always exposes the whole thread. An empty needle matches every root.
+// always exposes the whole thread. An empty needle matches every root. The
+// CTE carries created_at so nested LIMIT/OFFSET subqueries can order without
+// binding to the outer query's columns.
 func matchedCommentThreads() string {
 	return `WITH matched AS (
-		SELECT id FROM comments
+		SELECT id, created_at FROM comments
 		WHERE content_id = ? AND deleted_at = '' AND COALESCE(reply_to_id, '') = ''
 		AND (? = '' OR INSTR(LOWER(author_name), ?) > 0 OR INSTR(LOWER(body), ?) > 0
 			OR EXISTS (SELECT 1 FROM comments reply WHERE reply.reply_to_id = comments.id AND reply.deleted_at = '' AND (INSTR(LOWER(reply.author_name), ?) > 0 OR INSTR(LOWER(reply.body), ?) > 0)))
@@ -988,9 +990,138 @@ func (s *Store) ListComments(contentID string, options CommentListOptions) (Comm
 	return result, nil
 }
 
-func (s *Store) ListAllComments() ([]model.Comment, error) {
-	query := `SELECT id, content_id, author_name, author_url, body, created_at, reply_to_id, avatar_seed, deleted_at FROM comments ORDER BY created_at DESC`
-	return s.scanComments(query)
+// AdminCommentListOptions mirrors the public thread-listing options; the
+// admin variant includes soft-deleted rows, orders roots newest-first, and
+// spans every content item when ContentID is empty.
+type AdminCommentListOptions struct {
+	ContentID string
+	Page      int
+	PageSize  int
+	Query     string
+	Focus     string
+}
+
+type AdminCommentListResult struct {
+	Comments   []model.AdminComment
+	Page       int
+	PageSize   int
+	TotalItems int
+	TotalPages int
+}
+
+// matchedAdminCommentThreads is the thread-matching CTE without the visibility
+// filter so deleted replies still pull their root into the result set. An
+// empty content filter spans every content item. The CTE carries created_at
+// so nested LIMIT/OFFSET subqueries can order without binding to the outer
+// query's columns.
+func matchedAdminCommentThreads() string {
+	return `WITH matched AS (
+		SELECT id, created_at FROM comments
+		WHERE (? = '' OR content_id = ?) AND COALESCE(reply_to_id, '') = ''
+		AND (? = '' OR INSTR(LOWER(author_name), ?) > 0 OR INSTR(LOWER(body), ?) > 0
+			OR EXISTS (SELECT 1 FROM comments reply WHERE reply.reply_to_id = comments.id AND (INSTR(LOWER(reply.author_name), ?) > 0 OR INSTR(LOWER(reply.body), ?) > 0)))
+	)`
+}
+
+// ListAdminComments paginates threads for one content item. When Focus is set
+// to a comment id (a root or a reply), the page containing its thread is
+// returned regardless of the requested page; unknown or non-matching focus
+// values fall back to the requested page.
+func (s *Store) ListAdminComments(options AdminCommentListOptions) (AdminCommentListResult, error) {
+	result := AdminCommentListResult{Page: 1, TotalPages: 1}
+	pageSize := options.PageSize
+	if pageSize <= 0 {
+		pageSize = 20
+	}
+	if pageSize > 100 {
+		pageSize = 100
+	}
+	needle := strings.ToLower(strings.TrimSpace(options.Query))
+	matched := matchedAdminCommentThreads()
+	matchArgs := []any{options.ContentID, options.ContentID, needle, needle, needle, needle, needle}
+
+	var totalItems, totalRoots int
+	if err := s.DB.QueryRow(matched+`SELECT COUNT(*), COALESCE(SUM(CASE WHEN COALESCE(reply_to_id, '') = '' THEN 1 ELSE 0 END), 0) FROM comments WHERE (? = '' OR content_id = ?) AND (id IN (SELECT id FROM matched) OR reply_to_id IN (SELECT id FROM matched))`, append(matchArgs, options.ContentID, options.ContentID)...).Scan(&totalItems, &totalRoots); err != nil {
+		return result, err
+	}
+	totalPages := (totalRoots + pageSize - 1) / pageSize
+	if totalPages < 1 {
+		totalPages = 1
+	}
+	page := options.Page
+	if page <= 0 {
+		page = 1
+	}
+	if options.Focus != "" {
+		page = s.adminFocusPage(matched, matchArgs, options.Focus, totalRoots, pageSize)
+	}
+	if page > totalPages {
+		page = totalPages
+	}
+	result.Page, result.PageSize, result.TotalItems, result.TotalPages = page, pageSize, totalItems, totalPages
+
+	offset := (page - 1) * pageSize
+	roots, err := s.scanAdminComments(matched+`SELECT `+adminCommentColumns+` FROM comments JOIN content ON content.id = comments.content_id WHERE comments.id IN (SELECT id FROM matched) ORDER BY comments.created_at DESC, comments.id DESC LIMIT ? OFFSET ?`, append(matchArgs, pageSize, offset)...)
+	if err != nil {
+		return result, err
+	}
+	if len(roots) == 0 {
+		result.Comments = []model.AdminComment{}
+		return result, nil
+	}
+	replies, err := s.scanAdminComments(matched+`SELECT `+adminCommentColumns+` FROM comments JOIN content ON content.id = comments.content_id WHERE (? = '' OR comments.content_id = ?) AND COALESCE(comments.reply_to_id, '') != '' AND comments.reply_to_id IN (SELECT id FROM matched ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?) ORDER BY comments.created_at ASC, comments.id ASC`, append(matchArgs, options.ContentID, options.ContentID, pageSize, offset)...)
+	if err != nil {
+		return result, err
+	}
+	result.Comments = append(roots, replies...)
+	return result, nil
+}
+
+// adminFocusPage resolves the 1-based page holding the focused thread by
+// counting matching roots created after it (newest-first ordering). A missing
+// or non-matching focus returns 1.
+func (s *Store) adminFocusPage(matched string, matchArgs []any, focus string, totalRoots, pageSize int) int {
+	if totalRoots == 0 {
+		return 1
+	}
+	focusRoot := focus
+	var replyTo string
+	if err := s.DB.QueryRow(`SELECT COALESCE(reply_to_id, '') FROM comments WHERE id = ?`, focus).Scan(&replyTo); err != nil {
+		return 1
+	}
+	if replyTo != "" {
+		focusRoot = replyTo
+	}
+	var earlier int
+	if err := s.DB.QueryRow(matched+`SELECT COUNT(*) FROM comments WHERE id IN (SELECT id FROM matched) AND (created_at > (SELECT created_at FROM comments WHERE id = ?) OR (created_at = (SELECT created_at FROM comments WHERE id = ?) AND id > (SELECT id FROM comments WHERE id = ?)))`, append(matchArgs, focusRoot, focusRoot, focusRoot)...).Scan(&earlier); err != nil {
+		return 1
+	}
+	return earlier/pageSize + 1
+}
+
+const adminCommentColumns = `comments.id, comments.content_id, comments.author_name, comments.author_url, comments.body, comments.created_at, comments.reply_to_id, comments.avatar_seed, comments.deleted_at, COALESCE(content.title, ''), COALESCE(content.slug, ''), COALESCE(content.kind, '')`
+
+func (s *Store) scanAdminComments(query string, args ...any) ([]model.AdminComment, error) {
+	rows, err := s.DB.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []model.AdminComment
+	for rows.Next() {
+		var c model.AdminComment
+		var replyToID, avatarSeed, deletedAt sql.NullString
+		if err := rows.Scan(&c.ID, &c.ContentID, &c.AuthorName, &c.AuthorURL, &c.Body, &c.CreatedAt, &replyToID, &avatarSeed, &deletedAt, &c.ContentTitle, &c.ContentSlug, &c.ContentKind); err != nil {
+			return nil, err
+		}
+		if replyToID.Valid && replyToID.String != "" {
+			c.ReplyToID = &replyToID.String
+		}
+		c.AvatarSeed = avatarSeed.String
+		c.DeletedAt = deletedAt.String
+		items = append(items, c)
+	}
+	return items, rows.Err()
 }
 
 func (s *Store) scanComments(query string, args ...any) ([]model.Comment, error) {

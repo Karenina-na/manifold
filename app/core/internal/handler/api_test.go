@@ -244,6 +244,175 @@ func TestPublicCommentsPaginationAndSearch(t *testing.T) {
 	}
 }
 
+func TestAdminCommentsListFiltersPaginatesAndFocuses(t *testing.T) {
+	database, err := store.Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.MinCost)
+	cfg := config.Config{JWTSecret: "test-secret", AdminUsername: "admin", AdminPasswordHash: string(hash), AllowedOrigins: []string{"*"}, AuditEventBuffer: 256}
+	router := handler.Router(cfg, database)
+	if _, err := database.DB.Exec(`INSERT INTO comments (id, content_id, author_name, body, created_at, deleted_at) VALUES
+		('adm-root-1', 'content_1', 'Ada', 'First admin root', '2026-01-01T00:00:00Z', ''),
+		('adm-root-2', 'content_1', 'Grace', 'Second admin root', '2026-01-02T00:00:00Z', ''),
+		('adm-root-3', 'content_1', 'Linus', 'Third admin root', '2026-01-03T00:00:00Z', '2026-01-05T00:00:00Z'),
+		('adm-root-4', 'content_1', 'Edsger', 'Fourth admin root', '2026-01-04T00:00:00Z', ''),
+		('thought-root', 'content_2', 'Ada', 'Thought admin root', '2026-01-06T00:00:00Z', '')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.DB.Exec(`INSERT INTO comments (id, content_id, author_name, body, created_at, reply_to_id) VALUES ('adm-reply-1', 'content_1', 'Ada', 'an admin needle reply', '2026-01-05T00:00:00Z', 'adm-root-2')`); err != nil {
+		t.Fatal(err)
+	}
+	token := adminToken(t, router)
+
+	var page struct {
+		Data []struct {
+			ID           string  `json:"id"`
+			ContentID    string  `json:"contentId"`
+			ContentTitle string  `json:"contentTitle"`
+			ContentSlug  string  `json:"contentSlug"`
+			ContentKind  string  `json:"contentKind"`
+			ReplyToID    *string `json:"replyToId"`
+			DeletedAt    string  `json:"deletedAt"`
+		} `json:"data"`
+		Pagination struct {
+			Page       int `json:"page"`
+			PageSize   int `json:"pageSize"`
+			TotalItems int `json:"totalItems"`
+			TotalPages int `json:"totalPages"`
+		} `json:"pagination"`
+	}
+	load := func(query string) {
+		t.Helper()
+		response := adminRequest(t, router, token, http.MethodGet, "/api/v1/admin/comments"+query, "")
+		if response.Code != http.StatusOK {
+			t.Fatalf("expected admin comments 200 for %s, got %d %s", query, response.Code, response.Body.String())
+		}
+		if err := json.Unmarshal(response.Body.Bytes(), &page); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ids := func() string {
+		values := make([]string, 0, len(page.Data))
+		for _, item := range page.Data {
+			values = append(values, item.ID)
+		}
+		return strings.Join(values, ",")
+	}
+
+	load("?contentId=content_1&pageSize=2&page=1")
+	if got, want := ids(), "adm-root-4,adm-root-3"; got != want {
+		t.Fatalf("expected newest roots first with deleted ones included, got %s", got)
+	}
+	if page.Pagination.Page != 1 || page.Pagination.PageSize != 2 || page.Pagination.TotalItems != 5 || page.Pagination.TotalPages != 2 {
+		t.Fatalf("unexpected pagination meta: %+v", page.Pagination)
+	}
+	for _, item := range page.Data {
+		if item.ContentID != "content_1" || item.ContentTitle != "Designing Boundaries" || item.ContentSlug != "designing-boundaries" || item.ContentKind != "ARTICLE" {
+			t.Fatalf("expected joined content fields on %s, got %+v", item.ID, item)
+		}
+	}
+	if page.Data[1].DeletedAt == "" {
+		t.Fatalf("expected the soft-deleted root to carry deletedAt, got %+v", page.Data[1])
+	}
+
+	load("?contentId=content_1&pageSize=2&page=2")
+	if got, want := ids(), "adm-root-2,adm-root-1,adm-reply-1"; got != want {
+		t.Fatalf("expected second page roots with replies attached, got %s", got)
+	}
+
+	load("?contentId=content_1&pageSize=2&q=needle")
+	if got, want := ids(), "adm-root-2,adm-reply-1"; got != want {
+		t.Fatalf("expected a reply hit to expose its thread, got %s", got)
+	}
+	if page.Pagination.TotalItems != 2 || page.Pagination.TotalPages != 1 {
+		t.Fatalf("unexpected search pagination meta: %+v", page.Pagination)
+	}
+
+	load("?contentId=content_1&pageSize=2&focus=adm-reply-1")
+	if page.Pagination.Page != 2 || !strings.Contains(ids(), "adm-reply-1") {
+		t.Fatalf("expected focus on a reply to land on its thread page, got page %d ids %s", page.Pagination.Page, ids())
+	}
+
+	load("?contentId=content_1&pageSize=2&focus=missing-comment")
+	if page.Pagination.Page != 1 || ids() != "adm-root-4,adm-root-3" {
+		t.Fatalf("expected unknown focus to fall back to page 1, got page %d ids %s", page.Pagination.Page, ids())
+	}
+
+	load("?q=thought")
+	if got, want := ids(), "thought-root"; got != want || page.Data[0].ContentKind != "THOUGHT" {
+		t.Fatalf("expected the unfiltered list to span contents with joined kinds, got %s %+v", got, page.Data)
+	}
+
+	for _, invalidQuery := range []string{"?page=0", "?pageSize=101", "?q=" + strings.Repeat("x", 201), "?focus=" + strings.Repeat("x", 65)} {
+		response := adminRequest(t, router, token, http.MethodGet, "/api/v1/admin/comments"+invalidQuery, "")
+		if response.Code != http.StatusBadRequest {
+			t.Fatalf("expected 400 for %s, got %d", invalidQuery, response.Code)
+		}
+	}
+	if response := adminRequest(t, router, token, http.MethodGet, "/api/v1/admin/comments?contentId=missing", ""); response.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for unknown contentId, got %d", response.Code)
+	}
+}
+
+func TestAdminCreateCommentOnContent(t *testing.T) {
+	router := newTestRouter(t)
+	token := adminToken(t, router)
+
+	created := adminRequest(t, router, token, http.MethodPost, "/api/v1/admin/content", `{"kind":"THOUGHT","summary":"Draft probe.","body":"Draft body.","tags":["probe"],"metadata":{}}`)
+	if created.Code != http.StatusCreated {
+		t.Fatalf("expected draft creation 201, got %d %s", created.Code, created.Body.String())
+	}
+	var draft struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(created.Body.Bytes(), &draft); err != nil {
+		t.Fatal(err)
+	}
+
+	root := adminRequest(t, router, token, http.MethodPost, "/api/v1/admin/content/"+draft.ID+"/comments", `{"authorName":"Owner","body":"Owner note."}`)
+	if root.Code != http.StatusCreated || !strings.Contains(root.Body.String(), `"authorName":"Owner"`) {
+		t.Fatalf("expected admin comment 201 as Owner, got %d %s", root.Code, root.Body.String())
+	}
+	var rootComment struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(root.Body.Bytes(), &rootComment); err != nil {
+		t.Fatal(err)
+	}
+
+	anonymous := adminRequest(t, router, token, http.MethodPost, "/api/v1/admin/content/"+draft.ID+"/comments", `{"body":"Second note."}`)
+	if anonymous.Code != http.StatusCreated || !strings.Contains(anonymous.Body.String(), `"authorName":"Anonymous"`) {
+		t.Fatalf("expected anonymous fallback, got %d %s", anonymous.Code, anonymous.Body.String())
+	}
+
+	reply := adminRequest(t, router, token, http.MethodPost, "/api/v1/admin/content/"+draft.ID+"/comments", fmt.Sprintf(`{"authorName":"Owner","body":"Owner reply.","replyToId":%q}`, rootComment.ID))
+	if reply.Code != http.StatusCreated {
+		t.Fatalf("expected admin reply 201, got %d %s", reply.Code, reply.Body.String())
+	}
+
+	list := adminRequest(t, router, token, http.MethodGet, "/api/v1/admin/comments?contentId="+draft.ID, "")
+	if list.Code != http.StatusOK || !strings.Contains(list.Body.String(), `"totalItems":3`) || !strings.Contains(list.Body.String(), `"contentKind":"THOUGHT"`) {
+		t.Fatalf("expected three comments on the draft, got %d %s", list.Code, list.Body.String())
+	}
+
+	if response := adminRequest(t, router, token, http.MethodPost, "/api/v1/admin/content/"+draft.ID+"/comments", `{"body":"Broken reply.","replyToId":"missing-comment"}`); response.Code != http.StatusUnprocessableEntity || !strings.Contains(response.Body.String(), "REPLY_TARGET_INVALID") {
+		t.Fatalf("expected invalid reply target 422, got %d %s", response.Code, response.Body.String())
+	}
+	if response := adminRequest(t, router, token, http.MethodPost, "/api/v1/admin/content/missing/comments", `{"body":"Orphan."}`); response.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for unknown content, got %d", response.Code)
+	}
+	if response := adminRequest(t, router, token, http.MethodPost, "/api/v1/admin/content/"+draft.ID+"/comments", `{}`); response.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected 422 for missing body, got %d", response.Code)
+	}
+
+	audit := adminRequest(t, router, token, http.MethodGet, "/api/v1/admin/audit?q=comment.created", "")
+	if audit.Code != http.StatusOK || !strings.Contains(audit.Body.String(), "comment.created") {
+		t.Fatalf("expected comment.created audit events, got %d %s", audit.Code, audit.Body.String())
+	}
+}
+
 func requestWithVisitor(t *testing.T, router http.Handler, method, path, visitorID string) *httptest.ResponseRecorder {
 	t.Helper()
 	recorder := httptest.NewRecorder()

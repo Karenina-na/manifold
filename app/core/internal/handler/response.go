@@ -121,6 +121,7 @@ func newRouter(cfg config.Config, database *store.Store, auditEvents events.Audi
 			admin.Get("/content/{id}", h.adminGetContent)
 			admin.Post("/content", h.adminCreateContent)
 			admin.Patch("/content/{id}", h.adminUpdateContent)
+			admin.Post("/content/{id}/comments", h.adminCreateComment)
 			admin.Post("/content/{id}/publish", h.adminPublishContent)
 			admin.Post("/content/{id}/unpublish", h.adminUnpublishContent)
 			admin.Delete("/content/{id}", h.adminDeleteContent)
@@ -396,6 +397,10 @@ func (h *apiHandler) createComment(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusInternalServerError, "CONTENT_UNAVAILABLE", "Content is unavailable.")
 		return
 	}
+	h.createCommentOnContent(w, r, content)
+}
+
+func (h *apiHandler) createCommentOnContent(w http.ResponseWriter, r *http.Request, content model.Content) {
 	var input commentInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil || h.validate.Struct(input) != nil {
 		WriteError(w, http.StatusUnprocessableEntity, "VALIDATION_ERROR", "Comment body is required.")
@@ -871,13 +876,40 @@ func (h *apiHandler) invalidateContentByID(id string) {
 	h.contentCache.Remove(slug)
 }
 
-func (h *apiHandler) adminListComments(w http.ResponseWriter, _ *http.Request) {
-	comments, err := h.store.ListAllComments()
+func (h *apiHandler) adminListComments(w http.ResponseWriter, r *http.Request) {
+	options, err := parseAdminCommentListOptions(r)
+	if err != nil {
+		WriteError(w, http.StatusBadRequest, "INVALID_QUERY", err.Error())
+		return
+	}
+	if options.ContentID != "" {
+		if _, err := h.store.GetContentByID(options.ContentID, true); errors.Is(err, sql.ErrNoRows) {
+			WriteError(w, http.StatusNotFound, "CONTENT_NOT_FOUND", "Content was not found.")
+			return
+		} else if err != nil {
+			WriteError(w, http.StatusInternalServerError, "CONTENT_UNAVAILABLE", "Content is unavailable.")
+			return
+		}
+	}
+	result, err := h.store.ListAdminComments(options)
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, "COMMENTS_UNAVAILABLE", "Comments are unavailable.")
 		return
 	}
-	WriteJSON(w, http.StatusOK, collection(comments))
+	WriteJSON(w, http.StatusOK, map[string]any{"data": result.Comments, "pagination": map[string]any{"nextCursor": nil, "hasMore": false, "page": result.Page, "pageSize": result.PageSize, "totalItems": result.TotalItems, "totalPages": result.TotalPages}})
+}
+
+func (h *apiHandler) adminCreateComment(w http.ResponseWriter, r *http.Request) {
+	content, err := h.store.GetContentByID(chi.URLParam(r, "id"), true)
+	if errors.Is(err, sql.ErrNoRows) {
+		WriteError(w, http.StatusNotFound, "CONTENT_NOT_FOUND", "Content was not found.")
+		return
+	}
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, "CONTENT_UNAVAILABLE", "Content is unavailable.")
+		return
+	}
+	h.createCommentOnContent(w, r, content)
 }
 
 func (h *apiHandler) adminDeleteComment(w http.ResponseWriter, r *http.Request) {
@@ -1228,6 +1260,35 @@ func parseCommentListOptions(r *http.Request) (store.CommentListOptions, error) 
 	}
 	if options.Query = strings.TrimSpace(query.Get("q")); len(options.Query) > 200 {
 		return options, fmt.Errorf("q is too long")
+	}
+	return options, nil
+}
+
+func parseAdminCommentListOptions(r *http.Request) (store.AdminCommentListOptions, error) {
+	query := r.URL.Query()
+	options := store.AdminCommentListOptions{Page: 1, PageSize: 20}
+	if rawPage := strings.TrimSpace(query.Get("page")); rawPage != "" {
+		value, err := strconv.Atoi(rawPage)
+		if err != nil || value < 1 {
+			return options, fmt.Errorf("page must be a positive integer")
+		}
+		options.Page = value
+	}
+	if rawPageSize := strings.TrimSpace(query.Get("pageSize")); rawPageSize != "" {
+		value, err := strconv.Atoi(rawPageSize)
+		if err != nil || value < 1 || value > 100 {
+			return options, fmt.Errorf("pageSize must be between 1 and 100")
+		}
+		options.PageSize = value
+	}
+	options.ContentID = strings.TrimSpace(query.Get("contentId"))
+	options.Query = strings.TrimSpace(query.Get("q"))
+	if len(options.Query) > 200 {
+		return options, fmt.Errorf("q is too long")
+	}
+	options.Focus = strings.TrimSpace(query.Get("focus"))
+	if len(options.Focus) > 64 {
+		return options, fmt.Errorf("focus is too long")
 	}
 	return options, nil
 }

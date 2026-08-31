@@ -1,4 +1,4 @@
-import type { AdminContent, AdminContentQuery, AdminOverview, AdminStats, AnalyticsViews, AnalyticsViewsQuery, AuditEventCollection, AuditQuery, Collection, Comment, CommentQuery, Content, ContentDetail, ContentInput, ContentQuery, CreateCommentInput, HealthStatus, LikeSummary, LoginInput, LoginResponse, Media, MediaQuery, PresenceStatus, Profile, ProfileInput, SiteComposition, SiteConfig, SiteConfigInput, Stats, SystemStatus, TagQuery, TagSummary, ThoughtArchive, ThoughtArchiveQuery, ThoughtConfig, ThoughtConfigInput, UpdateContentInput } from "@manifold/contracts";
+import type { AdminComment, AdminCommentQuery, AdminContent, AdminContentQuery, AdminOverview, AdminStats, AnalyticsViews, AnalyticsViewsQuery, AuditEventCollection, AuditQuery, Collection, Comment, CommentQuery, Content, ContentDetail, ContentInput, ContentQuery, CreateCommentInput, HealthStatus, LikeSummary, LoginInput, LoginResponse, Media, MediaQuery, PresenceStatus, Profile, ProfileInput, SiteComposition, SiteConfig, SiteConfigInput, Stats, SystemStatus, TagQuery, TagSummary, ThoughtArchive, ThoughtArchiveQuery, ThoughtConfig, ThoughtConfigInput, UpdateContentInput } from "@manifold/contracts";
 
 export class ApiError extends Error {
 	readonly status: number;
@@ -65,7 +65,8 @@ export class ManifoldClient {
 	publishContent(id: string) { return this.request<AdminContent>(`/api/v1/admin/content/${id}/publish`, { method: "POST" }); }
 	unpublishContent(id: string) { return this.request<AdminContent>(`/api/v1/admin/content/${id}/unpublish`, { method: "POST" }); }
 	deleteContent(id: string) { return this.request<void>(`/api/v1/admin/content/${id}`, { method: "DELETE" }); }
-	adminComments(query?: CommentQuery) { return this.request<Collection<Comment>>(this.withQuery("/api/v1/admin/comments", query)); }
+	adminComments(query?: AdminCommentQuery) { return this.request<Collection<AdminComment>>(this.withQuery("/api/v1/admin/comments", query)); }
+	adminCreateComment(contentId: string, input: CreateCommentInput) { return this.request<Comment>(`/api/v1/admin/content/${encodeURIComponent(contentId)}/comments`, { method: "POST", body: input }); }
 	deleteComment(id: string) { return this.request<void>(`/api/v1/admin/comments/${id}`, { method: "DELETE" }); }
 	restoreComment(id: string) { return this.request<void>(`/api/v1/admin/comments/${id}/restore`, { method: "POST" }); }
 	adminOverview() { return this.request<AdminOverview>("/api/v1/admin/overview"); }

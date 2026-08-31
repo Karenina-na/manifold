@@ -147,7 +147,9 @@ Thoughts 归档参数为 `page`（默认 1）、`limit`（默认 8，范围 1..5
 
 评论输入：`body` 必填且最多 4000 字符；`authorName` 最多 80 字符，可空时归一化为 `Anonymous`；`authorUrl`、`replyToId` 和 `avatarSeed`（最多 64 字符）可选。`replyToId` 必须指向同一内容下未软删的评论，否则返回 422 `REPLY_TARGET_INVALID`。评论不再有审核状态：创建即公开，admin 只能软删除或恢复。
 
-公开评论列表参数：`page`（默认 1，1 起）、`limit`（每页顶层评论数，默认 10，范围 1..50）和 `q`（最长 200，按作者名或正文做大小写不敏感子串搜索，`cursor` 为预留参数暂被忽略）。分页只作用于顶层评论：响应平铺当前页的顶层评论（`createdAt` 升序）加它们各自的全部回复（回复升序），线程永不跨页拆散；被软删父级的回复随父级一起隐藏。`q` 是线程级搜索——顶层或其任一回复命中即返回整条线程。带 `page` 时 `pagination` 返回 `page/pageSize/totalItems/totalPages`：`totalItems` 为匹配集内全部公开评论（含回复），`totalPages` 按匹配的顶层评论计，超出范围的页码夹紧到最后一页；非法 `page`/`limit`/`q` 返回 400 `INVALID_QUERY`。admin 评论列表不受这些参数影响。
+公开评论列表参数：`page`（默认 1，1 起）、`limit`（每页顶层评论数，默认 10，范围 1..50）和 `q`（最长 200，按作者名或正文做大小写不敏感子串搜索，`cursor` 为预留参数暂被忽略）。分页只作用于顶层评论：响应平铺当前页的顶层评论（`createdAt` 升序）加它们各自的全部回复（回复升序），线程永不跨页拆散；被软删父级的回复随父级一起隐藏。`q` 是线程级搜索——顶层或其任一回复命中即返回整条线程。带 `page` 时 `pagination` 返回 `page/pageSize/totalItems/totalPages`：`totalItems` 为匹配集内全部公开评论（含回复），`totalPages` 按匹配的顶层评论计，超出范围的页码夹紧到最后一页；非法 `page`/`limit`/`q` 返回 400 `INVALID_QUERY`。
+
+管理评论列表参数：`contentId`（可选，缺省跨全部内容）、`q`（线程级搜索，最长 200）、`page`（默认 1）、`pageSize`（默认 20，范围 1..100）和 `focus`（评论 id，最长 64）。与公开列表语义一致但有两点差异：含已软删评论（软删回复仍把其线程带入结果集），顶层评论按 `createdAt` 降序（回复仍升序）。`focus` 指向某条评论（顶层或回复）时返回该线程所在页（含线程自己的顶层评论页码），线程不匹配过滤条件或 id 不存在时回落到请求页；未知 `contentId` 返回 404 `CONTENT_NOT_FOUND`，非法参数返回 400 `INVALID_QUERY`。每行评论都 JOIN 内容附 `contentTitle`/`contentSlug`/`contentKind`。
 
 反应请求必须使用 `X-Visitor-ID`，长度 8 到 128，只允许字母、数字、`_`、`-`。PUT/DELETE 对 `(content, visitor, kind)` 幂等。
 
@@ -164,10 +166,11 @@ Thoughts 归档参数为 `page`（默认 1）、`limit`（默认 8，范围 1..5
 | `GET` | `/api/v1/admin/content/{id}` | 读取单条管理内容（含完整 body 与 metadata），供 Admin 详情页直接刷新恢复 |
 | `POST` | `/api/v1/admin/content` | 创建 DRAFT |
 | `PATCH` | `/api/v1/admin/content/{id}` | 局部更新和类型转换 |
+| `POST` | `/api/v1/admin/content/{id}/comments` | 以管理员身份在该内容（含 DRAFT）下创建评论，201；输入与公开创建一致，审计 `comment.created` |
 | `POST` | `/api/v1/admin/content/{id}/publish` | DRAFT -> PUBLISHED |
 | `POST` | `/api/v1/admin/content/{id}/unpublish` | PUBLISHED -> DRAFT |
 | `DELETE` | `/api/v1/admin/content/{id}` | 软删除，204 |
-| `GET` | `/api/v1/admin/comments` | 全量评论（含已软删，附 `deletedAt`），按 `createdAt` 降序 |
+| `GET` | `/api/v1/admin/comments` | 线程分页的管理评论列表（含已软删，附 `deletedAt`），支持 `contentId`/`q`/`page`/`pageSize`/`focus`；每行额外返回 `contentTitle`/`contentSlug`/`contentKind` |
 | `DELETE` | `/api/v1/admin/comments/{id}` | 软删除评论，204 |
 | `POST` | `/api/v1/admin/comments/{id}/restore` | 恢复软删评论，204 |
 | `GET` | `/api/v1/admin/stats` | `AdminStats`，包含 `content` |

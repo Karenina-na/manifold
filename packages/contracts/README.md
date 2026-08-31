@@ -56,7 +56,9 @@ Thought 的 `ThoughtMetadata` 字段为 `mood`、`question`、`context`、`sourc
 - `AuditEvent` / `AuditEventCollection` / `AuditQuery`：审计事件服务端分页读取（`page`/`pageSize` 默认 10 上限 50、`q` 过滤），响应附 `PagePagination`。
 - `PresenceStatus`：匿名在线心跳返回的活跃访客数和观测时间；Core 只保留短期心跳，不返回访客身份。
 - `Comment`、`CreateCommentInput`：评论对象与创建输入。评论无审核状态，创建即公开；`Comment` 含 `replyToId`、`avatarSeed`（访客头像种子），admin 视图额外携带 `deletedAt`。
+- `AdminComment`：管理端评论视图，在 `Comment` 基础上追加所属内容字段 `contentTitle`/`contentSlug`/`contentKind`。
 - `CommentQuery`：公开评论列表参数。`page`（1 起）与 `limit`（每页顶层评论数）用于页码分页，`q` 按作者或正文做大小写不敏感子串搜索；`cursor` 目前为预留字段，Core 忽略。带 `page` 时响应 `pagination` 附带 `page/pageSize/totalItems/totalPages`：`totalItems` 计匹配集内全部公开评论（含回复），`totalPages` 按匹配的顶层评论计。搜索为线程级命中——任一评论命中即整条线程（顶层加全部回复）返回；分页只作用于顶层评论，回复永远随其顶层同页。
+- `AdminCommentQuery`：管理评论列表参数。`contentId`（可选，缺省跨全部内容）、`q`（线程级搜索）、`page`/`pageSize`（默认 20，上限 100）与 `focus`（评论 id；命中时返回该线程所在页，未命中回落请求页）。响应含已软删评论，顶层评论降序。
 - `LikeSummary`：文章点赞统计和当前访客状态。
 - `Collection<T>`、`Pagination`：统一列表响应。`Pagination` 在 cursor 模式为 `{ nextCursor, hasMore }`；使用 `page` 参数时额外返回 `page/pageSize/totalItems/totalPages`。
 - `PagePagination`：Thoughts aggregate 使用的 `page/pageSize/totalItems/totalPages` 页码响应。
