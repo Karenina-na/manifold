@@ -375,6 +375,14 @@ async function main() {
       if (!fillerResponse.ok) throw new Error(`Filler comment creation failed: ${fillerResponse.status}`);
     }
 
+    // 1x1 red PNG upload used by the media rendering checks below
+    const probeImage = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+    const mediaUpload = await fetch(`${coreUrl}/api/v1/admin/media?filename=probe.png`, { method: 'POST', headers: { 'content-type': 'image/png', authorization: `Bearer ${archiveToken}` }, body: probeImage });
+    if (!mediaUpload.ok) throw new Error(`Media upload failed: ${mediaUpload.status}`);
+    const media = await mediaUpload.json();
+    const mediaServed = await fetch(media.url);
+    if (!mediaServed.ok || mediaServed.headers.get('content-type') !== 'image/png' || !mediaServed.headers.get('etag')) throw new Error(`Media serving failed: ${mediaServed.status}`);
+
     await web.setViewportSize({ width: 1280, height: 400 });
     await web.goto(`${webUrl}/writing`, { waitUntil: 'networkidle' });
     await web.getByText('2 articles', { exact: true }).waitFor({ state: 'visible' });
@@ -646,6 +654,49 @@ async function main() {
     await admin.getByRole('button', { name: 'Delete', exact: true }).last().click();
     await thoughtDeleteResponse;
     await admin.getByRole('dialog').waitFor({ state: 'hidden', timeout: 5000 }).catch(() => {});
+
+    // media library: a published probe writing embeds the uploaded image and
+    // renders it on both the admin Render tab and the public writing page
+    const mediaWritingResponse = await fetch(`${coreUrl}/api/v1/admin/content`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${archiveToken}` }, body: JSON.stringify({ kind: 'ARTICLE', slug: 'media-render-probe', title: 'Media render probe', summary: 'Probe writing rendering an uploaded image.', body: `## With image\n\n![probe image](${media.url})`, tags: ['design'], metadata: { aiAssisted: false } }) });
+    if (!mediaWritingResponse.ok) throw new Error(`Probe writing creation failed: ${mediaWritingResponse.status}`);
+    const mediaWriting = await mediaWritingResponse.json();
+    const mediaWritingPublish = await fetch(`${coreUrl}/api/v1/admin/content/${mediaWriting.id}/publish`, { method: 'POST', headers: { authorization: `Bearer ${archiveToken}` } });
+    if (!mediaWritingPublish.ok) throw new Error(`Probe writing publish failed: ${mediaWritingPublish.status}`);
+    await admin.goto(`${adminUrl}/#/writings/${mediaWriting.id}`, { waitUntil: 'networkidle' });
+    await admin.getByRole('tab', { name: 'Render' }).click();
+    await admin.locator('.editor-render .markdown img[src*="/api/v1/media/"]').first().waitFor({ state: 'visible', timeout: 10000 });
+    if (await admin.locator('.editor-render .markdown img[src*="/api/v1/media/"]').count() !== 1) throw new Error('Render tab should show exactly one uploaded image');
+    await admin.locator('.editor-render .markdown img[src*="/api/v1/media/"]').first().evaluate((element) => new Promise((done, fail) => {
+      const finish = () => element.naturalWidth > 0 ? done(null) : fail(new Error('uploaded image decoded with zero width'));
+      if (element.complete) return finish();
+      element.scrollIntoView({ block: 'center' });
+      element.addEventListener('load', () => finish(), { once: true });
+      element.addEventListener('error', () => fail(new Error('uploaded image failed to load')), { once: true });
+    }));
+    await web.setViewportSize({ width: 1280, height: 900 });
+    await web.goto(`${webUrl}/writing/media-render-probe`, { waitUntil: 'networkidle' });
+    const publicImage = web.locator('.markdown img[src*="/api/v1/media/"]').first();
+    await publicImage.waitFor({ state: 'visible', timeout: 10000 });
+    await publicImage.evaluate((element) => new Promise((done, fail) => {
+      const finish = () => element.naturalWidth > 0 ? done(null) : fail(new Error('uploaded image decoded with zero width'));
+      if (element.complete) return finish();
+      element.scrollIntoView({ block: 'center' });
+      element.addEventListener('load', () => finish(), { once: true });
+      element.addEventListener('error', () => fail(new Error('uploaded image failed to load')), { once: true });
+    }));
+
+    await admin.getByRole('button', { name: 'Media' }).click();
+    await admin.waitForFunction(() => window.location.hash === '#/media', undefined, { timeout: 5000 });
+    const mediaCard = admin.locator('.media-card').filter({ hasText: 'probe.png' });
+    await mediaCard.waitFor({ state: 'visible', timeout: 8000 });
+    await mediaCard.getByRole('button', { name: 'Copy markdown' }).click();
+    await admin.getByRole('button', { name: 'Copied' }).waitFor({ state: 'visible', timeout: 3000 });
+    await mediaCard.getByRole('button', { name: 'Delete probe.png' }).click();
+    await admin.getByText('Delete this image? Markdown that references it will show a broken image.').waitFor({ state: 'visible', timeout: 5000 });
+    const mediaDeleteResponse = admin.waitForResponse((response) => /\/api\/v1\/admin\/media\/[^/]+$/.test(new URL(response.url()).pathname) && response.request().method() === 'DELETE' && response.status() === 204);
+    await admin.getByRole('button', { name: 'Delete', exact: true }).last().click();
+    await mediaDeleteResponse;
+    await admin.getByText('No images uploaded yet — drop files above or paste into the editor.').waitFor({ state: 'visible', timeout: 5000 });
 
     if (webErrors.length || adminErrors.length) throw new Error(JSON.stringify({ webErrors, adminErrors }));
     console.log(JSON.stringify({ webControlCounts, adminControlCounts, webErrors, adminErrors }));
