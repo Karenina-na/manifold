@@ -316,3 +316,16 @@ button { cursor: pointer; }
   .list-row-actions { justify-content: flex-end; }
   .editor-status-actions { flex-wrap: wrap; }
 }
+
+/* Media library: dropzone, thumbnail grid and per-card actions. */
+.media-dropzone { display: flex; align-items: center; gap: 10px; margin: 16px 0 18px; padding: 18px 22px; border: 1px dashed var(--line); border-radius: 4px; background: color-mix(in srgb, var(--surface) 70%, transparent); color: var(--muted); font-size: 13px; cursor: pointer; transition: border-color 160ms ease, background 160ms ease; }
+.media-dropzone:hover, .media-dropzone.drag { border-color: var(--accent); background: var(--accent-soft); color: var(--ink); }
+.media-dropzone svg { flex: 0 0 auto; }
+.media-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; margin-top: 16px; }
+.media-card { display: grid; margin: 0; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); overflow: hidden; }
+.media-card > a { display: block; aspect-ratio: 16 / 10; background: color-mix(in srgb, var(--paper) 82%, var(--accent-soft)); }
+.media-card img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.media-card figcaption { display: grid; gap: 4px; padding: 10px 12px 12px; }
+.media-name { color: var(--ink); font-size: 12px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.media-meta { color: var(--muted); font-size: 11px; }
+.media-actions { display: flex; align-items: center; gap: 6px; margin-top: 4px; }

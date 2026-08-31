@@ -1,6 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Alert, Button, Modal, PasswordInput, TextInput } from '@mantine/core'
-import { LayoutDashboard, FileText, LogOut, Menu, MessageCircle, Feather, Send, SlidersHorizontal, User } from 'lucide-react'
+import { LayoutDashboard, FileText, Image as ImageIcon, LogOut, Menu, MessageCircle, Feather, Send, SlidersHorizontal, User } from 'lucide-react'
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useMutation } from '@tanstack/react-query'
@@ -9,13 +9,14 @@ import { clearSession, createAdminClient, readStoredSession, storeSession } from
 import { navigate, requestNavigate, setNavConfirm, useHashRoute } from './lib/useHashRoute'
 import './App.css'
 
-type View = 'dashboard' | 'profile' | 'writings' | 'thoughts' | 'comments' | 'settings'
+type View = 'dashboard' | 'profile' | 'writings' | 'thoughts' | 'media' | 'comments' | 'settings'
 type Session = { accessToken: string; username: string; expiresAt: number }
 
 const DashboardWorkspace = lazy(() => import('./workspaces/DashboardWorkspace'))
 const ProfileWorkspace = lazy(() => import('./workspaces/ProfileWorkspace'))
 const WritingsWorkspace = lazy(() => import('./workspaces/WritingsWorkspace'))
 const ThoughtsWorkspace = lazy(() => import('./workspaces/ThoughtsWorkspace'))
+const MediaWorkspace = lazy(() => import('./workspaces/MediaWorkspace'))
 const CommentsWorkspace = lazy(() => import('./workspaces/CommentsWorkspace'))
 const SettingsWorkspace = lazy(() => import('./SettingsWorkspace').then(({ SettingsWorkspace }) => ({ default: SettingsWorkspace })))
 
@@ -42,7 +43,7 @@ function LoginScreen({ onLogin }: { onLogin: (session: Session) => void }) {
 }
 
 function Sidebar({ view, onNavigate, onLogout, collapsed, setCollapsed }: { view: View; onNavigate: (view: View) => void; onLogout: () => void; collapsed: boolean; setCollapsed: (value: boolean) => void }) {
-  const items: Array<{ id: View; label: string; icon: typeof LayoutDashboard }> = [{ id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard }, { id: 'profile', label: 'Profile', icon: User }, { id: 'writings', label: 'Writings', icon: FileText }, { id: 'thoughts', label: 'Thoughts', icon: Feather }, { id: 'comments', label: 'Comments', icon: MessageCircle }, { id: 'settings', label: 'Settings', icon: SlidersHorizontal }]
+  const items: Array<{ id: View; label: string; icon: typeof LayoutDashboard }> = [{ id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard }, { id: 'profile', label: 'Profile', icon: User }, { id: 'writings', label: 'Writings', icon: FileText }, { id: 'thoughts', label: 'Thoughts', icon: Feather }, { id: 'media', label: 'Media', icon: ImageIcon }, { id: 'comments', label: 'Comments', icon: MessageCircle }, { id: 'settings', label: 'Settings', icon: SlidersHorizontal }]
   return <aside className={`sidebar ${collapsed ? 'sidebar-collapsed' : ''}`}>
     <div className="sidebar-top">
       <div className="brand-mark">m<span>.</span></div>
@@ -88,6 +89,7 @@ function App() {
         {view === 'profile' && <ProfileWorkspace token={session.accessToken} />}
         {view === 'writings' && <WritingsWorkspace token={session.accessToken} segments={subSegments} />}
         {view === 'thoughts' && <ThoughtsWorkspace token={session.accessToken} segments={subSegments} />}
+        {view === 'media' && <MediaWorkspace token={session.accessToken} />}
         {view === 'comments' && <CommentsWorkspace token={session.accessToken} />}
         {view === 'settings' && <SettingsWorkspace token={session.accessToken} />}
       </Suspense>

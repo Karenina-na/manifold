@@ -2,11 +2,16 @@ import Vditor from 'vditor'
 import 'vditor/dist/index.css'
 import { useEffect, useRef } from 'react'
 
+const UPLOAD_ACCEPT = 'image/png,image/jpeg,image/webp,image/gif,image/avif'
+const allowedImageTypes = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/avif'])
+const uploadIcon = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>'
+
 // Instant-rendering (MarkText-like) markdown editor. The editor is a writing
 // aid only — it produces plain Markdown source; sanitization happens at the
 // render boundary in @manifold/render.
-export function MarkdownEditor({ value, onChange, disabled, placeholder }: { value: string; onChange: (next: string) => void; disabled?: boolean; placeholder?: string }) {
+export function MarkdownEditor({ value, onChange, disabled, placeholder, onUploadImage }: { value: string; onChange: (next: string) => void; disabled?: boolean; placeholder?: string; onUploadImage?: (file: File) => Promise<string> }) {
   const hostRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
   const vditorRef = useRef<Vditor | null>(null)
   const readyRef = useRef(false)
   const emittedRef = useRef(value)
@@ -15,6 +20,32 @@ export function MarkdownEditor({ value, onChange, disabled, placeholder }: { val
   const valueRef = useRef(value)
   const disabledRef = useRef(Boolean(disabled))
   const onChangeRef = useRef(onChange)
+  const onUploadRef = useRef(onUploadImage)
+
+  useEffect(() => { onUploadRef.current = onUploadImage }, [onUploadImage])
+
+  // vditor's handler return value is only a tip string, never content —
+  // uploads insert their markdown through insertValue ourselves.
+  const uploadFiles = async (files: File[]) => {
+    const onUpload = onUploadRef.current
+    const editor = vditorRef.current
+    if (!onUpload || !editor) return
+    const snippets: string[] = []
+    for (const file of files) {
+      if (!allowedImageTypes.has(file.type)) {
+        editor.tip(`Unsupported image type: ${file.name || file.type}`)
+        continue
+      }
+      try {
+        const url = await onUpload(file)
+        const alt = file.name.replace(/[[\]()]/g, '').trim() || 'image'
+        snippets.push(`![${alt}](${url})`)
+      } catch (error) {
+        editor.tip(error instanceof Error ? error.message : 'Image upload failed.')
+      }
+    }
+    if (snippets.length) editor.insertValue(snippets.join('\n') + '\n')
+  }
 
   useEffect(() => {
     onChangeRef.current = onChange
@@ -58,7 +89,13 @@ export function MarkdownEditor({ value, onChange, disabled, placeholder }: { val
         'quote', 'line', 'code', 'inline-code', 'link', 'table', '|',
         'undo', 'redo', '|',
         'fullscreen', 'edit-mode', 'export', 'help',
+        ...(onUploadRef.current ? [{ name: 'upload-image', icon: uploadIcon, tip: 'Upload image', click: () => inputRef.current?.click() }] : []),
       ],
+      upload: onUploadRef.current ? {
+        accept: UPLOAD_ACCEPT,
+        multiple: true,
+        handler: (files) => { void uploadFiles(files); return null },
+      } : undefined,
       after: () => {
         if (destroyed.current) return
         readyRef.current = true
@@ -89,5 +126,19 @@ export function MarkdownEditor({ value, onChange, disabled, placeholder }: { val
   }, [])
   // The editor mounts once per editor page; value changes flow through setValue.
 
-  return <div className={disabled ? 'vditor-host editor-locked' : 'vditor-host'} ref={hostRef} />
+  return <>
+    <input
+      ref={inputRef}
+      type="file"
+      accept={UPLOAD_ACCEPT}
+      multiple
+      hidden
+      onChange={(event) => {
+        const files = Array.from(event.target.files ?? [])
+        event.target.value = ''
+        void uploadFiles(files)
+      }}
+    />
+    <div className={disabled ? 'vditor-host editor-locked' : 'vditor-host'} ref={hostRef} />
+  </>
 }

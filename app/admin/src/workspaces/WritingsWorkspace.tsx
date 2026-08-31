@@ -170,8 +170,8 @@ function WritingEditorPage({ client, editingId }: { client: ReturnType<typeof cr
   </form>
 
   const contextTab = <div className="context-editor">
-    <p className="field-hint">Write in the instant-rendering editor — headings, lists, code and math format as you type. The stored value is plain Markdown.</p>
-    <MarkdownEditor value={bodyText} disabled={mode === 'view'} onChange={(next) => form.setValue('body', next, { shouldDirty: true })} />
+    <p className="field-hint">Write in the instant-rendering editor — headings, lists, code and math format as you type; images paste, drop or upload from the toolbar and are stored in Core. The stored value is plain Markdown.</p>
+    <MarkdownEditor value={bodyText} disabled={mode === 'view'} onChange={(next) => form.setValue('body', next, { shouldDirty: true })} onUploadImage={async (file) => (await client.uploadMedia(file, file.name)).url} />
     {form.formState.errors.body?.message && <Alert color="red" variant="light">{form.formState.errors.body.message}</Alert>}
   </div>
 
