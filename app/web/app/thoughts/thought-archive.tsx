@@ -28,7 +28,7 @@ function tagLabel(tags: string[]) {
 function ThoughtPreview({ item, featured = false }: { item: Thought; featured?: boolean }) {
   const preview = previewForContent(item);
   return <>
-    {preview.summary && <p className={styles.thoughtSummary}><span aria-hidden="true">✦</span>{preview.summary}</p>}
+    {preview.summary && <p className="thoughtSummary"><span aria-hidden="true">✦</span>{preview.summary}</p>}
     {preview.excerpt && <p className={featured ? styles.thoughtExcerptFeatured : styles.thoughtExcerpt}>{preview.excerpt}</p>}
   </>;
 }

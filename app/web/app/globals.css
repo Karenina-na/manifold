@@ -1,5 +1,24 @@
 @import "katex/dist/katex.min.css";
 
+/* Bind the shared @manifold/render tokens to the live theme tokens.
+   html:root outranks the package's :root defaults, so dark theme flows through. */
+html:root {
+  --mdr-accent: var(--color-accent);
+  --mdr-accent-soft: var(--color-accent-soft);
+  --mdr-ink: var(--color-ink);
+  --mdr-muted: var(--color-muted);
+  --mdr-line: var(--color-line);
+  --mdr-paper: var(--surface-paper);
+  --mdr-serif: var(--app-font-serif);
+  --mdr-mono: var(--font-mono);
+  --mdr-code-line: var(--color-code-line);
+  --mdr-code-muted: var(--color-code-muted);
+  --mdr-code-keyword: var(--color-code-keyword);
+  --mdr-code-string: var(--color-code-string);
+  --mdr-code-number: var(--color-code-number);
+  --mdr-code-title: var(--color-code-title);
+}
+
 :root {
   --surface-paper: #f9f8f5;
   --color-ink: #24231f;

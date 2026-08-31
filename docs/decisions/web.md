@@ -23,7 +23,7 @@ Server Component 负责首屏数据、详情读取和 SEO；Client Component 负
 | --- | --- | --- | --- |
 | `/` | Dynamic Server Component | profile、site、全部公开 Article/Thought 历史、stats | Profile/Introduction、Background、Recent Content、Updates、年度 Contribution activity、My Series、Contact |
 | `/thoughts` | Dynamic Server Component + client archive controls | `thoughts({ page, limit: 8, tag, q })`、`tags({ kind: "THOUGHT" })` | Core 配置驱动的置顶 Thought（仅默认视图展示）、按年份/月份/日期分块的纵向时间轴、服务端分页，以及置顶与时间轴之间的搜索和多 tag 过滤（OR 语义，URL `q`/`tag` 可重复/`page` 同步） |
-| `/thoughts/[id]` | Dynamic Server Component | `contentBySlug(id, { referrer, visitorId })` | 专属 Thought 详情页：沿用 Writing 详情的纸面结构（返回行、标题面、正文面、讨论面、添加评论面）但不使用阅读壳；标题面展示 eyebrow、✦ 灰色摘要、日期/tag 与点赞/观看/评论计数，`question` 作为 serif 反思引言块，`context`/`source` 作 mono 脚注；标题面与正文面之间渲染 `components/reading-progress.tsx` 的阅读进度轨（复用 Writing 右侧目录的轨道与百分比视觉，无目录链接：宽屏为正文右侧吸附竖轨，≤1300px 退化为正文面上方的横向进度行）；讨论面（统计、搜索、筛选）与添加评论面作为两个独立块依次置于正文面下方，与 Writing 详情同构，无目录链接与浮动动作卡；非 THOUGHT 内容或读取失败一律 404 |
+| `/thoughts/[id]` | Dynamic Server Component | `contentBySlug(id, { referrer, visitorId })` | 专属 Thought 详情页：沿用 Writing 详情的纸面结构（返回行、标题面、正文面、讨论面、添加评论面）但不使用阅读壳；标题面展示 eyebrow、✦ 灰色摘要、日期/tag 与点赞/观看/评论计数，`question` 作为 serif 反思引言块，`context`/`source` 作 mono 脚注；标题面与正文面之间渲染 `packages/render` 的 `ReadingProgress` 阅读进度轨（经 `ThoughtSurface` 的 `progress` 开关，复用 Writing 右侧目录的轨道与百分比视觉，无目录链接：宽屏为正文右侧吸附竖轨，≤1300px 退化为正文面上方的横向进度行）；讨论面（统计、搜索、筛选）与添加评论面作为两个独立块依次置于正文面下方，与 Writing 详情同构，无目录链接与浮动动作卡；非 THOUGHT 内容或读取失败一律 404 |
 | `/writing` | Dynamic Server Component + client archive controls | `content({ kind: "ARTICLE", q, tag, sort, aiAssisted, page, skipFirst })`、`content({ kind: "ARTICLE", sort: "newest", limit: 1 })`、`tags({ kind: "ARTICLE" })` | 双栏长文归档、置顶首篇、搜索、多标签筛选（OR 语义）、最新/最早/最近更新排序与悬浮侧栏（视口垂直居中：滚动中随内容冻结，停止后防抖 160ms 重算并动画归位，布局变化同样动画跟随，导航净空 112px，760px 以下回退静态）；两页归档共用 `useArchiveFilters` 客户端取数：搜索/tag/排序/No AI 开关和分页由 Core 在数据层执行，筛选状态经 `history.replaceState` 同步到 URL `q`/`tag`（可重复）/`page`/`sort`/`noAi`；置顶卡固定取全局最新文章且仅在默认视图（无 `q`/`tag`/`noAi` 且 `sort=newest`）展示，此时列表请求以 `skipFirst` 排除该条，其余视图 `skipFirst` 不传；tag 云和计数来自 `/api/v1/tags`，选中的 tag 在云中排最前；卡片区分摘要与 Core 正文摘录，并展示聚合的浏览量和点赞数；从详情页通过浏览器历史返回时刷新 RSC 数据 |
 | `/writing/[slug]` | Dynamic Server Component + client reading controls | `contentBySlug(slug, { referrer, visitorId })` | 返回 Writing 入口作为标题阅读面的独立上方行；其下为四段同宽的不透明阅读面（标题、正文、讨论、添加评论）、同排日期/阅读时长/语言/统计、Markdown、右侧进度目录、评论和反应；讨论面展示统计、搜索和筛选，添加评论面在接近底部时由桌面/平板左侧紧凑动作卡通过共享布局动画展开；越过激活线后继续下滑保持展开，仅向上越回激活线才恢复左侧，手机端在讨论面之后堆叠 |
 | `/health` | Route Handler | 无 | Web 进程 liveness，Core 健康检查仍为 `/healthz` |
@@ -65,7 +65,7 @@ stats()
 
 ## 4. Markdown 阅读器
 
-Web 和 Admin 使用相同的 Markdown 能力组合：
+Web 和 Admin 通过共享包 `packages/render` 使用相同的 Markdown 能力组合（渲染组件、样式与依赖只在该包内维护，修改后必须按 `packages/render/README.md` 同步验证两端）：
 
 - `react-markdown`：React 渲染边界。
 - `remark-gfm`：表格、任务列表、删除线等 GFM。
@@ -74,9 +74,9 @@ Web 和 Admin 使用相同的 Markdown 能力组合：
 - `rehype-sanitize`：第三方插件处理后进行 HTML 清洗。
 - 原生 `navigator.clipboard`：代码块复制，不额外引入 clipboard 包。
 
-`app/web/components/markdown-content.tsx` 统一生成 h2/h3 anchor id、代码工具条和复制状态。Core 只存 Markdown，不承诺内容生成的 HTML 安全；禁止使用 `dangerouslySetInnerHTML` 绕过清洗。
+`packages/render` 的 `MarkdownContent` 统一生成 h2/h3 anchor id、代码工具条和复制状态；代码块与 GFM 表格在 `render.css` 中提供边框、表头底色与可见的横向滚动条（长代码行、宽表格横向滚动而不撑破列宽）；`ReadingShell`/`ArticleSurface`/`ThoughtSurface` 提供两端共用的阅读面骨架（网格、TOC、讨论/评论 slot）与 `render.css` 主题令牌（Web 在 `globals.css` 以 `--mdr-*` 变量映射自身主题，Admin Render tab 复用浅色默认值）。Web 的 `components/markdown-content.tsx` 仅是对共享包的 re-export shim。Core 只存 Markdown，不承诺内容生成的 HTML 安全；禁止使用 `dangerouslySetInnerHTML` 绕过清洗。
 
-Article 的 `metadata.toc` 和 `readingMinutes` 由 Core 在保存时从 Markdown 派生。Web 使用对应 `id` 生成右侧 sticky 目录和阅读进度。阅读结束区域拆为讨论面和添加评论面：讨论面分页读取公开评论并展示浏览/点赞/评论统计，搜索走 Core `q` 参数、按是否有网站或最近时间在当前页内筛选；添加评论面承载点赞、评论和分享。桌面/平板在讨论面尚未接近底部时只显示左侧紧凑动作卡，评论操作可展开同一表单；触发底部观察点后，卡片通过共享布局动画移动到中央添加评论面并默认展开。触发点继续滑过视口顶部时保持底部状态，只有向上滚动并越回同一激活线后才恢复左侧卡片，避免观察点离开视口时发生反向切换；讨论面内容或字体等导致布局变化时由 ResizeObserver 重新计算。手机端动作卡先以 sticky 横条出现，添加评论面在讨论面之后堆叠。新增运行时标题 ID 算法时必须同步 Core metadata 约定和 Admin 编辑/生成逻辑。
+Article 的 `metadata.toc` 和 `readingMinutes` 由 Core 在保存时从 Markdown 派生。Web 使用对应 `id` 生成右侧 sticky 目录和阅读进度。阅读结束区域拆为讨论面和添加评论面：讨论面分页读取公开评论并展示浏览/点赞/评论统计，搜索走 Core `q` 参数、按是否有网站或最近时间在当前页内筛选；添加评论面承载点赞、评论和分享。桌面/平板在讨论面尚未接近底部时只显示左侧紧凑动作卡，评论操作可展开同一表单；触发底部观察点后，卡片通过共享布局动画移动到中央添加评论面并默认展开。评论处于提交中或展示成功反馈时，紧凑动作卡与底部添加评论面不会因滚动位置互相替换，避免成功反馈在动画中途被卸载；成功卡的 View your comment 平滑滚动定位到新评论气泡。触发点继续滑过视口顶部时保持底部状态，只有向上滚动并越回同一激活线后才恢复左侧卡片，避免观察点离开视口时发生反向切换；讨论面内容或字体等导致布局变化时由 ResizeObserver 重新计算。手机端动作卡先以 sticky 横条出现，添加评论面在讨论面之后堆叠。新增运行时标题 ID 算法时必须同步 Core metadata 约定和 Admin 编辑/生成逻辑。
 
 ## 5. 评论与反应
 
