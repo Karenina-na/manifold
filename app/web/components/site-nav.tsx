@@ -5,9 +5,10 @@ import { ArrowUpRight, Moon, Rss, Search, Sun, X } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { createBrowserClient } from "../lib/api";
+import type { SiteNavigationItem } from "@manifold/contracts";
 import styles from "../app/site.module.css";
 
-const links = [
+const defaultLinks: SiteNavigationItem[] = [
   { label: "Home", href: "/" },
   { label: "Writings", href: "/writing" },
   { label: "Thoughts", href: "/thoughts" },
@@ -15,7 +16,8 @@ const links = [
 
 type SearchResult = { id: string; href: string; kind: string; title: string | null; summary: string; publishedAt: string | null };
 
-export function SiteNav() {
+export function SiteNav({ navigation }: { navigation?: SiteNavigationItem[] }) {
+  const links = navigation?.length ? navigation : defaultLinks;
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -93,7 +95,9 @@ export function SiteNav() {
       <button className={styles.menuButton} type="button" aria-label={open ? "Close navigation" : "Open navigation"} aria-expanded={open} onClick={() => setOpen((value) => !value)}>{open ? <X size={18} /> : <span className={styles.menuGlyph}><span /><span /></span>}</button>
       <nav className={`${styles.navLinks} ${open ? styles.navLinksOpen : ""}`} aria-label="Primary navigation">
         <div className={styles.navPills}>
-          {links.map((link) => <Link className={`${styles.navPill} ${isActive(link.href) ? styles.navPillActive : ""}`} key={link.href} href={link.href} aria-current={isActive(link.href) ? "page" : undefined} onClick={() => setOpen(false)}>{link.label}</Link>)}
+          {links.map((link) => link.external
+            ? <a className={styles.navPill} key={link.href} href={link.href} target="_blank" rel="noreferrer">{link.label}</a>
+            : <Link className={`${styles.navPill} ${isActive(link.href) ? styles.navPillActive : ""}`} key={link.href} href={link.href} aria-current={isActive(link.href) ? "page" : undefined} onClick={() => setOpen(false)}>{link.label}</Link>)}
         </div>
         <div className={styles.navUtilities}>
           <button className={styles.utilityButton} type="button" onClick={() => setSearchOpen(true)} aria-label="Search content"><Search size={15} /><kbd>⌘K</kbd></button>

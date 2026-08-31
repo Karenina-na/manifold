@@ -5,7 +5,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { CommentsSection } from "../../../components/comment-thread";
 import { ThoughtActions } from "../../../components/thought-actions";
-import { createServerClient } from "../../../lib/api";
+import { createServerClient, loadSiteData } from "../../../lib/api";
 import { ThoughtSurface } from "@manifold/render";
 import type { ThoughtMetadata } from "@manifold/contracts";
 import styles from "../../site.module.css";
@@ -29,6 +29,7 @@ export default async function ThoughtDetailPage({ params }: Props) {
   if (!content || content.kind !== "THOUGHT") notFound();
   const metadata = content.metadata as ThoughtMetadata;
   const slug = content.slug ?? content.id;
+  const site = await loadSiteData();
   return <main className={styles.page}>
     <article className="articleSurface">
       <div className="articleSurfaceInner thoughtDetail">
@@ -46,7 +47,7 @@ export default async function ThoughtDetailPage({ params }: Props) {
           progress
           actions={<ThoughtActions item={content} />}
         />
-        <CommentsSection slug={slug} viewCount={content.viewCount} likeCount={content.likeCount} />
+        {site?.commentsEnabled === false ? null : <CommentsSection slug={slug} viewCount={content.viewCount} likeCount={content.likeCount} />}
       </div>
     </article>
   </main>;

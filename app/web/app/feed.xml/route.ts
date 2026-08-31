@@ -1,4 +1,4 @@
-import { loadHomeData } from "../../lib/api";
+import { loadHomeData, loadSiteData, fallbackSiteDescription, fallbackSiteTitle } from "../../lib/api";
 
 export const dynamic = "force-dynamic";
 
@@ -7,8 +7,10 @@ function escapeXml(value: string) {
 }
 
 export async function GET() {
-  const data = await loadHomeData({ includeHistory: false });
+  const [data, site] = await Promise.all([loadHomeData({ includeHistory: false }), loadSiteData()]);
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
+  const channelTitle = site?.title || fallbackSiteTitle;
+  const channelDescription = site?.description || fallbackSiteDescription;
   const feedItems = data.feed ? [
     ...data.feed.filter((item) => item.kind === "ARTICLE").slice(0, 2),
     ...data.feed.filter((item) => item.kind === "THOUGHT").slice(0, 3),
@@ -19,6 +21,6 @@ export async function GET() {
     const date = item.publishedAt ?? item.createdAt;
     return `<item><title>${escapeXml(title)}</title><description>${escapeXml(description)}</description><link>${siteUrl}${item.href}</link><guid>${siteUrl}${item.href}</guid><pubDate>${new Date(date).toUTCString()}</pubDate></item>`;
   }).join("") ?? "";
-  const body = `<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel><title>Manifold</title><description>Published writings and thoughts from Manifold.</description><link>${siteUrl}</link><atom:link href="${siteUrl}/feed.xml" rel="self" type="application/rss+xml" xmlns:atom="http://www.w3.org/2005/Atom"/>${items}</channel></rss>`;
+  const body = `<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel><title>${escapeXml(channelTitle)}</title><description>${escapeXml(channelDescription)}</description><link>${siteUrl}</link><atom:link href="${siteUrl}/feed.xml" rel="self" type="application/rss+xml" xmlns:atom="http://www.w3.org/2005/Atom"/>${items}</channel></rss>`;
   return new Response(body, { headers: { "Content-Type": "application/rss+xml; charset=utf-8", "Cache-Control": "public, max-age=300" } });
 }

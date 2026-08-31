@@ -3,9 +3,10 @@
 import { ArrowUpRight, Circle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { createBrowserClient, getVisitorId } from "../lib/api";
+import type { SiteNavigationItem } from "@manifold/contracts";
 import styles from "../app/site.module.css";
 
-export function SiteFooter() {
+export function SiteFooter({ footer, social }: { footer: string; social?: SiteNavigationItem[] }) {
   const [activeVisitors, setActiveVisitors] = useState<number | null>(null);
 
   useEffect(() => {
@@ -28,8 +29,10 @@ export function SiteFooter() {
       <span className={styles.footerPresence} aria-live="polite"><Circle size={7} fill="currentColor" aria-hidden="true" /> {activeVisitors === null ? "Counting readers" : `${activeVisitors} readers online`}</span>
     </div>
     <div className={styles.siteFooterBottom}>
-      <span>Built for notes that stay in motion.</span>
-      <a href="https://github.com/manifold-space/manifold" target="_blank" rel="noreferrer">Source <ArrowUpRight size={12} /></a>
+      <span>{footer}</span>
+      <div className={styles.footerLinks}>
+        {(social ?? []).map((item) => <a key={`${item.label}-${item.href}`} href={item.href} {...(item.external ? { target: "_blank", rel: "noreferrer" } : {})}>{item.label} <ArrowUpRight size={12} /></a>)}
+      </div>
     </div>
   </footer>;
 }

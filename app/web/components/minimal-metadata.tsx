@@ -4,15 +4,10 @@ import { useEffect, useState } from "react";
 import { CloudSun, GitCommitHorizontal } from "lucide-react";
 import styles from "../app/site.module.css";
 
-const anchors = [
-  { id: "01", label: "Profile", target: "profile-section", preview: "Introduction and current focus" },
-  { id: "02", label: "Recent content", target: "recent-content-section", preview: "Writings and thoughts" },
-  { id: "03", label: "Updates", target: "updates-section", preview: "The last 10 content updates" },
-  { id: "04", label: "My Series", target: "series-section", preview: "Services and tools" },
-  { id: "05", label: "Contact", target: "contact-section", preview: "Public links and contact points" },
-];
+export type MetadataAnchor = { id: string; label: string; target: string; preview: string };
 
 type MinimalMetadataProps = {
+  anchors: MetadataAnchor[];
   focus?: string;
   location?: string;
   gitSha?: string;
@@ -26,10 +21,10 @@ function formatTime(date: Date) {
   return `${new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false, timeZone: "Asia/Shanghai" }).format(date)} · UTC+8`;
 }
 
-export function MinimalMetadata({ focus = "Open focus", location = "Shanghai", gitSha = "local" }: MinimalMetadataProps) {
+export function MinimalMetadata({ anchors, focus = "Open focus", location = "Shanghai", gitSha = "local" }: MinimalMetadataProps) {
   const [time, setTime] = useState("--:--:-- · UTC+8");
   const [progress, setProgress] = useState(0);
-  const [markerPositions, setMarkerPositions] = useState<number[]>(anchors.map((_, index) => index / (anchors.length - 1)));
+  const [markerPositions, setMarkerPositions] = useState<number[]>(anchors.map((_, index) => index / Math.max(1, anchors.length - 1)));
   const [activeIndex, setActiveIndex] = useState(0);
 
   useEffect(() => {
@@ -75,7 +70,7 @@ export function MinimalMetadata({ focus = "Open focus", location = "Shanghai", g
       window.removeEventListener("scroll", scheduleUpdate);
       window.removeEventListener("resize", scheduleUpdate);
     };
-  }, []);
+  }, [anchors]);
 
   return <aside className={styles.minimalMetadata} data-minimal-metadata aria-label="Page metadata">
     <span className={styles.metadataClock} data-metadata-clock>{time}</span>

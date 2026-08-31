@@ -1,9 +1,13 @@
-import type { Content } from "@manifold/contracts";
+import type { Content, SiteComposition } from "@manifold/contracts";
 import { ManifoldClient } from "@manifold/sdk";
 
 const coreUrl = process.env.NEXT_PUBLIC_CORE_URL ?? "http://localhost:8080";
 const noStoreFetch: typeof fetch = (input, init) => fetch(input, { ...init, cache: "no-store" });
 const MAX_CONTENT_HISTORY = 1000;
+
+export const fallbackSiteTitle = "Manifold";
+export const fallbackSiteDescription = "Profile, technical writings, short thoughts, and personal projects.";
+export const fallbackSiteFooter = "Built for notes that stay in motion.";
 
 export function createServerClient() {
   return new ManifoldClient({ baseUrl: coreUrl, fetch: noStoreFetch });
@@ -11,6 +15,14 @@ export function createServerClient() {
 
 export function createBrowserClient() {
   return new ManifoldClient({ baseUrl: coreUrl, fetch: noStoreFetch });
+}
+
+export async function loadSiteData(): Promise<SiteComposition | null> {
+  try {
+    return await createServerClient().site();
+  } catch {
+    return null;
+  }
 }
 
 export function getVisitorId() {

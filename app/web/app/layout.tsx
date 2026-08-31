@@ -6,31 +6,35 @@ import { BackgroundCanvas } from "../components/background-canvas";
 import { SiteFooter } from "../components/site-footer";
 import { FloatingRepl } from "../components/floating-repl";
 import { RouteRefresh } from "../components/route-refresh";
-import { loadPapers } from "../lib/api";
+import { loadPapers, loadSiteData, fallbackSiteDescription, fallbackSiteFooter, fallbackSiteTitle } from "../lib/api";
 import "./globals.css";
 
-export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"),
-  title: {
-    default: "Manifold | Profile, writings, and thoughts",
-    template: "%s | Manifold",
-  },
-  description: "Profile, technical writings, short thoughts, and personal projects.",
-  alternates: { canonical: "/" },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const site = await loadSiteData();
+  const title = site?.title || fallbackSiteTitle;
+  return {
+    metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"),
+    title: {
+      default: `${title} | Profile, writings, and thoughts`,
+      template: `%s | ${title}`,
+    },
+    description: site?.description || fallbackSiteDescription,
+    alternates: { canonical: "/" },
+  };
+}
 
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  const papers = await loadPapers();
+  const [papers, site] = await Promise.all([loadPapers(), loadSiteData()]);
   return (
     <html lang="en">
       <body>
         <Providers>
           <BackgroundCanvas />
-          <SiteNav />
+          <SiteNav navigation={site?.navigation} />
           <RouteRefresh />
           <div className="siteContent">{children}</div>
-          <FloatingRepl displayName="Manifold" handle="@manifold" focus="Open focus" papers={papers} />
-          <SiteFooter />
+          <FloatingRepl displayName={site?.title || fallbackSiteTitle} handle="@manifold" focus="Open focus" papers={papers} />
+          <SiteFooter footer={site?.footer || fallbackSiteFooter} social={site?.social} />
         </Providers>
       </body>
     </html>

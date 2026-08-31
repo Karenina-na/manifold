@@ -120,9 +120,9 @@ function CommentList({ comments }: { comments: Comment[] }) {
   </div>;
 }
 
-type ArticleDiscussionProps = { slug: string; viewCount?: number; likeCount?: number; showStats?: boolean };
+type ArticleDiscussionProps = { slug: string; viewCount?: number; likeCount?: number; showStats?: boolean; commentsEnabled?: boolean };
 
-export function ArticleDiscussion({ slug, viewCount = 0, likeCount = 0, showStats = true }: ArticleDiscussionProps) {
+export function ArticleDiscussion({ slug, viewCount = 0, likeCount = 0, showStats = true, commentsEnabled = true }: ArticleDiscussionProps) {
   const client = useMemo(() => createBrowserClient(), []);
   const pagingRef = useContext(CommentsPagingRefContext);
   const sectionRef = useRef<HTMLElement>(null);
@@ -139,6 +139,7 @@ export function ArticleDiscussion({ slug, viewCount = 0, likeCount = 0, showStat
     queryKey: ["comments", slug, page, debouncedSearch],
     queryFn: () => client.comments(slug, { page, limit: COMMENT_PAGE_SIZE, q: debouncedSearch || undefined }),
     placeholderData: keepPreviousData,
+    enabled: commentsEnabled,
   });
   const likesQuery = useQuery({ queryKey: ["likes", slug, visitorId], queryFn: () => client.likes(slug, visitorId), enabled: Boolean(visitorId) });
   const comments = useMemo(() => commentsQuery.data?.data ?? [], [commentsQuery.data]);
@@ -165,6 +166,7 @@ export function ArticleDiscussion({ slug, viewCount = 0, likeCount = 0, showStat
     setPage(1);
   };
 
+  if (!commentsEnabled) return null;
   return <section id="comments" ref={sectionRef} className={styles.commentSection} aria-labelledby="comments-title">
     <div className={styles.sectionHeading}>
       <div><span className={styles.eyebrow}>Discussion</span><h2 id="comments-title">The thread</h2></div>
@@ -345,11 +347,12 @@ export function CommentComposer({ slug, expanded, compact = false, anchorId, onE
   </motion.div>;
 }
 
-export function CommentsSection({ slug, viewCount, likeCount }: { slug: string; viewCount: number; likeCount: number }) {
+export function CommentsSection({ slug, viewCount, likeCount, commentsEnabled = true }: { slug: string; viewCount: number; likeCount: number; commentsEnabled?: boolean }) {
   const [replyTarget, setReplyTarget] = useState<Comment | null>(null);
   useReplyFocus(replyTarget);
   const reply = useMemo<ReplyContextValue>(() => ({ replyTarget, startReply: setReplyTarget, cancelReply: () => setReplyTarget(null) }), [replyTarget]);
   const commentsPagingRef = useRef<CommentsPagingController>({ revealPosted: () => {} });
+  if (!commentsEnabled) return null;
   return <CommentsPagingRefContext.Provider value={commentsPagingRef}>
     <ReplyContext.Provider value={reply}>
       <section className="articleDiscussionBlock" aria-label="Thought discussion">
