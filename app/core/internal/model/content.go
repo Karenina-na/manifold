@@ -48,9 +48,14 @@ type Content struct {
 }
 
 type SiteConfig struct {
+	Title           string               `json:"title" validate:"required,max=80"`
+	Description     string               `json:"description" validate:"max=200"`
+	Footer          string               `json:"footer" validate:"max=200"`
+	Social          []SiteNavigationItem `json:"social" validate:"max=6,dive"`
+	CommentsEnabled bool                 `json:"commentsEnabled"`
 	FeaturedContent []SiteContentRef     `json:"featuredContent" validate:"max=10,dive"`
 	Navigation      []SiteNavigationItem `json:"navigation" validate:"min=1,max=10,dive"`
-	Sections        []string             `json:"sections" validate:"min=1,max=10,dive,required,max=40"`
+	Sections        []string             `json:"sections" validate:"min=1,max=10,unique,dive,required,oneof=PROFILE BACKGROUND RECENT_CONTENT UPDATES SERIES CONTACT"`
 }
 
 type SiteContentRef struct {

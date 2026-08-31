@@ -211,9 +211,22 @@ func (h *apiHandler) site(w http.ResponseWriter, _ *http.Request) {
 		WriteError(w, http.StatusInternalServerError, "SITE_UNAVAILABLE", "Site configuration is unavailable.")
 		return
 	}
+	featured := make([]model.Content, 0, len(config.FeaturedContent))
+	for _, ref := range config.FeaturedContent {
+		item, err := h.store.GetContentByID(ref.ID, false)
+		if err != nil || item.Status != "PUBLISHED" {
+			continue
+		}
+		featured = append(featured, item)
+	}
 	WriteJSON(w, http.StatusOK, map[string]any{
 		"profile":         map[string]string{"id": "profile_1"},
-		"featuredContent": config.FeaturedContent,
+		"title":           config.Title,
+		"description":     config.Description,
+		"footer":          config.Footer,
+		"social":          config.Social,
+		"commentsEnabled": config.CommentsEnabled,
+		"featuredContent": featured,
 		"navigation":      config.Navigation,
 		"sections":        config.Sections,
 	})
@@ -388,6 +401,15 @@ type loginInput struct {
 }
 
 func (h *apiHandler) createComment(w http.ResponseWriter, r *http.Request) {
+	config, err := h.store.GetSiteConfig()
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, "SITE_UNAVAILABLE", "Site configuration is unavailable.")
+		return
+	}
+	if !config.CommentsEnabled {
+		WriteError(w, http.StatusForbidden, "COMMENT_DISABLED", "Comments are disabled for this site.")
+		return
+	}
 	content, err := h.store.GetContent(chi.URLParam(r, "slug"), false)
 	if errors.Is(err, sql.ErrNoRows) {
 		WriteError(w, http.StatusNotFound, "CONTENT_NOT_FOUND", "Content was not found.")
@@ -558,7 +580,7 @@ func (h *apiHandler) adminSite(w http.ResponseWriter, _ *http.Request) {
 func (h *apiHandler) adminUpdateSite(w http.ResponseWriter, r *http.Request) {
 	var input model.SiteConfig
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil || h.validate.Struct(input) != nil {
-		WriteError(w, http.StatusUnprocessableEntity, "VALIDATION_ERROR", "Navigation and sections are required.")
+		WriteError(w, http.StatusUnprocessableEntity, "VALIDATION_ERROR", "Title, navigation, and sections are required.")
 		return
 	}
 	if err := h.store.UpdateSiteConfig(input); err != nil {

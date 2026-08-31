@@ -48,7 +48,7 @@ Thought 的 `ThoughtMetadata` 字段为 `mood`、`question`、`context`、`sourc
 ### 其他公共资源
 
 - `Profile` / `ProfileInput`：身份、简介、网站、简历、兴趣、教育、经历、个人 Series 和联系方式。`series` 使用 `{ name, url, description, category? }`，`contacts` 使用 `{ label, url, handle?, icon? }`。
-- `SiteComposition` / `SiteConfig`：首页内容引用、导航和 sections。
+- `SiteComposition` / `SiteConfig` / `SiteConfigInput`：站点设置与站点组合。`SiteConfig`（Admin 读写）包含站点身份 `title`（必填 ≤80）/`description`（≤200）/`footer`（≤200）、`social`（≤6 项，结构同 `SiteNavigationItem`）、`commentsEnabled` 布尔开关、`featuredContent`（`{ id, kind }` 引用，≤10）、`navigation`（1..10 项）和 `sections`（1..10 项，`HomepageSection` 枚举 `PROFILE/BACKGROUND/RECENT_CONTENT/UPDATES/SERIES/CONTACT`）。公开 `SiteComposition`（`GET /api/v1/site`）返回同样的读字段，但 `featuredContent` 已由 Core 解析为 `Content[]`（未发布或缺失的引用跳过，保持配置顺序）。`sections` 驱动公开首页区块的内容与顺序，`featuredContent` 决定首页两列置顶项。
 - `Stats` / `AdminStats`：公开统计和 Admin 统计包装。
 - `AdminOverview` 及其子类型：Admin 总览聚合（内容计数含草稿、浏览/点赞/评论总量、在线访客、月度趋势、Top 内容、标签分布）。
 - `AnalyticsViews` / `AnalyticsViewsQuery`：去重浏览事件分析（总量、独立访客、逐日曲线、referrer Top N，`days` 默认 30 上限 90）。

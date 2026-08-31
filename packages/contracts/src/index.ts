@@ -34,8 +34,9 @@ export interface SystemStatus { version: string; startedAt: string; uptimeSecond
 export interface AuditEvent { id: string; eventName: string; resourceType: string; resourceId: string; actor: string; metadataJson: string; createdAt: string }
 export interface AuditEventCollection { events: AuditEvent[]; pagination: PagePagination }
 export interface AuditQuery { page?: number; pageSize?: number; q?: string }
-export interface SiteComposition { profile: { id: string }; featuredContent: Array<{ id: string; kind: ContentKind }>; navigation: SiteNavigationItem[]; sections: string[] }
-export interface SiteConfig { featuredContent: Array<{ id: string; kind: ContentKind }>; navigation: SiteNavigationItem[]; sections: string[] }
+export type HomepageSection = "PROFILE" | "BACKGROUND" | "RECENT_CONTENT" | "UPDATES" | "SERIES" | "CONTACT"
+export interface SiteComposition { profile: { id: string }; title: string; description: string; footer: string; social: SiteNavigationItem[]; commentsEnabled: boolean; featuredContent: Content[]; navigation: SiteNavigationItem[]; sections: HomepageSection[] }
+export interface SiteConfig { title: string; description: string; footer: string; social: SiteNavigationItem[]; commentsEnabled: boolean; featuredContent: Array<{ id: string; kind: ContentKind }>; navigation: SiteNavigationItem[]; sections: HomepageSection[] }
 export type SiteConfigInput = SiteConfig
 export interface Pagination { nextCursor: string | null; hasMore: boolean; page?: number; pageSize?: number; totalItems?: number; totalPages?: number }
 export interface Collection<T> { data: T[]; pagination: Pagination }

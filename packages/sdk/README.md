@@ -42,7 +42,7 @@ const page = await client.content({ kind: "ARTICLE", limit: 20 })
 | --- | --- | --- | --- |
 | `health()` | GET | `/healthz` | `HealthStatus` |
 | `profile()` | GET | `/api/v1/profile` | `Profile` |
-| `site()` | GET | `/api/v1/site` | `SiteComposition` |
+| `site()` | GET | `/api/v1/site` | `SiteComposition`（含站点身份、`commentsEnabled`、已解析的 `featuredContent` 内容数组、导航与 `sections` 枚举） |
 | `feed(query?)` | GET | `/api/v1/feed` | `Collection<Content>` |
 | `content(query?)` | GET | `/api/v1/content` | `Collection<Content>`，内容项包含纯文本 `excerpt`、`viewCount` / `likeCount` / `commentCount`；`query` 支持 `kind`、`tag`（单值或多值 `string[]`，数组序列化为逗号分隔，多值按 OR 命中任一标签）、`q`、`cursor` 或 `page`（互斥）、`sort`、`aiAssisted`、`skipFirst`（仅 `page` 模式） |
 | `thoughts(query?)` | GET | `/api/v1/thoughts` | `ThoughtArchive`，Core 负责置顶、排除、正文摘录和页码分页；`query` 支持 `page`、`limit`、`tag`（单值或多值 `string[]`，OR 语义）、`q` |
@@ -69,7 +69,7 @@ const page = await client.content({ kind: "ARTICLE", limit: 20 })
 | `uploadMedia(blob, filename)` | POST | `/api/v1/admin/media?filename=…` | `Media`（二进制 body，Core 按 201 返回含绝对 `url`） |
 | `deleteMedia(id)` | DELETE | `/api/v1/admin/media/{id}` | 204 |
 | `adminProfile()` / `updateProfile(input)` | GET/PATCH | `/api/v1/admin/profile` | `Profile` |
-| `adminSite()` / `updateSite(input)` | GET/PATCH | `/api/v1/admin/site` | `SiteConfig` |
+| `adminSite()` / `updateSite(input)` | GET/PATCH | `/api/v1/admin/site` | `SiteConfig`；`updateSite` 全量提交站点设置（身份、social、评论开关、featuredContent 引用、导航、sections），非法 sections/缺失 title 返回 422 |
 | `adminThoughtConfig()` / `updateThoughtConfig(input)` | GET/PATCH | `/api/v1/admin/thoughts/config` | `ThoughtConfig` |
 | `adminContent(query?)` | GET | `/api/v1/admin/content` | `Collection<AdminContent>`，内容项包含完整 `body`、`viewCount` / `likeCount` / `commentCount` |
 | `adminContentItem(id)` | GET | `/api/v1/admin/content/{id}` | `AdminContent`，单条管理内容（含完整 body 与 metadata） |

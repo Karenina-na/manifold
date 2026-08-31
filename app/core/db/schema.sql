@@ -39,6 +39,11 @@ CREATE TABLE IF NOT EXISTS content (
 
 CREATE TABLE IF NOT EXISTS site_config (
     id TEXT PRIMARY KEY,
+    title TEXT NOT NULL DEFAULT 'Manifold',
+    description TEXT NOT NULL DEFAULT 'Profile, technical writings, short thoughts, and personal projects.',
+    footer_text TEXT NOT NULL DEFAULT 'Built for notes that stay in motion.',
+    social_json TEXT NOT NULL DEFAULT '[]',
+    comments_enabled INTEGER NOT NULL DEFAULT 1,
     featured_content_json TEXT NOT NULL DEFAULT '[]',
     navigation_json TEXT NOT NULL DEFAULT '[]',
     sections_json TEXT NOT NULL DEFAULT '[]',

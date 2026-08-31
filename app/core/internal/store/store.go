@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -20,7 +21,7 @@ DROP TABLE IF EXISTS reactions;
 DROP TABLE IF EXISTS now_status;
 CREATE TABLE IF NOT EXISTS profile (id TEXT PRIMARY KEY, display_name TEXT NOT NULL, handle TEXT NOT NULL DEFAULT '', headline TEXT NOT NULL DEFAULT '', bio TEXT NOT NULL DEFAULT '', location TEXT NOT NULL DEFAULT '', avatar_url TEXT NOT NULL DEFAULT '', organization TEXT NOT NULL DEFAULT '', website_url TEXT NOT NULL DEFAULT '', resume_url TEXT NOT NULL DEFAULT '', interests_json TEXT NOT NULL DEFAULT '[]', education_json TEXT NOT NULL DEFAULT '[]', experience_json TEXT NOT NULL DEFAULT '[]', series_json TEXT NOT NULL DEFAULT '[]', contacts_json TEXT NOT NULL DEFAULT '[]', updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS content (id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK (kind IN ('THOUGHT', 'ARTICLE')), status TEXT NOT NULL DEFAULT 'DRAFT' CHECK (status IN ('DRAFT', 'PUBLISHED', 'DELETED')), slug TEXT UNIQUE, title TEXT, summary TEXT NOT NULL DEFAULT '', body TEXT NOT NULL DEFAULT '', tags_json TEXT NOT NULL DEFAULT '[]', metadata_json TEXT NOT NULL DEFAULT '{}', published_at TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, version INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, view_count INTEGER NOT NULL DEFAULT 0);
-CREATE TABLE IF NOT EXISTS site_config (id TEXT PRIMARY KEY, featured_content_json TEXT NOT NULL DEFAULT '[]', navigation_json TEXT NOT NULL DEFAULT '[]', sections_json TEXT NOT NULL DEFAULT '[]', updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS site_config (id TEXT PRIMARY KEY, title TEXT NOT NULL DEFAULT 'Manifold', description TEXT NOT NULL DEFAULT 'Profile, technical writings, short thoughts, and personal projects.', footer_text TEXT NOT NULL DEFAULT 'Built for notes that stay in motion.', social_json TEXT NOT NULL DEFAULT '[]', comments_enabled INTEGER NOT NULL DEFAULT 1, featured_content_json TEXT NOT NULL DEFAULT '[]', navigation_json TEXT NOT NULL DEFAULT '[]', sections_json TEXT NOT NULL DEFAULT '[]', updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS thoughts_config (id TEXT PRIMARY KEY, featured_thought_id TEXT REFERENCES content(id) ON DELETE SET NULL, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS comments (id TEXT PRIMARY KEY, content_id TEXT NOT NULL REFERENCES content(id), author_name TEXT NOT NULL, author_url TEXT NOT NULL DEFAULT '', body TEXT NOT NULL, reply_to_id TEXT REFERENCES comments(id), avatar_seed TEXT NOT NULL DEFAULT '', deleted_at TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS likes (id TEXT PRIMARY KEY, content_id TEXT NOT NULL REFERENCES content(id) ON DELETE CASCADE, visitor_id TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE (content_id, visitor_id));
@@ -45,6 +46,8 @@ type Store struct{ DB *sql.DB }
 const presenceTTL = 5 * time.Minute
 
 const contentExcerptMaxRunes = 360
+
+var defaultSections = []string{"PROFILE", "BACKGROUND", "RECENT_CONTENT", "UPDATES", "SERIES", "CONTACT"}
 
 var (
 	markdownImagePattern               = regexp.MustCompile(`!\[[^\]]*\](?:\([^)]*\)|\[[^]]*\])`)
@@ -417,11 +420,66 @@ func ensureSiteConfigColumns(db *sql.DB) error {
 			}
 		}
 	}
-	_, err = db.Exec(`UPDATE site_config SET navigation_json = ?, sections_json = ? WHERE id = 'site_1' AND (navigation_json LIKE '%TECH%' OR navigation_json LIKE '%MANUSCRIPT%' OR sections_json LIKE '%MANUSCRIPT%')`, encodeJSON([]model.SiteNavigationItem{{Label: "Thoughts", Href: "/thoughts"}, {Label: "Writings", Href: "/writing"}}), encodeJSON([]string{"PROFILE", "CV", "RECENT_ACTIVITY"}))
+	for _, column := range []struct{ name, ddl string }{
+		{"title", `ALTER TABLE site_config ADD COLUMN title TEXT NOT NULL DEFAULT 'Manifold'`},
+		{"description", `ALTER TABLE site_config ADD COLUMN description TEXT NOT NULL DEFAULT 'Profile, technical writings, short thoughts, and personal projects.'`},
+		{"footer_text", `ALTER TABLE site_config ADD COLUMN footer_text TEXT NOT NULL DEFAULT 'Built for notes that stay in motion.'`},
+		{"social_json", `ALTER TABLE site_config ADD COLUMN social_json TEXT NOT NULL DEFAULT '[]'`},
+		{"comments_enabled", `ALTER TABLE site_config ADD COLUMN comments_enabled INTEGER NOT NULL DEFAULT 1`},
+	} {
+		if !columns[column.name] {
+			if _, err := db.Exec(column.ddl); err != nil {
+				return err
+			}
+		}
+	}
+	if _, err := db.Exec(`UPDATE site_config SET navigation_json = ?, sections_json = ? WHERE id = 'site_1' AND (navigation_json LIKE '%TECH%' OR navigation_json LIKE '%MANUSCRIPT%' OR sections_json LIKE '%MANUSCRIPT%')`, encodeJSON([]model.SiteNavigationItem{{Label: "Thoughts", Href: "/thoughts"}, {Label: "Writings", Href: "/writing"}}), encodeJSON(defaultSections)); err != nil {
+		return err
+	}
+	return remapLegacySections(db)
+}
+
+// remapLegacySections migrates homepage section names that predate the
+// sections enum; unknown values are dropped and an empty result falls back
+// to the full default ordering so public pages keep rendering every block.
+func remapLegacySections(db *sql.DB) error {
+	var raw string
+	err := db.QueryRow(`SELECT sections_json FROM site_config WHERE id = 'site_1'`).Scan(&raw)
+	if err == sql.ErrNoRows {
+		return nil
+	}
 	if err != nil {
 		return err
 	}
-	return nil
+	sections := decodeStrings(raw)
+	legacy := false
+	mapped := make([]string, 0, len(sections))
+	for _, section := range sections {
+		switch section {
+		case "PROFILE":
+			mapped = append(mapped, "PROFILE")
+		case "CV":
+			mapped = append(mapped, "BACKGROUND")
+			legacy = true
+		case "RECENT_ACTIVITY":
+			mapped = append(mapped, "RECENT_CONTENT")
+			legacy = true
+		default:
+			if slices.Contains(defaultSections, section) {
+				mapped = append(mapped, section)
+			} else {
+				legacy = true
+			}
+		}
+	}
+	if !legacy {
+		return nil
+	}
+	if len(mapped) == 0 {
+		mapped = defaultSections
+	}
+	_, err = db.Exec(`UPDATE site_config SET sections_json = ? WHERE id = 'site_1'`, encodeJSON(mapped))
+	return err
 }
 
 func ensureProfileColumns(db *sql.DB) error {
@@ -485,7 +543,7 @@ func (s *Store) seed() error {
 	if _, err := s.DB.Exec(`UPDATE content SET summary = 'Questions about the relationship between software and daily life.' WHERE id = 'content_3' AND summary = 'A research notebook for questions that sit between engineering and lived experience.'`); err != nil {
 		return err
 	}
-	if _, err := s.DB.Exec(`INSERT OR IGNORE INTO site_config (id, featured_content_json, navigation_json, sections_json, updated_at) VALUES ('site_1', ?, ?, ?, ?)`, encodeJSON([]model.SiteContentRef{{ID: "content_1", Kind: model.ContentKindArticle}}), encodeJSON([]model.SiteNavigationItem{{Label: "Thoughts", Href: "/thoughts"}, {Label: "Writings", Href: "/writing"}}), encodeJSON([]string{"PROFILE", "CV", "RECENT_ACTIVITY"}), now); err != nil {
+	if _, err := s.DB.Exec(`INSERT OR IGNORE INTO site_config (id, featured_content_json, navigation_json, sections_json, updated_at) VALUES ('site_1', ?, ?, ?, ?)`, encodeJSON([]model.SiteContentRef{{ID: "content_1", Kind: model.ContentKindArticle}}), encodeJSON([]model.SiteNavigationItem{{Label: "Thoughts", Href: "/thoughts"}, {Label: "Writings", Href: "/writing"}}), encodeJSON(defaultSections), now); err != nil {
 		return err
 	}
 	seedContent := []struct {
@@ -560,11 +618,19 @@ func (s *Store) UpdateProfile(p model.Profile) error {
 }
 
 func (s *Store) GetSiteConfig() (model.SiteConfig, error) {
-	var rawFeaturedContent, rawNavigation, rawSections string
-	if err := s.DB.QueryRow(`SELECT featured_content_json, navigation_json, sections_json FROM site_config WHERE id = 'site_1'`).Scan(&rawFeaturedContent, &rawNavigation, &rawSections); err != nil {
+	var title, description, footerText, rawSocial, rawFeaturedContent, rawNavigation, rawSections string
+	var commentsEnabled int
+	if err := s.DB.QueryRow(`SELECT title, description, footer_text, social_json, comments_enabled, featured_content_json, navigation_json, sections_json FROM site_config WHERE id = 'site_1'`).Scan(&title, &description, &footerText, &rawSocial, &commentsEnabled, &rawFeaturedContent, &rawNavigation, &rawSections); err != nil {
 		return model.SiteConfig{}, err
 	}
 	var config model.SiteConfig
+	config.Title = title
+	config.Description = description
+	config.Footer = footerText
+	config.CommentsEnabled = commentsEnabled != 0
+	if err := json.Unmarshal([]byte(rawSocial), &config.Social); err != nil {
+		return model.SiteConfig{}, err
+	}
 	if err := json.Unmarshal([]byte(rawFeaturedContent), &config.FeaturedContent); err != nil {
 		return model.SiteConfig{}, err
 	}
@@ -578,8 +644,15 @@ func (s *Store) GetSiteConfig() (model.SiteConfig, error) {
 }
 
 func (s *Store) UpdateSiteConfig(config model.SiteConfig) error {
-	_, err := s.DB.Exec(`UPDATE site_config SET featured_content_json = ?, navigation_json = ?, sections_json = ?, updated_at = ? WHERE id = 'site_1'`, encodeJSON(config.FeaturedContent), encodeJSON(config.Navigation), encodeJSON(config.Sections), time.Now().UTC().Format(time.RFC3339))
+	_, err := s.DB.Exec(`UPDATE site_config SET title = ?, description = ?, footer_text = ?, social_json = ?, comments_enabled = ?, featured_content_json = ?, navigation_json = ?, sections_json = ?, updated_at = ? WHERE id = 'site_1'`, config.Title, config.Description, config.Footer, encodeJSON(config.Social), boolToInt(config.CommentsEnabled), encodeJSON(config.FeaturedContent), encodeJSON(config.Navigation), encodeJSON(config.Sections), time.Now().UTC().Format(time.RFC3339))
 	return err
+}
+
+func boolToInt(value bool) int {
+	if value {
+		return 1
+	}
+	return 0
 }
 
 func (s *Store) GetThoughtConfig() (model.ThoughtConfig, error) {

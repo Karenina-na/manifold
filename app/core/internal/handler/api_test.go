@@ -1271,15 +1271,90 @@ func TestAdminConfigurationManagement(t *testing.T) {
 		t.Fatalf("expected profile update 200, got %d %s", profile.Code, profile.Body.String())
 	}
 
-	site := adminRequest(t, router, token, http.MethodPatch, "/api/v1/admin/site", `{"navigation":[{"label":"Notes","href":"/writing"}],"sections":["PROFILE","FEED"]}`)
+	site := adminRequest(t, router, token, http.MethodPatch, "/api/v1/admin/site", `{"title":"Updated Garden","navigation":[{"label":"Notes","href":"/writing"}],"sections":["PROFILE","RECENT_CONTENT"]}`)
 	if site.Code != http.StatusOK || !strings.Contains(site.Body.String(), "Notes") {
 		t.Fatalf("expected site update 200, got %d %s", site.Code, site.Body.String())
 	}
 	publicSite := request(t, router, http.MethodGet, "/api/v1/site", nil)
-	if publicSite.Code != http.StatusOK || !strings.Contains(publicSite.Body.String(), "Notes") {
+	if publicSite.Code != http.StatusOK || !strings.Contains(publicSite.Body.String(), "Notes") || !strings.Contains(publicSite.Body.String(), `"title":"Updated Garden"`) {
 		t.Fatalf("expected public site to use persisted config, got %d %s", publicSite.Code, publicSite.Body.String())
 	}
 
+}
+
+func TestSiteSettingsValidationAndCommentsToggle(t *testing.T) {
+	router := newTestRouter(t)
+	token := adminToken(t, router)
+
+	invalid := adminRequest(t, router, token, http.MethodPatch, "/api/v1/admin/site", `{"title":"X","sections":["NOT_A_SECTION"]}`)
+	if invalid.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected invalid sections to be rejected with 422, got %d", invalid.Code)
+	}
+
+	site := adminRequest(t, router, token, http.MethodPatch, "/api/v1/admin/site", `{"title":"Garden","description":"A calm garden.","footer":"Keep notes moving.","social":[{"label":"GitHub","href":"https://github.com/manifold-space/manifold","external":true}],"commentsEnabled":false,"navigation":[{"label":"Thoughts","href":"/thoughts"}],"sections":["PROFILE","CONTACT"],"featuredContent":[{"id":"content_1","kind":"ARTICLE"}]}`)
+	if site.Code != http.StatusOK || !strings.Contains(site.Body.String(), `"commentsEnabled":false`) {
+		t.Fatalf("expected site settings update 200, got %d %s", site.Code, site.Body.String())
+	}
+
+	publicSite := request(t, router, http.MethodGet, "/api/v1/site", nil)
+	if publicSite.Code != http.StatusOK {
+		t.Fatalf("expected public site 200, got %d", publicSite.Code)
+	}
+	var composition struct {
+		Title           string           `json:"title"`
+		Description     string           `json:"description"`
+		Footer          string           `json:"footer"`
+		Social          []map[string]any `json:"social"`
+		CommentsEnabled bool             `json:"commentsEnabled"`
+		FeaturedContent []struct {
+			ID string `json:"id"`
+		} `json:"featuredContent"`
+	}
+	if err := json.Unmarshal(publicSite.Body.Bytes(), &composition); err != nil {
+		t.Fatalf("failed to decode public site payload: %v", err)
+	}
+	if composition.Title != "Garden" || composition.Footer != "Keep notes moving." || composition.CommentsEnabled {
+		t.Fatalf("expected identity fields and comments toggle to round-trip, got %+v", composition)
+	}
+	if len(composition.Social) != 1 || composition.Social[0]["label"] != "GitHub" {
+		t.Fatalf("expected social links to round-trip, got %+v", composition.Social)
+	}
+	if len(composition.FeaturedContent) != 1 || composition.FeaturedContent[0].ID != "content_1" {
+		t.Fatalf("expected featured content to resolve to published content, got %+v", composition.FeaturedContent)
+	}
+
+	draft := adminRequest(t, router, token, http.MethodPost, "/api/v1/admin/content", `{"kind":"ARTICLE","slug":"draft-featured","title":"Draft featured","summary":"Draft.","body":"Draft body.","tags":[]}`)
+	var draftContent struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(draft.Body.Bytes(), &draftContent); err != nil {
+		t.Fatalf("failed to decode draft content: %v", err)
+	}
+	featuredDraft := adminRequest(t, router, token, http.MethodPatch, "/api/v1/admin/site", `{"title":"Garden","description":"","footer":"","social":[],"commentsEnabled":false,"navigation":[{"label":"Thoughts","href":"/thoughts"}],"sections":["PROFILE"],"featuredContent":[{"id":"`+draftContent.ID+`","kind":"ARTICLE"}]}`)
+	if featuredDraft.Code != http.StatusOK {
+		t.Fatalf("expected featured draft reference to be accepted, got %d", featuredDraft.Code)
+	}
+	publicWithDraft := request(t, router, http.MethodGet, "/api/v1/site", nil)
+	if strings.Contains(publicWithDraft.Body.String(), `"id":"`+draftContent.ID+`"`) {
+		t.Fatalf("expected unpublished featured content to be skipped, got %s", publicWithDraft.Body.String())
+	}
+
+	disabledComment := request(t, router, http.MethodPost, "/api/v1/content/designing-boundaries/comments", strings.NewReader(`{"authorName":"Guest","body":"Hello"}`))
+	if disabledComment.Code != http.StatusForbidden || !strings.Contains(disabledComment.Body.String(), "COMMENT_DISABLED") {
+		t.Fatalf("expected comments toggle to reject public comments with 403, got %d %s", disabledComment.Code, disabledComment.Body.String())
+	}
+	enabled := adminRequest(t, router, token, http.MethodPatch, "/api/v1/admin/site", `{"title":"Garden","description":"","footer":"","social":[],"commentsEnabled":true,"navigation":[{"label":"Thoughts","href":"/thoughts"}],"sections":["PROFILE"],"featuredContent":[]}`)
+	if enabled.Code != http.StatusOK {
+		t.Fatalf("expected re-enable update 200, got %d", enabled.Code)
+	}
+	enabledComment := request(t, router, http.MethodPost, "/api/v1/content/designing-boundaries/comments", strings.NewReader(`{"authorName":"Guest","body":"Hello"}`))
+	if enabledComment.Code != http.StatusCreated {
+		t.Fatalf("expected re-enabled comments to accept public comments, got %d %s", enabledComment.Code, enabledComment.Body.String())
+	}
+	adminComment := adminRequest(t, router, token, http.MethodPost, "/api/v1/admin/content/content_1/comments", `{"body":"Author reply"}`)
+	if adminComment.Code != http.StatusCreated {
+		t.Fatalf("expected admin comments to bypass the comments toggle, got %d %s", adminComment.Code, adminComment.Body.String())
+	}
 }
 
 func adminToken(t *testing.T, router http.Handler) string {

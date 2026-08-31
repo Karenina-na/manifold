@@ -3,6 +3,7 @@ package store
 import (
 	"database/sql"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -34,6 +35,39 @@ func TestOpenMigratesAuditTraceIDColumn(t *testing.T) {
 	}
 	if columnCount != 1 {
 		t.Fatalf("expected trace_id migration, got %d columns", columnCount)
+	}
+}
+
+func TestOpenMigratesLegacySiteConfigColumns(t *testing.T) {
+	databasePath := filepath.Join(t.TempDir(), "legacy-site.db")
+	database, err := sql.Open("sqlite", databasePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec(`CREATE TABLE site_config (id TEXT PRIMARY KEY, featured_content_json TEXT NOT NULL DEFAULT '[]', navigation_json TEXT NOT NULL DEFAULT '[]', sections_json TEXT NOT NULL DEFAULT '[]', updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+		INSERT INTO site_config (id, sections_json) VALUES ('site_1', '["PROFILE","CV","RECENT_ACTIVITY","ARCHIVE"]')`); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	store, err := Open(databasePath)
+	if err != nil {
+		t.Fatalf("legacy site_config schema must still open: %v", err)
+	}
+	defer store.Close()
+
+	config, err := store.GetSiteConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected := []string{"PROFILE", "BACKGROUND", "RECENT_CONTENT"}
+	if !slices.Equal(config.Sections, expected) {
+		t.Fatalf("expected legacy sections to remap and unknown values to drop, got %v", config.Sections)
+	}
+	if config.Title != "Manifold" || !config.CommentsEnabled {
+		t.Fatalf("expected new site_config columns to carry defaults, got %q %v", config.Title, config.CommentsEnabled)
 	}
 }
 
