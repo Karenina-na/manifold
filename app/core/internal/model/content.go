@@ -53,7 +53,6 @@ type SiteConfig struct {
 	Footer          string               `json:"footer" validate:"max=200"`
 	Social          []SiteNavigationItem `json:"social" validate:"max=6,dive"`
 	CommentsEnabled bool                 `json:"commentsEnabled"`
-	FeaturedContent []SiteContentRef     `json:"featuredContent" validate:"max=10,dive"`
 	Navigation      []SiteNavigationItem `json:"navigation" validate:"min=1,max=10,dive"`
 	Sections        []string             `json:"sections" validate:"min=1,max=10,unique,dive,required,oneof=PROFILE BACKGROUND RECENT_CONTENT UPDATES SERIES CONTACT"`
 }
@@ -74,6 +73,11 @@ type ThoughtConfig struct {
 	UpdatedAt         string  `json:"updatedAt"`
 }
 
+type WritingConfig struct {
+	FeaturedWritingID *string `json:"featuredWritingId"`
+	UpdatedAt         string  `json:"updatedAt"`
+}
+
 type PagePagination struct {
 	Page       int `json:"page"`
 	PageSize   int `json:"pageSize"`
@@ -87,6 +91,12 @@ type TagSummary struct {
 }
 
 type ThoughtArchive struct {
+	Featured   *Content       `json:"featured"`
+	Data       []Content      `json:"data"`
+	Pagination PagePagination `json:"pagination"`
+}
+
+type WritingArchive struct {
 	Featured   *Content       `json:"featured"`
 	Data       []Content      `json:"data"`
 	Pagination PagePagination `json:"pagination"`

@@ -27,6 +27,8 @@ app/core JSON <--> packages/contracts <--> packages/sdk <--> Web / Admin
 - `UpdateContentInput`：带必填 `expectedVersion` 的局部更新，可改变 `kind` 和 `slug`。
 - `ThoughtArchive` / `ThoughtArchiveQuery`：Core 计算的置顶 Thought、非置顶归档页和页码参数；`ThoughtArchiveQuery` 额外接受 `tag`/`q`，只过滤时间轴，不影响置顶。`tag` 支持单值或多值（`string[]`），多值按 OR（命中任一标签）过滤。
 - `ThoughtConfig` / `ThoughtConfigInput`：可空 `featuredThoughtId` 的 Admin 配置读写契约。
+- `WritingArchive` / `WritingArchiveQuery`：Core 计算的置顶 Writing、非置顶归档页和页码参数；`WritingArchiveQuery` 额外接受 `tag`/`q`/`sort`/`aiAssisted`，只过滤时间轴，不影响置顶。
+- `WritingConfig` / `WritingConfigInput`：可空 `featuredWritingId` 的 Admin 配置读写契约。
 - `TagQuery` / `TagSummary`：`/api/v1/tags` 的可选 `kind` 参数和 `{ name, count }` 聚合项。
 - `Media` / `MediaQuery`：管理端上传的媒体对象（`url` 为绝对地址，写入 Markdown 正文使用）与媒体库列表参数（`page`/`pageSize`/`q` 按文件名过滤）。
 
@@ -48,7 +50,7 @@ Thought 的 `ThoughtMetadata` 字段为 `mood`、`question`、`context`、`sourc
 ### 其他公共资源
 
 - `Profile` / `ProfileInput`：身份、简介、网站、简历、兴趣、教育、经历、个人 Series 和联系方式。`series` 使用 `{ name, url, description, category? }`，`contacts` 使用 `{ label, url, handle?, icon? }`。
-- `SiteComposition` / `SiteConfig` / `SiteConfigInput`：站点设置与站点组合。`SiteConfig`（Admin 读写）包含站点身份 `title`（必填 ≤80）/`description`（≤200）/`footer`（≤200）、`social`（≤6 项，结构同 `SiteNavigationItem`）、`commentsEnabled` 布尔开关、`featuredContent`（`{ id, kind }` 引用，≤10）、`navigation`（1..10 项）和 `sections`（1..10 项，`HomepageSection` 枚举 `PROFILE/BACKGROUND/RECENT_CONTENT/UPDATES/SERIES/CONTACT`）。公开 `SiteComposition`（`GET /api/v1/site`）返回同样的读字段，但 `featuredContent` 已由 Core 解析为 `Content[]`（未发布或缺失的引用跳过，保持配置顺序）。`sections` 驱动公开首页区块的内容与顺序，`featuredContent` 决定首页两列置顶项。
+- `SiteComposition` / `SiteConfig` / `SiteConfigInput`：站点设置与站点组合。`SiteConfig`（Admin 读写）包含站点身份 `title`（必填 ≤80）/`description`（≤200）/`footer`（≤200）、`social`（≤6 项，结构同 `SiteNavigationItem`）、`commentsEnabled` 布尔开关、`navigation`（1..10 项）和 `sections`（1..10 项，`HomepageSection` 枚举 `PROFILE/BACKGROUND/RECENT_CONTENT/UPDATES/SERIES/CONTACT`）。公开 `SiteComposition`（`GET /api/v1/site`）返回同样的读字段。`sections` 驱动公开首页区块的内容与顺序；首页内容列按发布时间排序展示，不含置顶语义。
 - `Stats` / `AdminStats`：公开统计和 Admin 统计包装。
 - `AdminOverview` 及其子类型：Admin 总览聚合（内容计数含草稿、浏览/点赞/评论总量、在线访客、月度趋势、Top 内容、标签分布）。
 - `AnalyticsViews` / `AnalyticsViewsQuery`：去重浏览事件分析（总量、独立访客、逐日曲线、referrer Top N，`days` 默认 30 上限 90）。

@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS profile (id TEXT PRIMARY KEY, display_name TEXT NOT N
 CREATE TABLE IF NOT EXISTS content (id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK (kind IN ('THOUGHT', 'ARTICLE')), status TEXT NOT NULL DEFAULT 'DRAFT' CHECK (status IN ('DRAFT', 'PUBLISHED', 'DELETED')), slug TEXT UNIQUE, title TEXT, summary TEXT NOT NULL DEFAULT '', body TEXT NOT NULL DEFAULT '', tags_json TEXT NOT NULL DEFAULT '[]', metadata_json TEXT NOT NULL DEFAULT '{}', published_at TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, version INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, view_count INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS site_config (id TEXT PRIMARY KEY, title TEXT NOT NULL DEFAULT 'Manifold', description TEXT NOT NULL DEFAULT 'Profile, technical writings, short thoughts, and personal projects.', footer_text TEXT NOT NULL DEFAULT 'Built for notes that stay in motion.', social_json TEXT NOT NULL DEFAULT '[]', comments_enabled INTEGER NOT NULL DEFAULT 1, featured_content_json TEXT NOT NULL DEFAULT '[]', navigation_json TEXT NOT NULL DEFAULT '[]', sections_json TEXT NOT NULL DEFAULT '[]', updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS thoughts_config (id TEXT PRIMARY KEY, featured_thought_id TEXT REFERENCES content(id) ON DELETE SET NULL, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS writings_config (id TEXT PRIMARY KEY, featured_writing_id TEXT REFERENCES content(id) ON DELETE SET NULL, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS comments (id TEXT PRIMARY KEY, content_id TEXT NOT NULL REFERENCES content(id), author_name TEXT NOT NULL, author_url TEXT NOT NULL DEFAULT '', body TEXT NOT NULL, reply_to_id TEXT REFERENCES comments(id), avatar_seed TEXT NOT NULL DEFAULT '', deleted_at TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS likes (id TEXT PRIMARY KEY, content_id TEXT NOT NULL REFERENCES content(id) ON DELETE CASCADE, visitor_id TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE (content_id, visitor_id));
 CREATE TABLE IF NOT EXISTS presence (visitor_id TEXT PRIMARY KEY, last_seen_at TEXT NOT NULL);
@@ -543,7 +544,7 @@ func (s *Store) seed() error {
 	if _, err := s.DB.Exec(`UPDATE content SET summary = 'Questions about the relationship between software and daily life.' WHERE id = 'content_3' AND summary = 'A research notebook for questions that sit between engineering and lived experience.'`); err != nil {
 		return err
 	}
-	if _, err := s.DB.Exec(`INSERT OR IGNORE INTO site_config (id, featured_content_json, navigation_json, sections_json, updated_at) VALUES ('site_1', ?, ?, ?, ?)`, encodeJSON([]model.SiteContentRef{{ID: "content_1", Kind: model.ContentKindArticle}}), encodeJSON([]model.SiteNavigationItem{{Label: "Thoughts", Href: "/thoughts"}, {Label: "Writings", Href: "/writing"}}), encodeJSON(defaultSections), now); err != nil {
+	if _, err := s.DB.Exec(`INSERT OR IGNORE INTO site_config (id, featured_content_json, navigation_json, sections_json, updated_at) VALUES ('site_1', '[]', ?, ?, ?)`, encodeJSON([]model.SiteNavigationItem{{Label: "Thoughts", Href: "/thoughts"}, {Label: "Writings", Href: "/writing"}}), encodeJSON(defaultSections), now); err != nil {
 		return err
 	}
 	seedContent := []struct {
@@ -558,6 +559,10 @@ func (s *Store) seed() error {
 			return err
 		}
 	}
+	// One-time migration: older installs kept archive pins in
+	// site_config.featured_content_json; map those refs into the per-kind
+	// config tables. Fresh installs leave both pins NULL so archives fall
+	// back to the newest published item of their kind.
 	if _, err := s.DB.Exec(`INSERT OR IGNORE INTO thoughts_config (id, featured_thought_id, updated_at)
 		SELECT 'thoughts_1', json_extract(featured.value, '$.id'), ?
 		FROM site_config, json_each(site_config.featured_content_json) AS featured
@@ -567,7 +572,19 @@ func (s *Store) seed() error {
 		LIMIT 1`, now); err != nil {
 		return err
 	}
+	if _, err := s.DB.Exec(`INSERT OR IGNORE INTO writings_config (id, featured_writing_id, updated_at)
+		SELECT 'writings_1', json_extract(featured.value, '$.id'), ?
+		FROM site_config, json_each(site_config.featured_content_json) AS featured
+		WHERE site_config.id = 'site_1'
+			AND json_extract(featured.value, '$.kind') = 'ARTICLE'
+			AND EXISTS (SELECT 1 FROM content WHERE content.id = json_extract(featured.value, '$.id') AND content.kind = 'ARTICLE' AND content.status = 'PUBLISHED')
+		LIMIT 1`, now); err != nil {
+		return err
+	}
 	if _, err := s.DB.Exec(`INSERT OR IGNORE INTO thoughts_config (id, featured_thought_id, updated_at) VALUES ('thoughts_1', NULL, ?)`, now); err != nil {
+		return err
+	}
+	if _, err := s.DB.Exec(`INSERT OR IGNORE INTO writings_config (id, featured_writing_id, updated_at) VALUES ('writings_1', NULL, ?)`, now); err != nil {
 		return err
 	}
 	return nil
@@ -618,9 +635,9 @@ func (s *Store) UpdateProfile(p model.Profile) error {
 }
 
 func (s *Store) GetSiteConfig() (model.SiteConfig, error) {
-	var title, description, footerText, rawSocial, rawFeaturedContent, rawNavigation, rawSections string
+	var title, description, footerText, rawSocial, rawNavigation, rawSections string
 	var commentsEnabled int
-	if err := s.DB.QueryRow(`SELECT title, description, footer_text, social_json, comments_enabled, featured_content_json, navigation_json, sections_json FROM site_config WHERE id = 'site_1'`).Scan(&title, &description, &footerText, &rawSocial, &commentsEnabled, &rawFeaturedContent, &rawNavigation, &rawSections); err != nil {
+	if err := s.DB.QueryRow(`SELECT title, description, footer_text, social_json, comments_enabled, navigation_json, sections_json FROM site_config WHERE id = 'site_1'`).Scan(&title, &description, &footerText, &rawSocial, &commentsEnabled, &rawNavigation, &rawSections); err != nil {
 		return model.SiteConfig{}, err
 	}
 	var config model.SiteConfig
@@ -629,9 +646,6 @@ func (s *Store) GetSiteConfig() (model.SiteConfig, error) {
 	config.Footer = footerText
 	config.CommentsEnabled = commentsEnabled != 0
 	if err := json.Unmarshal([]byte(rawSocial), &config.Social); err != nil {
-		return model.SiteConfig{}, err
-	}
-	if err := json.Unmarshal([]byte(rawFeaturedContent), &config.FeaturedContent); err != nil {
 		return model.SiteConfig{}, err
 	}
 	if err := json.Unmarshal([]byte(rawNavigation), &config.Navigation); err != nil {
@@ -644,7 +658,7 @@ func (s *Store) GetSiteConfig() (model.SiteConfig, error) {
 }
 
 func (s *Store) UpdateSiteConfig(config model.SiteConfig) error {
-	_, err := s.DB.Exec(`UPDATE site_config SET title = ?, description = ?, footer_text = ?, social_json = ?, comments_enabled = ?, featured_content_json = ?, navigation_json = ?, sections_json = ?, updated_at = ? WHERE id = 'site_1'`, config.Title, config.Description, config.Footer, encodeJSON(config.Social), boolToInt(config.CommentsEnabled), encodeJSON(config.FeaturedContent), encodeJSON(config.Navigation), encodeJSON(config.Sections), time.Now().UTC().Format(time.RFC3339))
+	_, err := s.DB.Exec(`UPDATE site_config SET title = ?, description = ?, footer_text = ?, social_json = ?, comments_enabled = ?, navigation_json = ?, sections_json = ?, updated_at = ? WHERE id = 'site_1'`, config.Title, config.Description, config.Footer, encodeJSON(config.Social), boolToInt(config.CommentsEnabled), encodeJSON(config.Navigation), encodeJSON(config.Sections), time.Now().UTC().Format(time.RFC3339))
 	return err
 }
 
@@ -667,6 +681,21 @@ func (s *Store) GetThoughtConfig() (model.ThoughtConfig, error) {
 
 func (s *Store) UpdateThoughtConfig(featuredThoughtID *string) error {
 	_, err := s.DB.Exec(`UPDATE thoughts_config SET featured_thought_id = ?, updated_at = ? WHERE id = 'thoughts_1'`, featuredThoughtID, time.Now().UTC().Format(time.RFC3339))
+	return err
+}
+
+func (s *Store) GetWritingConfig() (model.WritingConfig, error) {
+	var config model.WritingConfig
+	var featuredWritingID sql.NullString
+	err := s.DB.QueryRow(`SELECT featured_writing_id, updated_at FROM writings_config WHERE id = 'writings_1'`).Scan(&featuredWritingID, &config.UpdatedAt)
+	if featuredWritingID.Valid {
+		config.FeaturedWritingID = &featuredWritingID.String
+	}
+	return config, err
+}
+
+func (s *Store) UpdateWritingConfig(featuredWritingID *string) error {
+	_, err := s.DB.Exec(`UPDATE writings_config SET featured_writing_id = ?, updated_at = ? WHERE id = 'writings_1'`, featuredWritingID, time.Now().UTC().Format(time.RFC3339))
 	return err
 }
 
@@ -824,37 +853,75 @@ func (s *Store) Tags(kind model.ContentKind) ([]model.TagSummary, error) {
 }
 
 func (s *Store) ThoughtArchive(requestedPage, pageSize int, tags []string, search string) (model.ThoughtArchive, error) {
-	config, err := s.GetThoughtConfig()
+	featured, excludedID, err := s.archivedFeatured(model.ContentKindThought)
 	if err != nil {
 		return model.ThoughtArchive{}, err
 	}
+	items, pagination, err := s.archivedPage(model.ContentKindThought, excludedID, requestedPage, pageSize, tags, search, "", nil)
+	if err != nil {
+		return model.ThoughtArchive{}, err
+	}
+	return model.ThoughtArchive{Featured: featured, Data: items, Pagination: pagination}, nil
+}
 
+func (s *Store) WritingArchive(requestedPage, pageSize int, tags []string, search, sort string, aiAssisted *bool) (model.WritingArchive, error) {
+	featured, excludedID, err := s.archivedFeatured(model.ContentKindArticle)
+	if err != nil {
+		return model.WritingArchive{}, err
+	}
+	items, pagination, err := s.archivedPage(model.ContentKindArticle, excludedID, requestedPage, pageSize, tags, search, sort, aiAssisted)
+	if err != nil {
+		return model.WritingArchive{}, err
+	}
+	return model.WritingArchive{Featured: featured, Data: items, Pagination: pagination}, nil
+}
+
+// archivedFeatured resolves the configured pin for an archive; a missing or
+// withdrawn pin falls back to the newest published item of the same kind.
+func (s *Store) archivedFeatured(kind model.ContentKind) (*model.Content, string, error) {
+	var featuredID *string
+	if kind == model.ContentKindThought {
+		config, err := s.GetThoughtConfig()
+		if err != nil {
+			return nil, "", err
+		}
+		featuredID = config.FeaturedThoughtID
+	} else {
+		config, err := s.GetWritingConfig()
+		if err != nil {
+			return nil, "", err
+		}
+		featuredID = config.FeaturedWritingID
+	}
 	var featured *model.Content
-	if config.FeaturedThoughtID != nil {
-		item, readErr := s.GetContentByID(*config.FeaturedThoughtID, false)
-		if readErr == nil && item.Kind == model.ContentKindThought {
+	if featuredID != nil {
+		item, readErr := s.GetContentByID(*featuredID, false)
+		if readErr == nil && item.Kind == kind {
 			item.Body = ""
 			featured = &item
 		} else if readErr != nil && !errors.Is(readErr, sql.ErrNoRows) {
-			return model.ThoughtArchive{}, readErr
+			return nil, "", readErr
 		}
 	}
 	if featured == nil {
-		list, listErr := s.ListContent(false, ContentListOptions{Kinds: []model.ContentKind{model.ContentKindThought}, Limit: 1})
+		list, listErr := s.ListContent(false, ContentListOptions{Kinds: []model.ContentKind{kind}, Limit: 1})
 		if listErr != nil {
-			return model.ThoughtArchive{}, listErr
+			return nil, "", listErr
 		}
 		if len(list.Items) > 0 {
 			featured = &list.Items[0]
 		}
 	}
-
 	excludedID := ""
 	if featured != nil {
 		excludedID = featured.ID
 	}
-	where := `WHERE kind = 'THOUGHT' AND status = 'PUBLISHED' AND (? = '' OR id != ?)`
-	args := []any{excludedID, excludedID}
+	return featured, excludedID, nil
+}
+
+func (s *Store) archivedPage(kind model.ContentKind, excludedID string, requestedPage, pageSize int, tags []string, search, sort string, aiAssisted *bool) ([]model.Content, model.PagePagination, error) {
+	where := `WHERE kind = ? AND status = 'PUBLISHED' AND (? = '' OR id != ?)`
+	args := []any{kind, excludedID, excludedID}
 	if len(tags) > 0 {
 		placeholders := make([]string, len(tags))
 		for i, tag := range tags {
@@ -868,9 +935,13 @@ func (s *Store) ThoughtArchive(requestedPage, pageSize int, tags []string, searc
 		term := "%" + strings.ToLower(search) + "%"
 		args = append(args, term, term, term)
 	}
+	if aiAssisted != nil {
+		where += ` AND COALESCE(json_extract(metadata_json, '$.aiAssisted'), 0) IN (1, 'true') = ?`
+		args = append(args, *aiAssisted)
+	}
 	var totalItems int
 	if err := s.DB.QueryRow(`SELECT COUNT(*) FROM content `+where, args...).Scan(&totalItems); err != nil {
-		return model.ThoughtArchive{}, err
+		return nil, model.PagePagination{}, err
 	}
 	totalPages := (totalItems + pageSize - 1) / pageSize
 	if totalPages < 1 {
@@ -883,32 +954,29 @@ func (s *Store) ThoughtArchive(requestedPage, pageSize int, tags []string, searc
 	if page > totalPages {
 		page = totalPages
 	}
-
+	order := `COALESCE(published_at, created_at) DESC, id DESC`
+	switch sort {
+	case "oldest":
+		order = `COALESCE(published_at, created_at) ASC, id ASC`
+	case "updated":
+		order = `updated_at DESC, id DESC`
+	}
 	query := `SELECT id, kind, status, slug, title, summary, body, tags_json, metadata_json, published_at, created_at, updated_at, version, view_count, (SELECT COUNT(*) FROM likes WHERE content_id = content.id), (SELECT COUNT(*) FROM comments WHERE content_id = content.id AND deleted_at = '')
 		FROM content ` + where + `
-		ORDER BY COALESCE(published_at, created_at) DESC, id DESC
+		ORDER BY ` + order + `
 		LIMIT ? OFFSET ?`
 	rows, err := s.DB.Query(query, append(args, pageSize, (page-1)*pageSize)...)
 	if err != nil {
-		return model.ThoughtArchive{}, err
+		return nil, model.PagePagination{}, err
 	}
 	items, err := scanContentRows(rows)
 	if err != nil {
-		return model.ThoughtArchive{}, err
+		return nil, model.PagePagination{}, err
 	}
 	for i := range items {
 		items[i].Body = ""
 	}
-	return model.ThoughtArchive{
-		Featured: featured,
-		Data:     items,
-		Pagination: model.PagePagination{
-			Page:       page,
-			PageSize:   pageSize,
-			TotalItems: totalItems,
-			TotalPages: totalPages,
-		},
-	}, nil
+	return items, model.PagePagination{Page: page, PageSize: pageSize, TotalItems: totalItems, TotalPages: totalPages}, nil
 }
 
 func (s *Store) GetContent(slug string, includeDrafts bool) (model.Content, error) {

@@ -56,6 +56,12 @@ CREATE TABLE IF NOT EXISTS thoughts_config (
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS writings_config (
+    id TEXT PRIMARY KEY,
+    featured_writing_id TEXT REFERENCES content(id) ON DELETE SET NULL,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS comments (
     id TEXT PRIMARY KEY,
     content_id TEXT NOT NULL REFERENCES content(id),

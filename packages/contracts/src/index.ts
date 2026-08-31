@@ -35,14 +35,18 @@ export interface AuditEvent { id: string; eventName: string; resourceType: strin
 export interface AuditEventCollection { events: AuditEvent[]; pagination: PagePagination }
 export interface AuditQuery { page?: number; pageSize?: number; q?: string }
 export type HomepageSection = "PROFILE" | "BACKGROUND" | "RECENT_CONTENT" | "UPDATES" | "SERIES" | "CONTACT"
-export interface SiteComposition { profile: { id: string }; title: string; description: string; footer: string; social: SiteNavigationItem[]; commentsEnabled: boolean; featuredContent: Content[]; navigation: SiteNavigationItem[]; sections: HomepageSection[] }
-export interface SiteConfig { title: string; description: string; footer: string; social: SiteNavigationItem[]; commentsEnabled: boolean; featuredContent: Array<{ id: string; kind: ContentKind }>; navigation: SiteNavigationItem[]; sections: HomepageSection[] }
+export interface SiteComposition { profile: { id: string }; title: string; description: string; footer: string; social: SiteNavigationItem[]; commentsEnabled: boolean; navigation: SiteNavigationItem[]; sections: HomepageSection[] }
+export interface SiteConfig { title: string; description: string; footer: string; social: SiteNavigationItem[]; commentsEnabled: boolean; navigation: SiteNavigationItem[]; sections: HomepageSection[] }
 export type SiteConfigInput = SiteConfig
 export interface Pagination { nextCursor: string | null; hasMore: boolean; page?: number; pageSize?: number; totalItems?: number; totalPages?: number }
 export interface Collection<T> { data: T[]; pagination: Pagination }
 export interface PagePagination { page: number; pageSize: number; totalItems: number; totalPages: number }
 export interface ThoughtArchive { featured: Extract<Content, { kind: "THOUGHT" }> | null; data: Array<Extract<Content, { kind: "THOUGHT" }>>; pagination: PagePagination }
 export interface ThoughtArchiveQuery { page?: number; limit?: number; tag?: string | string[]; q?: string }
+export interface WritingArchive { featured: Extract<Content, { kind: "ARTICLE" }> | null; data: Array<Extract<Content, { kind: "ARTICLE" }>>; pagination: PagePagination }
+export interface WritingArchiveQuery { page?: number; limit?: number; tag?: string | string[]; q?: string; sort?: ContentSort; aiAssisted?: boolean }
+export interface WritingConfig { featuredWritingId: string | null; updatedAt: string }
+export interface WritingConfigInput { featuredWritingId: string | null }
 export interface ThoughtConfig { featuredThoughtId: string | null; updatedAt: string }
 export interface ThoughtConfigInput { featuredThoughtId: string | null }
 export interface ContentQuery { kind?: ContentKind | ContentKind[]; tag?: string | string[]; q?: string; cursor?: string; limit?: number; page?: number; sort?: ContentSort; aiAssisted?: boolean; skipFirst?: boolean }

@@ -1,4 +1,4 @@
-import type { AdminComment, AdminCommentQuery, AdminContent, AdminContentQuery, AdminOverview, AdminStats, AnalyticsViews, AnalyticsViewsQuery, AuditEventCollection, AuditQuery, Collection, Comment, CommentQuery, Content, ContentDetail, ContentInput, ContentQuery, CreateCommentInput, HealthStatus, LikeSummary, LoginInput, LoginResponse, Media, MediaQuery, PresenceStatus, Profile, ProfileInput, SiteComposition, SiteConfig, SiteConfigInput, Stats, SystemStatus, TagQuery, TagSummary, ThoughtArchive, ThoughtArchiveQuery, ThoughtConfig, ThoughtConfigInput, UpdateContentInput } from "@manifold/contracts";
+import type { AdminComment, AdminCommentQuery, AdminContent, AdminContentQuery, AdminOverview, AdminStats, AnalyticsViews, AnalyticsViewsQuery, AuditEventCollection, AuditQuery, Collection, Comment, CommentQuery, Content, ContentDetail, ContentInput, ContentQuery, CreateCommentInput, HealthStatus, LikeSummary, LoginInput, LoginResponse, Media, MediaQuery, PresenceStatus, Profile, ProfileInput, SiteComposition, SiteConfig, SiteConfigInput, Stats, SystemStatus, TagQuery, TagSummary, ThoughtArchive, ThoughtArchiveQuery, ThoughtConfig, ThoughtConfigInput, UpdateContentInput, WritingArchive, WritingArchiveQuery, WritingConfig, WritingConfigInput } from "@manifold/contracts";
 
 export class ApiError extends Error {
 	readonly status: number;
@@ -38,6 +38,7 @@ export class ManifoldClient {
 	feed(query?: ContentQuery) { return this.request<Collection<Content>>(this.withQuery("/api/v1/feed", query)); }
 	content(query?: ContentQuery) { return this.request<Collection<Content>>(this.withQuery("/api/v1/content", query)); }
 	thoughts(query?: ThoughtArchiveQuery) { return this.request<ThoughtArchive>(this.withQuery("/api/v1/thoughts", query)); }
+	writings(query?: WritingArchiveQuery) { return this.request<WritingArchive>(this.withQuery("/api/v1/writings", query)); }
 	tags(query?: TagQuery) { return this.request<Collection<TagSummary>>(this.withQuery("/api/v1/tags", query)); }
 	contentBySlug(slug: string, options?: { trackView?: boolean; referrer?: string; visitorId?: string }) {
 		const headers = options?.visitorId ? { "X-Visitor-ID": options.visitorId } : undefined;
@@ -58,6 +59,8 @@ export class ManifoldClient {
 	updateSite(input: SiteConfigInput) { return this.request<SiteConfig>("/api/v1/admin/site", { method: "PATCH", body: input }); }
 	adminThoughtConfig() { return this.request<ThoughtConfig>("/api/v1/admin/thoughts/config"); }
 	updateThoughtConfig(input: ThoughtConfigInput) { return this.request<ThoughtConfig>("/api/v1/admin/thoughts/config", { method: "PATCH", body: input }); }
+	adminWritingConfig() { return this.request<WritingConfig>("/api/v1/admin/writings/config"); }
+	updateWritingConfig(input: WritingConfigInput) { return this.request<WritingConfig>("/api/v1/admin/writings/config", { method: "PATCH", body: input }); }
 	adminContent(query?: AdminContentQuery) { return this.request<Collection<AdminContent>>(this.withQuery("/api/v1/admin/content", query)); }
 	adminContentItem(id: string) { return this.request<AdminContent>(`/api/v1/admin/content/${encodeURIComponent(id)}`); }
 	createContent(input: ContentInput) { return this.request<AdminContent>("/api/v1/admin/content", { method: "POST", body: input }); }

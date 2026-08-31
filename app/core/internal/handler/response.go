@@ -82,7 +82,7 @@ func newRouter(cfg config.Config, database *store.Store, auditEvents events.Audi
 		panic(err)
 	}
 	h := &apiHandler{cfg: cfg, store: database, auth: authService, validate: validator.New(), contentCache: cache.NewContentCache(cfg.ContentCacheTTL), statsCache: cache.NewStatsCache(cfg.StatsCacheTTL), overviewCache: cache.NewOverviewCache(cfg.StatsCacheTTL), auditEvents: auditEvents}
-	h.prewarmFeaturedContent()
+	h.prewarmPinnedContent()
 	router := chi.NewRouter()
 	router.Use(requestIDMiddleware)
 	router.Use(cors.Handler(cors.Options{
@@ -100,6 +100,7 @@ func newRouter(cfg config.Config, database *store.Store, auditEvents events.Audi
 		api.Post("/presence", h.presence)
 		api.Get("/content", h.listContent)
 		api.Get("/thoughts", h.thoughts)
+		api.Get("/writings", h.writings)
 		api.Get("/tags", h.tags)
 		api.Get("/content/{slug}", h.getContent)
 		api.Get("/media/{id}", h.getMedia)
@@ -117,6 +118,8 @@ func newRouter(cfg config.Config, database *store.Store, auditEvents events.Audi
 			admin.Patch("/site", h.adminUpdateSite)
 			admin.Get("/thoughts/config", h.adminThoughtConfig)
 			admin.Patch("/thoughts/config", h.adminUpdateThoughtConfig)
+			admin.Get("/writings/config", h.adminWritingConfig)
+			admin.Patch("/writings/config", h.adminUpdateWritingConfig)
 			admin.Get("/content", h.adminListContent)
 			admin.Get("/content/{id}", h.adminGetContent)
 			admin.Post("/content", h.adminCreateContent)
@@ -141,19 +144,27 @@ func newRouter(cfg config.Config, database *store.Store, auditEvents events.Audi
 	return router
 }
 
-func (h *apiHandler) prewarmFeaturedContent() {
-	config, err := h.store.GetSiteConfig()
-	if err != nil {
-		slog.Warn("content_cache_prewarm_failed", "reason", "site_config_unavailable", "error", err)
-		return
+// prewarmPinnedContent warms the content cache with the pinned writing and
+// thought so archive landing pages start warm; missing pins are skipped.
+func (h *apiHandler) prewarmPinnedContent() {
+	pinnedIDs := []string{}
+	if config, err := h.store.GetWritingConfig(); err != nil {
+		slog.Warn("content_cache_prewarm_failed", "reason", "writings_config_unavailable", "error", err)
+	} else if config.FeaturedWritingID != nil {
+		pinnedIDs = append(pinnedIDs, *config.FeaturedWritingID)
 	}
-	for _, reference := range config.FeaturedContent {
-		content, err := h.store.GetContentByID(reference.ID, false)
+	if config, err := h.store.GetThoughtConfig(); err != nil {
+		slog.Warn("content_cache_prewarm_failed", "reason", "thoughts_config_unavailable", "error", err)
+	} else if config.FeaturedThoughtID != nil {
+		pinnedIDs = append(pinnedIDs, *config.FeaturedThoughtID)
+	}
+	for _, id := range pinnedIDs {
+		content, err := h.store.GetContentByID(id, false)
 		if errors.Is(err, sql.ErrNoRows) {
 			continue
 		}
 		if err != nil {
-			slog.Warn("content_cache_prewarm_failed", "contentId", reference.ID, "error", err)
+			slog.Warn("content_cache_prewarm_failed", "contentId", id, "error", err)
 			continue
 		}
 		h.contentCache.Set(content.Slug, content)
@@ -211,14 +222,6 @@ func (h *apiHandler) site(w http.ResponseWriter, _ *http.Request) {
 		WriteError(w, http.StatusInternalServerError, "SITE_UNAVAILABLE", "Site configuration is unavailable.")
 		return
 	}
-	featured := make([]model.Content, 0, len(config.FeaturedContent))
-	for _, ref := range config.FeaturedContent {
-		item, err := h.store.GetContentByID(ref.ID, false)
-		if err != nil || item.Status != "PUBLISHED" {
-			continue
-		}
-		featured = append(featured, item)
-	}
 	WriteJSON(w, http.StatusOK, map[string]any{
 		"profile":         map[string]string{"id": "profile_1"},
 		"title":           config.Title,
@@ -226,7 +229,6 @@ func (h *apiHandler) site(w http.ResponseWriter, _ *http.Request) {
 		"footer":          config.Footer,
 		"social":          config.Social,
 		"commentsEnabled": config.CommentsEnabled,
-		"featuredContent": featured,
 		"navigation":      config.Navigation,
 		"sections":        config.Sections,
 	})
@@ -309,6 +311,20 @@ func (h *apiHandler) thoughts(w http.ResponseWriter, r *http.Request) {
 	archive, err := h.store.ThoughtArchive(page, limit, tags, search)
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, "THOUGHTS_UNAVAILABLE", "Thoughts are unavailable.")
+		return
+	}
+	WriteJSON(w, http.StatusOK, archive)
+}
+
+func (h *apiHandler) writings(w http.ResponseWriter, r *http.Request) {
+	page, limit, tags, search, sort, aiAssisted, err := parseWritingArchiveOptions(r)
+	if err != nil {
+		WriteError(w, http.StatusBadRequest, "INVALID_QUERY", err.Error())
+		return
+	}
+	archive, err := h.store.WritingArchive(page, limit, tags, search, sort, aiAssisted)
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, "WRITINGS_UNAVAILABLE", "Writings are unavailable.")
 		return
 	}
 	WriteJSON(w, http.StatusOK, archive)
@@ -608,20 +624,10 @@ func (h *apiHandler) adminUpdateThoughtConfig(w http.ResponseWriter, r *http.Req
 		WriteError(w, http.StatusUnprocessableEntity, "VALIDATION_ERROR", "featuredThoughtId is required and may be null.")
 		return
 	}
-	var featuredThoughtID *string
-	if string(input.FeaturedThoughtID) != "null" {
-		var value string
-		if err := json.Unmarshal(input.FeaturedThoughtID, &value); err != nil || strings.TrimSpace(value) == "" || len(value) > 160 {
-			WriteError(w, http.StatusUnprocessableEntity, "VALIDATION_ERROR", "featuredThoughtId must be a content ID or null.")
-			return
-		}
-		value = strings.TrimSpace(value)
-		content, err := h.store.GetContentByID(value, false)
-		if err != nil || content.Kind != model.ContentKindThought {
-			WriteError(w, http.StatusUnprocessableEntity, "VALIDATION_ERROR", "Featured thought must reference published Thought content.")
-			return
-		}
-		featuredThoughtID = &value
+	featuredThoughtID, err := h.decodePinnedContentID(input.FeaturedThoughtID, model.ContentKindThought)
+	if err != nil {
+		WriteError(w, http.StatusUnprocessableEntity, "VALIDATION_ERROR", err.Error())
+		return
 	}
 	if err := h.store.UpdateThoughtConfig(featuredThoughtID); err != nil {
 		WriteError(w, http.StatusInternalServerError, "THOUGHT_CONFIG_UPDATE_FAILED", "Thought configuration could not be updated.")
@@ -629,6 +635,58 @@ func (h *apiHandler) adminUpdateThoughtConfig(w http.ResponseWriter, r *http.Req
 	}
 	h.audit(r, "thoughts.config.updated", "thoughts_config", "thoughts_1", nil)
 	h.adminThoughtConfig(w, r)
+}
+
+func (h *apiHandler) adminWritingConfig(w http.ResponseWriter, _ *http.Request) {
+	config, err := h.store.GetWritingConfig()
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, "WRITING_CONFIG_UNAVAILABLE", "Writing configuration is unavailable.")
+		return
+	}
+	WriteJSON(w, http.StatusOK, config)
+}
+
+func (h *apiHandler) adminUpdateWritingConfig(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		FeaturedWritingID json.RawMessage `json:"featuredWritingId"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil || len(input.FeaturedWritingID) == 0 {
+		WriteError(w, http.StatusUnprocessableEntity, "VALIDATION_ERROR", "featuredWritingId is required and may be null.")
+		return
+	}
+	featuredWritingID, err := h.decodePinnedContentID(input.FeaturedWritingID, model.ContentKindArticle)
+	if err != nil {
+		WriteError(w, http.StatusUnprocessableEntity, "VALIDATION_ERROR", err.Error())
+		return
+	}
+	if err := h.store.UpdateWritingConfig(featuredWritingID); err != nil {
+		WriteError(w, http.StatusInternalServerError, "WRITING_CONFIG_UPDATE_FAILED", "Writing configuration could not be updated.")
+		return
+	}
+	h.audit(r, "writings.config.updated", "writings_config", "writings_1", nil)
+	h.adminWritingConfig(w, r)
+}
+
+// decodePinnedContentID validates a pin reference: null clears the pin and a
+// non-empty value must point at published content of the expected kind.
+func (h *apiHandler) decodePinnedContentID(raw json.RawMessage, kind model.ContentKind) (*string, error) {
+	if string(raw) == "null" {
+		return nil, nil
+	}
+	var value string
+	if err := json.Unmarshal(raw, &value); err != nil || strings.TrimSpace(value) == "" || len(value) > 160 {
+		return nil, fmt.Errorf("featured id must be a content ID or null")
+	}
+	value = strings.TrimSpace(value)
+	content, err := h.store.GetContentByID(value, false)
+	if err != nil || content.Kind != kind {
+		label := "Thought"
+		if kind == model.ContentKindArticle {
+			label = "Writing"
+		}
+		return nil, fmt.Errorf("Featured %s must reference published %s content.", label, strings.ToLower(label))
+	}
+	return &value, nil
 }
 
 type contentInput struct {
@@ -1261,6 +1319,46 @@ func parseThoughtArchiveOptions(r *http.Request) (page, limit int, tags []string
 		return page, limit, tags, search, fmt.Errorf("q is too long")
 	}
 	return page, limit, tags, search, nil
+}
+
+func parseWritingArchiveOptions(r *http.Request) (page, limit int, tags []string, search, sort string, aiAssisted *bool, err error) {
+	page, limit = 1, 10
+	if rawPage := strings.TrimSpace(r.URL.Query().Get("page")); rawPage != "" {
+		value, parseErr := strconv.Atoi(rawPage)
+		if parseErr != nil || value < 1 {
+			return page, limit, tags, search, sort, aiAssisted, fmt.Errorf("page must be a positive integer")
+		}
+		page = value
+	}
+	if rawLimit := strings.TrimSpace(r.URL.Query().Get("limit")); rawLimit != "" {
+		value, parseErr := strconv.Atoi(rawLimit)
+		if parseErr != nil || value < 1 || value > 50 {
+			return page, limit, tags, search, sort, aiAssisted, fmt.Errorf("limit must be between 1 and 50")
+		}
+		limit = value
+	}
+	tags, err = parseTagFilters(r.URL.Query()["tag"])
+	if err != nil {
+		return page, limit, tags, search, sort, aiAssisted, err
+	}
+	search = strings.TrimSpace(r.URL.Query().Get("q"))
+	if len(search) > 200 {
+		return page, limit, tags, search, sort, aiAssisted, fmt.Errorf("q is too long")
+	}
+	switch rawSort := strings.TrimSpace(r.URL.Query().Get("sort")); rawSort {
+	case "", "newest", "oldest", "updated":
+		sort = rawSort
+	default:
+		return page, limit, tags, search, sort, aiAssisted, fmt.Errorf("sort is invalid")
+	}
+	if rawAiAssisted := strings.TrimSpace(r.URL.Query().Get("aiAssisted")); rawAiAssisted != "" {
+		value, parseErr := strconv.ParseBool(rawAiAssisted)
+		if parseErr != nil {
+			return page, limit, tags, search, sort, aiAssisted, fmt.Errorf("aiAssisted must be a boolean")
+		}
+		aiAssisted = &value
+	}
+	return page, limit, tags, search, sort, aiAssisted, nil
 }
 
 func parseCommentListOptions(r *http.Request) (store.CommentListOptions, error) {

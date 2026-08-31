@@ -1038,6 +1038,9 @@ func TestRouterPrewarmsFeaturedPublishedContent(t *testing.T) {
 	defer database.Close()
 	hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.MinCost)
 	cfg := config.Config{JWTSecret: "test-secret", AdminUsername: "admin", AdminPasswordHash: string(hash), AllowedOrigins: []string{"*"}, AuditEventBuffer: 256}
+	if _, err := database.DB.Exec(`UPDATE writings_config SET featured_writing_id = 'content_1' WHERE id = 'writings_1'`); err != nil {
+		t.Fatal(err)
+	}
 	router, closeRouter := handler.RouterWithLifecycle(cfg, database)
 	defer closeRouter()
 
@@ -1046,7 +1049,7 @@ func TestRouterPrewarmsFeaturedPublishedContent(t *testing.T) {
 	}
 	response := request(t, router, http.MethodGet, "/api/v1/content/designing-boundaries", nil)
 	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"title":"Designing Boundaries"`) {
-		t.Fatalf("expected featured content to be prewarmed, got %d %s", response.Code, response.Body.String())
+		t.Fatalf("expected pinned writing to be prewarmed, got %d %s", response.Code, response.Body.String())
 	}
 }
 
@@ -1291,7 +1294,7 @@ func TestSiteSettingsValidationAndCommentsToggle(t *testing.T) {
 		t.Fatalf("expected invalid sections to be rejected with 422, got %d", invalid.Code)
 	}
 
-	site := adminRequest(t, router, token, http.MethodPatch, "/api/v1/admin/site", `{"title":"Garden","description":"A calm garden.","footer":"Keep notes moving.","social":[{"label":"GitHub","href":"https://github.com/manifold-space/manifold","external":true}],"commentsEnabled":false,"navigation":[{"label":"Thoughts","href":"/thoughts"}],"sections":["PROFILE","CONTACT"],"featuredContent":[{"id":"content_1","kind":"ARTICLE"}]}`)
+	site := adminRequest(t, router, token, http.MethodPatch, "/api/v1/admin/site", `{"title":"Garden","description":"A calm garden.","footer":"Keep notes moving.","social":[{"label":"GitHub","href":"https://github.com/manifold-space/manifold","external":true}],"commentsEnabled":false,"navigation":[{"label":"Thoughts","href":"/thoughts"}],"sections":["PROFILE","CONTACT"]}`)
 	if site.Code != http.StatusOK || !strings.Contains(site.Body.String(), `"commentsEnabled":false`) {
 		t.Fatalf("expected site settings update 200, got %d %s", site.Code, site.Body.String())
 	}
@@ -1319,31 +1322,39 @@ func TestSiteSettingsValidationAndCommentsToggle(t *testing.T) {
 	if len(composition.Social) != 1 || composition.Social[0]["label"] != "GitHub" {
 		t.Fatalf("expected social links to round-trip, got %+v", composition.Social)
 	}
-	if len(composition.FeaturedContent) != 1 || composition.FeaturedContent[0].ID != "content_1" {
-		t.Fatalf("expected featured content to resolve to published content, got %+v", composition.FeaturedContent)
+	if composition.FeaturedContent != nil {
+		t.Fatalf("expected no featuredContent on the public site payload, got %+v", composition.FeaturedContent)
 	}
 
-	draft := adminRequest(t, router, token, http.MethodPost, "/api/v1/admin/content", `{"kind":"ARTICLE","slug":"draft-featured","title":"Draft featured","summary":"Draft.","body":"Draft body.","tags":[]}`)
-	var draftContent struct {
-		ID string `json:"id"`
+	invalidPin := adminRequest(t, router, token, http.MethodPatch, "/api/v1/admin/writings/config", `{"featuredWritingId":"content_2"}`)
+	if invalidPin.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected a THOUGHT id to be rejected as writing pin with 422, got %d %s", invalidPin.Code, invalidPin.Body.String())
 	}
-	if err := json.Unmarshal(draft.Body.Bytes(), &draftContent); err != nil {
-		t.Fatalf("failed to decode draft content: %v", err)
+	writingPin := adminRequest(t, router, token, http.MethodPatch, "/api/v1/admin/writings/config", `{"featuredWritingId":"content_1"}`)
+	if writingPin.Code != http.StatusOK || !strings.Contains(writingPin.Body.String(), `"featuredWritingId":"content_1"`) {
+		t.Fatalf("expected writing pin update 200, got %d %s", writingPin.Code, writingPin.Body.String())
 	}
-	featuredDraft := adminRequest(t, router, token, http.MethodPatch, "/api/v1/admin/site", `{"title":"Garden","description":"","footer":"","social":[],"commentsEnabled":false,"navigation":[{"label":"Thoughts","href":"/thoughts"}],"sections":["PROFILE"],"featuredContent":[{"id":"`+draftContent.ID+`","kind":"ARTICLE"}]}`)
-	if featuredDraft.Code != http.StatusOK {
-		t.Fatalf("expected featured draft reference to be accepted, got %d", featuredDraft.Code)
+	writingArchive := request(t, router, http.MethodGet, "/api/v1/writings?limit=5", nil)
+	if writingArchive.Code != http.StatusOK || !strings.Contains(writingArchive.Body.String(), `"featured":{"id":"content_1"`) {
+		t.Fatalf("expected writings archive to honor the configured pin, got %d %s", writingArchive.Code, writingArchive.Body.String())
 	}
-	publicWithDraft := request(t, router, http.MethodGet, "/api/v1/site", nil)
-	if strings.Contains(publicWithDraft.Body.String(), `"id":"`+draftContent.ID+`"`) {
-		t.Fatalf("expected unpublished featured content to be skipped, got %s", publicWithDraft.Body.String())
+	if strings.Contains(writingArchive.Body.String(), `"featured":{"id":"content_3"`) {
+		t.Fatalf("expected the pinned writing to be excluded from archive pages, got %s", writingArchive.Body.String())
+	}
+	clearPin := adminRequest(t, router, token, http.MethodPatch, "/api/v1/admin/writings/config", `{"featuredWritingId":null}`)
+	if clearPin.Code != http.StatusOK || !strings.Contains(clearPin.Body.String(), `"featuredWritingId":null`) {
+		t.Fatalf("expected writing pin clear 200, got %d %s", clearPin.Code, clearPin.Body.String())
+	}
+	fallbackArchive := request(t, router, http.MethodGet, "/api/v1/writings?limit=5", nil)
+	if fallbackArchive.Code != http.StatusOK || !strings.Contains(fallbackArchive.Body.String(), `"featured":{"id":"content_3"`) {
+		t.Fatalf("expected writings archive to fall back to the newest published writing, got %d %s", fallbackArchive.Code, fallbackArchive.Body.String())
 	}
 
 	disabledComment := request(t, router, http.MethodPost, "/api/v1/content/designing-boundaries/comments", strings.NewReader(`{"authorName":"Guest","body":"Hello"}`))
 	if disabledComment.Code != http.StatusForbidden || !strings.Contains(disabledComment.Body.String(), "COMMENT_DISABLED") {
 		t.Fatalf("expected comments toggle to reject public comments with 403, got %d %s", disabledComment.Code, disabledComment.Body.String())
 	}
-	enabled := adminRequest(t, router, token, http.MethodPatch, "/api/v1/admin/site", `{"title":"Garden","description":"","footer":"","social":[],"commentsEnabled":true,"navigation":[{"label":"Thoughts","href":"/thoughts"}],"sections":["PROFILE"],"featuredContent":[]}`)
+	enabled := adminRequest(t, router, token, http.MethodPatch, "/api/v1/admin/site", `{"title":"Garden","description":"","footer":"","social":[],"commentsEnabled":true,"navigation":[{"label":"Thoughts","href":"/thoughts"}],"sections":["PROFILE"]}`)
 	if enabled.Code != http.StatusOK {
 		t.Fatalf("expected re-enable update 200, got %d", enabled.Code)
 	}
