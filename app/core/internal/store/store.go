@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS likes (id TEXT PRIMARY KEY, content_id TEXT NOT NULL 
 CREATE TABLE IF NOT EXISTS presence (visitor_id TEXT PRIMARY KEY, last_seen_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS audit_events (id TEXT PRIMARY KEY, event_name TEXT NOT NULL, resource_type TEXT NOT NULL, resource_id TEXT NOT NULL DEFAULT '', actor TEXT NOT NULL DEFAULT 'anonymous', request_id TEXT NOT NULL DEFAULT '', trace_id TEXT NOT NULL DEFAULT '', metadata_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS content_view_events (id INTEGER PRIMARY KEY AUTOINCREMENT, content_id TEXT NOT NULL, visitor_id TEXT NOT NULL DEFAULT '', referrer TEXT NOT NULL DEFAULT '', day TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS media (id TEXT PRIMARY KEY, mime TEXT NOT NULL, size INTEGER NOT NULL, sha256 TEXT NOT NULL UNIQUE, filename TEXT NOT NULL DEFAULT '', data BLOB NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE INDEX IF NOT EXISTS idx_content_publication ON content(status, published_at DESC);
 CREATE INDEX IF NOT EXISTS idx_content_kind_publication ON content(kind, status, published_at DESC);
 CREATE INDEX IF NOT EXISTS idx_likes_content ON likes(content_id);
@@ -36,6 +37,7 @@ CREATE INDEX IF NOT EXISTS idx_audit_events_content_views ON audit_events(event_
 CREATE INDEX IF NOT EXISTS idx_view_events_day ON content_view_events(day);
 CREATE INDEX IF NOT EXISTS idx_view_events_content ON content_view_events(content_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_view_events_dedup ON content_view_events(content_id, visitor_id, day) WHERE visitor_id != '';
+CREATE INDEX IF NOT EXISTS idx_media_created_at ON media(created_at DESC);
 `
 
 type Store struct{ DB *sql.DB }

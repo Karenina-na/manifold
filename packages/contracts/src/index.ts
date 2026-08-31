@@ -46,6 +46,8 @@ export interface ThoughtConfigInput { featuredThoughtId: string | null }
 export interface ContentQuery { kind?: ContentKind | ContentKind[]; tag?: string | string[]; q?: string; cursor?: string; limit?: number; page?: number; sort?: ContentSort; aiAssisted?: boolean; skipFirst?: boolean }
 export interface TagQuery { kind?: ContentKind }
 export interface TagSummary { name: string; count: number }
+export interface Media { id: string; url: string; mime: string; size: number; filename: string; createdAt: string }
+export interface MediaQuery { page?: number; pageSize?: number; q?: string }
 export interface AdminContentQuery extends ContentQuery { status?: ContentStatus }
 export interface CommentQuery { cursor?: string; limit?: number; page?: number; q?: string }
 export interface CreateCommentInput { authorName?: string; authorUrl?: string; body: string; replyToId?: string; avatarSeed?: string }

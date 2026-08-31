@@ -16,6 +16,8 @@ type Config struct {
 	ContentCacheTTL   time.Duration `env:"CONTENT_CACHE_TTL" envDefault:"30s"`
 	StatsCacheTTL     time.Duration `env:"STATS_CACHE_TTL" envDefault:"30s"`
 	AuditEventBuffer  int           `env:"AUDIT_EVENT_BUFFER" envDefault:"256"`
+	MediaMaxBytes     int64         `env:"MEDIA_MAX_BYTES" envDefault:"5242880"`
+	PublicURL         string        `env:"PUBLIC_URL" envDefault:""`
 }
 
 func Load() (Config, error) {

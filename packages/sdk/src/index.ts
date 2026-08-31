@@ -1,4 +1,4 @@
-import type { AdminContent, AdminContentQuery, AdminOverview, AdminStats, AnalyticsViews, AnalyticsViewsQuery, AuditEventCollection, AuditQuery, Collection, Comment, CommentQuery, Content, ContentDetail, ContentInput, ContentQuery, CreateCommentInput, HealthStatus, LikeSummary, LoginInput, LoginResponse, PresenceStatus, Profile, ProfileInput, SiteComposition, SiteConfig, SiteConfigInput, Stats, SystemStatus, TagQuery, TagSummary, ThoughtArchive, ThoughtArchiveQuery, ThoughtConfig, ThoughtConfigInput, UpdateContentInput } from "@manifold/contracts";
+import type { AdminContent, AdminContentQuery, AdminOverview, AdminStats, AnalyticsViews, AnalyticsViewsQuery, AuditEventCollection, AuditQuery, Collection, Comment, CommentQuery, Content, ContentDetail, ContentInput, ContentQuery, CreateCommentInput, HealthStatus, LikeSummary, LoginInput, LoginResponse, Media, MediaQuery, PresenceStatus, Profile, ProfileInput, SiteComposition, SiteConfig, SiteConfigInput, Stats, SystemStatus, TagQuery, TagSummary, ThoughtArchive, ThoughtArchiveQuery, ThoughtConfig, ThoughtConfigInput, UpdateContentInput } from "@manifold/contracts";
 
 export class ApiError extends Error {
 	readonly status: number;
@@ -72,6 +72,9 @@ export class ManifoldClient {
 	adminAnalyticsViews(query?: AnalyticsViewsQuery) { return this.request<AnalyticsViews>(this.withQuery("/api/v1/admin/analytics/views", query)); }
 	adminSystem() { return this.request<SystemStatus>("/api/v1/admin/system"); }
 	adminAudit(query?: AuditQuery) { return this.request<AuditEventCollection>(this.withQuery("/api/v1/admin/audit", query)); }
+	listMedia(query?: MediaQuery) { return this.request<Collection<Media>>(this.withQuery("/api/v1/admin/media", query)); }
+	uploadMedia(blob: Blob, filename: string) { return this.request<Media>(this.withQuery("/api/v1/admin/media", { filename }), { method: "POST", body: blob }); }
+	deleteMedia(id: string) { return this.request<void>(`/api/v1/admin/media/${encodeURIComponent(id)}`, { method: "DELETE" }); }
 
 	private withQuery(path: string, query?: object) {
 		if (!query) return path;
@@ -87,10 +90,15 @@ export class ManifoldClient {
 	private async request<T>(path: string, options: { method?: string; body?: unknown; headers?: Record<string, string> } = {}): Promise<T> {
 		const headers = new Headers({ Accept: "application/json" });
 		headers.set("X-Trace-ID", createTraceId());
-		if (options.body !== undefined) headers.set("Content-Type", "application/json");
+		if (options.body instanceof Blob) {
+			// Binary uploads pass the Blob through untouched; Core sniffs the
+			// content type server-side, so only forward it when the Blob has one.
+			if (options.body.type) headers.set("Content-Type", options.body.type);
+		} else if (options.body !== undefined) headers.set("Content-Type", "application/json");
 		if (this.token) headers.set("Authorization", `Bearer ${this.token}`);
 		for (const [key, value] of Object.entries(options.headers ?? {})) headers.set(key, value);
-		const response = await this.fetcher(`${this.baseUrl}${path}`, { method: options.method ?? "GET", headers, body: options.body === undefined ? undefined : JSON.stringify(options.body) });
+		const body = options.body === undefined ? undefined : options.body instanceof Blob ? options.body : JSON.stringify(options.body);
+		const response = await this.fetcher(`${this.baseUrl}${path}`, { method: options.method ?? "GET", headers, body });
 		if (!response.ok) {
 			const body = await response.json().catch(() => undefined) as { error?: { code?: string; message?: string; details?: unknown; requestId?: string; traceId?: string } } | undefined;
 			throw new ApiError(response.status, body?.error?.code ?? "REQUEST_FAILED", body?.error?.message ?? `Request failed with status ${response.status}`, body?.error?.details, body?.error?.requestId, body?.error?.traceId ?? response.headers.get("X-Trace-ID") ?? undefined);

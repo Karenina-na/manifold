@@ -102,6 +102,7 @@ func newRouter(cfg config.Config, database *store.Store, auditEvents events.Audi
 		api.Get("/thoughts", h.thoughts)
 		api.Get("/tags", h.tags)
 		api.Get("/content/{slug}", h.getContent)
+		api.Get("/media/{id}", h.getMedia)
 		api.Get("/content/{slug}/comments", h.listPublicComments)
 		api.Post("/content/{slug}/comments", h.createComment)
 		api.Get("/content/{slug}/likes", h.getLikes)
@@ -131,6 +132,9 @@ func newRouter(cfg config.Config, database *store.Store, auditEvents events.Audi
 			admin.Get("/analytics/views", h.adminAnalyticsViews)
 			admin.Get("/system", h.adminSystem)
 			admin.Get("/audit", h.adminAudit)
+			admin.Get("/media", h.adminListMedia)
+			admin.Post("/media", h.adminUploadMedia)
+			admin.Delete("/media/{id}", h.adminDeleteMedia)
 		})
 	})
 	return router

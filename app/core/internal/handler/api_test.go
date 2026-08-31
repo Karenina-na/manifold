@@ -1,6 +1,8 @@
 package handler_test
 
 import (
+	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -1361,5 +1363,119 @@ func TestAdminOverviewAndAnalytics(t *testing.T) {
 	}
 	if page2.Events[0].ID == events.Events[0].ID {
 		t.Fatalf("expected page 2 to start with a different event than page 1, both %s", page2.Events[0].ID)
+	}
+}
+
+func TestMediaLifecycle(t *testing.T) {
+	router := newTestRouter(t)
+	token := adminToken(t, router)
+
+	png, err := base64.StdEncoding.DecodeString("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if unauthorized := request(t, router, http.MethodPost, "/api/v1/admin/media?filename=a.png", bytes.NewReader(png)); unauthorized.Code != http.StatusUnauthorized {
+		t.Fatalf("expected unauthorized media upload, got %d", unauthorized.Code)
+	}
+
+	uploaded := adminRequest(t, router, token, http.MethodPost, "/api/v1/admin/media?filename=probe.png", string(png))
+	if uploaded.Code != http.StatusCreated {
+		t.Fatalf("expected media upload to be created, got %d %s", uploaded.Code, uploaded.Body.String())
+	}
+	var media struct {
+		ID   string `json:"id"`
+		URL  string `json:"url"`
+		Mime string `json:"mime"`
+		Size int    `json:"size"`
+	}
+	if err := json.Unmarshal(uploaded.Body.Bytes(), &media); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(media.ID, "media_") || !strings.HasPrefix(media.URL, "http://example.com/api/v1/media/") || media.Mime != "image/png" || media.Size != len(png) {
+		t.Fatalf("unexpected media payload: %+v", media)
+	}
+
+	retrieved := request(t, router, http.MethodGet, "/api/v1/media/"+media.ID, nil)
+	if retrieved.Code != http.StatusOK || retrieved.Header().Get("Content-Type") != "image/png" || !strings.Contains(retrieved.Header().Get("Cache-Control"), "immutable") {
+		t.Fatalf("expected served image with cache headers, got %d %v", retrieved.Code, retrieved.Header())
+	}
+	if !bytes.Equal(retrieved.Body.Bytes(), png) {
+		t.Fatal("expected served bytes to match the upload")
+	}
+	etag := retrieved.Header().Get("ETag")
+	if etag == "" {
+		t.Fatal("expected an ETag on served media")
+	}
+
+	conditional := httptest.NewRequest(http.MethodGet, "/api/v1/media/"+media.ID, nil)
+	conditional.Header.Set("If-None-Match", etag)
+	conditionalRecorder := httptest.NewRecorder()
+	router.ServeHTTP(conditionalRecorder, conditional)
+	if conditionalRecorder.Code != http.StatusNotModified {
+		t.Fatalf("expected 304 for matching ETag, got %d", conditionalRecorder.Code)
+	}
+
+	reuploaded := adminRequest(t, router, token, http.MethodPost, "/api/v1/admin/media?filename=again.png", string(png))
+	if reuploaded.Code != http.StatusCreated {
+		t.Fatalf("expected dedup upload to succeed, got %d", reuploaded.Code)
+	}
+	var deduped struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(reuploaded.Body.Bytes(), &deduped); err != nil {
+		t.Fatal(err)
+	}
+	if deduped.ID != media.ID {
+		t.Fatalf("expected identical bytes to dedupe to the same media id, got %s vs %s", deduped.ID, media.ID)
+	}
+
+	if rejected := adminRequest(t, router, token, http.MethodPost, "/api/v1/admin/media?filename=x.txt", "plain text not an image"); rejected.Code != http.StatusUnsupportedMediaType {
+		t.Fatalf("expected non-image upload to be rejected, got %d", rejected.Code)
+	}
+
+	listed := adminRequest(t, router, token, http.MethodGet, "/api/v1/admin/media", "")
+	if listed.Code != http.StatusOK {
+		t.Fatalf("expected media list, got %d %s", listed.Code, listed.Body.String())
+	}
+	var list struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+		Pagination struct {
+			TotalItems int `json:"totalItems"`
+		} `json:"pagination"`
+	}
+	if err := json.Unmarshal(listed.Body.Bytes(), &list); err != nil {
+		t.Fatal(err)
+	}
+	if list.Pagination.TotalItems != 1 || len(list.Data) != 1 || list.Data[0].ID != media.ID {
+		t.Fatalf("expected the deduped media to be listed once, got %+v", list.Pagination)
+	}
+
+	deleted := adminRequest(t, router, token, http.MethodDelete, "/api/v1/admin/media/"+media.ID, "")
+	if deleted.Code != http.StatusNoContent {
+		t.Fatalf("expected media deletion, got %d %s", deleted.Code, deleted.Body.String())
+	}
+	if gone := request(t, router, http.MethodGet, "/api/v1/media/"+media.ID, nil); gone.Code != http.StatusNotFound {
+		t.Fatalf("expected deleted media to be gone, got %d", gone.Code)
+	}
+}
+
+func TestMediaUploadSizeLimit(t *testing.T) {
+	database, err := store.Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.MinCost)
+	cfg := config.Config{JWTSecret: "test-secret", AdminUsername: "admin", AdminPasswordHash: string(hash), AllowedOrigins: []string{"*"}, AuditEventBuffer: 256, MediaMaxBytes: 8}
+	router, closeRouter := handler.RouterWithLifecycle(cfg, database)
+	t.Cleanup(closeRouter)
+
+	token := adminToken(t, router)
+	oversize := adminRequest(t, router, token, http.MethodPost, "/api/v1/admin/media?filename=big.png", strings.Repeat("a", 64))
+	if oversize.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("expected oversize upload to be rejected, got %d %s", oversize.Code, oversize.Body.String())
 	}
 }

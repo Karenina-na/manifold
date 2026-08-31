@@ -29,7 +29,7 @@ const page = await client.content({ kind: "ARTICLE", limit: 20 })
 1. 以 `baseUrl + path` 组合 URL。
 2. 设置 `Accept: application/json`。
 3. 生成并发送 `X-Trace-ID`。
-4. 有 body 时设置 `Content-Type: application/json` 并 `JSON.stringify`。
+4. 有 body 时设置 `Content-Type: application/json` 并 `JSON.stringify`；body 为 `Blob` 时按二进制透传（仅当 Blob 携带类型时设置 `Content-Type`）。
 5. 有 token 时设置 `Authorization: Bearer <token>`。
 6. 将数组 query 参数以逗号连接，跳过 `undefined`、`null` 和空字符串。
 7. 非 2xx 解析 Core 的 `{ error: ... }`；204 返回 `undefined`；其他成功响应解析 JSON。
@@ -65,6 +65,9 @@ const page = await client.content({ kind: "ARTICLE", limit: 20 })
 | `adminAnalyticsViews(query?)` | GET | `/api/v1/admin/analytics/views` | `AnalyticsViews` |
 | `adminSystem()` | GET | `/api/v1/admin/system` | `SystemStatus` |
 | `adminAudit(query?)` | GET | `/api/v1/admin/audit` | `AuditEventCollection`（服务端分页：`page`/`pageSize`/`q` + `pagination`） |
+| `listMedia(query?)` | GET | `/api/v1/admin/media` | `Collection<Media>`（服务端分页：`page`/`pageSize`/`q`） |
+| `uploadMedia(blob, filename)` | POST | `/api/v1/admin/media?filename=…` | `Media`（二进制 body，Core 按 201 返回含绝对 `url`） |
+| `deleteMedia(id)` | DELETE | `/api/v1/admin/media/{id}` | 204 |
 | `adminProfile()` / `updateProfile(input)` | GET/PATCH | `/api/v1/admin/profile` | `Profile` |
 | `adminSite()` / `updateSite(input)` | GET/PATCH | `/api/v1/admin/site` | `SiteConfig` |
 | `adminThoughtConfig()` / `updateThoughtConfig(input)` | GET/PATCH | `/api/v1/admin/thoughts/config` | `ThoughtConfig` |

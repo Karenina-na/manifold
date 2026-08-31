@@ -28,6 +28,7 @@ app/core JSON <--> packages/contracts <--> packages/sdk <--> Web / Admin
 - `ThoughtArchive` / `ThoughtArchiveQuery`：Core 计算的置顶 Thought、非置顶归档页和页码参数；`ThoughtArchiveQuery` 额外接受 `tag`/`q`，只过滤时间轴，不影响置顶。`tag` 支持单值或多值（`string[]`），多值按 OR（命中任一标签）过滤。
 - `ThoughtConfig` / `ThoughtConfigInput`：可空 `featuredThoughtId` 的 Admin 配置读写契约。
 - `TagQuery` / `TagSummary`：`/api/v1/tags` 的可选 `kind` 参数和 `{ name, count }` 聚合项。
+- `Media` / `MediaQuery`：管理端上传的媒体对象（`url` 为绝对地址，写入 Markdown 正文使用）与媒体库列表参数（`page`/`pageSize`/`q` 按文件名过滤）。
 
 Article 的 `ArticleMetadata` 字段：
 
