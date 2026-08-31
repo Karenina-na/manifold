@@ -274,7 +274,7 @@ async function main() {
     if (!metadataStyles.visible || metadataStyles.markerCount < 4 || metadataStyles.writingMode !== 'vertical-rl' || !metadataStyles.clockText.includes('UTC+8') || (!metadataStyles.maskImage.includes('linear-gradient') && !metadataStyles.webkitMaskImage.includes('linear-gradient'))) {
       throw new Error(`Minimal metadata or particle vignette is missing: ${JSON.stringify(metadataStyles)}`);
     }
-    await web.locator('[data-metadata-marker]').nth(2).click();
+    await web.locator('[data-metadata-marker][href="#updates-section"]').click();
     if (!web.url().endsWith('#updates-section')) throw new Error(`Section marker did not navigate to Updates: ${web.url()}`);
     const updateNodes = web.locator('[data-update-node]');
     const updateNodeCount = await updateNodes.count();
@@ -750,6 +750,42 @@ async function main() {
     await admin.getByRole('button', { name: 'Delete', exact: true }).last().click();
     await mediaDeleteResponse;
     await admin.getByText('No images uploaded yet — drop files above or paste into the editor.').waitFor({ state: 'visible', timeout: 5000 });
+
+    // Settings round-trip: identity, navigation, comments toggle, homepage composition
+    await admin.getByRole('button', { name: 'Settings' }).click();
+    await admin.getByRole('heading', { name: 'Site settings.' }).waitFor({ state: 'visible', timeout: 5000 });
+    await admin.getByLabel('Site title').fill('Garden Settings Probe');
+    await admin.getByLabel('Footer text').fill('Notes anchored in the garden.');
+    await admin.locator('#site-navigation').getByRole('button', { name: 'Add navigation link' }).click();
+    const navRow = admin.locator('#site-navigation .list-row').last();
+    await navRow.getByPlaceholder('Label', { exact: true }).fill('Garden Home');
+    await navRow.getByPlaceholder('Label or /path, or full URL').fill('/');
+    await admin.locator('#site-comments').getByRole('switch').click();
+    const featuredInput = admin.getByPlaceholder('Pin a writing or thought to the top of its homepage column');
+    await featuredInput.click();
+    await featuredInput.press('ArrowDown');
+    await admin.keyboard.press('Enter');
+    const siteSaveResponse = admin.waitForResponse((response) => coreResponse(response, '/api/v1/admin/site', 'PATCH', 200));
+    await admin.getByRole('button', { name: 'Save site settings' }).click();
+    await siteSaveResponse;
+    await admin.getByRole('button', { name: 'Saved' }).waitFor({ state: 'visible', timeout: 5000 });
+
+    await web.goto(`${webUrl}/`, { waitUntil: 'networkidle' });
+    const publicTitle = await web.title();
+    if (!publicTitle.includes('Garden Settings Probe')) throw new Error('Site title did not reach the web document title: ' + publicTitle);
+    await web.getByRole('navigation', { name: 'Primary navigation' }).getByRole('link', { name: 'Garden Home' }).waitFor({ state: 'visible', timeout: 5000 });
+    await web.locator('[class*="siteFooterBottom"]').getByText('Notes anchored in the garden.').waitFor({ state: 'visible', timeout: 5000 });
+    await web.locator('[title="Pinned in site settings"]').first().waitFor({ state: 'visible', timeout: 5000 });
+
+    await web.goto(`${webUrl}/writing/designing-boundaries`, { waitUntil: 'networkidle' });
+    if (await web.locator('#comments').count() !== 0) throw new Error('Discussion block should disappear when comments are disabled');
+
+    await admin.locator('#site-comments').getByRole('switch').click();
+    const siteRestoreResponse = admin.waitForResponse((response) => coreResponse(response, '/api/v1/admin/site', 'PATCH', 200));
+    await admin.getByRole('button', { name: 'Save site settings' }).click();
+    await siteRestoreResponse;
+    await web.goto(`${webUrl}/writing/designing-boundaries`, { waitUntil: 'networkidle' });
+    await web.locator('#comments').waitFor({ state: 'visible', timeout: 10000 });
 
     if (webErrors.length || adminErrors.length) throw new Error(JSON.stringify({ webErrors, adminErrors }));
     console.log(JSON.stringify({ webControlCounts, adminControlCounts, webErrors, adminErrors }));
