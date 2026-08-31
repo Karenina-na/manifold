@@ -24,7 +24,7 @@ Vite + React 19
 └── @manifold/sdk -> Core /api/v1/admin
 ```
 
-主要模块：`src/App.tsx` 管理登录、hash 路由（`#/writings`、`#/writings/{id}`、`#/writings/{id}/comments?…` 等二级页面，支持 hash query）和未保存离开确认；`src/api.ts` 创建 SDK client；`src/lib/` 提供 hash 路由、dirty 守卫和 Core 派生规则的浏览器镜像（`content-derive.ts`）；`src/components/` 提供内容工作区共享组件（`ContentListPanel`/`ContentEditorShell`/`ContentCommentsPanel`/`SaveBar`/`ChipsInput`/`ConfirmButton`/`MarkdownEditor`/`Pager`）；`SettingsWorkspace.tsx` 管理 Site composition；`workspaces/` 下分别负责 Dashboard（数据总览）、Profile、Writings、Thoughts、Media（图片上传与媒体库）和评论管理；`ErrorBoundary.tsx` 负责渲染恢复。组件文件用 PascalCase，工具与 hook 用 kebab-case。
+主要模块：`src/App.tsx` 管理登录、hash 路由（`#/writings`、`#/writings/{id}`、`#/writings/{id}/comments?…` 等二级页面，支持 hash query）和未保存离开确认；`src/api.ts` 创建 SDK client；`src/lib/` 提供 hash 路由、dirty 守卫和 Core 派生规则的浏览器镜像（`content-derive.ts`）；`src/components/` 提供内容工作区共享组件（`ContentListPanel`/`ContentEditorShell`/`ContentCommentsPanel`/`SaveBar`/`ChipsInput`/`ConfirmButton`/`MarkdownEditor`/`Pager`/`LinkRowsField`）；`SettingsWorkspace.tsx` 管理站点设置（身份、导航、评论开关、首页组合、置顶 Thought）；`workspaces/` 下分别负责 Dashboard（数据总览）、Profile、Writings、Thoughts、Media（图片上传与媒体库）和评论管理；`ErrorBoundary.tsx` 负责渲染恢复。组件文件用 PascalCase，工具与 hook 用 kebab-case。
 
 Dashboard、Profile、Writings、Thoughts、Comments、Settings 通过 lazy chunk 加载，登录壳同步加载。
 
@@ -114,7 +114,15 @@ Now 状态功能已整体移除（Core 端点删除），本仓库无对应工�
 
 ### Settings
 
-Site 调用 `GET/PATCH /api/v1/admin/site`，包含 `featuredContent`、`navigation` 和 `sections`。Thoughts 置顶独立调用 `GET/PATCH /api/v1/admin/thoughts/config`；Settings 以每页 50 条按 cursor 读取全部已发布 Thoughts 填充 Pinned thought 选择器。置顶与 Site composition 使用两个独立保存动作和 mutation，避免跨资源部分成功被误报为整体失败；置顶保存将所选 ID 或 `null` 写入 `thoughts_config`，Core 最终校验目标必须是已发布 Thought，清空后公开归档由 Core 回退最新项。浏览器仍用 Zod 校验 navigation JSON 和 sections。
+Site 调用 `GET/PATCH /api/v1/admin/site`，对整个站点设置做结构化表单（`src/lib/siteSettingsSchema.ts` 为唯一 Zod schema 与 `SiteSettingsForm` 类型源）：
+
+- **Identity**：`title`（必填 ≤80）、`description`（≤200）、`footer`（≤200）和 `social`（≤6 项，`LinkRowsField` 行编辑：label/href/"Opens in a new tab" 复选框 + 上下移/删除）。
+- **Navigation**：同一 `LinkRowsField`，1..10 项，替换历史上的 JSON textarea。
+- **Comments**：`commentsEnabled` Switch，关闭后 Core 公开评论接口返回 403、Web 隐藏评论区。
+- **Homepage**：`sections` 用 section-picker 编辑（六区块枚举开关 + 上下移排序，至少保留一个）；`featuredContent` 用可搜索 Select（合并已发布 Writings/Thoughts 选项，去重已选）挑选，已选列表可排序/移除，≤10。
+- **Pinned thought**：独立表单调用 `GET/PATCH /api/v1/admin/thoughts/config`，以每页 50 条按 cursor 读取全部已发布 Thoughts 填充选择器。
+
+站点设置是单个全量 PATCH（一个保存条、`['admin-site']` 失效），置顶 Thought 是独立 mutation（`['admin-thought-config']` 失效），避免跨资源部分成功被误报为整体失败；置顶保存将所选 ID 或 `null` 写入 `thoughts_config`，Core 最终校验目标必须是已发布 Thought。
 
 ## 5. Query key 和失效
 
@@ -128,9 +136,10 @@ Site 调用 `GET/PATCH /api/v1/admin/site`，包含 `featuredContent`、`navigat
 | `admin-content` + `ARTICLE` + `{ status, q, sort, page }` | Writings 列表 `adminContent({ kind: 'ARTICLE', … })` | 内容创建、更新、发布、撤回、删除（统一失效 `['admin-content']` 前缀） |
 | `admin-content` + `THOUGHT` + `{ status, q, sort, page }` | Thoughts 列表 `adminContent({ kind: 'THOUGHT', … })` | 同上 |
 | `admin-content` + `THOUGHT` + `PUBLISHED` | Settings 的置顶 Thought 选项 | 同上 |
+| `admin-content` + `ARTICLE` + `PUBLISHED` | Settings 的 featuredContent 写作选项 | 同上 |
 | `admin-content-item` + kind + id | 详情页 `adminContentItem(id)` | 单条保存、发布/撤回后直接 setDraft 更新；重载时失效该 key |
 | `admin-profile` | `adminProfile()` | 保存 Profile |
-| `admin-site` | `adminSite()` | 保存 Site |
+| `admin-site` | `adminSite()` | 保存 Site（全量 PATCH，含身份/social/评论开关/首页组合） |
 | `admin-thought-config` | `adminThoughtConfig()` | 保存 Thoughts 置顶配置 |
 | `admin-media` + `{ q, page }` | Media 库 `listMedia({ q?, page? })` | 上传、删除（统一失效 `['admin-media']` 前缀） |
 
