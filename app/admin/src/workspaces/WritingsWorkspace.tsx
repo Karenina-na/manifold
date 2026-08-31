@@ -66,8 +66,27 @@ export function WritingsWorkspace({ token, segments, query }: { token: string; s
   return <WritingEditorPage client={client} editingId={editingId} commentsRequested={segments[1] === 'comments'} routeQuery={query} />
 }
 
+function useWritingPin(client: ReturnType<typeof createAdminClient>) {
+  const queryClient = useQueryClient()
+  const config = useQuery({ queryKey: ['admin-writings-config'], queryFn: () => client.adminWritingConfig() })
+  const setPin = useMutation({
+    mutationFn: (id: string | null) => client.updateWritingConfig({ featuredWritingId: id }),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['admin-writings-config'] }),
+  })
+  return {
+    config,
+    setPin,
+    control: {
+      pinnedId: config.data?.featuredWritingId ?? null,
+      onToggle: (content: AdminContent) => setPin.mutate(config.data?.featuredWritingId === content.id ? null : content.id),
+      pending: setPin.isPending,
+    },
+  }
+}
+
 function WritingsListPage({ client }: { client: ReturnType<typeof createAdminClient> }) {
   const queryClient = useQueryClient()
+  const pin = useWritingPin(client)
   const invalidate = () => {
     void queryClient.invalidateQueries({ queryKey: ['admin-content'] })
     void queryClient.invalidateQueries({ queryKey: ['admin-overview'] })
@@ -85,6 +104,7 @@ function WritingsListPage({ client }: { client: ReturnType<typeof createAdminCli
       onEdit={(content) => navigate(`#/writings/${content.id}`)}
       onTransition={(content, action) => transition.mutate({ id: content.id, action })}
       hrefFor={(content) => `${webBaseUrl}/writing/${content.slug || content.id}`}
+      pin={pin.control}
     />
   </section>
 }
@@ -92,6 +112,7 @@ function WritingsListPage({ client }: { client: ReturnType<typeof createAdminCli
 function WritingEditorPage({ client, editingId, commentsRequested, routeQuery }: { client: ReturnType<typeof createAdminClient>; editingId: string; commentsRequested: boolean; routeQuery: URLSearchParams }) {
   const queryClient = useQueryClient()
   const isNew = editingId === 'new'
+  const pin = useWritingPin(client)
   const [draft, setDraft] = useState<AdminContent | null>(null)
   const [mode, setMode] = useState<EditorMode>(isNew ? 'create' : 'view')
   const [activeTab, setActiveTab] = useState(commentsRequested && !isNew ? 'comments' : 'meta')
@@ -157,6 +178,16 @@ function WritingEditorPage({ client, editingId, commentsRequested, routeQuery }:
     // short yield lets it land in the form before the request is built.
     window.setTimeout(() => save.mutate(form.getValues()), 350)
   })
+  const pinSection = isNew ? null : <div className="pin-section">
+    <Switch
+      label="Pin to the writings archive"
+      description="Pins this piece as the Featured card on the public Writings page; clearing it falls back to the newest published writing."
+      checked={pin.config.data?.featuredWritingId === editingId}
+      disabled={pin.setPin.isPending}
+      onChange={(event) => pin.setPin.mutate(event.currentTarget.checked ? editingId : null)}
+    />
+    {pin.setPin.isError && <Alert color="red" variant="light">The pin could not be updated.</Alert>}
+  </div>
   const metaTab = <form className="form-stack" id="writing-form" noValidate onSubmit={submitForm}>
     {!isNew && item.isError && <Alert color="red" variant="light">This writing could not be loaded. Go back and try again.</Alert>}
     <TextInput label="Title" {...form.register('title')} placeholder="A title with a clear promise" error={form.formState.errors.title?.message} onBlur={(event) => { if (!draft && !form.getValues('slug').trim()) form.setValue('slug', slugify(event.currentTarget.value), { shouldDirty: true }) }} />
@@ -228,6 +259,7 @@ function WritingEditorPage({ client, editingId, commentsRequested, routeQuery }:
     contextTab={contextTab}
     renderTab={renderTab}
     commentsTab={commentsTab}
+    pinSection={pinSection}
     activeTab={activeTab}
     onTabChange={setActiveTab}
     onSubmitRequest={submitForm}

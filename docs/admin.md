@@ -24,7 +24,7 @@ Vite + React 19
 └── @manifold/sdk -> Core /api/v1/admin
 ```
 
-主要模块：`src/App.tsx` 管理登录、hash 路由（`#/writings`、`#/writings/{id}`、`#/writings/{id}/comments?…` 等二级页面，支持 hash query）和未保存离开确认；`src/api.ts` 创建 SDK client；`src/lib/` 提供 hash 路由、dirty 守卫和 Core 派生规则的浏览器镜像（`content-derive.ts`）；`src/components/` 提供内容工作区共享组件（`ContentListPanel`/`ContentEditorShell`/`ContentCommentsPanel`/`SaveBar`/`ChipsInput`/`ConfirmButton`/`MarkdownEditor`/`Pager`/`LinkRowsField`）；`SettingsWorkspace.tsx` 管理站点设置（身份、导航、评论开关、首页组合、置顶 Thought）；`workspaces/` 下分别负责 Dashboard（数据总览）、Profile、Writings、Thoughts、Media（图片上传与媒体库）和评论管理；`ErrorBoundary.tsx` 负责渲染恢复。组件文件用 PascalCase，工具与 hook 用 kebab-case。
+主要模块：`src/App.tsx` 管理登录、hash 路由（`#/writings`、`#/writings/{id}`、`#/writings/{id}/comments?…` 等二级页面，支持 hash query）和未保存离开确认；`src/api.ts` 创建 SDK client；`src/lib/` 提供 hash 路由、dirty 守卫和 Core 派生规则的浏览器镜像（`content-derive.ts`）；`src/components/` 提供内容工作区共享组件（`ContentListPanel`/`ContentEditorShell`/`ContentCommentsPanel`/`SaveBar`/`ChipsInput`/`ConfirmButton`/`MarkdownEditor`/`Pager`/`LinkRowsField`）；`SettingsWorkspace.tsx` 管理站点设置（身份、导航、评论开关、首页区块组合）；`workspaces/` 下分别负责 Dashboard（数据总览）、Profile、Writings、Thoughts、Media（图片上传与媒体库）和评论管理；`ErrorBoundary.tsx` 负责渲染恢复。组件文件用 PascalCase，工具与 hook 用 kebab-case。
 
 Dashboard、Profile、Writings、Thoughts、Comments、Settings 通过 lazy chunk 加载，登录壳同步加载。
 
@@ -69,7 +69,7 @@ Refresh 按钮同时 refetch 四个 query。Now 状态功能已整体移除（Co
 
 ### Writings
 
-Writings 工作区为二级页面结构，路由走 hash：列表页 `#/writings`，详情页 `#/writings/new`（新建）与 `#/writings/{id}`（编辑/查看）。固定 `kind: 'ARTICLE'`，列表由共享 `ContentListPanel` 驱动，调用 `adminContent({ kind: 'ARTICLE', status?, q?, sort?, page? })`，query key 为 `['admin-content', 'ARTICLE', { status, q, sort, page }]`（失效仍走 `['admin-content']` 前缀）。列表页为全宽单栏：顶部工具栏（搜索 `q` 300ms 防抖、状态 chips All/Drafts/Published、排序 newest/oldest/updated、总数），下方行列表 + 服务端分页；行内容镜像 Web 归档卡（状态点、标题、`✦` summary 或派生 excerpt、日期、tags、views/likes/comments），行内操作为编辑（整行点击跳详情）、发布/撤回、删除和已发布项“在 Web 打开”外链（`VITE_WEB_URL`，默认 `http://localhost:3000`）；发布/撤回/删除均为 `ConfirmButton` 的内联 Popover 二次确认（不再使用 Modal）。
+Writings 工作区为二级页面结构，路由走 hash：列表页 `#/writings`，详情页 `#/writings/new`（新建）与 `#/writings/{id}`（编辑/查看）。固定 `kind: 'ARTICLE'`，列表由共享 `ContentListPanel` 驱动，调用 `adminContent({ kind: 'ARTICLE', status?, q?, sort?, page? })`，query key 为 `['admin-content', 'ARTICLE', { status, q, sort, page }]`（失效仍走 `['admin-content']` 前缀）。列表页为全宽单栏：顶部工具栏（搜索 `q` 300ms 防抖、状态 chips All/Drafts/Published、排序 newest/oldest/updated、总数），下方行列表 + 服务端分页；行内容镜像 Web 归档卡（状态点、标题、`✦` summary 或派生 excerpt、日期、tags、views/likes/comments），行内操作为编辑（整行点击跳详情）、pin（已发布项的图钉按钮，已置顶显示 Pinned 徽标与取消按钮，走 `updateWritingConfig`）、发布/撤回、删除和已发布项“在 Web 打开”外链（`VITE_WEB_URL`，默认 `http://localhost:3000`）；发布/撤回/删除均为 `ConfirmButton` 的内联 Popover 二次确认（不再使用 Modal）。编辑器 Meta tab 顶部同时提供 “Pin to the writings archive” 开关，与列表按钮共享同一 mutation。
 
 | 操作 | SDK/Core |
 | --- | --- |
@@ -90,7 +90,7 @@ Writings 工作区为二级页面结构，路由走 hash：列表页 `#/writings
 
 ### Thoughts
 
-Thoughts 工作区为同构的二级页面（`#/thoughts`、`#/thoughts/new`、`#/thoughts/{id}`），固定 `kind: 'THOUGHT'`，列表调用 `adminContent({ kind: 'THOUGHT', status?, q?, sort?, page? })`，query key 为 `['admin-content', 'THOUGHT', { status, q, sort, page }]`。操作表与 Writings 相同。
+Thoughts 工作区为同构的二级页面（`#/thoughts`、`#/thoughts/new`、`#/thoughts/{id}`），固定 `kind: 'THOUGHT'`，列表调用 `adminContent({ kind: 'THOUGHT', status?, q?, sort?, page? })`，query key 为 `['admin-content', 'THOUGHT', { status, q, sort, page }]`。操作表与 Writings 相同，pin 走 `updateThoughtConfig`（列表图钉按钮 + 编辑器 Meta tab 开关，已置顶显示 Pinned 徽标）。
 
 Meta tab 字段：正文在 Context tab（vditor IR）必填；title、slug 可选（slug 为空时 Core 使用 ID，更新时置空即清除）；summary（`✦` 标记，Web 卡片与详情均渲染）；tags（chip 输入）；溯源组按 Web 图标语义分组——mood（Sparkles）、question（反引 blockquote）、context（Compass）、source（BookOpen）。Render tab 直接复用 `@manifold/render` 的 `ThoughtSurface`（含 ReadingProgress）。保存条、锁定切换、快捷键、vditor 提交时序与 409 处理与 Writings 一致；详情数据来自 `['admin-content-item', 'THOUGHT', id]`。
 
@@ -119,10 +119,9 @@ Site 调用 `GET/PATCH /api/v1/admin/site`，对整个站点设置做结构化�
 - **Identity**：`title`（必填 ≤80）、`description`（≤200）、`footer`（≤200）和 `social`（≤6 项，`LinkRowsField` 行编辑：label/href/"Opens in a new tab" 复选框 + 上下移/删除）。
 - **Navigation**：同一 `LinkRowsField`，1..10 项，替换历史上的 JSON textarea。
 - **Comments**：`commentsEnabled` Switch，关闭后 Core 公开评论接口返回 403、Web 隐藏评论区。
-- **Homepage**：`sections` 用 section-picker 编辑（六区块枚举开关 + 上下移排序，至少保留一个）；`featuredContent` 用可搜索 Select（合并已发布 Writings/Thoughts 选项，去重已选）挑选，已选列表可排序/移除，≤10。
-- **Pinned thought**：独立表单调用 `GET/PATCH /api/v1/admin/thoughts/config`，以每页 50 条按 cursor 读取全部已发布 Thoughts 填充选择器。
+- **Homepage**：`sections` 用 section-picker 编辑（六区块枚举开关 + 上下移排序，至少保留一个）。首页内容列不做置顶策划，始终按发布时间展示；内容置顶属于各自内容工作区（见下）。
 
-站点设置是单个全量 PATCH（一个保存条、`['admin-site']` 失效），置顶 Thought 是独立 mutation（`['admin-thought-config']` 失效），避免跨资源部分成功被误报为整体失败；置顶保存将所选 ID 或 `null` 写入 `thoughts_config`，Core 最终校验目标必须是已发布 Thought。
+站点设置是单个全量 PATCH（一个保存条、`['admin-site']` 失效）。内容置顶（pin）在各自工作区设置：Writings 用 `['admin-writings-config']` + `updateWritingConfig`，Thoughts 用 `['admin-thought-config']` + `updateThoughtConfig`；Core 校验非空引用必须是已发布的对应类型内容。
 
 ## 5. Query key 和失效
 
@@ -132,11 +131,11 @@ Site 调用 `GET/PATCH /api/v1/admin/site`，对整个站点设置做结构化�
 | `admin-analytics` + days | `adminAnalyticsViews({ days: 30 })` | Dashboard 手动刷新 |
 | `admin-system` | `adminSystem()` | Dashboard 手动刷新 |
 | `admin-comments` | `adminComments({ q, page })`（Comments 工作区）、`adminComments({ contentId, q, page, focus })`（编辑器 Comments tab）、`adminComments({ pageSize: 50 })`（Dashboard 最近评论） | 软删除/恢复评论、发布评论、Dashboard 手动刷新 |
+| `admin-writings-config` | `adminWritingConfig()`（Writings 列表与编辑器共享） | 置顶/取消置顶 Writing |
+| `admin-thought-config` | `adminThoughtConfig()`（Thoughts 列表与编辑器共享） | 置顶/取消置顶 Thought |
 | `admin-audit` + page + q | `adminAudit({ page, pageSize: 10, q })` | Dashboard 手动刷新 |
 | `admin-content` + `ARTICLE` + `{ status, q, sort, page }` | Writings 列表 `adminContent({ kind: 'ARTICLE', … })` | 内容创建、更新、发布、撤回、删除（统一失效 `['admin-content']` 前缀） |
 | `admin-content` + `THOUGHT` + `{ status, q, sort, page }` | Thoughts 列表 `adminContent({ kind: 'THOUGHT', … })` | 同上 |
-| `admin-content` + `THOUGHT` + `PUBLISHED` | Settings 的置顶 Thought 选项 | 同上 |
-| `admin-content` + `ARTICLE` + `PUBLISHED` | Settings 的 featuredContent 写作选项 | 同上 |
 | `admin-content-item` + kind + id | 详情页 `adminContentItem(id)` | 单条保存、发布/撤回后直接 setDraft 更新；重载时失效该 key |
 | `admin-profile` | `adminProfile()` | 保存 Profile |
 | `admin-site` | `adminSite()` | 保存 Site（全量 PATCH，含身份/social/评论开关/首页组合） |

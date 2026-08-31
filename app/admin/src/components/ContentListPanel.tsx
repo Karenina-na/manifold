@@ -1,6 +1,6 @@
 import { TextInput } from '@mantine/core'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowUpRight, Eye, Heart, MessageCircle, Search, Send, Trash2, X } from 'lucide-react'
+import { ArrowUpRight, Eye, Heart, MessageCircle, Pin, PinOff, Search, Send, Trash2, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { AdminContent, ContentKind, ContentSort } from '@manifold/contracts'
 import type { ManifoldClient } from '@manifold/sdk'
@@ -13,6 +13,8 @@ export type StatusFilter = 'ALL' | 'DRAFT' | 'PUBLISHED'
 
 export type TransitionAction = 'publish' | 'unpublish' | 'delete'
 
+export type PinControl = { pinnedId: string | null; onToggle: (content: AdminContent) => void; pending: boolean }
+
 type ContentListPanelProps = {
   client: ManifoldClient
   kind: ContentKind
@@ -20,9 +22,10 @@ type ContentListPanelProps = {
   onEdit: (content: AdminContent) => void
   onTransition: (content: AdminContent, action: TransitionAction) => void
   hrefFor: (content: AdminContent) => string
+  pin?: PinControl
 }
 
-export function ContentListPanel({ client, kind, singular, onEdit, onTransition, hrefFor }: ContentListPanelProps) {
+export function ContentListPanel({ client, kind, singular, onEdit, onTransition, hrefFor, pin }: ContentListPanelProps) {
   const [status, setStatus] = useState<StatusFilter>('ALL')
   const [search, setSearch] = useState('')
   const [q, setQ] = useState('')
@@ -78,19 +81,21 @@ export function ContentListPanel({ client, kind, singular, onEdit, onTransition,
       onEdit={onEdit}
       onTransition={onTransition}
       hrefFor={hrefFor}
+      pin={pin}
     />)}
     {!list.isError && !list.isPending && !items.length && <p className="content-list-hint">No {kind === 'ARTICLE' ? 'writings' : 'thoughts'} match the current filters.</p>}
     <Pager page={page} totalPages={totalPages} onChange={changePage} />
   </section>
 }
 
-function ContentRow({ content, singular, onEdit, onTransition, hrefFor }: { content: AdminContent; singular: string; onEdit: (content: AdminContent) => void; onTransition: (content: AdminContent, action: TransitionAction) => void; hrefFor: (content: AdminContent) => string }) {
+function ContentRow({ content, singular, onEdit, onTransition, hrefFor, pin }: { content: AdminContent; singular: string; onEdit: (content: AdminContent) => void; onTransition: (content: AdminContent, action: TransitionAction) => void; hrefFor: (content: AdminContent) => string; pin?: PinControl }) {
   const preview = content.summary?.trim()
     ? `✦ ${content.summary.trim()}`
     : deriveExcerpt(content.body ?? '')
+  const pinned = pin?.pinnedId === content.id
   return <article className="content-row" onClick={() => onEdit(content)}>
     <div>
-      <div className="row-title"><span className={`status-dot ${content.status.toLowerCase()}`} />{content.title || `Untitled ${singular}`}</div>
+      <div className="row-title"><span className={`status-dot ${content.status.toLowerCase()}`} />{content.title || `Untitled ${singular}`}{pinned && <span className="pinned-badge"><Pin size={11} /> Pinned</span>}</div>
       {preview && <p className="content-row-preview">{preview}</p>}
       <p className="content-row-meta">
         <span>{formatDate(content.publishedAt ?? content.updatedAt)}</span>
@@ -102,6 +107,15 @@ function ContentRow({ content, singular, onEdit, onTransition, hrefFor }: { cont
     </div>
     <div className="row-actions">
       <span className="status-label">{content.status}</span>
+      {pin && content.status === 'PUBLISHED' && <button
+        type="button"
+        className={pinned ? 'pin-button pinned' : 'pin-button'}
+        title={pinned ? 'Unpin from the archive' : 'Pin to the archive'}
+        aria-label={pinned ? `Unpin ${content.title || content.id}` : `Pin ${content.title || content.id}`}
+        aria-pressed={pinned}
+        disabled={pin.pending}
+        onClick={(event) => { event.stopPropagation(); pin.onToggle(content) }}
+      >{pinned ? <PinOff size={14} /> : <Pin size={14} />}</button>}
       {content.status === 'PUBLISHED' && <a className="row-link" href={hrefFor(content)} target="_blank" rel="noreferrer" title="View on the site" aria-label={`View ${content.title || content.id} on the site`} onClick={(event) => event.stopPropagation()}><ArrowUpRight size={14} /></a>}
       {content.status === 'DRAFT' && <ConfirmButton label={`Publish ${content.title || content.id}`} confirmLabel="Publish now" confirmBody={`Publish this ${singular} to the public site?`} icon={<Send size={14} />} stopPropagation onConfirm={() => onTransition(content, 'publish')} />}
       {content.status === 'PUBLISHED' && <ConfirmButton label={`Unpublish ${content.title || content.id}`} confirmLabel="Unpublish" confirmBody="Take this piece off the public site? It returns to drafts." danger icon={<X size={14} />} stopPropagation onConfirm={() => onTransition(content, 'unpublish')} />}

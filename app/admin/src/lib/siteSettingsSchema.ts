@@ -10,7 +10,6 @@ export const settingsSchema = z.object({
     external: z.boolean(),
   })).max(6, 'At most 6 social links.'),
   commentsEnabled: z.boolean(),
-  featuredContent: z.array(z.object({ id: z.string(), kind: z.enum(['THOUGHT', 'ARTICLE']) })).max(10, 'At most 10 featured items.'),
   navigation: z.array(z.object({
     label: z.string().trim().min(1, 'Label is required.').max(80, 'Keep labels under 80 characters.'),
     href: z.string().trim().min(1, 'URL is required.').max(200, 'Keep URLs under 200 characters.'),

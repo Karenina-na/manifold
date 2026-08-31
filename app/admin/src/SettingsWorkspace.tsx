@@ -1,11 +1,10 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Alert, Button, Select, Switch, TextInput } from '@mantine/core'
-import { ArrowDown, ArrowUp, Check, Save, Star, Trash2 } from 'lucide-react'
+import { Alert, Button, Switch, TextInput } from '@mantine/core'
+import { ArrowDown, ArrowUp, Check, Save } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Controller, useForm } from 'react-hook-form'
-import { z } from 'zod'
-import type { AdminContent, HomepageSection, SiteConfig } from '@manifold/contracts'
+import type { HomepageSection, SiteConfig } from '@manifold/contracts'
 import { createAdminClient } from './api'
 import { LinkRowsField } from './components/LinkRowsField'
 import { settingsSchema, type SiteSettingsForm } from './lib/siteSettingsSchema'
@@ -21,10 +20,6 @@ const sectionLabels: Record<HomepageSection, string> = {
 
 const sectionOrder: HomepageSection[] = ['PROFILE', 'BACKGROUND', 'RECENT_CONTENT', 'UPDATES', 'SERIES', 'CONTACT']
 
-const thoughtSchema = z.object({ featuredThoughtId: z.string() })
-
-type ThoughtForm = z.infer<typeof thoughtSchema>
-
 function settingsValues(site: SiteConfig): SiteSettingsForm {
   return {
     title: site.title,
@@ -32,7 +27,6 @@ function settingsValues(site: SiteConfig): SiteSettingsForm {
     footer: site.footer,
     social: (site.social ?? []).map((item) => ({ label: item.label, href: item.href, external: Boolean(item.external) })),
     commentsEnabled: site.commentsEnabled,
-    featuredContent: (site.featuredContent ?? []).map((item) => ({ id: item.id, kind: item.kind })),
     navigation: (site.navigation ?? []).map((item) => ({ label: item.label, href: item.href, external: Boolean(item.external) })),
     sections: site.sections ?? [],
   }
@@ -42,31 +36,8 @@ export function SettingsWorkspace({ token }: { token: string }) {
   const client = useMemo(() => createAdminClient(token), [token])
   const queryClient = useQueryClient()
   const site = useQuery({ queryKey: ['admin-site'], queryFn: () => client.adminSite() })
-  const thoughtConfig = useQuery({ queryKey: ['admin-thought-config'], queryFn: () => client.adminThoughtConfig() })
-  const publishedThoughts = useQuery({ queryKey: ['admin-content', 'THOUGHT', 'PUBLISHED'], queryFn: async () => {
-    const items: AdminContent[] = []
-    let cursor: string | undefined
-    do {
-      const page = await client.adminContent({ kind: 'THOUGHT', status: 'PUBLISHED', limit: 50, cursor })
-      items.push(...page.data)
-      cursor = page.pagination.nextCursor ?? undefined
-    } while (cursor)
-    return items
-  } })
-  const publishedWritings = useQuery({ queryKey: ['admin-content', 'ARTICLE', 'PUBLISHED'], queryFn: async () => {
-    const items: AdminContent[] = []
-    let cursor: string | undefined
-    do {
-      const page = await client.adminContent({ kind: 'ARTICLE', status: 'PUBLISHED', limit: 50, cursor })
-      items.push(...page.data)
-      cursor = page.pagination.nextCursor ?? undefined
-    } while (cursor)
-    return items
-  } })
-  const form = useForm<SiteSettingsForm>({ resolver: zodResolver(settingsSchema), defaultValues: { title: '', description: '', footer: '', social: [], commentsEnabled: true, featuredContent: [], navigation: [], sections: [] } })
-  const thoughtForm = useForm<ThoughtForm>({ resolver: zodResolver(thoughtSchema), defaultValues: { featuredThoughtId: '' } })
+  const form = useForm<SiteSettingsForm>({ resolver: zodResolver(settingsSchema), defaultValues: { title: '', description: '', footer: '', social: [], commentsEnabled: true, navigation: [], sections: [] } })
   useEffect(() => { if (site.data) form.reset(settingsValues(site.data)) }, [site.data, form])
-  useEffect(() => { if (thoughtConfig.data) thoughtForm.reset({ featuredThoughtId: thoughtConfig.data.featuredThoughtId ?? '' }) }, [thoughtConfig.data, thoughtForm])
   const [savedFlash, setSavedFlash] = useState(false)
   const flashTimer = useRef<number | null>(null)
   useEffect(() => () => { if (flashTimer.current) window.clearTimeout(flashTimer.current) }, [])
@@ -79,9 +50,7 @@ export function SettingsWorkspace({ token }: { token: string }) {
       flashTimer.current = window.setTimeout(() => setSavedFlash(false), 2400)
     },
   })
-  const saveThought = useMutation({ mutationFn: (input: ThoughtForm) => client.updateThoughtConfig({ featuredThoughtId: input.featuredThoughtId || null }), onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['admin-thought-config'] }) })
   const sections = form.watch('sections')
-  const featured = form.watch('featuredContent')
   const setSections = (next: HomepageSection[]) => form.setValue('sections', next, { shouldDirty: true })
   const toggleSection = (section: HomepageSection, enabled: boolean) => {
     if (enabled) {
@@ -99,24 +68,6 @@ export function SettingsWorkspace({ token }: { token: string }) {
     ;[next[index], next[target]] = [next[target], next[index]]
     setSections(next)
   }
-  const featuredOptions = [
-    ...(publishedWritings.data ?? []).map((item) => ({ value: `ARTICLE:${item.id}`, label: `Writing · ${item.title || 'Untitled writing'}` })),
-    ...(publishedThoughts.data ?? []).map((item) => ({ value: `THOUGHT:${item.id}`, label: `Thought · ${item.title || 'Untitled thought'}` })),
-  ]
-  const addFeatured = (key: string | null) => {
-    if (!key) return
-    const [kind, id] = key.split(':') as ['THOUGHT' | 'ARTICLE', string]
-    if (featured.some((item) => item.id === id)) return
-    form.setValue('featuredContent', [...featured, { id, kind }], { shouldDirty: true })
-  }
-  const moveFeatured = (index: number, offset: -1 | 1) => {
-    const next = [...featured]
-    const target = index + offset
-    if (target < 0 || target >= next.length) return
-    ;[next[index], next[target]] = [next[target], next[index]]
-    form.setValue('featuredContent', next, { shouldDirty: true })
-  }
-  const removeFeatured = (id: string) => form.setValue('featuredContent', featured.filter((item) => item.id !== id), { shouldDirty: true })
   const discard = () => { if (site.data) form.reset(settingsValues(site.data)) }
   const errors = form.formState.errors
   return <section className="workspace">
@@ -153,7 +104,7 @@ export function SettingsWorkspace({ token }: { token: string }) {
         </div>
       </section>
       <section className="panel" id="site-homepage">
-        <div className="panel-heading"><div><p className="kicker">Homepage</p><h2>Sections and featured content</h2></div></div>
+        <div className="panel-heading"><div><p className="kicker">Homepage</p><h2>Sections</h2></div></div>
         <div className="form-stack">
           <div>
             <label>Homepage sections</label>
@@ -174,45 +125,9 @@ export function SettingsWorkspace({ token }: { token: string }) {
             </div>
             {errors.sections && <Alert color="red" variant="light">{errors.sections.message}</Alert>}
           </div>
-          <div>
-            <label>Featured content</label>
-            <Select
-              placeholder="Pin a writing or thought to the top of its homepage column"
-              searchable
-              clearable
-              data={featuredOptions.filter((option) => !featured.some((item) => option.value.endsWith(`:${item.id}`)))}
-              onChange={addFeatured}
-              value={null}
-            />
-            <div className="list-stack">
-              {featured.map((item, index) => {
-                const option = featuredOptions.find((entry) => entry.value === `${item.kind}:${item.id}`)
-                return <div className="list-row" key={item.id}>
-                  <div className="list-row-top link-row">
-                    <span className="list-index"><Star size={13} /></span>
-                    <div className="featured-row-label">{option?.label ?? `${item.kind} · ${item.id}`}</div>
-                    <div className="list-row-actions">
-                      <button type="button" className="mini-button" aria-label="Move up" disabled={index === 0} onClick={() => moveFeatured(index, -1)}><ArrowUp size={14} /></button>
-                      <button type="button" className="mini-button" aria-label="Move down" disabled={index === featured.length - 1} onClick={() => moveFeatured(index, 1)}><ArrowDown size={14} /></button>
-                      <button type="button" className="mini-button danger" aria-label="Remove" onClick={() => removeFeatured(item.id)}><Trash2 size={14} /></button>
-                    </div>
-                  </div>
-                </div>
-              })}
-              {!featured.length && <p className="icon-hint">Nothing pinned yet — homepage columns show the latest content.</p>}
-            </div>
-          </div>
         </div>
       </section>
     </form>
-    <section className="panel narrow-panel" id="site-pinned-thought">
-      <div className="panel-heading"><div><p className="kicker">Thoughts</p><h2>Pinned thought</h2></div></div>
-      <form className="form-stack" onSubmit={thoughtForm.handleSubmit((input) => saveThought.mutate(input))}>
-        <Controller control={thoughtForm.control} name="featuredThoughtId" render={({ field }) => <Select label="Pinned thought" description="Shown at the top of the public Thoughts page." placeholder="Use the latest published thought" clearable searchable data={(publishedThoughts.data ?? []).map((item) => ({ value: item.id, label: item.title || `Untitled thought · ${item.id}` }))} value={field.value} onBlur={field.onBlur} onChange={(value) => field.onChange(value ?? '')} />} />
-        <Button className="button button-primary" type="submit" loading={saveThought.isPending} leftSection={<Save size={16} />}>Save pinned thought</Button>
-        {saveThought.isError && <Alert color="red" variant="light">Pinned thought could not be saved.</Alert>}
-      </form>
-    </section>
     {form.formState.isDirty && <div className="save-bar">
       <span>Unsaved changes</span>
       <div className="save-bar-actions">

@@ -1,6 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Alert, Button, Textarea, TextInput } from '@mantine/core'
+import { Alert, Button, Switch, Textarea, TextInput } from '@mantine/core'
 import { BookOpen, Compass, Plus, Sparkles } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
@@ -68,8 +68,27 @@ export function ThoughtsWorkspace({ token, segments, query }: { token: string; s
   return <ThoughtEditorPage client={client} editingId={editingId} commentsRequested={segments[1] === 'comments'} routeQuery={query} />
 }
 
+function useThoughtPin(client: ReturnType<typeof createAdminClient>) {
+  const queryClient = useQueryClient()
+  const config = useQuery({ queryKey: ['admin-thought-config'], queryFn: () => client.adminThoughtConfig() })
+  const setPin = useMutation({
+    mutationFn: (id: string | null) => client.updateThoughtConfig({ featuredThoughtId: id }),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['admin-thought-config'] }),
+  })
+  return {
+    config,
+    setPin,
+    control: {
+      pinnedId: config.data?.featuredThoughtId ?? null,
+      onToggle: (content: AdminContent) => setPin.mutate(config.data?.featuredThoughtId === content.id ? null : content.id),
+      pending: setPin.isPending,
+    },
+  }
+}
+
 function ThoughtsListPage({ client }: { client: ReturnType<typeof createAdminClient> }) {
   const queryClient = useQueryClient()
+  const pin = useThoughtPin(client)
   const invalidate = () => {
     void queryClient.invalidateQueries({ queryKey: ['admin-content'] })
     void queryClient.invalidateQueries({ queryKey: ['admin-overview'] })
@@ -88,6 +107,7 @@ function ThoughtsListPage({ client }: { client: ReturnType<typeof createAdminCli
       onEdit={(content) => navigate(`#/thoughts/${content.id}`)}
       onTransition={(content, action) => transition.mutate({ id: content.id, action })}
       hrefFor={(content) => `${webBaseUrl}/thoughts/${content.slug || content.id}`}
+      pin={pin.control}
     />
   </section>
 }
@@ -95,6 +115,7 @@ function ThoughtsListPage({ client }: { client: ReturnType<typeof createAdminCli
 function ThoughtEditorPage({ client, editingId, commentsRequested, routeQuery }: { client: ReturnType<typeof createAdminClient>; editingId: string; commentsRequested: boolean; routeQuery: URLSearchParams }) {
   const queryClient = useQueryClient()
   const isNew = editingId === 'new'
+  const pin = useThoughtPin(client)
   const [draft, setDraft] = useState<AdminContent | null>(null)
   const [mode, setMode] = useState<EditorMode>(isNew ? 'create' : 'view')
   const [activeTab, setActiveTab] = useState(commentsRequested && !isNew ? 'comments' : 'meta')
@@ -159,6 +180,16 @@ function ThoughtEditorPage({ client, editingId, commentsRequested, routeQuery }:
     // short yield lets it land in the form before the request is built.
     window.setTimeout(() => save.mutate(form.getValues()), 350)
   })
+  const pinSection = isNew ? null : <div className="pin-section">
+    <Switch
+      label="Pin to the thoughts archive"
+      description="Pins this thought at the top of the public Thoughts page; clearing it falls back to the newest published thought."
+      checked={pin.config.data?.featuredThoughtId === editingId}
+      disabled={pin.setPin.isPending}
+      onChange={(event) => pin.setPin.mutate(event.currentTarget.checked ? editingId : null)}
+    />
+    {pin.setPin.isError && <Alert color="red" variant="light">The pin could not be updated.</Alert>}
+  </div>
   const metaTab = <form className="form-stack" id="thought-form" noValidate onSubmit={submitForm}>
     {!isNew && item.isError && <Alert color="red" variant="light">This thought could not be loaded. Go back and try again.</Alert>}
     <div className="form-grid">
@@ -237,6 +268,7 @@ function ThoughtEditorPage({ client, editingId, commentsRequested, routeQuery }:
     contextTab={contextTab}
     renderTab={renderTab}
     commentsTab={commentsTab}
+    pinSection={pinSection}
     activeTab={activeTab}
     onTabChange={setActiveTab}
     onSubmitRequest={submitForm}

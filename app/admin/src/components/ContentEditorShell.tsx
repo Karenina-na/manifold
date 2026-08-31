@@ -30,12 +30,13 @@ type ContentEditorShellProps = {
   contextTab: ReactNode
   renderTab: ReactNode
   commentsTab?: ReactNode
+  pinSection?: ReactNode
   activeTab: string
   onTabChange: (tab: string) => void
   onSubmitRequest: () => void
 }
 
-export function ContentEditorShell({ kindLabel, hrefFor, selected, mode, isDirty, isPending, savedFlash, conflict, formId, onBack, onDiscard, onEnterEdit, onConfirmLock, onTransition, onDeleteConfirmed, conflictReload, metaTab, contextTab, renderTab, commentsTab, activeTab, onTabChange, onSubmitRequest }: ContentEditorShellProps) {
+export function ContentEditorShell({ kindLabel, hrefFor, selected, mode, isDirty, isPending, savedFlash, conflict, formId, onBack, onDiscard, onEnterEdit, onConfirmLock, onTransition, onDeleteConfirmed, conflictReload, metaTab, contextTab, renderTab, commentsTab, pinSection, activeTab, onTabChange, onSubmitRequest }: ContentEditorShellProps) {
   const [pendingLock, setPendingLock] = useState(false)
   const dirtyRef = useRef(false)
   useEffect(() => { dirtyRef.current = isDirty }, [isDirty])
@@ -82,7 +83,7 @@ export function ContentEditorShell({ kindLabel, hrefFor, selected, mode, isDirty
         <Tabs.Tab value="render">Render</Tabs.Tab>
         {commentsTab && <Tabs.Tab value="comments">Comments</Tabs.Tab>}
       </Tabs.List>
-      <Tabs.Panel value="meta" pt="md">{metaPanel}</Tabs.Panel>
+      <Tabs.Panel value="meta" pt="md">{pinSection}{metaPanel}</Tabs.Panel>
       <Tabs.Panel value="context" pt="md">{contextPanel}</Tabs.Panel>
       <Tabs.Panel value="render" pt="md">
         <div className="editor-render">{renderTab}</div>
