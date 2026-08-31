@@ -43,10 +43,8 @@ export default async function Home() {
   const data = await loadHomeData();
   const profile = data.profile;
   const sections = data.site?.sections?.length ? data.site.sections : defaultSections;
-  const featured = data.site?.featuredContent ?? [];
-  const featuredIds = new Set(featured.map((item) => item.id));
-  const writings = mergeFeatured("ARTICLE", featured, data.feed?.filter((item) => item.kind === "ARTICLE") ?? []);
-  const thoughts = mergeFeatured("THOUGHT", featured, data.feed?.filter((item) => item.kind === "THOUGHT") ?? []);
+  const writings = data.feed?.filter((item) => item.kind === "ARTICLE").slice(0, 3) ?? [];
+  const thoughts = data.feed?.filter((item) => item.kind === "THOUGHT").slice(0, 3) ?? [];
   const initials = profile?.displayName?.slice(0, 1).toUpperCase() ?? "M";
   const updateTimeline = buildUpdateTimeline(data.feed ?? []);
   const contributionItems = data.contentHistory?.map(({ updatedAt, publishedAt, createdAt }) => ({ updatedAt, publishedAt, createdAt })) ?? [];
@@ -106,8 +104,8 @@ export default async function Home() {
         <div className={styles.sectionHeading}><div><span className={styles.eyebrow}>✦ Recent content <span className={styles.eyebrowIndex}>/ {sectionIndex(index)}</span></span><h2 id="stream-heading">Writings <em>and</em> thoughts</h2></div><span className={styles.sectionHint}>{data.stats?.contentCount ?? 0} published notes</span></div>
         <div className={styles.contentSurface} data-content-surface>
           <div className={styles.streamColumns}>
-            <TimelineColumn title="Writings" icon="✍" href="/writing" items={writings} featuredIds={featuredIds} empty="No writings published yet." />
-            <TimelineColumn title="Thoughts" icon="☁" href="/thoughts" items={thoughts} featuredIds={featuredIds} empty="The thought stream is quiet for now." />
+            <TimelineColumn title="Writings" icon="✍" href="/writing" items={writings} empty="No writings published yet." />
+            <TimelineColumn title="Thoughts" icon="☁" href="/thoughts" items={thoughts} empty="The thought stream is quiet for now." />
           </div>
         </div>
       </section></Reveal>;
@@ -142,19 +140,8 @@ export default async function Home() {
   </main>;
 }
 
-function mergeFeatured(kind: Content["kind"], featured: Content[], recent: Content[]) {
-  const seen = new Set<string>();
-  const items: Content[] = [];
-  for (const item of [...featured.filter((entry) => entry.kind === kind), ...recent]) {
-    if (seen.has(item.id)) continue;
-    seen.add(item.id);
-    items.push(item);
-  }
-  return items.slice(0, 3);
-}
-
-function TimelineColumn({ title, icon, href, items, featuredIds, empty }: { title: string; icon: string; href: string; items: Content[]; featuredIds: Set<string>; empty: string }) {
-  return <div className={styles.timelineColumn}><div className={styles.timelineHeading}><span>{icon} {title}</span><Link href={href} aria-label={`Browse all ${title.toLowerCase()}`}><ArrowUpRight size={14} /></Link></div><div className={styles.timeline}>{items.length ? items.map((item, index) => <Link className={styles.timelineItem} href={item.href} key={item.id}><span className={styles.timelinePin} data-timeline-pin aria-hidden="true" /><div><div className={styles.timelineItemTop}><span className={styles.timelineNumber}>/{String(index + 1).padStart(2, "0")}</span><time dateTime={item.publishedAt ?? item.createdAt}>{getRelativeDate(item.publishedAt ?? item.createdAt)} · {getDate(item.publishedAt ?? item.createdAt)}{readingMinutes(item.metadata) ? ` · ${readingMinutes(item.metadata)} min` : ""}</time></div><h3>{featuredIds.has(item.id) && <span className={styles.timelineFeatured} title="Pinned in site settings">★</span>}{item.title || "Untitled thought"}</h3><p>{item.summary || "A quiet note waiting for its next sentence."}</p></div></Link>) : <p className={styles.muted}>{empty}</p>}</div></div>;
+function TimelineColumn({ title, icon, href, items, empty }: { title: string; icon: string; href: string; items: Content[]; empty: string }) {
+  return <div className={styles.timelineColumn}><div className={styles.timelineHeading}><span>{icon} {title}</span><Link href={href} aria-label={`Browse all ${title.toLowerCase()}`}><ArrowUpRight size={14} /></Link></div><div className={styles.timeline}>{items.length ? items.map((item, index) => <Link className={styles.timelineItem} href={item.href} key={item.id}><span className={styles.timelinePin} data-timeline-pin aria-hidden="true" /><div><div className={styles.timelineItemTop}><span className={styles.timelineNumber}>/{String(index + 1).padStart(2, "0")}</span><time dateTime={item.publishedAt ?? item.createdAt}>{getRelativeDate(item.publishedAt ?? item.createdAt)} · {getDate(item.publishedAt ?? item.createdAt)}{readingMinutes(item.metadata) ? ` · ${readingMinutes(item.metadata)} min` : ""}</time></div><h3>{item.title || "Untitled thought"}</h3><p>{item.summary || "A quiet note waiting for its next sentence."}</p></div></Link>) : <p className={styles.muted}>{empty}</p>}</div></div>;
 }
 
 function SceneBreak() {

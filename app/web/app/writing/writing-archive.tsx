@@ -33,16 +33,13 @@ type WritingArchiveProps = {
 
 async function fetchWritingPage(state: { query: string; tags: string[]; page: number }, extra: Record<string, string | undefined>): Promise<WritingListData> {
   const sort = extra.sort as ContentSort | undefined;
-  const unfiltered = !state.query && state.tags.length === 0 && extra.noAi !== "1" && (!sort || sort === "newest");
-  const page = await createBrowserClient().content({
-    kind: "ARTICLE",
+  const page = await createBrowserClient().writings({
     q: state.query || undefined,
     tag: state.tags.length ? state.tags : undefined,
     sort,
     aiAssisted: extra.noAi === "1" ? false : undefined,
     page: state.page,
     limit: PAGE_SIZE,
-    skipFirst: unfiltered || undefined,
   });
   return { items: page.data, totalItems: page.pagination.totalItems ?? 0, totalPages: page.pagination.totalPages ?? 1, page: page.pagination.page ?? state.page };
 }

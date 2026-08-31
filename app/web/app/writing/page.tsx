@@ -20,31 +20,27 @@ export default async function WritingPage({ searchParams }: { searchParams: Sear
   const page = readSearchPage(params);
 
   const filtersActive = Boolean(query || tags.length || noAi);
-  const skipFirst = !filtersActive && sort === "newest";
   const client = createServerClient();
-  const [featuredPage, listPage, tagPage] = await Promise.all([
-    client.content({ kind: "ARTICLE", sort: "newest", limit: 1 }).catch(() => null),
-    client.content({
-      kind: "ARTICLE",
+  const [archive, tagPage] = await Promise.all([
+    client.writings({
       q: query || undefined,
       tag: tags.length ? tags : undefined,
       sort,
       aiAssisted: noAi ? false : undefined,
       page,
       limit: PAGE_SIZE,
-      skipFirst,
     }).catch(() => null),
     client.tags({ kind: "ARTICLE" }).catch(() => null),
   ]);
   return <WritingArchive
     key={`${query}|${tags.join(",")}|${sort}|${noAi ? 1 : 0}|${page}`}
-    initialList={listPage ? {
-      items: listPage.data,
-      totalItems: listPage.pagination.totalItems ?? 0,
-      totalPages: listPage.pagination.totalPages ?? 1,
-      page: listPage.pagination.page ?? page,
+    initialList={archive ? {
+      items: archive.data,
+      totalItems: archive.pagination.totalItems ?? 0,
+      totalPages: archive.pagination.totalPages ?? 1,
+      page: archive.pagination.page ?? page,
     } : null}
-    featured={featuredPage?.data[0] ?? null}
+    featured={filtersActive || sort !== "newest" ? null : archive?.featured ?? null}
     tags={tagPage?.data ?? null}
     query={query}
     activeTags={tags}
