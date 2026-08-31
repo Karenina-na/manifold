@@ -467,6 +467,9 @@ async function main() {
     await web.getByRole('heading', { name: 'The thread' }).waitFor({ state: 'visible' });
     await web.getByRole('button', { name: 'Send comment' }).waitFor({ state: 'visible' });
     if (await web.locator('[class*="avatarPickerTrigger"]').count() !== 1) throw new Error('Thought composer avatar picker is missing');
+    // reading-shell blocks keep the thought thread column-aligned with the body
+    await web.locator('.thoughtDetail .articleDiscussionBlock').waitFor({ state: 'visible', timeout: 5000 });
+    await web.locator('.thoughtDetail .articleComposerBlock').waitFor({ state: 'visible', timeout: 5000 });
 
     await web.setViewportSize({ width: 1280, height: 900 });
     await web.goto(`${webUrl}${contentPath}`, { waitUntil: 'networkidle' });
@@ -550,6 +553,8 @@ async function main() {
     const deleteResponse = admin.waitForResponse((response) => /\/api\/v1\/admin\/comments\/[^/]+$/.test(new URL(response.url()).pathname) && response.request().method() === 'DELETE' && response.status() === 204);
     const refreshedAfterDelete = admin.waitForResponse((response) => coreResponse(response, '/api/v1/admin/comments', 'GET', 200));
     await targetRow.getByRole('button', { name: /^Delete comment from/ }).click();
+    await admin.getByText('Soft-delete this comment? It leaves the public site immediately.').waitFor({ state: 'visible', timeout: 5000 });
+    await admin.getByRole('button', { name: 'Delete', exact: true }).last().click();
     await deleteResponse;
     await refreshedAfterDelete;
     await targetRow.getByRole('button', { name: /^Restore comment from/ }).waitFor({ state: 'visible', timeout: 5000 });
@@ -561,7 +566,55 @@ async function main() {
     await targetRow.getByRole('button', { name: /^Delete comment from/ }).waitFor({ state: 'visible', timeout: 5000 });
     if (await admin.locator('.moderation-row').count() !== 12) throw new Error('Admin comment list does not show all comments');
 
-    await admin.getByRole('button', { name: 'Writings' }).click();
+    // server-side search narrows the moderation list to matching threads
+    const adminCommentSearch = admin.getByRole('textbox', { name: 'Search comments' });
+    await adminCommentSearch.fill('Filler 3');
+    await admin.locator('.moderation-row').filter({ hasText: 'Filler 3' }).first().waitFor({ state: 'visible', timeout: 5000 });
+    await admin.waitForFunction(() => document.querySelectorAll('.moderation-row').length === 1, undefined, { timeout: 5000 });
+    if (!(await admin.locator('.moderation-row').first().textContent())?.includes('Designing Boundaries')) throw new Error('Moderation rows are missing the content title');
+    await adminCommentSearch.fill('');
+
+    // row click jumps into the editor Comments tab at the focused thread
+    const jumpRow = admin.locator('.moderation-row').filter({ hasText: commentBody });
+    await jumpRow.waitFor({ state: 'visible', timeout: 5000 });
+    await jumpRow.click();
+    await admin.waitForFunction(() => window.location.hash.startsWith('#/writings/content_1/comments?focus='), undefined, { timeout: 5000 });
+    await admin.locator('.comment-node').first().waitFor({ state: 'visible', timeout: 10000 });
+    await admin.locator('.comment-focus').waitFor({ state: 'visible', timeout: 5000 });
+    if (await admin.locator('.comment-node').filter({ hasText: commentBody }).count() !== 1) throw new Error('Focused comment is missing from the editor Comments tab');
+    await admin.waitForFunction(() => !window.location.hash.includes('focus='), undefined, { timeout: 5000 });
+    const composerAuthor = await admin.getByRole('textbox', { name: 'Author', exact: true }).inputValue();
+    if (!composerAuthor.trim()) throw new Error('Comment composer author is not prefilled from the profile');
+
+    // composer posts as the operator, replies nest under the thread, deletes confirm
+    const adminNote = `Admin note ${process.pid}-${Date.now()}`;
+    await admin.getByRole('textbox', { name: 'Comment', exact: true }).fill(adminNote);
+    const adminCommentResponse = admin.waitForResponse((response) => /\/api\/v1\/admin\/content\/[^/]+\/comments$/.test(new URL(response.url()).pathname) && response.request().method() === 'POST' && response.status() === 201);
+    await admin.getByRole('button', { name: 'Post comment' }).click();
+    await adminCommentResponse;
+    const adminNoteNode = admin.locator('.comment-node').filter({ hasText: adminNote });
+    await adminNoteNode.waitFor({ state: 'visible', timeout: 5000 });
+    await adminNoteNode.getByRole('button', { name: 'Reply' }).click();
+    await admin.getByText(/Replying to/).waitFor({ state: 'visible', timeout: 5000 });
+    const adminReplyNote = `Admin reply ${process.pid}-${Date.now()}`;
+    await admin.getByRole('textbox', { name: 'Reply', exact: true }).fill(adminReplyNote);
+    await admin.getByRole('button', { name: 'Post reply' }).click();
+    await adminNoteNode.locator('.comment-reply').filter({ hasText: adminReplyNote }).waitFor({ state: 'visible', timeout: 5000 });
+
+    await adminNoteNode.locator('.comment-reply').filter({ hasText: adminReplyNote }).getByRole('button', { name: 'Delete', exact: true }).click();
+    await admin.getByText('Delete this comment? It leaves the public site immediately.').waitFor({ state: 'visible', timeout: 5000 });
+    const replyDeleteResponse = admin.waitForResponse((response) => /\/api\/v1\/admin\/comments\/[^/]+$/.test(new URL(response.url()).pathname) && response.request().method() === 'DELETE' && response.status() === 204);
+    await admin.getByRole('button', { name: 'Delete', exact: true }).last().click();
+    await replyDeleteResponse;
+    await adminNoteNode.locator('.comment-reply-deleted').filter({ hasText: adminReplyNote }).waitFor({ state: 'visible', timeout: 5000 });
+    await adminNoteNode.getByRole('button', { name: 'Delete', exact: true }).click();
+    await admin.getByText('Delete this comment? It leaves the public site immediately.').waitFor({ state: 'visible', timeout: 5000 });
+    const noteDeleteResponse = admin.waitForResponse((response) => /\/api\/v1\/admin\/comments\/[^/]+$/.test(new URL(response.url()).pathname) && response.request().method() === 'DELETE' && response.status() === 204);
+    await admin.getByRole('button', { name: 'Delete', exact: true }).last().click();
+    await noteDeleteResponse;
+    await admin.locator('.comment-node-deleted, .comment-node.comment-focus, .comment-node').filter({ hasText: adminNote }).locator('.deleted-tag').first().waitFor({ state: 'visible', timeout: 5000 });
+
+    await admin.getByRole('button', { name: 'Writings', exact: true }).click();
     await admin.getByText('Writings worth returning to.').waitFor({ state: 'visible', timeout: 5000 });
     const adminWritingSearch = admin.getByRole('textbox', { name: 'Search writings' });
     await adminWritingSearch.waitFor({ state: 'visible', timeout: 5000 });
