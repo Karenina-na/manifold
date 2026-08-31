@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { hasUnsavedChanges } from './dirty-guard'
 
-export type HashRoute = { segments: string[] }
+export type HashRoute = { segments: string[]; query: URLSearchParams }
 
 // Registered by App on mount; consulted by requestNavigate before any hash
 // change that could discard an editor's unsaved state.
@@ -12,8 +12,10 @@ export function setNavConfirm(next: ((to: string) => void) | null) {
 }
 
 function parseHash(): HashRoute {
-  const segments = window.location.hash.replace(/^#\/?/, '').split('/').filter(Boolean)
-  return { segments }
+  const raw = window.location.hash.replace(/^#\/?/, '')
+  const [pathPart, queryPart] = raw.split('?')
+  const segments = pathPart.split('/').filter(Boolean)
+  return { segments, query: new URLSearchParams(queryPart ?? '') }
 }
 
 export function useHashRoute(): HashRoute {

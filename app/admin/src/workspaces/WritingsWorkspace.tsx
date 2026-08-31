@@ -15,6 +15,7 @@ import { deriveToc, estimateReadingMinutes } from '../lib/content-derive'
 import { ChipsInput } from '../components/ChipsInput'
 import { ContentListPanel, type TransitionAction } from '../components/ContentListPanel'
 import { ContentEditorShell, type EditorMode } from '../components/ContentEditorShell'
+import { ContentCommentsPanel } from '../components/ContentCommentsPanel'
 import { MarkdownEditor } from '../components/MarkdownEditor'
 
 const schema = z.object({
@@ -58,11 +59,11 @@ function slugify(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
 }
 
-export function WritingsWorkspace({ token, segments }: { token: string; segments: string[] }) {
+export function WritingsWorkspace({ token, segments, query }: { token: string; segments: string[]; query: URLSearchParams }) {
   const client = useMemo(() => createAdminClient(token), [token])
   const editingId = segments[0]
   if (!editingId) return <WritingsListPage client={client} />
-  return <WritingEditorPage client={client} editingId={editingId} />
+  return <WritingEditorPage client={client} editingId={editingId} commentsRequested={segments[1] === 'comments'} routeQuery={query} />
 }
 
 function WritingsListPage({ client }: { client: ReturnType<typeof createAdminClient> }) {
@@ -88,11 +89,12 @@ function WritingsListPage({ client }: { client: ReturnType<typeof createAdminCli
   </section>
 }
 
-function WritingEditorPage({ client, editingId }: { client: ReturnType<typeof createAdminClient>; editingId: string }) {
+function WritingEditorPage({ client, editingId, commentsRequested, routeQuery }: { client: ReturnType<typeof createAdminClient>; editingId: string; commentsRequested: boolean; routeQuery: URLSearchParams }) {
   const queryClient = useQueryClient()
   const isNew = editingId === 'new'
   const [draft, setDraft] = useState<AdminContent | null>(null)
   const [mode, setMode] = useState<EditorMode>(isNew ? 'create' : 'view')
+  const [activeTab, setActiveTab] = useState(commentsRequested && !isNew ? 'comments' : 'meta')
   const [savedFlash, setSavedFlash] = useState(false)
   const [conflict, setConflict] = useState(false)
   const flashTimer = useRef<number | null>(null)
@@ -188,6 +190,23 @@ function WritingEditorPage({ client, editingId }: { client: ReturnType<typeof cr
     <ArticleSurface title={watched.title} summary={watched.summary} meta={meta} body={bodyText} toc={toc} />
   </div></div>
 
+  const commentsTab = isNew ? null : <ContentCommentsPanel
+    client={client}
+    contentId={editingId}
+    page={Number(routeQuery.get('page') ?? 1) || 1}
+    q={routeQuery.get('q') ?? ''}
+    focus={routeQuery.get('focus') ?? ''}
+    onParamsChange={(next) => {
+      const params = new URLSearchParams(routeQuery)
+      for (const [key, value] of Object.entries(next)) {
+        if (value === undefined || value === '') params.delete(key)
+        else params.set(key, String(value))
+      }
+      const encoded = params.toString()
+      replaceRoute(`#/writings/${editingId}/comments${encoded ? `?${encoded}` : ''}`)
+    }}
+  />
+
   return <ContentEditorShell
     kindLabel="Writing"
     hrefFor={(content) => `${webBaseUrl}/writing/${content.slug || content.id}`}
@@ -208,6 +227,9 @@ function WritingEditorPage({ client, editingId }: { client: ReturnType<typeof cr
     metaTab={metaTab}
     contextTab={contextTab}
     renderTab={renderTab}
+    commentsTab={commentsTab}
+    activeTab={activeTab}
+    onTabChange={setActiveTab}
     onSubmitRequest={submitForm}
   />
 }

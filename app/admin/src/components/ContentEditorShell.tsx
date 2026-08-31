@@ -29,10 +29,13 @@ type ContentEditorShellProps = {
   metaTab: ReactNode
   contextTab: ReactNode
   renderTab: ReactNode
+  commentsTab?: ReactNode
+  activeTab: string
+  onTabChange: (tab: string) => void
   onSubmitRequest: () => void
 }
 
-export function ContentEditorShell({ kindLabel, hrefFor, selected, mode, isDirty, isPending, savedFlash, conflict, formId, onBack, onDiscard, onEnterEdit, onConfirmLock, onTransition, onDeleteConfirmed, conflictReload, metaTab, contextTab, renderTab, onSubmitRequest }: ContentEditorShellProps) {
+export function ContentEditorShell({ kindLabel, hrefFor, selected, mode, isDirty, isPending, savedFlash, conflict, formId, onBack, onDiscard, onEnterEdit, onConfirmLock, onTransition, onDeleteConfirmed, conflictReload, metaTab, contextTab, renderTab, commentsTab, activeTab, onTabChange, onSubmitRequest }: ContentEditorShellProps) {
   const [pendingLock, setPendingLock] = useState(false)
   const dirtyRef = useRef(false)
   useEffect(() => { dirtyRef.current = isDirty }, [isDirty])
@@ -72,19 +75,21 @@ export function ContentEditorShell({ kindLabel, hrefFor, selected, mode, isDirty
       </div>
       {mode !== 'create' && <Button variant={editing ? 'light' : 'default'} leftSection={editing ? <Lock size={15} /> : <LockOpen size={15} />} onClick={() => { if (editing) { if (isDirty) setPendingLock(true); else onConfirmLock() } else onEnterEdit() }}>{editing ? 'Lock' : 'Edit'}</Button>}
     </div>
-    <Tabs defaultValue="meta" keepMounted={false}>
+    <Tabs value={activeTab} onChange={(value) => onTabChange(value ?? 'meta')} keepMounted={false}>
       <Tabs.List>
         <Tabs.Tab value="meta">Meta</Tabs.Tab>
         <Tabs.Tab value="context">Context</Tabs.Tab>
         <Tabs.Tab value="render">Render</Tabs.Tab>
+        {commentsTab && <Tabs.Tab value="comments">Comments</Tabs.Tab>}
       </Tabs.List>
       <Tabs.Panel value="meta" pt="md">{metaPanel}</Tabs.Panel>
       <Tabs.Panel value="context" pt="md">{contextPanel}</Tabs.Panel>
       <Tabs.Panel value="render" pt="md">
         <div className="editor-render">{renderTab}</div>
       </Tabs.Panel>
+      {commentsTab && <Tabs.Panel value="comments" pt="md">{commentsTab}</Tabs.Panel>}
     </Tabs>
-    {editing && <SaveBar formId={formId} isDirty={isDirty} isPending={isPending} saved={savedFlash} label={mode === 'edit' ? 'Save changes' : 'Save draft'} onDiscard={onDiscard} onSave={onSubmitRequest} />}
+    {editing && activeTab !== 'comments' && <SaveBar formId={formId} isDirty={isDirty} isPending={isPending} saved={savedFlash} label={mode === 'edit' ? 'Save changes' : 'Save draft'} onDiscard={onDiscard} onSave={onSubmitRequest} />}
     <Modal opened={pendingLock} onClose={() => setPendingLock(false)} title="Unsaved changes" centered>
       <p>Discard unsaved changes and lock this {kindLabel.toLowerCase()}?</p>
       <div className="modal-actions">

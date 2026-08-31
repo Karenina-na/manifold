@@ -24,7 +24,7 @@ Vite + React 19
 └── @manifold/sdk -> Core /api/v1/admin
 ```
 
-主要模块：`src/App.tsx` 管理登录、hash 路由（`#/writings`、`#/writings/{id}` 等二级页面）和未保存离开确认；`src/api.ts` 创建 SDK client；`src/lib/` 提供 hash 路由、dirty 守卫和 Core 派生规则的浏览器镜像（`content-derive.ts`）；`src/components/` 提供内容工作区共享组件（`ContentListPanel`/`ContentEditorShell`/`SaveBar`/`ChipsInput`/`ConfirmButton`/`MarkdownEditor`）；`SettingsWorkspace.tsx` 管理 Site composition；`workspaces/` 下分别负责 Dashboard（数据总览）、Profile、Writings、Thoughts、Media（图片上传与媒体库）和评论管理；`ErrorBoundary.tsx` 负责渲染恢复。组件文件用 PascalCase，工具与 hook 用 kebab-case。
+主要模块：`src/App.tsx` 管理登录、hash 路由（`#/writings`、`#/writings/{id}`、`#/writings/{id}/comments?…` 等二级页面，支持 hash query）和未保存离开确认；`src/api.ts` 创建 SDK client；`src/lib/` 提供 hash 路由、dirty 守卫和 Core 派生规则的浏览器镜像（`content-derive.ts`）；`src/components/` 提供内容工作区共享组件（`ContentListPanel`/`ContentEditorShell`/`ContentCommentsPanel`/`SaveBar`/`ChipsInput`/`ConfirmButton`/`MarkdownEditor`/`Pager`）；`SettingsWorkspace.tsx` 管理 Site composition；`workspaces/` 下分别负责 Dashboard（数据总览）、Profile、Writings、Thoughts、Media（图片上传与媒体库）和评论管理；`ErrorBoundary.tsx` 负责渲染恢复。组件文件用 PascalCase，工具与 hook 用 kebab-case。
 
 Dashboard、Profile、Writings、Thoughts、Comments、Settings 通过 lazy chunk 加载，登录壳同步加载。
 
@@ -104,7 +104,11 @@ Meta tab 字段：正文在 Context tab（vditor IR）必填；title、slug 可�
 
 ### Comments
 
-`adminComments()` 读取全量评论（含已软删，按 `createdAt` 降序）；Delete 调用 `DELETE /api/v1/admin/comments/{id}`（软删除），Restore 调用 `POST /api/v1/admin/comments/{id}/restore`，成功均为 204。操作后失效 `admin-comments` 和 `admin-overview`。评论创建即公开，这里只做软删除/恢复管理。
+`adminComments({ q, page })` 读取线程分页的管理评论（含已软删，顶层评论降序，行内附 `contentTitle`/`contentKind`）；顶部搜索 300ms 防抖后走服务端 `q`。每行展示作者、回复标记、内容类型徽标、正文、日期和软删态；删除走 `ConfirmButton` 二次确认（`DELETE /api/v1/admin/comments/{id}`，204），恢复为直接操作（`POST .../restore`，204）。点击行跳转到所属内容编辑页的 Comments tab 并带 `?focus={commentId}`，由 Core 把该评论定位到其线程所在分页；跳转遵守 dirty 离开确认。操作后失效 `admin-comments`、`admin-overview` 和 `admin-content`。
+
+### 编辑器 Comments tab
+
+Writings/Thoughts 编辑页在 Meta/Context/Render 之外提供 Comments tab（新建内容不显示）。`ContentCommentsPanel` 按线程展示当前内容的评论：顶层评论行内可 Reply（composer 以 Profile displayName 预填作者名，作为站点作者发出；清空则 Core 归一化为 `Anonymous`）、Delete、Restore。tab 的 `page/q/focus` 状态镜像到 hash（`#/writings/{id}/comments?page=2&q=…`），focus 命中后滚动高亮该行并从 URL 摘除。评论 tab 与内容编辑状态无关（锁定只影响 Meta/Context 的表单）。创建/删除/恢复后失效 `admin-comments`、`admin-overview`、`admin-content`。
 
 Now 状态功能已整体移除（Core 端点删除），本仓库无对应工作区。
 
@@ -119,7 +123,7 @@ Site 调用 `GET/PATCH /api/v1/admin/site`，包含 `featuredContent`、`navigat
 | `admin-overview` | `adminOverview()` | Dashboard 手动刷新 |
 | `admin-analytics` + days | `adminAnalyticsViews({ days: 30 })` | Dashboard 手动刷新 |
 | `admin-system` | `adminSystem()` | Dashboard 手动刷新 |
-| `admin-comments` | `adminComments()`（Dashboard 评论面板与 Comments 工作区共享） | 软删除/恢复评论、Dashboard 手动刷新 |
+| `admin-comments` | `adminComments({ q, page })`（Comments 工作区）、`adminComments({ contentId, q, page, focus })`（编辑器 Comments tab）、`adminComments({ pageSize: 50 })`（Dashboard 最近评论） | 软删除/恢复评论、发布评论、Dashboard 手动刷新 |
 | `admin-audit` + page + q | `adminAudit({ page, pageSize: 10, q })` | Dashboard 手动刷新 |
 | `admin-content` + `ARTICLE` + `{ status, q, sort, page }` | Writings 列表 `adminContent({ kind: 'ARTICLE', … })` | 内容创建、更新、发布、撤回、删除（统一失效 `['admin-content']` 前缀） |
 | `admin-content` + `THOUGHT` + `{ status, q, sort, page }` | Thoughts 列表 `adminContent({ kind: 'THOUGHT', … })` | 同上 |

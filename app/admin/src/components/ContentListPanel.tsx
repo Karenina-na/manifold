@@ -1,12 +1,13 @@
 import { TextInput } from '@mantine/core'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowUpRight, ChevronLeft, ChevronRight, Eye, Heart, MessageCircle, Search, Send, Trash2, X } from 'lucide-react'
+import { ArrowUpRight, Eye, Heart, MessageCircle, Search, Send, Trash2, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { AdminContent, ContentKind, ContentSort } from '@manifold/contracts'
 import type { ManifoldClient } from '@manifold/sdk'
 import { formatDate } from '@manifold/render'
 import { deriveExcerpt } from '../lib/content-derive'
 import { ConfirmButton } from './ConfirmButton'
+import { Pager } from './Pager'
 
 export type StatusFilter = 'ALL' | 'DRAFT' | 'PUBLISHED'
 
@@ -79,11 +80,7 @@ export function ContentListPanel({ client, kind, singular, onEdit, onTransition,
       hrefFor={hrefFor}
     />)}
     {!list.isError && !list.isPending && !items.length && <p className="content-list-hint">No {kind === 'ARTICLE' ? 'writings' : 'thoughts'} match the current filters.</p>}
-    {totalPages > 1 && <div className="content-pager">
-      <button type="button" className="mini-button" aria-label="Previous page" disabled={page <= 1} onClick={() => changePage(page - 1)}><ChevronLeft size={14} /></button>
-      <span>Page {page} of {totalPages}</span>
-      <button type="button" className="mini-button" aria-label="Next page" disabled={page >= totalPages} onClick={() => changePage(page + 1)}><ChevronRight size={14} /></button>
-    </div>}
+    <Pager page={page} totalPages={totalPages} onChange={changePage} />
   </section>
 }
 

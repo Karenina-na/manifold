@@ -87,8 +87,8 @@ function App() {
       <Suspense fallback={<WorkspaceFallback />}>
         {view === 'dashboard' && <DashboardWorkspace token={session.accessToken} />}
         {view === 'profile' && <ProfileWorkspace token={session.accessToken} />}
-        {view === 'writings' && <WritingsWorkspace token={session.accessToken} segments={subSegments} />}
-        {view === 'thoughts' && <ThoughtsWorkspace token={session.accessToken} segments={subSegments} />}
+        {view === 'writings' && <WritingsWorkspace token={session.accessToken} segments={subSegments} query={route.query} />}
+        {view === 'thoughts' && <ThoughtsWorkspace token={session.accessToken} segments={subSegments} query={route.query} />}
         {view === 'media' && <MediaWorkspace token={session.accessToken} />}
         {view === 'comments' && <CommentsWorkspace token={session.accessToken} />}
         {view === 'settings' && <SettingsWorkspace token={session.accessToken} />}

@@ -14,6 +14,7 @@ import { navigate, requestNavigate, replaceRoute } from '../lib/useHashRoute'
 import { ChipsInput } from '../components/ChipsInput'
 import { ContentListPanel, type TransitionAction } from '../components/ContentListPanel'
 import { ContentEditorShell, type EditorMode } from '../components/ContentEditorShell'
+import { ContentCommentsPanel } from '../components/ContentCommentsPanel'
 import { MarkdownEditor } from '../components/MarkdownEditor'
 
 const schema = z.object({
@@ -60,11 +61,11 @@ function fromContent(content: AdminContent): Form {
   }
 }
 
-export function ThoughtsWorkspace({ token, segments }: { token: string; segments: string[] }) {
+export function ThoughtsWorkspace({ token, segments, query }: { token: string; segments: string[]; query: URLSearchParams }) {
   const client = useMemo(() => createAdminClient(token), [token])
   const editingId = segments[0]
   if (!editingId) return <ThoughtsListPage client={client} />
-  return <ThoughtEditorPage client={client} editingId={editingId} />
+  return <ThoughtEditorPage client={client} editingId={editingId} commentsRequested={segments[1] === 'comments'} routeQuery={query} />
 }
 
 function ThoughtsListPage({ client }: { client: ReturnType<typeof createAdminClient> }) {
@@ -91,11 +92,12 @@ function ThoughtsListPage({ client }: { client: ReturnType<typeof createAdminCli
   </section>
 }
 
-function ThoughtEditorPage({ client, editingId }: { client: ReturnType<typeof createAdminClient>; editingId: string }) {
+function ThoughtEditorPage({ client, editingId, commentsRequested, routeQuery }: { client: ReturnType<typeof createAdminClient>; editingId: string; commentsRequested: boolean; routeQuery: URLSearchParams }) {
   const queryClient = useQueryClient()
   const isNew = editingId === 'new'
   const [draft, setDraft] = useState<AdminContent | null>(null)
   const [mode, setMode] = useState<EditorMode>(isNew ? 'create' : 'view')
+  const [activeTab, setActiveTab] = useState(commentsRequested && !isNew ? 'comments' : 'meta')
   const [savedFlash, setSavedFlash] = useState(false)
   const [conflict, setConflict] = useState(false)
   const flashTimer = useRef<number | null>(null)
@@ -197,6 +199,23 @@ function ThoughtEditorPage({ client, editingId }: { client: ReturnType<typeof cr
     />
   </div></div>
 
+  const commentsTab = isNew ? null : <ContentCommentsPanel
+    client={client}
+    contentId={editingId}
+    page={Number(routeQuery.get('page') ?? 1) || 1}
+    q={routeQuery.get('q') ?? ''}
+    focus={routeQuery.get('focus') ?? ''}
+    onParamsChange={(next) => {
+      const params = new URLSearchParams(routeQuery)
+      for (const [key, value] of Object.entries(next)) {
+        if (value === undefined || value === '') params.delete(key)
+        else params.set(key, String(value))
+      }
+      const encoded = params.toString()
+      replaceRoute(`#/thoughts/${editingId}/comments${encoded ? `?${encoded}` : ''}`)
+    }}
+  />
+
   return <ContentEditorShell
     kindLabel="Thought"
     hrefFor={(content) => `${webBaseUrl}/thoughts/${content.slug || content.id}`}
@@ -217,6 +236,9 @@ function ThoughtEditorPage({ client, editingId }: { client: ReturnType<typeof cr
     metaTab={metaTab}
     contextTab={contextTab}
     renderTab={renderTab}
+    commentsTab={commentsTab}
+    activeTab={activeTab}
+    onTabChange={setActiveTab}
     onSubmitRequest={submitForm}
   />
 }

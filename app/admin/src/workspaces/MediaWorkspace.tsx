@@ -1,12 +1,13 @@
 import { Alert, Button, TextInput } from '@mantine/core'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronLeft, ChevronRight, Copy, Search, Trash2, UploadCloud } from 'lucide-react'
+import { Copy, Search, Trash2, UploadCloud } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Media } from '@manifold/contracts'
 import { formatDate } from '@manifold/render'
 import { ApiError } from '@manifold/sdk'
 import { createAdminClient } from '../api'
 import { ConfirmButton } from '../components/ConfirmButton'
+import { Pager } from '../components/Pager'
 
 const UPLOAD_ACCEPT = 'image/png,image/jpeg,image/webp,image/gif,image/avif'
 const allowedImageTypes = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/avif'])
@@ -131,11 +132,7 @@ export function MediaWorkspace({ token }: { token: string }) {
       </figure>)}
     </div>}
     {!list.isError && !list.isPending && !items.length && <p className="content-list-hint">{q ? 'No images match the current filters.' : 'No images uploaded yet — drop files above or paste into the editor.'}</p>}
-    {totalPages > 1 && <div className="content-pager">
-      <button type="button" className="mini-button" aria-label="Previous page" disabled={page <= 1} onClick={() => changePage(page - 1)}><ChevronLeft size={14} /></button>
-      <span>Page {page} of {totalPages}</span>
-      <button type="button" className="mini-button" aria-label="Next page" disabled={page >= totalPages} onClick={() => changePage(page + 1)}><ChevronRight size={14} /></button>
-    </div>}
+    <Pager page={page} totalPages={totalPages} onChange={changePage} />
   </section>
 }
 

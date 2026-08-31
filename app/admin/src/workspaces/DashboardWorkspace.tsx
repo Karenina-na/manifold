@@ -55,7 +55,7 @@ export function DashboardWorkspace({ token }: { token: string }) {
   const overview = useQuery({ queryKey: ['admin-overview'], queryFn: () => client.adminOverview() })
   const analytics = useQuery({ queryKey: ['admin-analytics', ANALYTICS_DAYS], queryFn: () => client.adminAnalyticsViews({ days: ANALYTICS_DAYS }) })
   const system = useQuery({ queryKey: ['admin-system'], queryFn: () => client.adminSystem() })
-  const comments = useQuery({ queryKey: ['admin-comments'], queryFn: () => client.adminComments() })
+  const comments = useQuery({ queryKey: ['admin-comments', 'recent'], queryFn: () => client.adminComments({ pageSize: 50 }) })
 
   const [commentSearch, setCommentSearch] = useState('')
   const [commentPage, setCommentPage] = useState(1)
@@ -68,6 +68,7 @@ export function DashboardWorkspace({ token }: { token: string }) {
   const commentPageCount = Math.max(1, Math.ceil(filteredComments.length / PANEL_PAGE_SIZE))
   const safeCommentPage = Math.min(commentPage, commentPageCount)
   const commentRows = filteredComments.slice((safeCommentPage - 1) * PANEL_PAGE_SIZE, safeCommentPage * PANEL_PAGE_SIZE)
+  const commentTotal = comments.data?.pagination.totalItems ?? filteredComments.length
 
   const [auditSearch, setAuditSearch] = useState('')
   const [auditPage, setAuditPage] = useState(1)
@@ -177,7 +178,7 @@ export function DashboardWorkspace({ token }: { token: string }) {
     </div>
     <div className="dash-grid">
       <section className="panel panel-stack" aria-label="Recent comments">
-        <div className="panel-heading"><div><p className="kicker">Community</p><h2>Recent comments</h2></div><Badge color="teal" variant="light">{formatCount(filteredComments.length)}</Badge></div>
+        <div className="panel-heading"><div><p className="kicker">Community</p><h2>Recent comments</h2></div><Badge color="teal" variant="light">{formatCount(commentTotal)}</Badge></div>
         <input className="panel-search" type="search" value={commentSearch} placeholder="Search comments" aria-label="Search comments" onChange={(event) => { setCommentSearch(event.target.value); setCommentPage(1) }} />
         {commentRows.length === 0 && <p className="muted">{commentSearch ? 'No matching comments.' : 'No comments yet.'}</p>}
         <ul className="dash-list">
