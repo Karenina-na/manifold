@@ -14,7 +14,7 @@ const defaultLinks: SiteNavigationItem[] = [
   { label: "Thoughts", href: "/thoughts" },
 ];
 
-type SearchResult = { id: string; href: string; kind: string; title: string | null; summary: string; publishedAt: string | null };
+type SearchResult = { id: string; href: string; kind: string; title: string | null | undefined; summary: string; publishedAt: string | null };
 
 export function SiteNav({ navigation }: { navigation?: SiteNavigationItem[] }) {
   const links = navigation?.length ? navigation : defaultLinks;
@@ -70,7 +70,7 @@ export function SiteNav({ navigation }: { navigation?: SiteNavigationItem[] }) {
     const timer = window.setTimeout(() => { if (active) setSearching(true); }, 0);
     const searchTimer = window.setTimeout(() => {
       void createBrowserClient().feed({ q: query.trim(), kind: ["ARTICLE", "THOUGHT"], limit: 8 })
-        .then((collection) => { if (active) setResults(collection.data); })
+        .then((collection) => { if (active) setResults(collection.data.map((item) => ({ id: item.id, href: item.href, kind: item.kind, title: item.title ?? null, summary: item.summary, publishedAt: item.publishedAt }))); })
         .catch(() => { if (active) setResults([]); })
         .finally(() => { if (active) setSearching(false); });
     }, 220);

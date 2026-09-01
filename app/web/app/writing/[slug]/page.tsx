@@ -27,8 +27,7 @@ export default async function WritingDetailPage({ params }: Props) {
   const referer = (await headers()).get("referer") ?? undefined;
   const visitorId = (await cookies()).get("manifold-vid")?.value;
   const content = await createServerClient().contentBySlug(slug, { referrer: referer, visitorId }).catch(() => null);
-  if (!content) return <main className={styles.page}><div className={styles.shell}><section className={styles.section}><div className="articleBack"><Link href="/writing"><ArrowLeft size={15} /> Back to writing</Link></div><h1>That piece is not here.</h1><p className={styles.muted}>It may be unpublished or the link may have changed.</p></section></div></main>;
-  if (content.kind !== "ARTICLE") notFound();
+  if (!content || content.kind !== "ARTICLE") notFound();
   const metadata = content.metadata as ArticleMetadata;
   const contentSlug = content.slug ?? content.id;
   const toc = metadata.toc ?? [];
