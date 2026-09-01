@@ -1,5 +1,5 @@
-DROP TABLE IF EXISTS reactions;
-DROP TABLE IF EXISTS now_status;
+-- Runtime schema mirror of the embedded bootstrap in internal/store/store.go.
+-- Keep both in sync; the Go source is authoritative for fresh databases.
 
 CREATE TABLE IF NOT EXISTS profile (
     id TEXT PRIMARY KEY,
@@ -44,7 +44,6 @@ CREATE TABLE IF NOT EXISTS site_config (
     footer_text TEXT NOT NULL DEFAULT 'Built for notes that stay in motion.',
     social_json TEXT NOT NULL DEFAULT '[]',
     comments_enabled INTEGER NOT NULL DEFAULT 1,
-    featured_content_json TEXT NOT NULL DEFAULT '[]',
     navigation_json TEXT NOT NULL DEFAULT '[]',
     sections_json TEXT NOT NULL DEFAULT '[]',
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -110,6 +109,16 @@ CREATE TABLE IF NOT EXISTS content_view_events (
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS media (
+    id TEXT PRIMARY KEY,
+    mime TEXT NOT NULL,
+    size INTEGER NOT NULL,
+    sha256 TEXT NOT NULL UNIQUE,
+    filename TEXT NOT NULL DEFAULT '',
+    data BLOB NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE INDEX IF NOT EXISTS idx_content_publication ON content(status, published_at DESC);
 CREATE INDEX IF NOT EXISTS idx_content_kind_publication ON content(kind, status, published_at DESC);
 CREATE INDEX IF NOT EXISTS idx_likes_content ON likes(content_id);
@@ -119,3 +128,5 @@ CREATE INDEX IF NOT EXISTS idx_audit_events_content_views ON audit_events(event_
 CREATE INDEX IF NOT EXISTS idx_view_events_day ON content_view_events(day);
 CREATE INDEX IF NOT EXISTS idx_view_events_content ON content_view_events(content_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_view_events_dedup ON content_view_events(content_id, visitor_id, day) WHERE visitor_id != '';
+CREATE INDEX IF NOT EXISTS idx_media_created_at ON media(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_comments_content_visibility ON comments(content_id, deleted_at, created_at);

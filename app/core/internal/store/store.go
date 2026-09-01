@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"slices"
 	"strings"
 	"time"
 
@@ -17,11 +16,9 @@ import (
 )
 
 const schema = `
-DROP TABLE IF EXISTS reactions;
-DROP TABLE IF EXISTS now_status;
 CREATE TABLE IF NOT EXISTS profile (id TEXT PRIMARY KEY, display_name TEXT NOT NULL, handle TEXT NOT NULL DEFAULT '', headline TEXT NOT NULL DEFAULT '', bio TEXT NOT NULL DEFAULT '', location TEXT NOT NULL DEFAULT '', avatar_url TEXT NOT NULL DEFAULT '', organization TEXT NOT NULL DEFAULT '', website_url TEXT NOT NULL DEFAULT '', resume_url TEXT NOT NULL DEFAULT '', interests_json TEXT NOT NULL DEFAULT '[]', education_json TEXT NOT NULL DEFAULT '[]', experience_json TEXT NOT NULL DEFAULT '[]', series_json TEXT NOT NULL DEFAULT '[]', contacts_json TEXT NOT NULL DEFAULT '[]', updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS content (id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK (kind IN ('THOUGHT', 'ARTICLE')), status TEXT NOT NULL DEFAULT 'DRAFT' CHECK (status IN ('DRAFT', 'PUBLISHED', 'DELETED')), slug TEXT UNIQUE, title TEXT, summary TEXT NOT NULL DEFAULT '', body TEXT NOT NULL DEFAULT '', tags_json TEXT NOT NULL DEFAULT '[]', metadata_json TEXT NOT NULL DEFAULT '{}', published_at TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, version INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, view_count INTEGER NOT NULL DEFAULT 0);
-CREATE TABLE IF NOT EXISTS site_config (id TEXT PRIMARY KEY, title TEXT NOT NULL DEFAULT 'Manifold', description TEXT NOT NULL DEFAULT 'Profile, technical writings, short thoughts, and personal projects.', footer_text TEXT NOT NULL DEFAULT 'Built for notes that stay in motion.', social_json TEXT NOT NULL DEFAULT '[]', comments_enabled INTEGER NOT NULL DEFAULT 1, featured_content_json TEXT NOT NULL DEFAULT '[]', navigation_json TEXT NOT NULL DEFAULT '[]', sections_json TEXT NOT NULL DEFAULT '[]', updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS site_config (id TEXT PRIMARY KEY, title TEXT NOT NULL DEFAULT 'Manifold', description TEXT NOT NULL DEFAULT 'Profile, technical writings, short thoughts, and personal projects.', footer_text TEXT NOT NULL DEFAULT 'Built for notes that stay in motion.', social_json TEXT NOT NULL DEFAULT '[]', comments_enabled INTEGER NOT NULL DEFAULT 1, navigation_json TEXT NOT NULL DEFAULT '[]', sections_json TEXT NOT NULL DEFAULT '[]', updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS thoughts_config (id TEXT PRIMARY KEY, featured_thought_id TEXT REFERENCES content(id) ON DELETE SET NULL, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS writings_config (id TEXT PRIMARY KEY, featured_writing_id TEXT REFERENCES content(id) ON DELETE SET NULL, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS comments (id TEXT PRIMARY KEY, content_id TEXT NOT NULL REFERENCES content(id), author_name TEXT NOT NULL, author_url TEXT NOT NULL DEFAULT '', body TEXT NOT NULL, reply_to_id TEXT REFERENCES comments(id), avatar_seed TEXT NOT NULL DEFAULT '', deleted_at TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
@@ -40,6 +37,7 @@ CREATE INDEX IF NOT EXISTS idx_view_events_day ON content_view_events(day);
 CREATE INDEX IF NOT EXISTS idx_view_events_content ON content_view_events(content_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_view_events_dedup ON content_view_events(content_id, visitor_id, day) WHERE visitor_id != '';
 CREATE INDEX IF NOT EXISTS idx_media_created_at ON media(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_comments_content_visibility ON comments(content_id, deleted_at, created_at);
 `
 
 type Store struct{ DB *sql.DB }
@@ -159,361 +157,12 @@ func Open(path string) (*Store, error) {
 		_ = db.Close()
 		return nil, err
 	}
-	if err := ensureSiteConfigColumns(db); err != nil {
-		_ = db.Close()
-		return nil, err
-	}
-	if err := ensureProfileColumns(db); err != nil {
-		_ = db.Close()
-		return nil, err
-	}
-	if err := ensureAuditEventColumns(db); err != nil {
-		_ = db.Close()
-		return nil, err
-	}
-	if err := ensureContentSchema(db); err != nil {
-		_ = db.Close()
-		return nil, err
-	}
-	if err := ensureCommentSchema(db); err != nil {
-		_ = db.Close()
-		return nil, err
-	}
 	s := &Store{DB: db}
 	if err := s.seed(); err != nil {
 		_ = db.Close()
 		return nil, err
 	}
 	return s, nil
-}
-
-func ensureContentSchema(db *sql.DB) error {
-	rows, err := db.Query(`PRAGMA table_info(content)`)
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-	hasMetadata, hasViewCount := false, false
-	for rows.Next() {
-		var cid, notNull, primaryKey int
-		var name, columnType string
-		var defaultValue sql.NullString
-		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
-			return err
-		}
-		if name == "metadata_json" {
-			hasMetadata = true
-		}
-		if name == "view_count" {
-			hasViewCount = true
-		}
-	}
-	if err := rows.Err(); err != nil {
-		return err
-	}
-	var tableSQL string
-	if err := db.QueryRow(`SELECT COALESCE(sql, '') FROM sqlite_master WHERE type = 'table' AND name = 'content'`).Scan(&tableSQL); err != nil {
-		return err
-	}
-	if strings.Contains(tableSQL, "'POST'") || strings.Contains(tableSQL, "'NOTE'") || strings.Contains(tableSQL, "'RESEARCH'") || strings.Contains(tableSQL, "'TECH'") || strings.Contains(tableSQL, "'MANUSCRIPT'") {
-		if err := migrateLegacyContent(db, hasMetadata, hasViewCount); err != nil {
-			return err
-		}
-		return backfillArticleMetadata(db)
-	}
-	if !hasMetadata {
-		if _, err = db.Exec(`ALTER TABLE content ADD COLUMN metadata_json TEXT NOT NULL DEFAULT '{}'`); err != nil {
-			return err
-		}
-	}
-	if !hasViewCount {
-		if _, err = db.Exec(`ALTER TABLE content ADD COLUMN view_count INTEGER NOT NULL DEFAULT 0`); err != nil {
-			return err
-		}
-	}
-	_, err = db.Exec(`UPDATE content SET metadata_json = CASE WHEN kind = 'THOUGHT' THEN '{}' ELSE metadata_json END WHERE TRIM(metadata_json) = '' OR metadata_json = '{}'`)
-	if err != nil {
-		return err
-	}
-	return backfillArticleMetadata(db)
-}
-
-func ensureCommentSchema(db *sql.DB) error {
-	rows, err := db.Query(`PRAGMA table_info(comments)`)
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-	columns := map[string]bool{}
-	for rows.Next() {
-		var cid, notNull, primaryKey int
-		var name, columnType string
-		var defaultValue sql.NullString
-		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
-			return err
-		}
-		columns[name] = true
-	}
-	if err := rows.Err(); err != nil {
-		return err
-	}
-	if !columns["avatar_seed"] {
-		if _, err := db.Exec(`ALTER TABLE comments ADD COLUMN avatar_seed TEXT NOT NULL DEFAULT ''`); err != nil {
-			return err
-		}
-	}
-	if !columns["deleted_at"] {
-		if _, err := db.Exec(`ALTER TABLE comments ADD COLUMN deleted_at TEXT NOT NULL DEFAULT ''`); err != nil {
-			return err
-		}
-	}
-	// The visibility index references deleted_at, so it cannot live in the bootstrap DDL:
-	// legacy databases would fail to open before the columns above are added.
-	if _, err := db.Exec(`DROP INDEX IF EXISTS idx_comments_content_status`); err != nil {
-		return err
-	}
-	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_comments_content_visibility ON comments(content_id, deleted_at, created_at)`); err != nil {
-		return err
-	}
-	return nil
-}
-
-func backfillArticleMetadata(db *sql.DB) error {
-	rows, err := db.Query(`SELECT id, body, metadata_json FROM content WHERE kind = 'ARTICLE'`)
-	if err != nil {
-		return err
-	}
-	type articleRow struct {
-		id, body, metadata string
-	}
-	articles := make([]articleRow, 0)
-	for rows.Next() {
-		var article articleRow
-		if err := rows.Scan(&article.id, &article.body, &article.metadata); err != nil {
-			_ = rows.Close()
-			return err
-		}
-		articles = append(articles, article)
-	}
-	if err := rows.Err(); err != nil {
-		_ = rows.Close()
-		return err
-	}
-	if err := rows.Close(); err != nil {
-		return err
-	}
-	for _, article := range articles {
-		encoded := encodeJSON(normalizeArticleMetadata("ARTICLE", article.body, decodeMetadata(article.metadata)))
-		if encoded == article.metadata {
-			continue
-		}
-		if _, err := db.Exec(`UPDATE content SET metadata_json = ? WHERE id = ?`, encoded, article.id); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func migrateLegacyContent(db *sql.DB, hasMetadata, hasViewCount bool) error {
-	if _, err := db.Exec(`PRAGMA foreign_keys = OFF`); err != nil {
-		return err
-	}
-	rollback := func(err error) error {
-		_, _ = db.Exec(`PRAGMA foreign_keys = ON`)
-		return err
-	}
-	tx, err := db.Begin()
-	if err != nil {
-		return rollback(err)
-	}
-	contentTable := `CREATE TABLE content_new (id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK (kind IN ('THOUGHT', 'ARTICLE')), status TEXT NOT NULL DEFAULT 'DRAFT' CHECK (status IN ('DRAFT', 'PUBLISHED', 'DELETED')), slug TEXT UNIQUE, title TEXT, summary TEXT NOT NULL DEFAULT '', body TEXT NOT NULL DEFAULT '', tags_json TEXT NOT NULL DEFAULT '[]', metadata_json TEXT NOT NULL DEFAULT '{}', published_at TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, version INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, view_count INTEGER NOT NULL DEFAULT 0)`
-	if _, err = tx.Exec(contentTable); err != nil {
-		_ = tx.Rollback()
-		return rollback(err)
-	}
-	metadataExpression := `CASE kind WHEN 'POST' THEN '{}' WHEN 'NOTE' THEN '{}' WHEN 'RESEARCH' THEN '{}' WHEN 'TECH' THEN '{"technologies":["Unspecified"]}' WHEN 'MANUSCRIPT' THEN '{"form":"OTHER","stage":"DRAFT"}' ELSE '{}' END`
-	if hasMetadata {
-		metadataExpression = `CASE kind WHEN 'POST' THEN '{}' WHEN 'NOTE' THEN '{}' WHEN 'RESEARCH' THEN '{}' WHEN 'TECH' THEN '{"technologies":["Unspecified"]}' WHEN 'MANUSCRIPT' THEN '{"form":"OTHER","stage":"DRAFT"}' ELSE CASE WHEN TRIM(metadata_json) = '' THEN '{}' ELSE metadata_json END END`
-	}
-	viewCountExpression := "0"
-	if hasViewCount {
-		viewCountExpression = "view_count"
-	}
-	query := `INSERT INTO content_new (id, kind, status, slug, title, summary, body, tags_json, metadata_json, published_at, created_at, version, updated_at, view_count) SELECT id, CASE kind WHEN 'POST' THEN 'ARTICLE' WHEN 'NOTE' THEN 'THOUGHT' WHEN 'RESEARCH' THEN 'ARTICLE' WHEN 'TECH' THEN 'ARTICLE' WHEN 'MANUSCRIPT' THEN 'ARTICLE' ELSE kind END, status, slug, title, summary, body, tags_json, ` + metadataExpression + `, published_at, created_at, version, updated_at, ` + viewCountExpression + ` FROM content`
-	if _, err = tx.Exec(query); err != nil {
-		_ = tx.Rollback()
-		return rollback(err)
-	}
-	if _, err = tx.Exec(`DROP TABLE content`); err != nil {
-		_ = tx.Rollback()
-		return rollback(err)
-	}
-	if _, err = tx.Exec(`ALTER TABLE content_new RENAME TO content`); err != nil {
-		_ = tx.Rollback()
-		return rollback(err)
-	}
-	if _, err = tx.Exec(`CREATE INDEX IF NOT EXISTS idx_content_publication ON content(status, published_at DESC)`); err != nil {
-		_ = tx.Rollback()
-		return rollback(err)
-	}
-	if _, err = tx.Exec(`CREATE INDEX IF NOT EXISTS idx_content_kind_publication ON content(kind, status, published_at DESC)`); err != nil {
-		_ = tx.Rollback()
-		return rollback(err)
-	}
-	if err = tx.Commit(); err != nil {
-		return rollback(err)
-	}
-	_, err = db.Exec(`PRAGMA foreign_keys = ON`)
-	return err
-}
-
-func ensureAuditEventColumns(db *sql.DB) error {
-	rows, err := db.Query(`PRAGMA table_info(audit_events)`)
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-	hasTraceID := false
-	for rows.Next() {
-		var cid, notNull, primaryKey int
-		var name, columnType string
-		var defaultValue sql.NullString
-		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
-			return err
-		}
-		if name == "trace_id" {
-			hasTraceID = true
-		}
-	}
-	if err := rows.Err(); err != nil {
-		return err
-	}
-	if !hasTraceID {
-		_, err = db.Exec(`ALTER TABLE audit_events ADD COLUMN trace_id TEXT NOT NULL DEFAULT ''`)
-	}
-	return err
-}
-
-func ensureSiteConfigColumns(db *sql.DB) error {
-	rows, err := db.Query(`PRAGMA table_info(site_config)`)
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-	columns := map[string]bool{}
-	for rows.Next() {
-		var cid int
-		var name, columnType string
-		var notNull, primaryKey int
-		var defaultValue sql.NullString
-		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
-			return err
-		}
-		columns[name] = true
-	}
-	if err := rows.Err(); err != nil {
-		return err
-	}
-	for _, column := range []string{"featured_content_json"} {
-		if !columns[column] {
-			if _, err := db.Exec(`ALTER TABLE site_config ADD COLUMN ` + column + ` TEXT NOT NULL DEFAULT '[]'`); err != nil {
-				return err
-			}
-		}
-	}
-	for _, column := range []struct{ name, ddl string }{
-		{"title", `ALTER TABLE site_config ADD COLUMN title TEXT NOT NULL DEFAULT 'Manifold'`},
-		{"description", `ALTER TABLE site_config ADD COLUMN description TEXT NOT NULL DEFAULT 'Profile, technical writings, short thoughts, and personal projects.'`},
-		{"footer_text", `ALTER TABLE site_config ADD COLUMN footer_text TEXT NOT NULL DEFAULT 'Built for notes that stay in motion.'`},
-		{"social_json", `ALTER TABLE site_config ADD COLUMN social_json TEXT NOT NULL DEFAULT '[]'`},
-		{"comments_enabled", `ALTER TABLE site_config ADD COLUMN comments_enabled INTEGER NOT NULL DEFAULT 1`},
-	} {
-		if !columns[column.name] {
-			if _, err := db.Exec(column.ddl); err != nil {
-				return err
-			}
-		}
-	}
-	if _, err := db.Exec(`UPDATE site_config SET navigation_json = ?, sections_json = ? WHERE id = 'site_1' AND (navigation_json LIKE '%TECH%' OR navigation_json LIKE '%MANUSCRIPT%' OR sections_json LIKE '%MANUSCRIPT%')`, encodeJSON([]model.SiteNavigationItem{{Label: "Thoughts", Href: "/thoughts"}, {Label: "Writings", Href: "/writing"}}), encodeJSON(defaultSections)); err != nil {
-		return err
-	}
-	return remapLegacySections(db)
-}
-
-// remapLegacySections migrates homepage section names that predate the
-// sections enum; unknown values are dropped and an empty result falls back
-// to the full default ordering so public pages keep rendering every block.
-func remapLegacySections(db *sql.DB) error {
-	var raw string
-	err := db.QueryRow(`SELECT sections_json FROM site_config WHERE id = 'site_1'`).Scan(&raw)
-	if err == sql.ErrNoRows {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	sections := decodeStrings(raw)
-	legacy := false
-	mapped := make([]string, 0, len(sections))
-	for _, section := range sections {
-		switch section {
-		case "PROFILE":
-			mapped = append(mapped, "PROFILE")
-		case "CV":
-			mapped = append(mapped, "BACKGROUND")
-			legacy = true
-		case "RECENT_ACTIVITY":
-			mapped = append(mapped, "RECENT_CONTENT")
-			legacy = true
-		default:
-			if slices.Contains(defaultSections, section) {
-				mapped = append(mapped, section)
-			} else {
-				legacy = true
-			}
-		}
-	}
-	if !legacy {
-		return nil
-	}
-	if len(mapped) == 0 {
-		mapped = defaultSections
-	}
-	_, err = db.Exec(`UPDATE site_config SET sections_json = ? WHERE id = 'site_1'`, encodeJSON(mapped))
-	return err
-}
-
-func ensureProfileColumns(db *sql.DB) error {
-	rows, err := db.Query(`PRAGMA table_info(profile)`)
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-	columns := map[string]bool{}
-	for rows.Next() {
-		var cid, notNull, primaryKey int
-		var name, columnType string
-		var defaultValue sql.NullString
-		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
-			return err
-		}
-		columns[name] = true
-	}
-	if err := rows.Err(); err != nil {
-		return err
-	}
-	for _, column := range []string{"resume_url", "interests_json", "education_json", "experience_json", "series_json", "contacts_json"} {
-		if !columns[column] {
-			defaultValue := "'[]'"
-			if column == "resume_url" {
-				defaultValue = "''"
-			}
-			if _, err := db.Exec(`ALTER TABLE profile ADD COLUMN ` + column + ` TEXT NOT NULL DEFAULT ` + defaultValue); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
 }
 
 func (s *Store) Close() error { return s.DB.Close() }
@@ -523,28 +172,7 @@ func (s *Store) seed() error {
 	if _, err := s.DB.Exec(`INSERT OR IGNORE INTO profile (id, display_name, handle, headline, bio, location, organization, website_url, resume_url, interests_json, education_json, experience_json, series_json, contacts_json, updated_at) VALUES ('profile_1', 'Manifold', '@manifold', 'Profile, writings, and thoughts.', 'Technical writings and short thoughts.', 'Peking, China', 'Independent', 'https://manifold.local', '', '["systems","research","writing"]', '[{"institution":"Independent","program":"Research and engineering","period":"Now"}]', '[{"organization":"Manifold","role":"Research and software","period":"Now"}]', '[{"name":"API relay","url":"https://api.weizixiang.dev","description":"A small public gateway for experiments and personal infrastructure.","category":"Infrastructure"},{"name":"OpenList","url":"https://openlist.weizixiang.dev","description":"A calm index for files, links, and things worth keeping close.","category":"Tool"}]', '[{"label":"GitHub","url":"https://github.com/manifold-space/manifold","handle":"@manifold-space"},{"label":"Email","url":"mailto:hello@manifold.local","handle":"hello@manifold.local"}]', ?)`, now); err != nil {
 		return err
 	}
-	if _, err := s.DB.Exec(`UPDATE profile SET series_json = '[{"name":"API relay","url":"https://api.weizixiang.dev","description":"A small public gateway for experiments and personal infrastructure.","category":"Infrastructure"},{"name":"OpenList","url":"https://openlist.weizixiang.dev","description":"A calm index for files, links, and things worth keeping close.","category":"Tool"}]' WHERE id = 'profile_1' AND series_json = '[]'`); err != nil {
-		return err
-	}
-	if _, err := s.DB.Exec(`UPDATE profile SET contacts_json = '[{"label":"GitHub","url":"https://github.com/manifold-space/manifold","handle":"@manifold-space"},{"label":"Email","url":"mailto:hello@manifold.local","handle":"hello@manifold.local"}]' WHERE id = 'profile_1' AND contacts_json = '[]'`); err != nil {
-		return err
-	}
-	if _, err := s.DB.Exec(`UPDATE profile SET headline = 'Profile, writings, and thoughts.', bio = 'Technical writings and short thoughts.' WHERE id = 'profile_1' AND headline = 'A living digital garden for ideas in motion.'`); err != nil {
-		return err
-	}
-	if _, err := s.DB.Exec(`UPDATE profile SET bio = 'Technical writings and short thoughts.' WHERE id = 'profile_1' AND bio = 'Technical writings and short thoughtsxxxxx'`); err != nil {
-		return err
-	}
-	if _, err := s.DB.Exec(`UPDATE content SET summary = 'Notes on designing boundaries in personal systems.' WHERE id = 'content_1' AND summary = 'A field note on keeping a personal system calm and extensible.'`); err != nil {
-		return err
-	}
-	if _, err := s.DB.Exec(`UPDATE content SET summary = 'Short note on when to turn an observation into a system.', body = 'Not every observation needs a system. First decide whether it changes the way you work.' WHERE id = 'content_2' AND summary = 'Not every thought needs to become a system. Some only need a place to land.'`); err != nil {
-		return err
-	}
-	if _, err := s.DB.Exec(`UPDATE content SET summary = 'Questions about the relationship between software and daily life.' WHERE id = 'content_3' AND summary = 'A research notebook for questions that sit between engineering and lived experience.'`); err != nil {
-		return err
-	}
-	if _, err := s.DB.Exec(`INSERT OR IGNORE INTO site_config (id, featured_content_json, navigation_json, sections_json, updated_at) VALUES ('site_1', '[]', ?, ?, ?)`, encodeJSON([]model.SiteNavigationItem{{Label: "Thoughts", Href: "/thoughts"}, {Label: "Writings", Href: "/writing"}}), encodeJSON(defaultSections), now); err != nil {
+	if _, err := s.DB.Exec(`INSERT OR IGNORE INTO site_config (id, navigation_json, sections_json, updated_at) VALUES ('site_1', ?, ?, ?)`, encodeJSON([]model.SiteNavigationItem{{Label: "Thoughts", Href: "/thoughts"}, {Label: "Writings", Href: "/writing"}}), encodeJSON(defaultSections), now); err != nil {
 		return err
 	}
 	seedContent := []struct {
@@ -558,28 +186,6 @@ func (s *Store) seed() error {
 		if _, err := s.DB.Exec(`INSERT OR IGNORE INTO content (id, kind, status, slug, title, summary, body, tags_json, metadata_json, published_at, created_at, updated_at) VALUES (?, ?, 'PUBLISHED', NULLIF(?, ''), NULLIF(?, ''), ?, ?, ?, ?, ?, ?, ?)`, item.id, item.kind, item.slug, item.title, item.summary, item.body, item.tags, item.metadata, now, now, now); err != nil {
 			return err
 		}
-	}
-	// One-time migration: older installs kept archive pins in
-	// site_config.featured_content_json; map those refs into the per-kind
-	// config tables. Fresh installs leave both pins NULL so archives fall
-	// back to the newest published item of their kind.
-	if _, err := s.DB.Exec(`INSERT OR IGNORE INTO thoughts_config (id, featured_thought_id, updated_at)
-		SELECT 'thoughts_1', json_extract(featured.value, '$.id'), ?
-		FROM site_config, json_each(site_config.featured_content_json) AS featured
-		WHERE site_config.id = 'site_1'
-			AND json_extract(featured.value, '$.kind') IN ('THOUGHT', 'NOTE')
-			AND EXISTS (SELECT 1 FROM content WHERE content.id = json_extract(featured.value, '$.id') AND content.kind = 'THOUGHT' AND content.status = 'PUBLISHED')
-		LIMIT 1`, now); err != nil {
-		return err
-	}
-	if _, err := s.DB.Exec(`INSERT OR IGNORE INTO writings_config (id, featured_writing_id, updated_at)
-		SELECT 'writings_1', json_extract(featured.value, '$.id'), ?
-		FROM site_config, json_each(site_config.featured_content_json) AS featured
-		WHERE site_config.id = 'site_1'
-			AND json_extract(featured.value, '$.kind') = 'ARTICLE'
-			AND EXISTS (SELECT 1 FROM content WHERE content.id = json_extract(featured.value, '$.id') AND content.kind = 'ARTICLE' AND content.status = 'PUBLISHED')
-		LIMIT 1`, now); err != nil {
-		return err
 	}
 	if _, err := s.DB.Exec(`INSERT OR IGNORE INTO thoughts_config (id, featured_thought_id, updated_at) VALUES ('thoughts_1', NULL, ?)`, now); err != nil {
 		return err
