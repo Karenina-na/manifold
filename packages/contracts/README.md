@@ -19,7 +19,7 @@ app/core JSON <--> packages/contracts <--> packages/sdk <--> Web / Admin
 
 - `ContentKind = "THOUGHT" | "ARTICLE"`
 - `ContentStatus = "DRAFT" | "PUBLISHED" | "DELETED"`
-- `ContentSummary`：列表和轻量内容对象，`slug`、`title` 可为空，并包含 Core 从 Markdown 正文派生的可选纯文本 `excerpt`、聚合的 `viewCount`、`likeCount` 与未软删 `commentCount`。`summary` 与 `excerpt` 语义独立。
+- `ContentSummary`：列表和轻量内容对象，`slug`、`title` 可选且可为 `null`（Core 对空值省略键，与 `omitempty` 行为一致），并包含 Core 从 Markdown 正文派生的可选纯文本 `excerpt`、聚合的 `viewCount`、`likeCount` 与未软删 `commentCount`。`summary` 与 `excerpt` 语义独立。
 - `Content`：公开摘要对象，不含完整 `body`，并按 `kind` 判别 metadata。
 - `AdminContent`：管理端内容对象，包含完整 Markdown `body`。
 - `ContentDetail`：详情对象，`body` 必填。
@@ -30,7 +30,7 @@ app/core JSON <--> packages/contracts <--> packages/sdk <--> Web / Admin
 - `WritingArchive` / `WritingArchiveQuery`：Core 计算的置顶 Writing、非置顶归档页和页码参数；`WritingArchiveQuery` 额外接受 `tag`/`q`/`sort`/`aiAssisted`，只过滤时间轴，不影响置顶。
 - `WritingConfig` / `WritingConfigInput`：可空 `featuredWritingId` 的 Admin 配置读写契约。
 - `TagQuery` / `TagSummary`：`/api/v1/tags` 的可选 `kind` 参数和 `{ name, count }` 聚合项。
-- `Media` / `MediaQuery`：管理端上传的媒体对象（`url` 为绝对地址，写入 Markdown 正文使用）与媒体库列表参数（`page`/`pageSize`/`q` 按文件名过滤）。
+- `Media` / `MediaQuery`：管理端上传的媒体对象（`url` 为绝对地址，写入 Markdown 正文使用）与媒体库列表参数（`page`/`pageSize`/`q` 按文件名或媒体 ID 过滤）。
 
 Article 的 `ArticleMetadata` 字段：
 

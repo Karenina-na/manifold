@@ -8,7 +8,7 @@ export interface ProfileSeriesItem { name: string; url: string; description: str
 export interface ProfileContact { label: string; url: string; handle?: string; icon?: string }
 export interface Profile { id: string; displayName: string; handle: string; headline: string; bio: string; avatarUrl: string; location: string; organization: string; websiteUrl: string; resumeUrl?: string; interests?: string[]; education?: Array<{ institution: string; program: string; period: string }>; experience?: Array<{ organization: string; role: string; period: string }>; series?: ProfileSeriesItem[]; contacts?: ProfileContact[]; updatedAt: string }
 export type ProfileInput = Omit<Profile, "id" | "updatedAt">
-export interface ContentSummary { id: string; kind: ContentKind; status: ContentStatus; slug: string | null; title: string | null; summary: string; excerpt?: string; tags: string[]; publishedAt: string | null; createdAt: string; updatedAt: string; version: number; href: string; viewCount: number; likeCount: number; commentCount: number }
+export interface ContentSummary { id: string; kind: ContentKind; status: ContentStatus; slug?: string | null; title?: string | null; summary: string; excerpt?: string; tags: string[]; publishedAt: string | null; createdAt: string; updatedAt: string; version: number; href: string; viewCount: number; likeCount: number; commentCount: number }
 export interface ThoughtMetadata { mood?: string; question?: string; context?: string; source?: string }
 export interface ArticleMetadata { readingMinutes?: number; toc?: Array<{ id: string; label: string; level: 2 | 3 }>; frontmatter?: Record<string, string>; technologies?: string[]; language?: string; difficulty?: "BEGINNER" | "INTERMEDIATE" | "ADVANCED"; repositoryUrl?: string; aiAssisted?: boolean }
 export type ContentMetadata = ThoughtMetadata | ArticleMetadata
@@ -66,6 +66,3 @@ export type ContentInput =
   | (BaseContentInput & { kind: "ARTICLE"; metadata: ArticleMetadata })
 export interface UpdateContentInput { kind?: ContentKind; slug?: string | null; title?: string; summary?: string; body?: string; tags?: string[]; metadata?: ContentMetadata; expectedVersion: number }
 export interface SiteNavigationItem { label: string; href: string; external?: boolean }
-export interface ExperienceSummary { id: string; slug: string; title: string; summary: string; visitedAt: string; location: { label: string; country?: string; latitude?: number; longitude?: number }; mediaCount: number; href: string }
-export interface ResearchSeries { id: string; slug: string; title: string; summary: string; cadence: "DAILY" | "WEEKLY" | "IRREGULAR"; updatedAt: string; href: string }
-export interface ResearchSeriesItem { id: string; seriesId: string; title: string; source: string; summary: string; publishedAt: string; externalUrl?: string; data?: Record<string, unknown> }
