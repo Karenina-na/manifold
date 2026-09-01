@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode"
 
 	_ "modernc.org/sqlite"
 
@@ -631,11 +632,54 @@ func (s *Store) GetContentByID(id string, includeDrafts bool) (model.Content, er
 	return c, err
 }
 
+// Stats counts published content. The word total uses the same tokenizer as
+// reading-time estimates: every latin/digit word counts once and every CJK
+// character counts as a word, so unspaced CJK prose is no longer a single word.
 func (s *Store) Stats() (model.Stats, error) {
 	var stats model.Stats
-	err := s.DB.QueryRow(`SELECT COUNT(*), SUM(kind = 'ARTICLE'), SUM(kind = 'THOUGHT'), COALESCE(SUM(length(body) - length(replace(body, ' ', '')) + 1), 0) FROM content WHERE status = 'PUBLISHED'`).Scan(&stats.ContentCount, &stats.ArticleCount, &stats.ThoughtCount, &stats.WordCount)
+	err := s.DB.QueryRow(`SELECT COUNT(*), COALESCE(SUM(kind = 'ARTICLE'), 0), COALESCE(SUM(kind = 'THOUGHT'), 0) FROM content WHERE status = 'PUBLISHED'`).Scan(&stats.ContentCount, &stats.ArticleCount, &stats.ThoughtCount)
+	if err != nil {
+		return stats, err
+	}
+	rows, err := s.DB.Query(`SELECT body FROM content WHERE status = 'PUBLISHED'`)
+	if err != nil {
+		return stats, err
+	}
+	defer rows.Close()
+	stats.WordCount = 0
+	for rows.Next() {
+		var body string
+		if err := rows.Scan(&body); err != nil {
+			return stats, err
+		}
+		stats.WordCount += countWords(body)
+	}
+	if err := rows.Err(); err != nil {
+		return stats, err
+	}
 	stats.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
-	return stats, err
+	return stats, nil
+}
+
+func countWords(body string) int {
+	latinWords, cjkCharacters := 0, 0
+	inWord := false
+	for _, r := range body {
+		if isCJK(r) {
+			cjkCharacters++
+			inWord = false
+			continue
+		}
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			if !inWord {
+				latinWords++
+				inWord = true
+			}
+			continue
+		}
+		inWord = false
+	}
+	return latinWords + cjkCharacters
 }
 
 func (s *Store) TouchPresence(visitorID string) (int, error) {
@@ -1006,15 +1050,34 @@ func (s *Store) Overview() (model.AdminOverview, error) {
 		(SELECT COUNT(*) FROM content WHERE status = 'DRAFT'),
 		(SELECT COUNT(*) FROM content WHERE status = 'PUBLISHED' AND kind = 'ARTICLE'),
 		(SELECT COUNT(*) FROM content WHERE status = 'PUBLISHED' AND kind = 'THOUGHT'),
-		(SELECT COALESCE(SUM(length(body) - length(replace(body, ' ', '')) + 1), 0) FROM content WHERE status = 'PUBLISHED'),
 		(SELECT COALESCE(SUM(view_count), 0) FROM content WHERE status != 'DELETED'),
-		(SELECT COUNT(*) FROM likes),
-		(SELECT COUNT(*) FROM comments WHERE deleted_at = ''),
-		(SELECT COUNT(*) FROM presence WHERE last_seen_at >= ?)`, cutoff).Scan(&content.ContentCount, &content.DraftCount, &content.ArticleCount, &content.ThoughtCount, &content.WordCount, &content.TotalViews, &content.TotalLikes, &content.TotalComments, &content.ActiveVisitors)
+		(SELECT COUNT(*) FROM likes JOIN content ON content.id = likes.content_id WHERE content.status != 'DELETED'),
+		(SELECT COUNT(*) FROM comments JOIN content ON content.id = comments.content_id WHERE comments.deleted_at = '' AND content.status != 'DELETED'),
+		(SELECT COUNT(*) FROM presence WHERE last_seen_at >= ?)`, cutoff).Scan(&content.ContentCount, &content.DraftCount, &content.ArticleCount, &content.ThoughtCount, &content.TotalViews, &content.TotalLikes, &content.TotalComments, &content.ActiveVisitors)
 	if err != nil {
 		return overview, err
 	}
 	overview.Content = content
+	overview.Content.WordCount = 0
+	rows, err := s.DB.Query(`SELECT body FROM content WHERE status = 'PUBLISHED'`)
+	if err != nil {
+		return overview, err
+	}
+	for rows.Next() {
+		var body string
+		if err := rows.Scan(&body); err != nil {
+			_ = rows.Close()
+			return overview, err
+		}
+		overview.Content.WordCount += countWords(body)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return overview, err
+	}
+	if err := rows.Close(); err != nil {
+		return overview, err
+	}
 
 	now := time.Now().UTC()
 	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC).AddDate(0, -(overviewTrendMonths - 1), 0)
@@ -1278,13 +1341,36 @@ func (s *Store) UpdateContent(id string, update ContentUpdate) error {
 	return ErrVersionConflict
 }
 
+// SetContentStatus transitions a content item's lifecycle. published_at is an
+// immutable first-publication fact: publishing only stamps it when NULL and
+// unpublishing keeps it, so a withdraw-and-republish cycle never rewrites the
+// original date or shifts trend analytics.
 func (s *Store) SetContentStatus(id, status string) error {
-	var published any
-	if status == "PUBLISHED" {
-		published = time.Now().UTC().Format(time.RFC3339)
+	result, err := s.DB.Exec(`UPDATE content
+		SET status = ?,
+			published_at = CASE WHEN ? = 'PUBLISHED' AND published_at IS NULL THEN ? ELSE published_at END,
+			version = version + 1,
+			updated_at = ?
+		WHERE id = ? AND status != 'DELETED'`, status, status, time.Now().UTC().Format(time.RFC3339), time.Now().UTC().Format(time.RFC3339), id)
+	if err != nil {
+		return err
 	}
-	_, err := s.DB.Exec(`UPDATE content SET status = ?, published_at = ?, version = version + 1, updated_at = ? WHERE id = ?`, status, published, time.Now().UTC().Format(time.RFC3339), id)
-	return err
+	count, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if count > 0 {
+		return nil
+	}
+	// Zero affected rows means either the id is unknown or the row is
+	// soft-deleted (excluded by the WHERE clause); both are equally
+	// "not found" to callers because deleted content cannot transition.
+	var exists int
+	err = s.DB.QueryRow(`SELECT 1 FROM content WHERE id = ?`, id).Scan(&exists)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	return ErrContentNotFound
 }
 
 func (s *Store) DeleteContent(id string) error { return s.SetContentStatus(id, "DELETED") }

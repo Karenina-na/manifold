@@ -8,9 +8,6 @@ import (
 	"github.com/manifold-space/manifold/app/core/internal/model"
 )
 
-
-
-
 func TestOpenFreshDatabaseHasNoLegacyTables(t *testing.T) {
 	database, err := Open(filepath.Join(t.TempDir(), "fresh.db"))
 	if err != nil {
@@ -42,6 +39,152 @@ func TestOpenFreshDatabaseHasNoLegacyTables(t *testing.T) {
 		t.Fatal("expected comments without legacy moderation status column")
 	}
 }
+
+func TestSetContentStatusRejectsMissingAndDeletedRows(t *testing.T) {
+	database, err := Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+
+	if err := database.SetContentStatus("missing", "PUBLISHED"); err != ErrContentNotFound {
+		t.Fatalf("expected not found for missing id, got %v", err)
+	}
+
+	created, err := database.CreateContent(model.Content{Kind: model.ContentKindThought, Body: "Body", Metadata: map[string]any{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.SetContentStatus(created.ID, "PUBLISHED"); err != nil {
+		t.Fatal(err)
+	}
+	published, err := database.GetContentByID(created.ID, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if published.PublishedAt == nil {
+		t.Fatal("expected published_at stamped on first publish")
+	}
+	originalPublishedAt := *published.PublishedAt
+
+	// published_at is an immutable first-publication fact: unpublish keeps
+	// it and republishing does not restamp it.
+	if err := database.SetContentStatus(created.ID, "DRAFT"); err != nil {
+		t.Fatal(err)
+	}
+	draft, err := database.GetContentByID(created.ID, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if draft.PublishedAt == nil || *draft.PublishedAt != originalPublishedAt {
+		t.Fatalf("expected unpublish to keep original published_at %q, got %#v", originalPublishedAt, draft.PublishedAt)
+	}
+	if err := database.SetContentStatus(created.ID, "PUBLISHED"); err != nil {
+		t.Fatal(err)
+	}
+	republished, err := database.GetContentByID(created.ID, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if republished.PublishedAt == nil || *republished.PublishedAt != originalPublishedAt {
+		t.Fatalf("expected republish to keep original published_at %q, got %#v", originalPublishedAt, republished.PublishedAt)
+	}
+
+	// Soft-deleted rows cannot be revived through status transitions.
+	if err := database.DeleteContent(created.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.SetContentStatus(created.ID, "PUBLISHED"); err != ErrContentNotFound {
+		t.Fatalf("expected not found for deleted id, got %v", err)
+	}
+	if err := database.DeleteContent(created.ID); err != ErrContentNotFound {
+		t.Fatalf("expected double delete to be not found, got %v", err)
+	}
+}
+
+func TestStatsWordCountIsCjkAware(t *testing.T) {
+	database, err := Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+
+	baseline, err := database.Stats()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	created, err := database.CreateContent(model.Content{Kind: model.ContentKindArticle, Slug: "cjk-stats", Title: "CJK stats", Body: "hello 世界 foo", Metadata: map[string]any{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.SetContentStatus(created.ID, "PUBLISHED"); err != nil {
+		t.Fatal(err)
+	}
+
+	stats, err := database.Stats()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 2 latin words + 2 CJK characters = 4, versus the space-splitting count
+	// that would collapse the whole body into one word.
+	if delta := stats.WordCount - baseline.WordCount; delta != 4 {
+		t.Fatalf("expected CJK-aware word count delta 4, got %d", delta)
+	}
+}
+
+func TestCountWordsTreatsEachCjkCharacterAsAWord(t *testing.T) {
+	if got := countWords("hello 世界 foo"); got != 4 {
+		t.Fatalf("expected 4, got %d", got)
+	}
+	if got := countWords("全中文段落"); got != 5 {
+		t.Fatalf("expected 5 CJK words, got %d", got)
+	}
+	if got := countWords("one two  three"); got != 3 {
+		t.Fatalf("expected 3 latin words, got %d", got)
+	}
+}
+
+func TestOverviewIgnoresDeletedContentTotals(t *testing.T) {
+	database, err := Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+
+	created, err := database.CreateContent(model.Content{Kind: model.ContentKindThought, Body: "Body", Metadata: map[string]any{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.SetLike(created.ID, "visitor-a"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.CreateComment(created.ID, "Reader", "", "A note", nil, ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.DeleteContent(created.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	overview, err := database.Overview()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if overview.Content.TotalLikes != 0 || overview.Content.TotalComments != 0 {
+		t.Fatalf("expected soft-deleted content to drop like/comment totals, got %+v", overview.Content)
+	}
+}
+
+func mustContentID(t *testing.T, database *Store, slug string) string {
+	t.Helper()
+	content, err := database.GetContent(slug, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return content.ID
+}
+
+func stringPtr(value string) *string { return &value }
 
 func TestListCommentsPaginatesRootsAndKeepsThreadsAttached(t *testing.T) {
 	database, err := Open(":memory:")
@@ -116,7 +259,6 @@ func TestListCommentsPaginatesRootsAndKeepsThreadsAttached(t *testing.T) {
 		t.Fatalf("expected empty non-nil page, got %+v", empty)
 	}
 }
-
 
 
 func TestContentMetadataPersistsAcrossReads(t *testing.T) {
@@ -203,7 +345,3 @@ func TestArticleMetadataIsDerivedFromMarkdown(t *testing.T) {
 		t.Fatalf("expected update to recompute derived metadata and preserve language, got %#v", updated.Metadata)
 	}
 }
-
-
-func stringPtr(value string) *string { return &value }
-
