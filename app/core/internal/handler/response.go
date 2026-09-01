@@ -146,27 +146,35 @@ func newRouter(cfg config.Config, database *store.Store, auditEvents events.Audi
 
 // prewarmPinnedContent warms the content cache with the pinned writing and
 // thought so archive landing pages start warm; missing pins are skipped.
+// Thought details are addressed by ID (slug optional) and writings by slug,
+// so each pin warms the key its public URL actually uses.
 func (h *apiHandler) prewarmPinnedContent() {
-	pinnedIDs := []string{}
 	if config, err := h.store.GetWritingConfig(); err != nil {
 		slog.Warn("content_cache_prewarm_failed", "reason", "writings_config_unavailable", "error", err)
 	} else if config.FeaturedWritingID != nil {
-		pinnedIDs = append(pinnedIDs, *config.FeaturedWritingID)
+		h.prewarmContentByKey(*config.FeaturedWritingID)
 	}
 	if config, err := h.store.GetThoughtConfig(); err != nil {
 		slog.Warn("content_cache_prewarm_failed", "reason", "thoughts_config_unavailable", "error", err)
 	} else if config.FeaturedThoughtID != nil {
-		pinnedIDs = append(pinnedIDs, *config.FeaturedThoughtID)
+		h.prewarmContentByKey(*config.FeaturedThoughtID)
 	}
-	for _, id := range pinnedIDs {
-		content, err := h.store.GetContentByID(id, false)
-		if errors.Is(err, sql.ErrNoRows) {
-			continue
-		}
-		if err != nil {
-			slog.Warn("content_cache_prewarm_failed", "contentId", id, "error", err)
-			continue
-		}
+}
+
+func (h *apiHandler) prewarmContentByKey(id string) {
+	content, err := h.store.GetContentByID(id, false)
+	if errors.Is(err, sql.ErrNoRows) {
+		return
+	}
+	if err != nil {
+		slog.Warn("content_cache_prewarm_failed", "contentId", id, "error", err)
+		return
+	}
+	if content.Kind == model.ContentKindThought {
+		h.contentCache.Set(content.ID, content)
+		return
+	}
+	if content.Slug != "" {
 		h.contentCache.Set(content.Slug, content)
 	}
 }
@@ -350,7 +358,14 @@ func (h *apiHandler) getContent(w http.ResponseWriter, r *http.Request) {
 		if id, err := visitorID(r, false); err == nil {
 			viewerID = id
 		}
-		viewCount, likeCount, err := h.store.RecordContentView(content.ID, viewerID, referrerOrigin(r.Referer()))
+		// The SDK relays the browser's original Referer as a query param
+		// because server-side fetch does not forward headers; fall back to
+		// the direct Referer for same-origin callers.
+		source := strings.TrimSpace(r.URL.Query().Get("referrer"))
+		if source == "" {
+			source = r.Referer()
+		}
+		viewCount, likeCount, err := h.store.RecordContentView(content.ID, viewerID, referrerOrigin(source))
 		if err != nil {
 			slog.Error("content_view_count_failed", "contentId", content.ID, "error", err)
 		} else {
@@ -903,7 +918,11 @@ func (h *apiHandler) adminGetContent(w http.ResponseWriter, r *http.Request) {
 
 func (h *apiHandler) setContentStatus(w http.ResponseWriter, r *http.Request, status string) {
 	if err := h.store.SetContentStatus(chi.URLParam(r, "id"), status); err != nil {
-		WriteError(w, http.StatusNotFound, "CONTENT_NOT_FOUND", "Content was not found.")
+		if errors.Is(err, store.ErrContentNotFound) {
+			WriteError(w, http.StatusNotFound, "CONTENT_NOT_FOUND", "Content was not found.")
+			return
+		}
+		WriteError(w, http.StatusInternalServerError, "CONTENT_UPDATE_FAILED", "Content status could not be updated.")
 		return
 	}
 	h.audit(r, "content."+strings.ToLower(status), "content", chi.URLParam(r, "id"), nil)
@@ -921,17 +940,19 @@ func (h *apiHandler) writeAdminContent(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *apiHandler) adminDeleteContent(w http.ResponseWriter, r *http.Request) {
-	slug := h.contentSlug(chi.URLParam(r, "id"))
-	if err := h.store.DeleteContent(chi.URLParam(r, "id")); err != nil {
+	id := chi.URLParam(r, "id")
+	// Capture the serving keys before the row becomes DELETED, because the
+	// lookup helper excludes soft-deleted content.
+	slug := h.contentSlug(id)
+	if err := h.store.DeleteContent(id); err != nil {
 		WriteError(w, http.StatusNotFound, "CONTENT_NOT_FOUND", "Content was not found.")
 		return
 	}
-	h.audit(r, "content.deleted", "content", chi.URLParam(r, "id"), nil)
+	h.audit(r, "content.deleted", "content", id, nil)
 	h.statsCache.Purge()
 	h.overviewCache.Purge()
-	if slug == "" {
-		h.contentCache.Purge()
-	} else {
+	h.contentCache.Remove(id)
+	if slug != "" && slug != id {
 		h.contentCache.Remove(slug)
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -945,15 +966,17 @@ func (h *apiHandler) contentSlug(id string) string {
 	return content.Slug
 }
 
+// invalidateContentByID drops every cache key the content could be served
+// under: its public URL key (thoughts use the ID, writings the slug) plus
+// the slug itself for thoughts that also carry one, so detail pages never
+// serve a stale copy after admin edits.
 func (h *apiHandler) invalidateContentByID(id string) {
 	h.statsCache.Purge()
 	h.overviewCache.Purge()
-	slug := h.contentSlug(id)
-	if slug == "" {
-		h.contentCache.Purge()
-		return
+	h.contentCache.Remove(id)
+	if slug := h.contentSlug(id); slug != "" && slug != id {
+		h.contentCache.Remove(slug)
 	}
-	h.contentCache.Remove(slug)
 }
 
 func (h *apiHandler) adminListComments(w http.ResponseWriter, r *http.Request) {

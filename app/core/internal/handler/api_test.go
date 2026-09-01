@@ -1405,6 +1405,93 @@ func TestNowEndpointsRemoved(t *testing.T) {
 	}
 }
 
+func TestContentTransitionsReturn404AndKeepFirstPublishedAt(t *testing.T) {
+	router := newTestRouter(t)
+	token := adminToken(t, router)
+
+	publish := adminRequest(t, router, token, http.MethodPost, "/api/v1/admin/content/content_1/publish", "")
+	if publish.Code != http.StatusOK {
+		t.Fatalf("expected republish of published content 200, got %d %s", publish.Code, publish.Body.String())
+	}
+	var published struct {
+		PublishedAt string `json:"publishedAt"`
+	}
+	if err := json.Unmarshal(publish.Body.Bytes(), &published); err != nil {
+		t.Fatal(err)
+	}
+	if published.PublishedAt == "" {
+		t.Fatal("expected published content to carry publishedAt")
+	}
+
+	unpublish := adminRequest(t, router, token, http.MethodPost, "/api/v1/admin/content/content_1/unpublish", "")
+	if unpublish.Code != http.StatusOK || !strings.Contains(unpublish.Body.String(), `"publishedAt":"`+published.PublishedAt+`"`) {
+		t.Fatalf("expected unpublish to keep original publishedAt %q, got %d %s", published.PublishedAt, unpublish.Code, unpublish.Body.String())
+	}
+	republish := adminRequest(t, router, token, http.MethodPost, "/api/v1/admin/content/content_1/publish", "")
+	if republish.Code != http.StatusOK || !strings.Contains(republish.Body.String(), `"publishedAt":"`+published.PublishedAt+`"`) {
+		t.Fatalf("expected republish to keep original publishedAt %q, got %d %s", published.PublishedAt, republish.Code, republish.Body.String())
+	}
+
+	deleted := adminRequest(t, router, token, http.MethodDelete, "/api/v1/admin/content/content_1", "")
+	if deleted.Code != http.StatusNoContent {
+		t.Fatalf("expected delete 204, got %d %s", deleted.Code, deleted.Body.String())
+	}
+	for _, transition := range []struct {
+		method string
+		path   string
+		label  string
+	}{
+		{http.MethodDelete, "/api/v1/admin/content/content_1", "double delete"},
+		{http.MethodPost, "/api/v1/admin/content/content_1/publish", "publish deleted"},
+		{http.MethodPost, "/api/v1/admin/content/content_1/unpublish", "unpublish deleted"},
+		{http.MethodDelete, "/api/v1/admin/content/missing-id", "delete unknown"},
+	} {
+		response := adminRequest(t, router, token, transition.method, transition.path, "")
+		if response.Code != http.StatusNotFound {
+			t.Fatalf("expected %s to return 404, got %d %s", transition.label, response.Code, response.Body.String())
+		}
+	}
+}
+
+func TestContentDetailAcceptsReferrerQueryParam(t *testing.T) {
+	router := newTestRouter(t)
+
+	direct := request(t, router, http.MethodGet, "/api/v1/content/designing-boundaries?referrer=https%3A%2F%2Fexample.org%2Fpath%3Futm%3D1", nil)
+	if direct.Code != http.StatusOK {
+		t.Fatalf("expected detail 200, got %d %s", direct.Code, direct.Body.String())
+	}
+
+	views := adminRequest(t, router, adminToken(t, router), http.MethodGet, "/api/v1/admin/analytics/views?days=1", "")
+	if views.Code != http.StatusOK {
+		t.Fatalf("expected analytics 200, got %d %s", views.Code, views.Body.String())
+	}
+	if !strings.Contains(views.Body.String(), `"source":"https://example.org"`) {
+		t.Fatalf("expected referrer param to be normalized to origin in analytics, got %s", views.Body.String())
+	}
+}
+
+func TestThoughtDetailCacheInvalidatesAfterAdminUpdate(t *testing.T) {
+	router := newTestRouter(t)
+	token := adminToken(t, router)
+
+	// Thoughts are addressed by ID on the public side even when a slug
+	// exists; prime the cache through the public URL first.
+	initial := request(t, router, http.MethodGet, "/api/v1/content/content_2", nil)
+	if initial.Code != http.StatusOK || !strings.Contains(initial.Body.String(), `"title":"A Small Signal"`) {
+		t.Fatalf("expected thought detail, got %d %s", initial.Code, initial.Body.String())
+	}
+
+	updated := adminRequest(t, router, token, http.MethodPatch, "/api/v1/admin/content/content_2", `{"title":"Renamed Signal","expectedVersion":1}`)
+	if updated.Code != http.StatusOK {
+		t.Fatalf("expected thought update 200, got %d %s", updated.Code, updated.Body.String())
+	}
+
+	refreshed := request(t, router, http.MethodGet, "/api/v1/content/content_2", nil)
+	if refreshed.Code != http.StatusOK || !strings.Contains(refreshed.Body.String(), `"title":"Renamed Signal"`) {
+		t.Fatalf("expected thought cache to invalidate by ID key, got %d %s", refreshed.Code, refreshed.Body.String())
+	}
+}
+
 func TestAdminOverviewAndAnalytics(t *testing.T) {
 	router := newTestRouter(t)
 	token := adminToken(t, router)
