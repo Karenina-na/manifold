@@ -13,4 +13,6 @@ go test -count=1 ./...
 go vet ./...
 ```
 
-默认监听 `:8080`，默认数据库为 `./data/manifold.db`，配置使用 `CORE_*` 环境变量。修改 Core 时必须同步 [`docs/core.md`](../../docs/core.md)、[`docs/admin.md`](../../docs/admin.md)、[`docs/decisions/web.md`](../../docs/decisions/web.md)、[`packages/contracts/README.md`](../../packages/contracts/README.md)、[`packages/sdk/README.md`](../../packages/sdk/README.md) 和根目录 [`AGENTS.md`](../../AGENTS.md)。
+默认监听 `:8080`，默认数据库为 `./data/manifold.db`，配置使用 `CORE_*` 环境变量。通过反向代理运行时，`CORE_TRUSTED_PROXY_CIDRS` 控制哪些 TCP 对端可以用清洗后的 `X-Real-IP` 参与限流分桶；默认不信任任何代理。修改 Core 时必须同步 [`docs/core.md`](../../docs/core.md)、[`docs/admin.md`](../../docs/admin.md)、[`docs/decisions/web.md`](../../docs/decisions/web.md)、[`packages/contracts/README.md`](../../packages/contracts/README.md)、[`packages/sdk/README.md`](../../packages/sdk/README.md) 和根目录 [`AGENTS.md`](../../AGENTS.md)。
+
+根目录 `pnpm package:release -- --env .env.production` 会以 `CGO_ENABLED=0 GOOS=linux GOARCH=amd64` 生成发布包内的 `bin/manifold-core`。包内 supervisor 从发布根目录启动 Core，并把生产配置作为环境变量传入；相对数据库路径因此稳定落在 `data/manifold.db`。发布归档不携带数据库，公共 HTTP 契约不变。

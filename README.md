@@ -88,9 +88,11 @@ Admin 的 `VITE_CORE_URL` 必须指向 Core（默认 `http://localhost:8080`）�
 
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
+| `CORE_ENV` | `development` | Core 运行环境；发布包必须设为 `production` |
 | `CORE_ADDR` | `:8080` | Core 监听地址 |
 | `CORE_DATABASE_PATH` | `./data/manifold.db` | SQLite 文件路径 |
 | `CORE_ALLOWED_ORIGINS` | `http://localhost:3000,http://localhost:5173` | CORS 来源，逗号分隔 |
+| `CORE_TRUSTED_PROXY_CIDRS` | 空 | 可提供可信 `X-Real-IP` 的反向代理网段；同机 OpenResty 使用 `127.0.0.1/32,::1/128` |
 | `CORE_JWT_SECRET` | `manifold-dev-secret-change-me` | JWT 密钥，生产环境必须更换 |
 | `CORE_ADMIN_USERNAME` | `admin` | 管理用户名 |
 | `CORE_ADMIN_PASSWORD_HASH` | `.env.example` 中的 bcrypt 哈希 | 管理密码哈希，不要写明文 |
@@ -101,6 +103,8 @@ Admin 的 `VITE_CORE_URL` 必须指向 Core（默认 `http://localhost:8080`）�
 | `NEXT_PUBLIC_CORE_URL` | `http://localhost:8080` | Web 请求 Core 的地址 |
 | `NEXT_PUBLIC_SITE_URL` | `http://localhost:3000` | canonical/metadata 基准地址 |
 | `VITE_CORE_URL` | `http://localhost:8080` | Admin 请求 Core 的地址 |
+| `VITE_WEB_URL` | `http://localhost:3000` | Admin 中公开内容链接的 Web 基地址 |
+| `ADMIN_PUBLIC_URL` | 空 | 发布清单中的 Admin 公开 origin；独立域名反向代理时必须设置 |
 
 本地默认管理账号为 `admin`，密码为 `password`。生产环境请立即通过 `CORE_ADMIN_USERNAME` 和 `CORE_ADMIN_PASSWORD_HASH` 替换。
 
@@ -112,7 +116,8 @@ Admin 的 `VITE_CORE_URL` 必须指向 Core（默认 `http://localhost:8080`）�
 | `make core-run` | 启动 Go API |
 | `pnpm build` | 构建全部 workspace |
 | `pnpm check` | TypeScript 类型检查 |
-| `pnpm test` | workspace 测试（不含 Go） |
+| `pnpm test` | 发布脚本与 workspace 测试（不含 Go） |
+| `pnpm package:release -- --env .env.production` | 生成 Linux x64 glibc 三端发布 zip |
 | `make core-test` | `go test ./...` |
 | `make test` | Go + workspace 测试 |
 | `make check` | `go vet ./...` + TypeScript 检查 |
@@ -122,6 +127,35 @@ Admin 的 `VITE_CORE_URL` 必须指向 Core（默认 `http://localhost:8080`）�
 | `pnpm --filter @manifold/admin lint` | Admin Oxlint |
 
 浏览器脚本默认使用临时端口和数据库，结束后清理。已有 Chrome 可设置 `MANIFOLD_CHROME_PATH`；可用 `MANIFOLD_*` 覆盖地址、测试文章或凭据。连接外部服务会执行写操作，必须显式设置 `MANIFOLD_ALLOW_EXTERNAL_MUTATIONS=1`。
+
+## Linux 发布包
+
+发布脚本支持在 macOS arm64 或 Linux 构建面向 Linux x64 glibc 的归档。构建机需要 Node.js `>=20.9.0`、pnpm `>=11.19.0`、Go `>=1.26.5` 和 Info-ZIP；目标服务器只需要 Node.js `>=20.9.0`、glibc `>=2.28`、支持 SSE4.2 的 x64 CPU 和 unzip。
+
+先从 `.env.example` 创建独立的 `.env.production`，把所有公开 URL 改为最终 IP、端口或 HTTPS 域名，并设置 `CORE_ENV=production`、非默认 `CORE_JWT_SECRET` 与非默认 `CORE_ADMIN_PASSWORD_HASH`。发布配置还必须保持 `CORE_ADDR=:8080`、`CORE_DATABASE_PATH=./data/manifold.db`，并让 `CORE_ALLOWED_ORIGINS` 同时包含 Web 和 Admin 的公开 origin。三个独立域名部署还需设置 `ADMIN_PUBLIC_URL`；内部监听端口仍固定为 `3000/5173/8080`。发布脚本不会执行 shell `source`，bcrypt 中的 `$` 会原样保留。
+
+```bash
+pnpm package:release -- --env .env.production
+```
+
+产物位于 `dist/releases/manifold-<git-sha>-linux-x64-glibc.zip`。归档包含 Linux Core 二进制、Next.js standalone、Admin 静态文件、生产 `.env` 和运行管理器，不包含数据库、日志或 PID。由于 `.env` 含生产密钥，归档必须通过受保护通道传输并限制访问。
+
+上传并解压后，在归档根目录运行：
+
+```bash
+./manifold start
+./manifold status
+./manifold restart
+./manifold stop
+```
+
+`start` 在后台启动 Web `:3000`、Admin `:5173` 和 Core `:8080`，完成三项健康检查后才返回。PID 状态位于 `run/manifold.pid`，日志位于 `logs/`；`.env`、日志和归档使用 `0600`，`data/`、`logs/`、`run/` 使用 `0700`。任一服务意外退出时 supervisor 会停止整组服务。首次启动在 `data/manifold.db` 初始化空的生产站点骨架。发布包不会注册开机自启或终止 TLS，但支持由 OpenResty 等反向代理公开三个服务。
+
+OpenResty 使用独立域名时，将 Web、Admin、Core 分别代理到 `http://127.0.0.1:3000`、`http://127.0.0.1:5173`、`http://127.0.0.1:8080`。三个 location 都应传递 `Host $host`、`X-Forwarded-Proto $scheme`，Core 还必须传递由 OpenResty 清洗后的 `X-Real-IP $remote_addr`；只有来源命中 `CORE_TRUSTED_PROXY_CIDRS` 时 Core 才用该值区分限流客户端。若 OpenResty 位于 Cloudflare 后方，先用 realip 模块和 Cloudflare 官方网段恢复 `$remote_addr`，不要直接透传客户端可伪造的请求头。服务器防火墙应阻止公网绕过代理直接访问 `3000/5173/8080`。
+
+`data/` 必须独立备份并跨版本保留。没有在线 SQLite 备份工具时，先执行 `./manifold stop`，完整复制 `data/`，再执行 `./manifold start`，避免复制数据库时遗漏 WAL 状态。
+
+升级时把新 zip 解压到旧版本的同级目录，先在旧目录执行 `./manifold stop`，再将旧目录的 `data/` 完整复制到新目录并确认权限仅部署用户可读写，最后在新目录执行 `./manifold start` 和 `./manifold status`。确认新版本正常前保留旧目录和独立数据库备份；不要直接覆盖正在运行的发布目录。
 
 ## 产品入口
 

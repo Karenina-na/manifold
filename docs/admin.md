@@ -159,6 +159,8 @@ pnpm --filter @manifold/admin preview
 
 根目录 `pnpm browser-test` 会启动隔离 Core/Web/Admin，验证登录、stats、反应、评论提交与回复、软删除和恢复，以及 Writings/Thoughts 的二级页面流程：列表搜索、hash 路由跳转、slug 建议、Meta/Context/Render 三 Tab、vditor 输入保存为 Markdown、Render Tab 与 Web 阅读面同构（标题/正文/TOC）、aiAssisted/summary 保存、发布 Popover、锁定态切换、dirty 离开确认和行内删除 Popover。
 
+统一发布通过 `pnpm package:release -- --env .env.production` 构建 `dist`，并把 `VITE_CORE_URL`/`VITE_WEB_URL` 在构建时固化；`ADMIN_PUBLIC_URL` 记录独立域名反向代理下的 Admin 公开 origin。目标服务器不运行 `vite preview`；包内 Node 静态服务器在 `0.0.0.0:5173` 提供 GET/HEAD、MIME、SPA fallback 和路径约束，对 hash 资源使用 immutable cache，对 `index.html`、service worker 与 web manifest 使用 `no-cache`。Admin 公共交互和 Core API 契约未变。
+
 ## 7. 修改规则
 
 修改工作区 API、字段或状态时：

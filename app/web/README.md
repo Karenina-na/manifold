@@ -22,3 +22,5 @@ pnpm browser-test
 ```
 
 配置 `NEXT_PUBLIC_CORE_URL` 指向 Core，`NEXT_PUBLIC_SITE_URL` 用于 canonical 和 metadataBase。修改 Web 路由、页面数据、渲染器或交互时，必须同时检查 [`docs/decisions/web.md`](../../docs/decisions/web.md)、[`docs/core.md`](../../docs/core.md)、[`packages/sdk/README.md`](../../packages/sdk/README.md) 和根目录 [`AGENTS.md`](../../AGENTS.md)。
+
+生产构建启用 Next.js standalone，并以仓库根目录作为 monorepo 文件追踪边界。根发布脚本负责把 standalone 默认不复制的 `public` 与 `.next/static` 补入产物，并只保留 Linux x64 glibc 原生依赖。`NEXT_PUBLIC_*` 在构建时固化，因此 `.env.production` 必须在打包前写入最终公开地址；目标服务器通过包内 `./manifold start` 启动 `server.js`，无需安装 workspace 依赖。

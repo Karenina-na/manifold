@@ -70,6 +70,7 @@ Core 使用 `caarlos0/env` 读取 `CORE_` 前缀变量；启动时自动从工�
 | `CORE_ADDR` | `:8080` | HTTP 监听地址 |
 | `CORE_DATABASE_PATH` | `./data/manifold.db` | SQLite 路径，父目录自动创建 |
 | `CORE_ALLOWED_ORIGINS` | `http://localhost:3000,http://localhost:5173` | CORS 来源，逗号分隔 |
+| `CORE_TRUSTED_PROXY_CIDRS` | 空 | 可提供可信 `X-Real-IP` 的代理 CIDR，逗号分隔；未命中时忽略转发头 |
 | `CORE_JWT_SECRET` | `manifold-dev-secret-change-me` | HS256 密钥，生产必须替换 |
 | `CORE_ADMIN_USERNAME` | `admin` | 管理用户名 |
 | `CORE_ADMIN_PASSWORD_HASH` | 内置 bcrypt hash | 管理密码 hash |
@@ -81,6 +82,12 @@ Core 使用 `caarlos0/env` 读取 `CORE_` 前缀变量；启动时自动从工�
 | `CORE_SEED_FILE` | 空 | 自定义种子文件路径，语义见“种子数据”章节 |
 
 默认开发账号为 `admin` / `password`，仅用于本地联调。
+
+### 统一发布包
+
+根目录 `pnpm package:release -- --env .env.production` 为 Linux x64 交叉编译纯 Go Core，并与 Web/Admin 产物一起写入 zip。生产配置原样保存为包内 `.env`，打包前会拒绝开发默认密钥、默认密码 hash、非 `:8080` 地址、非 `./data/manifold.db` 路径、localhost 公开 URL、非法可信代理 CIDR 和缺少 Web/Admin 来源的 CORS 配置。公开 URL 可使用与内部监听端口不同的 HTTP(S) origin；归档不包含 SQLite 文件，首次启动按生产 seed 规则只初始化结构骨架。
+
+解压后的 `./manifold start|stop|restart|status` 只管理该归档记录的 supervisor PID。运行器将 `.env`、日志和 PID 状态限制为 `0600`，将 `data/`、`logs/`、`run/` 限制为 `0700`；启动子进程前会清除宿主环境中的 `CORE_*`、`NEXT_PUBLIC_*` 和 `VITE_*`，再注入包内 `.env`，避免服务器 shell 配置覆盖已验证的发布值。Core 日志写入 `logs/core.log`，数据库写入 `data/manifold.db`。正常停止仍走现有 SIGTERM 优雅关闭与审计队列 drain。该发布能力不改变 Core 路由、响应或业务契约。
 
 ### 种子数据
 
@@ -233,6 +240,8 @@ Metadata：Thought 使用 `mood/question/context/source`；Article 使用 Core �
 - Stats 与 Admin Overview 各使用单条 TTL 快照（共用 `CORE_STATS_CACHE_TTL`）。
 - 审计事件通过有界异步队列写入 `audit_events`；队列满会记录丢弃但不让业务请求失败。
 - `RouterWithLifecycle` 用于生产入口；监听失败会结束进程，正常关闭时最多等待 5 秒排空已接受事件；`Router` 仅用于同步内部调用/测试。公共 HTTP 契约不受启动生命周期影响。
+- 发布包 supervisor 在 Core 或 Web 任一子进程异常退出时向其余进程发送 SIGTERM；`stop` 等待正常退出，超时后才发送 SIGKILL。包内后台运行不包含开机自启、日志轮转、HTTPS 或反向代理。
+- Core 限流默认按 TCP 对端地址分桶。仅当对端位于 `CORE_TRUSTED_PROXY_CIDRS` 时才读取 `X-Real-IP`；反向代理必须覆盖并清洗该头，不能透传客户端输入。该配置只改变限流身份识别，不改变 HTTP 契约。
 
 ### 依赖记录：github.com/shirou/gopsutil/v4
 

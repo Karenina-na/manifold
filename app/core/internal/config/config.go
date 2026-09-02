@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"net"
 	"strings"
 	"time"
 
@@ -23,6 +24,7 @@ type Config struct {
 	PublicURL         string        `env:"PUBLIC_URL" envDefault:""`
 	RateLimitPerMin   int           `env:"RATE_LIMIT_PER_MIN" envDefault:"60"`
 	LoginRatePerMin   int           `env:"LOGIN_RATE_LIMIT_PER_MIN" envDefault:"5"`
+	TrustedProxyCIDRs []string      `env:"TRUSTED_PROXY_CIDRS" envDefault:"" envSeparator:","`
 	SeedFile          string        `env:"SEED_FILE" envDefault:""`
 }
 
@@ -40,6 +42,15 @@ func (c Config) Validate() error {
 	}
 	if c.AdminPasswordHash == "" || c.AdminPasswordHash == "$2a$10$tT6zviyM5ANs0OHmn18g4eqtgsvaprMNl9n4CTkccoZW9N/aTcd8W" {
 		problems = append(problems, "CORE_ADMIN_PASSWORD_HASH must be set to a bcrypt hash that is not the dev default (plaintext \"password\")")
+	}
+	for _, value := range c.TrustedProxyCIDRs {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		if _, _, err := net.ParseCIDR(trimmed); err != nil {
+			problems = append(problems, fmt.Sprintf("CORE_TRUSTED_PROXY_CIDRS contains invalid CIDR %q", value))
+		}
 	}
 	if len(problems) > 0 {
 		return fmt.Errorf("production configuration refused: %s", strings.Join(problems, "; "))

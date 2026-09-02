@@ -16,6 +16,8 @@ pnpm --filter @manifold/admin preview
 
 配置 `VITE_CORE_URL` 指向 Core，默认是 `http://localhost:8080`。根目录 `pnpm browser-test` 会验证 Web -> Core -> Admin 的联调流程。
 
+生产发布使用 Vite 的 `dist` 静态产物，不使用 `vite preview`。根目录 `pnpm package:release -- --env .env.production` 将 `VITE_CORE_URL` 与 `VITE_WEB_URL` 固化到 Admin bundle；独立域名反向代理通过 `ADMIN_PUBLIC_URL` 记录 Admin 的公开 origin。包内 supervisor 通过无第三方运行时依赖的 Node 静态服务器在 `:5173` 提供 dist、PWA 和 vditor 资源。
+
 目录约定：`workspaces/` 放各工作区页面组件（PascalCase）；`components/` 放跨工作区共享组件（PascalCase）；`lib/` 放工具与 hook（kebab-case）。
 
 修改 Admin 工作区、API 调用、表单或依赖时，必须同时检查 [`docs/admin.md`](../../docs/admin.md)、[`docs/core.md`](../../docs/core.md)、[`packages/sdk/README.md`](../../packages/sdk/README.md) 和根目录 [`AGENTS.md`](../../AGENTS.md)。

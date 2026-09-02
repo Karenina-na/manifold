@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+
+release_root=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+exec node "$release_root/runtime/runtime.mjs" "$@"

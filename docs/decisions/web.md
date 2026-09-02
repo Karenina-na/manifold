@@ -120,6 +120,8 @@ Article 的 `metadata.toc` 和 `readingMinutes` 由 Core 在保存时从 Markdow
 
 主要依赖：Next.js 16、React 19、TanStack Query、React Hook Form、Zod、Radix Themes、Lucide React、Framer Motion、Markdown/公式/高亮链路。新增依赖必须说明用户能力、包体、SSR/CSR 影响和安全边界，并更新 `app/web/package.json`、本文与 `docs/web.md`。
 
+自托管发布启用 Next.js `output: "standalone"`，`outputFileTracingRoot` 指向 monorepo 根目录，使 workspace 运行依赖进入追踪范围。根发布脚本按 Next.js 官方 standalone 约定补复制 `public` 与 `.next/static`，并把 pnpm 安装树裁剪、校验为 Linux x64 glibc 原生依赖。目标端以 `HOSTNAME=0.0.0.0 PORT=3000 node server.js` 运行；`NEXT_PUBLIC_CORE_URL` 与 `NEXT_PUBLIC_SITE_URL` 是构建时值，必须由打包所用 `.env.production` 提供，且可指向由反向代理终止 TLS 的独立 HTTPS origin。页面路由、数据流和 API 契约未变。
+
 ## 8. 设计和开发约束
 
 1. 颜色和字体优先使用 `app/web/app/globals.css` 中对齐 `docs/design-system/src/tokens.css` 的变量。

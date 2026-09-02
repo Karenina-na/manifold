@@ -6,7 +6,9 @@
     "dev": "pnpm --parallel --filter @manifold/web --filter @manifold/admin dev",
     "build": "pnpm -r build",
     "check": "pnpm -r typecheck",
-    "test": "pnpm -r test",
+    "test": "pnpm test:release && pnpm -r test",
+    "test:release": "node --test scripts/package-release.test.mjs scripts/release/*.test.mjs",
+    "package:release": "node scripts/package-release.mjs",
     "browser-install": "playwright install chromium",
     "browser-test": "node scripts/browser-check.cjs"
   },

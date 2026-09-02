@@ -8,6 +8,24 @@ import (
 	"testing"
 )
 
+func TestClientAddressTrustsForwardedIPOnlyFromConfiguredProxy(t *testing.T) {
+	trusted := trustedProxyNetworks([]string{"127.0.0.1/32", "::1/128"})
+
+	proxied := httptest.NewRequest(http.MethodGet, "/", nil)
+	proxied.RemoteAddr = "127.0.0.1:43120"
+	proxied.Header.Set("X-Real-IP", "198.51.100.42")
+	if got := clientAddress(proxied, trusted); got != "198.51.100.42" {
+		t.Fatalf("trusted proxy client address = %q", got)
+	}
+
+	direct := httptest.NewRequest(http.MethodGet, "/", nil)
+	direct.RemoteAddr = "203.0.113.9:43120"
+	direct.Header.Set("X-Real-IP", "198.51.100.42")
+	if got := clientAddress(direct, trusted); got != "203.0.113.9" {
+		t.Fatalf("untrusted client must not override address, got %q", got)
+	}
+}
+
 func TestHealth(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	Health(recorder, httptest.NewRequest(http.MethodGet, "/healthz", nil))

@@ -87,3 +87,29 @@ func TestLoadReadsSeedFileFromDotEnv(t *testing.T) {
 		t.Fatalf("unexpected env default: %q", cfg.Env)
 	}
 }
+
+func TestValidateRejectsInvalidTrustedProxyCIDR(t *testing.T) {
+	cfg := Config{
+		Env:               "production",
+		JWTSecret:         "a-production-secret",
+		AdminPasswordHash: "$2a$10$tT6zviyM5ANs0OHmn18g4eqtgsvaprMNl9n4CTkccoZW9N/aTcd8X",
+		TrustedProxyCIDRs: []string{"127.0.0.1/32", "not-a-cidr"},
+	}
+
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected invalid trusted proxy CIDR to be rejected")
+	}
+}
+
+func TestValidateAllowsEmptyTrustedProxyDefault(t *testing.T) {
+	cfg := Config{
+		Env:               "production",
+		JWTSecret:         "a-production-secret",
+		AdminPasswordHash: "$2a$10$tT6zviyM5ANs0OHmn18g4eqtgsvaprMNl9n4CTkccoZW9N/aTcd8X",
+		TrustedProxyCIDRs: []string{""},
+	}
+
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("empty trusted proxy default must be allowed: %v", err)
+	}
+}

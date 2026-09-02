@@ -3,6 +3,7 @@ package handler
 import (
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 )
@@ -42,6 +43,39 @@ func newRateLimiter(requestsPerMinute int) *rateLimiter {
 	return &rateLimiter{rate: requestsPerMinute, buckets: map[string]*bucket{}, lastSweep: time.Now()}
 }
 
+func trustedProxyNetworks(values []string) []*net.IPNet {
+	networks := make([]*net.IPNet, 0, len(values))
+	for _, value := range values {
+		_, network, err := net.ParseCIDR(strings.TrimSpace(value))
+		if err == nil {
+			networks = append(networks, network)
+		}
+	}
+	return networks
+}
+
+func clientAddress(r *http.Request, trustedProxies []*net.IPNet) string {
+	remote := r.RemoteAddr
+	if host, _, err := net.SplitHostPort(remote); err == nil {
+		remote = host
+	}
+	remoteIP := net.ParseIP(remote)
+	if remoteIP == nil {
+		return remote
+	}
+	for _, network := range trustedProxies {
+		if !network.Contains(remoteIP) {
+			continue
+		}
+		forwardedIP := net.ParseIP(strings.TrimSpace(r.Header.Get("X-Real-IP")))
+		if forwardedIP != nil {
+			return forwardedIP.String()
+		}
+		break
+	}
+	return remoteIP.String()
+}
+
 func (l *rateLimiter) allow(key string) bool {
 	now := time.Now()
 	l.mu.Lock()
@@ -72,19 +106,18 @@ func (l *rateLimiter) allow(key string) bool {
 	return true
 }
 
-func (l *rateLimiter) middleware(next http.Handler) http.Handler {
-	if l == nil {
-		return next
+func (l *rateLimiter) middleware(trustedProxies []*net.IPNet) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		if l == nil {
+			return next
+		}
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			key := clientAddress(r, trustedProxies)
+			if !l.allow(key) {
+				WriteError(w, http.StatusTooManyRequests, "RATE_LIMITED", "Too many requests. Slow down and try again shortly.")
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
 	}
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		key, _, err := net.SplitHostPort(r.RemoteAddr)
-		if err != nil {
-			key = r.RemoteAddr
-		}
-		if !l.allow(key) {
-			WriteError(w, http.StatusTooManyRequests, "RATE_LIMITED", "Too many requests. Slow down and try again shortly.")
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
 }
