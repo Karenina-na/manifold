@@ -80,12 +80,7 @@ pnpm dev
 cp .env.example .env
 ```
 
-仓库根目录的 `.env` 不会被 Go、Next.js 或 Vite 自动加载。传入变量时不要直接 `source .env`（bcrypt 哈希包含 `$`），可使用：
-
-```bash
-env $(grep -Ev '^(#|$)' .env | xargs) make core-run
-env $(grep -Ev '^(#|$)' .env | xargs) pnpm dev
-```
+Core 启动时会自动从工作目录向上查找并加载 `.env`（`make core-run` 在 `app/core` 内执行，会找到仓库根目录的 `.env`）；Next.js 和 Vite 本身就会读取根目录 `.env`。已有环境变量优先于 `.env` 文件；`.env` 中的值原样使用、不做 shell 展开，因此 bcrypt 哈希中的 `$` 无需转义，也不需要 `source .env`。
 
 Admin 的 `VITE_CORE_URL` 必须指向 Core（默认 `http://localhost:8080`），不是 Admin 的 `5173`。
 
@@ -102,6 +97,7 @@ Admin 的 `VITE_CORE_URL` 必须指向 Core（默认 `http://localhost:8080`）�
 | `CORE_CONTENT_CACHE_TTL` | `30s` | 内容详情缓存 TTL |
 | `CORE_STATS_CACHE_TTL` | `30s` | 统计缓存 TTL |
 | `CORE_AUDIT_EVENT_BUFFER` | `256` | 审计队列容量 |
+| `CORE_SEED_FILE` | 空 | 自定义种子 JSON；留空时开发环境用内置演示数据，生产环境只初始化骨架、内容库为空（详见 `docs/core.md` 种子数据章节） |
 | `NEXT_PUBLIC_CORE_URL` | `http://localhost:8080` | Web 请求 Core 的地址 |
 | `NEXT_PUBLIC_SITE_URL` | `http://localhost:3000` | canonical/metadata 基准地址 |
 | `VITE_CORE_URL` | `http://localhost:8080` | Admin 请求 Core 的地址 |

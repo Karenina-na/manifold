@@ -9,7 +9,7 @@ pnpm install
 cp .env.example .env
 ```
 
-Run the Core API with `make core-run`. Run the TypeScript applications with their workspace `dev` commands.
+Run the Core API with `make core-run`. Run the TypeScript applications with their workspace `dev` commands. Core automatically loads the nearest `.env` (walking up from its working directory, so the repository-root file applies); existing environment variables take precedence.
 
 ## Change boundaries
 

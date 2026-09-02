@@ -1,0 +1,46 @@
+{
+  "profile": {
+    "displayName": "Manifold",
+    "handle": "@manifold",
+    "headline": "Profile, writings, and thoughts.",
+    "bio": "Technical writings and short thoughts.",
+    "location": "Peking, China",
+    "organization": "Independent",
+    "websiteUrl": "https://manifold.local",
+    "resumeUrl": "",
+    "avatarUrl": "",
+    "interests": ["systems", "research", "writing"],
+    "education": [
+      { "institution": "Independent", "program": "Research and engineering", "period": "Now" }
+    ],
+    "experience": [
+      { "organization": "Manifold", "role": "Research and software", "period": "Now" }
+    ],
+    "series": [
+      {
+        "name": "API relay",
+        "url": "https://api.weizixiang.dev",
+        "description": "A small public gateway for experiments and personal infrastructure.",
+        "category": "Infrastructure"
+      },
+      {
+        "name": "OpenList",
+        "url": "https://openlist.weizixiang.dev",
+        "description": "A calm index for files, links, and things worth keeping close.",
+        "category": "Tool"
+      }
+    ],
+    "contacts": [
+      { "label": "GitHub", "url": "https://github.com/manifold-space/manifold", "handle": "@manifold-space" },
+      { "label": "Email", "url": "mailto:hello@manifold.local", "handle": "hello@manifold.local" }
+    ]
+  },
+  "siteConfig": {
+    "navigation": [
+      { "label": "Home", "href": "/" },
+      { "label": "Writings", "href": "/writing" },
+      { "label": "Thoughts", "href": "/thoughts" }
+    ],
+    "sections": ["PROFILE", "BACKGROUND", "RECENT_CONTENT", "UPDATES", "SERIES", "CONTACT"]
+  }
+}

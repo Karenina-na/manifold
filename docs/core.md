@@ -46,12 +46,13 @@ chi Router
 
 ```text
 app/core/
-├── cmd/server/main.go              # 配置、数据库、HTTP server、优雅关闭
-├── internal/config/config.go       # CORE_* 环境变量
+├── cmd/server/main.go              # 配置、seed 解析、数据库、HTTP server、优雅关闭
+├── internal/config/config.go       # CORE_* 环境变量与 .env 自动加载
 ├── internal/handler/response.go    # 路由、handler、错误、分页和校验
 ├── internal/auth/auth.go           # bcrypt、JWT、Casbin
 ├── internal/model/content.go       # Core 领域 JSON model
-├── internal/store/store.go         # SQLite 初始化、种子和 CRUD
+├── internal/store/store.go         # SQLite 初始化、seed 应用和 CRUD
+├── internal/seed/                  # 种子数据文件（bootstrap.json、dev.json）与解析校验
 ├── internal/cache/                 # 内容/统计缓存
 ├── internal/events/                # 审计发布器和 worker
 ├── db/migrations/0001_init.sql     # 当前唯一 schema 来源
@@ -62,7 +63,7 @@ app/core/
 
 ## 3. 运行配置
 
-Core 使用 `caarlos0/env` 读取 `CORE_` 前缀变量，不自动读取仓库根目录 `.env`。
+Core 使用 `caarlos0/env` 读取 `CORE_` 前缀变量；启动时自动从工作目录向上查找最近的 `.env` 文件并加载（已存在的环境变量优先，值不做 shell 展开，因此 bcrypt 哈希中的 `$` 原样保留）。`make core-run` 在 `app/core` 内执行，会向上找到仓库根目录的 `.env`。
 
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
@@ -77,8 +78,28 @@ Core 使用 `caarlos0/env` 读取 `CORE_` 前缀变量，不自动读取仓库�
 | `CORE_AUDIT_EVENT_BUFFER` | `256` | 审计队列容量 |
 | `CORE_MEDIA_MAX_BYTES` | `5242880` | 单次上传大小上限（5MB），超限返回 413 |
 | `CORE_PUBLIC_URL` | 空 | 构建媒体绝对 URL 的公开基地址；为空时用请求的 Host（`X-Forwarded-Proto` 场景仅取 `r.TLS`/http） |
+| `CORE_SEED_FILE` | 空 | 自定义种子文件路径，语义见“种子数据”章节 |
 
 默认开发账号为 `admin` / `password`，仅用于本地联调。
+
+### 种子数据
+
+数据库初始化时，Core 对空库一次性应用种子计划；门闩是 `profile` 表行数（而非内容表），因此通过 Admin 删光内容后重启不会复活演示数据。种子计划由 `CORE_ENV` 与 `CORE_SEED_FILE` 共同决定：
+
+| 场景 | 行为 |
+| --- | --- |
+| 开发（默认，`CORE_ENV` 非 `production` 且未设 `CORE_SEED_FILE`） | 应用内置 `internal/seed/dev.json`：profile、site_config、3 篇 PUBLISHED 演示内容（`designing-boundaries`、`a-small-signal`、`reading-the-edge`）和归档配置单例 |
+| 开发 + `CORE_SEED_FILE` | 应用自定义 JSON 文件；`profile`/`siteConfig` 缺省时回退内置 bootstrap 默认，`contents` 完全来自文件 |
+| 生产（`CORE_ENV=production`） | 只应用结构骨架（profile + site_config），内容库为空，由管理员创建全部内容；即使设置了 `CORE_SEED_FILE` 也只采用其骨架字段、忽略 `contents` |
+
+种子文件格式（JSON，与 `internal/seed/bootstrap.json`、`dev.json` 同构）：
+
+- `profile`：站点身份（`displayName` 必填，其余可选）；提供时整体替换内置默认。
+- `siteConfig`：`navigation`（`label/href` 必填）、`sections`（枚举 `PROFILE/BACKGROUND/RECENT_CONTENT/UPDATES/SERIES/CONTACT`，不重复）；`title/description/footer/commentsEnabled/social` 可选，缺省时沿用数据库列默认值。
+- `contents`：`kind`（`THOUGHT`/`ARTICLE`）、`slug` 必填且唯一；`status` 仅允许 `DRAFT`/`PUBLISHED`（默认 PUBLISHED，DRAFT 行不写 `published_at`）；`id` 缺省自动生成；`metadata` 按类型校验（派生字段由 Core 从正文计算）；`publishedAt`（RFC3339）可回填发布时间。
+- 摘要（excerpt）、阅读时长、TOC 一律由 Core 派生，不写入种子文件；文件非法（未知字段、重复 slug、非法枚举）时启动直接失败。
+
+`thoughts_config`/`writings_config` 单例（初始无置顶）由 Core 无条件保证存在，不属于可定制种子数据。
 
 ## 4. HTTP 通用约定
 
@@ -206,7 +227,7 @@ Metadata：Thought 使用 `mood/question/context/source`；Article 使用 Core �
 
 ## 8. 缓存、审计和关闭
 
-- Core 启动时先绑定 `CORE_ADDR`，成功后才打开 SQLite、执行 schema 初始化；端口冲突会直接退出且不修改数据库。
+- Core 启动时先解析种子计划（可能读取 `CORE_SEED_FILE`），再绑定 `CORE_ADDR`；成功后才打开 SQLite、执行 schema 初始化与空库种子应用；端口冲突会直接退出且不修改数据库。
 - 内容详情使用最多 256 项的 TTL LRU；Core 启动时预热归档置顶的 Writing 与 Thought（Thought 以公开 URL 的内容 ID 为 key，Writing 以 slug 为 key，无 slug 时跳过）。
 - 缓存失效按内容可能被服务的全部 key 进行：内容 ID（Thought 详情 URL）与 slug（Writing 详情 URL 及 Thought 的可选 slug），不再整表清空；内容创建、更新、发布、撤回、删除、点赞变化与评论软删/恢复都会清理相关缓存。
 - Stats 与 Admin Overview 各使用单条 TTL 快照（共用 `CORE_STATS_CACHE_TTL`）。

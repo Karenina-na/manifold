@@ -1,0 +1,78 @@
+{
+  "profile": {
+    "displayName": "Manifold",
+    "handle": "@manifold",
+    "headline": "Profile, writings, and thoughts.",
+    "bio": "Technical writings and short thoughts.",
+    "location": "Peking, China",
+    "organization": "Independent",
+    "websiteUrl": "https://manifold.local",
+    "resumeUrl": "",
+    "avatarUrl": "",
+    "interests": ["systems", "research", "writing"],
+    "education": [
+      { "institution": "Independent", "program": "Research and engineering", "period": "Now" }
+    ],
+    "experience": [
+      { "organization": "Manifold", "role": "Research and software", "period": "Now" }
+    ],
+    "series": [
+      {
+        "name": "API relay",
+        "url": "https://api.weizixiang.dev",
+        "description": "A small public gateway for experiments and personal infrastructure.",
+        "category": "Infrastructure"
+      },
+      {
+        "name": "OpenList",
+        "url": "https://openlist.weizixiang.dev",
+        "description": "A calm index for files, links, and things worth keeping close.",
+        "category": "Tool"
+      }
+    ],
+    "contacts": [
+      { "label": "GitHub", "url": "https://github.com/manifold-space/manifold", "handle": "@manifold-space" },
+      { "label": "Email", "url": "mailto:hello@manifold.local", "handle": "hello@manifold.local" }
+    ]
+  },
+  "siteConfig": {
+    "navigation": [
+      { "label": "Home", "href": "/" },
+      { "label": "Writings", "href": "/writing" },
+      { "label": "Thoughts", "href": "/thoughts" }
+    ],
+    "sections": ["PROFILE", "BACKGROUND", "RECENT_CONTENT", "UPDATES", "SERIES", "CONTACT"]
+  },
+  "contents": [
+    {
+      "id": "content_1",
+      "kind": "ARTICLE",
+      "slug": "designing-boundaries",
+      "title": "Designing Boundaries",
+      "summary": "Notes on designing boundaries in personal systems.",
+      "body": "# Designing Boundaries\n\nA personal system should preserve attention and make the next action clear.\n\n## The boundary\n\nSmall interfaces reduce unnecessary decisions.",
+      "tags": ["systems", "design"],
+      "metadata": { "language": "Go", "aiAssisted": false }
+    },
+    {
+      "id": "content_2",
+      "kind": "THOUGHT",
+      "slug": "a-small-signal",
+      "title": "A Small Signal",
+      "summary": "Short note on when to turn an observation into a system.",
+      "body": "Not every observation needs a system. First decide whether it changes the way you work.",
+      "tags": ["thinking"],
+      "metadata": { "mood": "Curious", "question": "When is a system justified?" }
+    },
+    {
+      "id": "content_3",
+      "kind": "ARTICLE",
+      "slug": "reading-the-edge",
+      "title": "Reading the Edge",
+      "summary": "Questions about the relationship between software and daily life.",
+      "body": "## Open question\n\nHow do small tools change the way we notice the world?",
+      "tags": ["systems"],
+      "metadata": {}
+    }
+  ]
+}

@@ -36,6 +36,14 @@ Thoughts 页面需要一个独立可选的置顶项，以及排除置顶后的�
 
 审计事件通过有界队列写入 SQLite。队列满时不阻塞业务请求，关闭时由 `RouterWithLifecycle` 在有限时间内 drain。缓存只优化读取，不改变公共 response shape。
 
+## 决策：种子数据文件化并区分环境
+
+状态：Accepted。
+
+数据库初始化数据不再硬编码在 `internal/store`：`internal/seed` 持有内嵌的 `bootstrap.json`（结构骨架：profile + site_config）与 `dev.json`（骨架 + 3 篇演示内容），`CORE_SEED_FILE` 可指向自定义 JSON 覆盖。生产环境只应用骨架、内容库为空；开发环境默认带演示内容供测试。种子应用一次的门闩是 `profile` 行数而非内容行数，因此通过 Admin 删光内容不会在重启时复活演示数据。Core 启动时自动向上查找最近的 `.env` 并加载（已存在的环境变量优先、值不做 shell 展开），替代第三方 dotenv 依赖——bcrypt 哈希中的 `$` 必须原样保留。
+
+原因：默认内置数据是站点所有者最常定制的事实，应与 schema 一样有单一文件来源；生产部署必须以干净内容库启动，演示数据只属于开发与测试。当前格式与加载语义的权威描述见 [`docs/core.md`](../core.md) 运行配置章节。
+
 ## 变更规则
 
 涉及上述决策、Core API 或 schema 的改动必须先更新 [`docs/core.md`](../core.md)，再同步 [`docs/admin.md`](../admin.md)、[`docs/decisions/web.md`](web.md)、[`packages/contracts/README.md`](../../packages/contracts/README.md) 和 [`packages/sdk/README.md`](../../packages/sdk/README.md)。根目录 [`AGENTS.md`](../../AGENTS.md) 定义完整同步和验证门槛。

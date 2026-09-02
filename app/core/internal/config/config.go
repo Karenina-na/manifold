@@ -23,6 +23,7 @@ type Config struct {
 	PublicURL         string        `env:"PUBLIC_URL" envDefault:""`
 	RateLimitPerMin   int           `env:"RATE_LIMIT_PER_MIN" envDefault:"60"`
 	LoginRatePerMin   int           `env:"LOGIN_RATE_LIMIT_PER_MIN" envDefault:"5"`
+	SeedFile          string        `env:"SEED_FILE" envDefault:""`
 }
 
 const devJWTSecret = "manifold-dev-secret-change-me"
@@ -49,6 +50,9 @@ func (c Config) Validate() error {
 func (c Config) IsProduction() bool { return c.Env == "production" }
 
 func Load() (Config, error) {
+	if err := loadDotEnv(); err != nil {
+		return Config{}, err
+	}
 	var cfg Config
 	if err := env.ParseWithOptions(&cfg, env.Options{Prefix: "CORE_"}); err != nil {
 		return cfg, err

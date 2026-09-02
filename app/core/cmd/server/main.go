@@ -14,6 +14,7 @@ import (
 
 	"github.com/manifold-space/manifold/app/core/internal/config"
 	"github.com/manifold-space/manifold/app/core/internal/handler"
+	"github.com/manifold-space/manifold/app/core/internal/seed"
 	"github.com/manifold-space/manifold/app/core/internal/store"
 )
 
@@ -33,13 +34,19 @@ func main() {
 }
 
 func run(ctx context.Context, cfg config.Config) error {
+	plan, err := seed.Resolve(cfg.Env, cfg.SeedFile)
+	if err != nil {
+		return fmt.Errorf("resolve seed: %w", err)
+	}
+	slog.Info("seed plan resolved", "env", cfg.Env, "seedFile", cfg.SeedFile, "contents", len(plan.Contents))
+
 	listener, err := net.Listen("tcp", cfg.Addr)
 	if err != nil {
 		return fmt.Errorf("listen on %s: %w", cfg.Addr, err)
 	}
 	defer listener.Close()
 
-	database, err := store.Open(cfg.DatabasePath)
+	database, err := store.Open(cfg.DatabasePath, store.WithSeedPlan(plan))
 	if err != nil {
 		return fmt.Errorf("open database: %w", err)
 	}

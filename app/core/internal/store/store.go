@@ -17,6 +17,7 @@ import (
 
 	"github.com/manifold-space/manifold/app/core/db"
 	"github.com/manifold-space/manifold/app/core/internal/model"
+	"github.com/manifold-space/manifold/app/core/internal/seed"
 )
 
 const schemaVersion = 1
@@ -35,6 +36,8 @@ const presenceTTL = 5 * time.Minute
 const contentExcerptMaxRunes = 360
 
 var defaultSections = []string{"PROFILE", "BACKGROUND", "RECENT_CONTENT", "UPDATES", "SERIES", "CONTACT"}
+
+var defaultNavigation = []model.SiteNavigationItem{{Label: "Home", Href: "/"}, {Label: "Writings", Href: "/writing"}, {Label: "Thoughts", Href: "/thoughts"}}
 
 var (
 	markdownImagePattern               = regexp.MustCompile(`!\[[^\]]*\](?:\([^)]*\)|\[[^]]*\])`)
@@ -124,7 +127,11 @@ type ContentUpdate struct {
 	ExpectedVersion int
 }
 
-func Open(path string) (*Store, error) {
+func Open(path string, options ...Option) (*Store, error) {
+	plan, err := seedPlanFor(options)
+	if err != nil {
+		return nil, err
+	}
 	if dir := filepath.Dir(path); dir != "." {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return nil, err
@@ -142,11 +149,45 @@ func Open(path string) (*Store, error) {
 		_ = db.Close()
 		return nil, err
 	}
-	if err := s.seed(); err != nil {
+	if err := s.applySeed(plan); err != nil {
 		_ = db.Close()
 		return nil, err
 	}
 	return s, nil
+}
+
+// openOptions collects the optional behaviors of Open.
+type openOptions struct {
+	seedPlan    seed.Plan
+	hasSeedPlan bool
+}
+
+// Option customizes how a database is opened.
+type Option func(*openOptions)
+
+// WithSeedPlan supplies the data applied when the database is fresh. The
+// production wiring passes the bootstrap plan; without an option a fresh
+// database receives the built-in development seed.
+func WithSeedPlan(plan seed.Plan) Option {
+	return func(options *openOptions) {
+		options.seedPlan = plan
+		options.hasSeedPlan = true
+	}
+}
+
+func seedPlanFor(options []Option) (seed.Plan, error) {
+	resolved := openOptions{}
+	for _, apply := range options {
+		apply(&resolved)
+	}
+	if resolved.hasSeedPlan {
+		return resolved.seedPlan, nil
+	}
+	plan, err := seed.Dev()
+	if err != nil {
+		return seed.Plan{}, fmt.Errorf("built-in dev seed: %w", err)
+	}
+	return plan, nil
 }
 
 func (s *Store) Close() error { return s.DB.Close() }
@@ -206,46 +247,30 @@ func (s *Store) migrate() error {
 	return nil
 }
 
-func (s *Store) seed() error {
+// applySeed populates a fresh database from the plan resolved at Open time.
+// The gate counts profile rows instead of content rows so an admin who deletes
+// every seeded article does not resurrect starter data on restart.
+func (s *Store) applySeed(plan seed.Plan) error {
 	var seeded int
-	if err := s.DB.QueryRow(`SELECT COUNT(*) FROM content`).Scan(&seeded); err != nil {
+	if err := s.DB.QueryRow(`SELECT COUNT(*) FROM profile`).Scan(&seeded); err != nil {
 		return err
 	}
 	if seeded > 0 {
 		return nil
 	}
-	now := time.Now().UTC().Format(time.RFC3339)
-	if _, err := s.DB.Exec(`INSERT OR IGNORE INTO profile (id, display_name, handle, headline, bio, location, avatar_url, organization, website_url, resume_url, interests_json, education_json, experience_json, series_json, contacts_json, updated_at) VALUES ('profile_1', 'Manifold', '@manifold', 'Profile, writings, and thoughts.', 'Technical writings and short thoughts.', 'Peking, China', '', 'Independent', 'https://manifold.local', '', '["systems","research","writing"]', '[{"institution":"Independent","program":"Research and engineering","period":"Now"}]', '[{"organization":"Manifold","role":"Research and software","period":"Now"}]', '[{"name":"API relay","url":"https://api.weizixiang.dev","description":"A small public gateway for experiments and personal infrastructure.","category":"Infrastructure"},{"name":"OpenList","url":"https://openlist.weizixiang.dev","description":"A calm index for files, links, and things worth keeping close.","category":"Tool"}]', '[{"label":"GitHub","url":"https://github.com/manifold-space/manifold","handle":"@manifold-space"},{"label":"Email","url":"mailto:hello@manifold.local","handle":"hello@manifold.local"}]', ?)`, now); err != nil {
+	now := nowRFC3339()
+	profile := plan.Profile
+	if _, err := s.DB.Exec(`INSERT INTO profile (id, display_name, handle, headline, bio, location, avatar_url, organization, website_url, resume_url, interests_json, education_json, experience_json, series_json, contacts_json, updated_at) VALUES ('profile_1', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		profile.DisplayName, profile.Handle, profile.Headline, profile.Bio, profile.Location, profile.AvatarURL, profile.Organization, profile.WebsiteURL, profile.ResumeURL,
+		encodeJSON(profile.Interests), encodeJSON(profile.Education), encodeJSON(profile.Experience), encodeJSON(profile.Series), encodeJSON(profile.Contacts), now); err != nil {
 		return err
 	}
-	if _, err := s.DB.Exec(`INSERT OR IGNORE INTO site_config (id, navigation_json, sections_json, updated_at) VALUES ('site_1', ?, ?, ?)`, encodeJSON([]model.SiteNavigationItem{{Label: "Home", Href: "/"}, {Label: "Writings", Href: "/writing"}, {Label: "Thoughts", Href: "/thoughts"}}), encodeJSON(defaultSections), now); err != nil {
+	if err := s.seedSiteConfig(plan.SiteConfig, now); err != nil {
 		return err
 	}
-	seedContent := []struct {
-		id, kind, slug, title, summary, body, tags, metadata string
-	}{
-		{"content_1", "ARTICLE", "designing-boundaries", "Designing Boundaries", "Notes on designing boundaries in personal systems.", "# Designing Boundaries\n\nA personal system should preserve attention and make the next action clear.\n\n## The boundary\n\nSmall interfaces reduce unnecessary decisions.", `["systems","design"]`, `{"language":"Go","aiAssisted":false}`},
-		{"content_2", "THOUGHT", "a-small-signal", "A Small Signal", "Short note on when to turn an observation into a system.", "Not every observation needs a system. First decide whether it changes the way you work.", `["thinking"]`, `{"mood":"Curious","question":"When is a system justified?"}`},
-		{"content_3", "ARTICLE", "reading-the-edge", "Reading the Edge", "Questions about the relationship between software and daily life.", "## Open question\n\nHow do small tools change the way we notice the world?", `["systems"]`, `{}`},
-	}
-	for _, item := range seedContent {
-		kind := model.ContentKind(item.kind)
-		metadata, err := model.NormalizeMetadataFor(kind, item.body, json.RawMessage(item.metadata))
-		if err != nil {
+	for index, item := range plan.Contents {
+		if err := s.seedContent(item, index, now); err != nil {
 			return err
-		}
-		excerpt := contentExcerpt(item.body)
-		var title any
-		if item.title != "" {
-			title = item.title
-		}
-		if _, err := s.DB.Exec(`INSERT INTO content (id, kind, status, slug, title, summary, body, excerpt, metadata_json, published_at, created_at, updated_at) VALUES (?, ?, 'PUBLISHED', ?, ?, ?, ?, ?, ?, ?, ?, ?)`, item.id, kind, item.slug, title, item.summary, item.body, excerpt, encodeJSON(metadata), now, now, now); err != nil {
-			return err
-		}
-		for _, tag := range decodeTags(item.tags) {
-			if _, err := s.DB.Exec(`INSERT INTO content_tags (content_id, tag) VALUES (?, ?)`, item.id, tag); err != nil {
-				return err
-			}
 		}
 	}
 	if _, err := s.DB.Exec(`INSERT OR IGNORE INTO thoughts_config (id, featured_thought_id, updated_at) VALUES ('thoughts_1', NULL, ?)`, now); err != nil {
@@ -257,21 +282,94 @@ func (s *Store) seed() error {
 	return nil
 }
 
+// seedSiteConfig inserts the site_config singleton. Site identity fields are
+// optional in the plan; omitted ones defer to the schema column defaults via
+// a dynamic column list rather than duplicating those defaults here.
+func (s *Store) seedSiteConfig(siteConfig seed.SiteConfigSeed, now string) error {
+	commentsEnabled := true
+	if siteConfig.CommentsEnabled != nil {
+		commentsEnabled = *siteConfig.CommentsEnabled
+	}
+	columns := []string{"id", "social_json", "comments_enabled", "navigation_json", "sections_json", "updated_at"}
+	values := []any{
+		"site_1",
+		encodeJSON(orDefault(siteConfig.Social, []model.SiteNavigationItem{})),
+		boolToInt(commentsEnabled),
+		encodeJSON(orDefault(siteConfig.Navigation, defaultNavigation)),
+		encodeJSON(orDefault(siteConfig.Sections, defaultSections)),
+		now,
+	}
+	optional := []struct {
+		column string
+		value  *string
+	}{
+		{"title", siteConfig.Title},
+		{"description", siteConfig.Description},
+		{"footer_text", siteConfig.Footer},
+	}
+	for _, item := range optional {
+		if item.value != nil {
+			columns = append(columns, item.column)
+			values = append(values, *item.value)
+		}
+	}
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(columns)), ",")
+	query := fmt.Sprintf(`INSERT INTO site_config (%s) VALUES (%s)`, strings.Join(columns, ", "), placeholders)
+	_, err := s.DB.Exec(query, values...)
+	return err
+}
+
+func orDefault[T any](values []T, fallback []T) []T {
+	if values == nil {
+		return fallback
+	}
+	return values
+}
+
+func (s *Store) seedContent(item seed.ContentSeed, index int, now string) error {
+	status := item.Status
+	if status == "" {
+		status = model.StatusPublished
+	}
+	var publishedAt any
+	createdAt := now
+	if status == model.StatusPublished {
+		publishedAt = now
+		if item.PublishedAt != "" {
+			publishedAt = item.PublishedAt
+			createdAt = item.PublishedAt
+		}
+	}
+	id := item.ID
+	if id == "" {
+		id = fmt.Sprintf("content_seed_%d", index+1)
+	}
+	metadata, err := model.NormalizeMetadataFor(item.Kind, item.Body, item.Metadata)
+	if err != nil {
+		return err
+	}
+	var title any
+	if item.Title != "" {
+		title = item.Title
+	}
+	if _, err := s.DB.Exec(`INSERT INTO content (id, kind, status, slug, title, summary, body, excerpt, metadata_json, published_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		id, item.Kind, status, item.Slug, title, item.Summary, item.Body, contentExcerpt(item.Body), encodeJSON(metadata), publishedAt, createdAt, now); err != nil {
+		return err
+	}
+	for _, tag := range normalizeTags(item.Tags) {
+		if _, err := s.DB.Exec(`INSERT INTO content_tags (content_id, tag) VALUES (?, ?)`, id, tag); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func encodeJSON(value any) string {
 	raw, err := json.Marshal(value)
 	if err == nil {
 		return string(raw)
 	}
 	return "[]"
-}
-
-func decodeTags(raw string) []string {
-	var tags []string
-	_ = json.Unmarshal([]byte(raw), &tags)
-	if tags == nil {
-		return []string{}
-	}
-	return tags
 }
 
 func boolToInt(value bool) int {
