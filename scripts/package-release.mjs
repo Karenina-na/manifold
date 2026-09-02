@@ -1,11 +1,12 @@
 import { spawn } from 'node:child_process'
-import { access, chmod, cp, mkdir, mkdtemp, open, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { randomBytes, randomUUID } from 'node:crypto'
+import { access, chmod, cp, mkdir, mkdtemp, open, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { constants } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
+import { basename, dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { loadReleaseConfig } from './release/config.mjs'
+import { parseEnv, validateReleaseConfig } from './release/config.mjs'
 import { nodeVersionSupported } from './release/runtime.mjs'
 
 const modulePath = fileURLToPath(import.meta.url)
@@ -131,11 +132,71 @@ function run(command, args, options = {}) {
 function capture(command, args, options = {}) {
   return new Promise((resolveCapture, reject) => {
     const chunks = []
-    const child = spawn(command, args, { stdio: ['ignore', 'pipe', 'pipe'], ...options })
+    const errorChunks = []
+    const { input, ...spawnOptions } = options
+    const child = spawn(command, args, { stdio: [input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'], ...spawnOptions })
     child.stdout.on('data', (chunk) => chunks.push(chunk))
+    child.stderr.on('data', (chunk) => errorChunks.push(chunk))
     child.once('error', reject)
-    child.once('exit', (code) => code === 0 ? resolveCapture(Buffer.concat(chunks).toString().trim()) : reject(new Error(`${command} ${args.join(' ')} failed`)))
+    child.once('exit', (code) => code === 0
+      ? resolveCapture(Buffer.concat(chunks).toString().trim())
+      : reject(new Error(`${command} ${args.join(' ')} failed: ${Buffer.concat(errorChunks).toString().trim()}`)))
+    if (input !== undefined) child.stdin.end(input)
   })
+}
+
+function setEnvValue(source, key, value) {
+  const newline = source.includes('\r\n') ? '\r\n' : '\n'
+  const lines = source.split(/\r?\n/)
+  const pattern = new RegExp(`^(?:export\\s+)?${key}\\s*=`)
+  const index = lines.findIndex((line) => pattern.test(line.trim()))
+  if (index >= 0) {
+    lines[index] = `${key}=${value}`
+  } else {
+    if (lines.at(-1) === '') lines.pop()
+    lines.push(`${key}=${value}`, '')
+  }
+  return lines.join(newline)
+}
+
+async function writePrivateFileAtomic(path, source) {
+  const temporaryPath = join(dirname(path), `.${basename(path)}.${randomUUID()}.tmp`)
+  try {
+    await writeFile(temporaryPath, source, { flag: 'wx', mode: 0o600 })
+    await rename(temporaryPath, path)
+    await chmod(path, 0o600)
+  } finally {
+    await rm(temporaryPath, { force: true })
+  }
+}
+
+async function hashAdminPassword(password) {
+  return capture('go', ['run', './cmd/password-hash'], {
+    cwd: join(workspaceRoot, 'app', 'core'),
+    input: password,
+  })
+}
+
+export async function prepareReleaseConfig(path, dependencies = {}) {
+  let source = await readFile(path, 'utf8')
+  let environment = parseEnv(source)
+  let generatedCredentials = null
+  if (!environment.CORE_ADMIN_PASSWORD_HASH) {
+    const validationHash = '$2a$10$tT6zviyM5ANs0OHmn18g4eqtgsvaprMNl9n4CTkccoZW9N/aTcd8X'
+    validateReleaseConfig({ ...environment, CORE_ADMIN_PASSWORD_HASH: validationHash })
+
+    const createPassword = dependencies.createPassword ?? (() => randomBytes(24).toString('base64url'))
+    const hashPassword = dependencies.hashPassword ?? hashAdminPassword
+    const password = createPassword()
+    const hash = await hashPassword(password)
+    source = setEnvValue(source, 'CORE_ADMIN_PASSWORD_HASH', hash)
+    environment = parseEnv(source)
+    const runtime = validateReleaseConfig(environment)
+    await writePrivateFileAtomic(path, source)
+    generatedCredentials = { username: environment.CORE_ADMIN_USERNAME || 'admin', password }
+    return { source, environment, runtime, generatedCredentials }
+  }
+  return { source, environment, runtime: validateReleaseConfig(environment), generatedCredentials }
 }
 
 function versionAtLeast(actual, minimum) {
@@ -194,7 +255,13 @@ async function copyCompleteSwcHelpers(targetWebRoot) {
 async function buildRelease({ envPath, outputDirectory }) {
   await preflight()
   const resolvedEnvPath = resolve(envPath)
-  const { source, environment, runtime } = await loadReleaseConfig(resolvedEnvPath)
+  const { source, environment, runtime, generatedCredentials } = await prepareReleaseConfig(resolvedEnvPath)
+  if (generatedCredentials) {
+    console.warn('Generated initial Admin credentials because CORE_ADMIN_PASSWORD_HASH was empty.')
+    console.warn(`Admin username: ${generatedCredentials.username}`)
+    console.warn(`Admin password (shown once): ${generatedCredentials.password}`)
+    console.warn(`Saved the bcrypt hash to ${resolvedEnvPath}; store the password securely now.`)
+  }
   const commit = await capture('git', ['rev-parse', '--short=12', 'HEAD'], { cwd: workspaceRoot })
   const releaseDirectory = resolve(outputDirectory || join(workspaceRoot, 'dist', 'releases'))
   const bundleName = `manifold-${commit}-linux-x64-glibc`

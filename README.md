@@ -95,7 +95,7 @@ Admin 的 `VITE_CORE_URL` 必须指向 Core（默认 `http://localhost:8080`）�
 | `CORE_TRUSTED_PROXY_CIDRS` | 空 | 可提供可信 `X-Real-IP` 的反向代理网段；同机 OpenResty 使用 `127.0.0.1/32,::1/128` |
 | `CORE_JWT_SECRET` | `manifold-dev-secret-change-me` | JWT 密钥，生产环境必须更换 |
 | `CORE_ADMIN_USERNAME` | `admin` | 管理用户名 |
-| `CORE_ADMIN_PASSWORD_HASH` | `.env.example` 中的 bcrypt 哈希 | 管理密码哈希，不要写明文 |
+| `CORE_ADMIN_PASSWORD_HASH` | `.env.example` 中的 bcrypt 哈希 | 管理密码哈希，不要写明文；发布配置留空时由打包脚本生成 |
 | `CORE_CONTENT_CACHE_TTL` | `30s` | 内容详情缓存 TTL |
 | `CORE_STATS_CACHE_TTL` | `30s` | 统计缓存 TTL |
 | `CORE_AUDIT_EVENT_BUFFER` | `256` | 审计队列容量 |
@@ -132,11 +132,13 @@ Admin 的 `VITE_CORE_URL` 必须指向 Core（默认 `http://localhost:8080`）�
 
 发布脚本支持在 macOS arm64 或 Linux 构建面向 Linux x64 glibc 的归档。构建机需要 Node.js `>=20.9.0`、pnpm `>=11.19.0`、Go `>=1.26.5` 和 Info-ZIP；目标服务器只需要 Node.js `>=20.9.0`、glibc `>=2.28`、支持 SSE4.2 的 x64 CPU 和 unzip。
 
-先从 `.env.example` 创建独立的 `.env.production`，把所有公开 URL 改为最终 IP、端口或 HTTPS 域名，并设置 `CORE_ENV=production`、非默认 `CORE_JWT_SECRET` 与非默认 `CORE_ADMIN_PASSWORD_HASH`。发布配置还必须保持 `CORE_ADDR=:8080`、`CORE_DATABASE_PATH=./data/manifold.db`，并让 `CORE_ALLOWED_ORIGINS` 同时包含 Web 和 Admin 的公开 origin。三个独立域名部署还需设置 `ADMIN_PUBLIC_URL`；内部监听端口仍固定为 `3000/5173/8080`。发布脚本不会执行 shell `source`，bcrypt 中的 `$` 会原样保留。
+先从 `.env.example` 创建独立的 `.env.production`，把所有公开 URL 改为最终 IP、端口或 HTTPS 域名，并设置 `CORE_ENV=production` 与非默认 `CORE_JWT_SECRET`。`CORE_ADMIN_PASSWORD_HASH` 可以预先填写非默认 bcrypt hash，也可以留空让打包脚本生成。发布配置还必须保持 `CORE_ADDR=:8080`、`CORE_DATABASE_PATH=./data/manifold.db`，并让 `CORE_ALLOWED_ORIGINS` 同时包含 Web 和 Admin 的公开 origin。三个独立域名部署还需设置 `ADMIN_PUBLIC_URL`；内部监听端口仍固定为 `3000/5173/8080`。发布脚本不会执行 shell `source`，bcrypt 中的 `$` 会原样保留。
 
 ```bash
 pnpm package:release -- --env .env.production
 ```
+
+当 `CORE_ADMIN_PASSWORD_HASH` 为空时，打包脚本先生成随机初始密码，通过 Core 使用的 bcrypt 实现计算 hash，再以 `0600` 权限原子写回该配置文件。初始用户名和明文密码只在终端显示一次，必须立即保存到密码管理器；后续打包复用已写回的 hash，不会再次重置密码。CI 日志可能持久化终端输出，不应在不受保护的公共 CI 中使用自动生成模式。
 
 产物位于 `dist/releases/manifold-<git-sha>-linux-x64-glibc.zip`。归档包含 Linux Core 二进制、Next.js standalone、Admin 静态文件、生产 `.env` 和运行管理器，不包含数据库、日志或 PID。由于 `.env` 含生产密钥，归档必须通过受保护通道传输并限制访问。
 

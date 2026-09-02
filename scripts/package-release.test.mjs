@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict'
-import { chmod, mkdir, mkdtemp, readdir, rm, symlink, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 
-import { parseArguments, pruneNonTargetArtifacts, validateStagedBundle } from './package-release.mjs'
+import { parseArguments, prepareReleaseConfig, pruneNonTargetArtifacts, validateStagedBundle } from './package-release.mjs'
+
+const generatedHash = '$2a$10$tT6zviyM5ANs0OHmn18g4eqtgsvaprMNl9n4CTkccoZW9N/aTcd8X'
 
 function linuxElf(machine = 62) {
   const bytes = Buffer.alloc(64)
@@ -54,6 +56,84 @@ test('parseArguments requires an env file and accepts an output directory', () =
   })
   assert.throws(() => parseArguments([]), /--env is required/)
   assert.throws(() => parseArguments(['--unknown']), /Unknown argument/)
+})
+
+test('prepareReleaseConfig generates an initial admin password once and persists its hash', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'manifold-credentials-'))
+  const envPath = join(root, '.env.production')
+  const source = `# production settings
+CORE_ENV=production
+CORE_ADDR=:8080
+CORE_DATABASE_PATH=./data/manifold.db
+CORE_ALLOWED_ORIGINS=http://203.0.113.10:3000,http://203.0.113.10:5173
+CORE_JWT_SECRET=replace-with-a-long-random-secret
+CORE_ADMIN_USERNAME=admin
+CORE_ADMIN_PASSWORD_HASH=
+CORE_PUBLIC_URL=http://203.0.113.10:8080
+NEXT_PUBLIC_CORE_URL=http://203.0.113.10:8080
+NEXT_PUBLIC_SITE_URL=http://203.0.113.10:3000
+VITE_CORE_URL=http://203.0.113.10:8080
+VITE_WEB_URL=http://203.0.113.10:3000
+`
+  await writeFile(envPath, source, { mode: 0o600 })
+  let generatedPasswords = 0
+  const dependencies = {
+    createPassword: () => {
+      generatedPasswords += 1
+      return 'generated-admin-password'
+    },
+    hashPassword: async (password) => {
+      assert.equal(password, 'generated-admin-password')
+      return generatedHash
+    },
+  }
+
+  try {
+    const first = await prepareReleaseConfig(envPath, dependencies)
+    assert.deepEqual(first.generatedCredentials, { username: 'admin', password: 'generated-admin-password' })
+    assert.equal(first.environment.CORE_ADMIN_PASSWORD_HASH, generatedHash)
+    assert.equal(await readFile(envPath, 'utf8'), source.replace('CORE_ADMIN_PASSWORD_HASH=', `CORE_ADMIN_PASSWORD_HASH=${generatedHash}`))
+    assert.equal((await stat(envPath)).mode & 0o777, 0o600)
+
+    const second = await prepareReleaseConfig(envPath, dependencies)
+    assert.equal(second.generatedCredentials, null)
+    assert.equal(second.environment.CORE_ADMIN_PASSWORD_HASH, generatedHash)
+    assert.equal(generatedPasswords, 1)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('prepareReleaseConfig does not generate credentials when other production settings are invalid', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'manifold-invalid-credentials-'))
+  const envPath = join(root, '.env.production')
+  const source = `CORE_ENV=production
+CORE_ADDR=:8080
+CORE_DATABASE_PATH=./data/manifold.db
+CORE_ALLOWED_ORIGINS=http://203.0.113.10:3000,http://203.0.113.10:5173
+CORE_JWT_SECRET=manifold-dev-secret-change-me
+CORE_ADMIN_PASSWORD_HASH=
+CORE_PUBLIC_URL=http://203.0.113.10:8080
+NEXT_PUBLIC_CORE_URL=http://203.0.113.10:8080
+NEXT_PUBLIC_SITE_URL=http://203.0.113.10:3000
+VITE_CORE_URL=http://203.0.113.10:8080
+VITE_WEB_URL=http://203.0.113.10:3000
+`
+  await writeFile(envPath, source, { mode: 0o600 })
+  let generated = false
+
+  try {
+    await assert.rejects(prepareReleaseConfig(envPath, {
+      createPassword: () => {
+        generated = true
+        return 'must-not-be-generated'
+      },
+    }), /CORE_JWT_SECRET/)
+    assert.equal(generated, false)
+    assert.equal(await readFile(envPath, 'utf8'), source)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
 })
 
 test('validateStagedBundle accepts a complete Linux x64 release', async () => {
