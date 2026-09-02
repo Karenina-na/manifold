@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ArrowUpRight } from "lucide-react";
-import { loadHomeData, formatDate } from "../lib/api";
+import { buildHref, loadHomeData, formatDate } from "../lib/api";
 import { buildUpdateTimeline } from "../lib/update-timeline";
 import { Reveal } from "../components/reveal";
 import { UpdateTimelineView } from "../components/update-timeline";
@@ -52,7 +52,7 @@ export default async function Home() {
   const location = profile?.location?.split(",")[0]?.trim() || "Shanghai";
   const gitSha = process.env.NEXT_PUBLIC_GIT_SHA?.slice(0, 7) ?? "local";
   const contactLinks = [
-    ...(profile?.websiteUrl ? [{ label: "Website", url: profile.websiteUrl, icon: "globe" }] : []),
+	    ...(profile?.websiteUrl ? [{ label: "Website", url: profile.websiteUrl, handle: null, icon: "globe" }] : []),
     ...(profile?.contacts ?? []),
   ];
   const education = profile?.education ?? [];
@@ -141,7 +141,7 @@ export default async function Home() {
 }
 
 function TimelineColumn({ title, icon, href, items, empty }: { title: string; icon: string; href: string; items: Content[]; empty: string }) {
-  return <div className={styles.timelineColumn}><div className={styles.timelineHeading}><span>{icon} {title}</span><Link href={href} aria-label={`Browse all ${title.toLowerCase()}`}><ArrowUpRight size={14} /></Link></div><div className={styles.timeline}>{items.length ? items.map((item, index) => <Link className={styles.timelineItem} href={item.href} key={item.id}><span className={styles.timelinePin} data-timeline-pin aria-hidden="true" /><div><div className={styles.timelineItemTop}><span className={styles.timelineNumber}>/{String(index + 1).padStart(2, "0")}</span><time dateTime={item.publishedAt ?? item.createdAt}>{getRelativeDate(item.publishedAt ?? item.createdAt)} · {getDate(item.publishedAt ?? item.createdAt)}{readingMinutes(item.metadata) ? ` · ${readingMinutes(item.metadata)} min` : ""}</time></div><h3>{item.title || "Untitled thought"}</h3><p>{item.summary || "A quiet note waiting for its next sentence."}</p></div></Link>) : <p className={styles.muted}>{empty}</p>}</div></div>;
+  return <div className={styles.timelineColumn}><div className={styles.timelineHeading}><span>{icon} {title}</span><Link href={href} aria-label={`Browse all ${title.toLowerCase()}`}><ArrowUpRight size={14} /></Link></div><div className={styles.timeline}>{items.length ? items.map((item, index) => <Link className={styles.timelineItem} href={buildHref(item)} key={item.id}><span className={styles.timelinePin} data-timeline-pin aria-hidden="true" /><div><div className={styles.timelineItemTop}><span className={styles.timelineNumber}>/{String(index + 1).padStart(2, "0")}</span><time dateTime={item.publishedAt}>{getRelativeDate(item.publishedAt)} · {getDate(item.publishedAt)}{readingMinutes(item.metadata) ? ` · ${readingMinutes(item.metadata)} min` : ""}</time></div><h3>{item.title || "Untitled thought"}</h3><p>{item.summary || "A quiet note waiting for its next sentence."}</p></div></Link>) : <p className={styles.muted}>{empty}</p>}</div></div>;
 }
 
 function SceneBreak() {

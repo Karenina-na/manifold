@@ -24,12 +24,6 @@
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "react-hook-form": "^7.85.0",
-    "react-markdown": "^10.1.0",
-    "rehype-highlight": "^7.0.2",
-    "rehype-katex": "^7.0.1",
-    "rehype-sanitize": "^6.0.0",
-    "remark-gfm": "^4.0.1",
-    "remark-math": "^6.0.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {

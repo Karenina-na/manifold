@@ -137,7 +137,7 @@ export function ArticleDiscussion({ slug, viewCount = 0, likeCount = 0, showStat
   }, [search]);
   const commentsQuery = useQuery({
     queryKey: ["comments", slug, page, debouncedSearch],
-    queryFn: () => client.comments(slug, { page, limit: COMMENT_PAGE_SIZE, q: debouncedSearch || undefined }),
+    queryFn: () => client.comments(slug, { page, pageSize: COMMENT_PAGE_SIZE, q: debouncedSearch || undefined }),
     placeholderData: keepPreviousData,
     enabled: commentsEnabled,
   });

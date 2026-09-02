@@ -4,14 +4,13 @@ import { Alert, Button, Select, Switch, Textarea, TextInput } from '@mantine/cor
 import { CalendarDays, Clock3, Eye, Heart, Languages, Plus } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
-import type { AdminContent, ArticleMetadata } from '@manifold/contracts'
-import { ArticleSurface, formatDate } from '@manifold/render'
+import type { AdminContent, ArticleMetadataInput } from '@manifold/contracts'
+import { ArticleSurface, deriveToc, estimateReadingMinutes, formatDate } from '@manifold/render'
 import { ApiError } from '@manifold/sdk'
 import { z } from 'zod'
 import { createAdminClient, webBaseUrl } from '../api'
 import { setDirtyGuard } from '../lib/dirty-guard'
 import { navigate, requestNavigate, replaceRoute } from '../lib/useHashRoute'
-import { deriveToc, estimateReadingMinutes } from '../lib/content-derive'
 import { ChipsInput } from '../components/ChipsInput'
 import { ContentListPanel, type TransitionAction } from '../components/ContentListPanel'
 import { ContentEditorShell, type EditorMode } from '../components/ContentEditorShell'
@@ -19,7 +18,7 @@ import { ContentCommentsPanel } from '../components/ContentCommentsPanel'
 import { MarkdownEditor } from '../components/MarkdownEditor'
 
 const schema = z.object({
-  slug: z.string(),
+  slug: z.string().trim().min(1, 'Slug is required.'),
   title: z.string(),
   summary: z.string().max(4000),
   body: z.string().min(1, 'Content is required.'),
@@ -31,27 +30,23 @@ type Form = z.infer<typeof schema>
 const empty: Form = { slug: '', title: '', summary: '', body: '', tags: [], language: '', aiAssisted: false }
 const languageOptions = ['Go', 'TypeScript', 'JavaScript', 'Python', 'Rust', 'C', 'C++', 'Java', 'Kotlin', 'Swift', 'SQL', 'Bash', 'Markdown', 'Other'].map((value) => ({ value, label: value }))
 
-// PATCH metadata replaces the whole object in Core, so untouched editorial
-// fields (frontmatter, technologies, …) must ride along from the loaded item.
-function metadataFrom(form: Form, previous: AdminContent | null): ArticleMetadata {
-  const metadata = { ...(previous?.metadata ?? {}) } as ArticleMetadata
-  if (form.language.trim()) metadata.language = form.language.trim()
-  else delete metadata.language
-  if (form.aiAssisted) metadata.aiAssisted = true
-  else delete metadata.aiAssisted
-  return metadata
+function metadataFrom(form: Form): ArticleMetadataInput {
+  return {
+    language: form.language.trim() || null,
+    aiAssisted: form.aiAssisted,
+  }
 }
 
 function fromContent(content: AdminContent): Form {
-  const metadata = content.metadata as ArticleMetadata
+  const metadata = content.kind === 'ARTICLE' ? content.metadata : null
   return {
-    slug: content.slug ?? '',
+    slug: content.slug,
     title: content.title ?? '',
     summary: content.summary,
     body: content.body ?? '',
     tags: content.tags,
-    language: metadata.language ?? '',
-    aiAssisted: metadata.aiAssisted ?? false,
+    language: metadata?.language ?? '',
+    aiAssisted: metadata?.aiAssisted ?? false,
   }
 }
 
@@ -92,7 +87,7 @@ function WritingsListPage({ client }: { client: ReturnType<typeof createAdminCli
     void queryClient.invalidateQueries({ queryKey: ['admin-overview'] })
   }
   const transition = useMutation<AdminContent | void, Error, { id: string; action: TransitionAction }>({
-    mutationFn: ({ id, action }) => action === 'publish' ? client.publishContent(id) : action === 'unpublish' ? client.unpublishContent(id) : client.deleteContent(id),
+    mutationFn: ({ id, action }) => action === 'publish' ? client.publishContent(id) : action === 'unpublish' ? client.unpublishContent(id) : action === 'restore' ? client.restoreContent(id) : client.deleteContent(id),
     onSuccess: () => invalidate(),
   })
   return <section className="workspace">
@@ -103,7 +98,7 @@ function WritingsListPage({ client }: { client: ReturnType<typeof createAdminCli
       singular="writing"
       onEdit={(content) => navigate(`#/writings/${content.id}`)}
       onTransition={(content, action) => transition.mutate({ id: content.id, action })}
-      hrefFor={(content) => `${webBaseUrl}/writing/${content.slug || content.id}`}
+      hrefFor={(content) => `${webBaseUrl}/writing/${content.slug}`}
       pin={pin.control}
     />
   </section>
@@ -146,8 +141,8 @@ function WritingEditorPage({ client, editingId, commentsRequested, routeQuery }:
   }
   const save = useMutation({
     mutationFn: (input: Form) => draft
-      ? client.updateContent(draft.id, { kind: 'ARTICLE', slug: input.slug, title: input.title, summary: input.summary, body: input.body, tags: input.tags, metadata: metadataFrom(input, draft), expectedVersion: draft.version })
-      : client.createContent({ kind: 'ARTICLE', slug: input.slug, title: input.title, summary: input.summary, body: input.body, tags: input.tags, metadata: metadataFrom(input, null) }),
+      ? client.updateContent(draft.id, { kind: 'ARTICLE', slug: input.slug, title: input.title, summary: input.summary, body: input.body, tags: input.tags, metadata: metadataFrom(input), expectedVersion: draft.version })
+      : client.createContent({ kind: 'ARTICLE', slug: input.slug, title: input.title, summary: input.summary, body: input.body, tags: input.tags, metadata: metadataFrom(input) }),
     onSuccess: (saved) => {
       invalidate()
       setConflict(false)
@@ -240,7 +235,7 @@ function WritingEditorPage({ client, editingId, commentsRequested, routeQuery }:
 
   return <ContentEditorShell
     kindLabel="Writing"
-    hrefFor={(content) => `${webBaseUrl}/writing/${content.slug || content.id}`}
+    hrefFor={(content) => `${webBaseUrl}/writing/${content.slug}`}
     selected={draft}
     mode={mode}
     isDirty={form.formState.isDirty}

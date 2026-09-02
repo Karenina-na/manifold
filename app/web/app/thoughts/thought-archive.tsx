@@ -1,6 +1,6 @@
 "use client";
 
-import type { Content, TagSummary, ThoughtArchive as ThoughtArchiveResponse } from "@manifold/contracts";
+import type { Collection, Content, TagSummary } from "@manifold/contracts";
 import { ArrowRight, Search } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useRef } from "react";
@@ -9,7 +9,7 @@ import { ScrollHint } from "../../components/scroll-hint";
 import { TagCloud } from "../../components/tag-cloud";
 import { TagPicker } from "../../components/tag-picker";
 import { ThoughtActions } from "../../components/thought-actions";
-import { createBrowserClient } from "../../lib/api";
+import { buildHref, createBrowserClient } from "../../lib/api";
 import { clampPage } from "../../lib/archive-url";
 import { useArchiveFilters } from "../../lib/use-archive-filters";
 import { groupThoughtsByYear, formatThoughtDate } from "../../lib/thought-archive";
@@ -34,20 +34,21 @@ function ThoughtPreview({ item, featured = false }: { item: Thought; featured?: 
 }
 
 type ThoughtArchiveProps = {
-  initialArchive: ThoughtArchiveResponse | null;
+  initialArchive: Collection<Thought> | null;
+  featured: Thought | null;
   tags: TagSummary[] | null;
   initialQuery?: string;
   initialTags?: string[];
 };
 
-export default function ThoughtArchive({ initialArchive, tags, initialQuery = "", initialTags = [] }: ThoughtArchiveProps) {
+export default function ThoughtArchive({ initialArchive, featured, tags, initialQuery = "", initialTags = [] }: ThoughtArchiveProps) {
   const timelineRef = useRef<HTMLElement>(null);
   const { input, query, tags: selectedTags, data, isPending, error, onSearchInput, toggleTag, goToPage } = useArchiveFilters({
     basePath: "/thoughts",
     initialData: initialArchive,
     initialQuery,
     initialTags,
-    fetchPage: (state) => createBrowserClient().thoughts({ page: state.page, limit: PAGE_SIZE, q: state.query || undefined, tag: state.tags.length ? state.tags : undefined }),
+    fetchPage: (state) => createBrowserClient().content({ kind: "THOUGHT", page: state.page, pageSize: PAGE_SIZE, q: state.query || undefined, tag: state.tags.length ? state.tags : undefined }) as Promise<Collection<Thought>>,
     onPageSettled: () => window.requestAnimationFrame(() => timelineRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })),
   });
   const filtersActive = Boolean(query || selectedTags.length);
@@ -68,17 +69,17 @@ export default function ThoughtArchive({ initialArchive, tags, initialQuery = ""
         </header>
       </Reveal>
 
-      {!filtersActive && data?.featured && <Reveal className={styles.writingReveal}>
+      {!filtersActive && featured && <Reveal className={styles.writingReveal}>
         <article className={styles.featuredThought}>
           <div className={styles.featuredThoughtTop}>
             <span className={styles.featuredBadge}>Featured</span>
-            <div className={styles.featuredThoughtMeta}><span>{tagLabel(data.featured.tags)}</span><time dateTime={data.featured.publishedAt ?? data.featured.createdAt}>{formatThoughtDate(data.featured.publishedAt ?? data.featured.createdAt)}</time></div>
+            <div className={styles.featuredThoughtMeta}><span>{tagLabel(featured.tags)}</span><time dateTime={featured.publishedAt}>{formatThoughtDate(featured.publishedAt)}</time></div>
           </div>
-          <h2><Link href={data.featured.href}>{data.featured.title || "A thought"}</Link></h2>
-          <ThoughtPreview item={data.featured} featured />
+          <h2><Link href={buildHref(featured)}>{featured.title || "A thought"}</Link></h2>
+          <ThoughtPreview item={featured} featured />
           <footer className={styles.featuredThoughtFooter}>
-            <ThoughtActions item={data.featured} />
-            <Link className={styles.thoughtReadLink} href={data.featured.href}>Full thought <ArrowRight size={15} aria-hidden="true" /></Link>
+            <ThoughtActions item={featured} />
+            <Link className={styles.thoughtReadLink} href={buildHref(featured)}>Full thought <ArrowRight size={15} aria-hidden="true" /></Link>
           </footer>
         </article>
       </Reveal>}
@@ -113,19 +114,19 @@ export default function ThoughtArchive({ initialArchive, tags, initialQuery = ""
                   <h3 className={styles.thoughtMonthRail} id={`month-${group.key}`}><span className={styles.thoughtMonthLabel}>{group.month}</span></h3>
                   <div className={styles.thoughtMonthItems}>
                     {group.items.map((item) => <div className={styles.thoughtTimelineRow} key={item.id}>
-                      <time className={styles.thoughtDateMarker} dateTime={item.publishedAt ?? item.createdAt} aria-label={`${group.label} ${item.day}`}>
+                      <time className={styles.thoughtDateMarker} dateTime={item.publishedAt} aria-label={`${group.label} ${item.day}`}>
                         <span aria-hidden="true" />
                         <strong>{item.day}</strong>
                       </time>
                       <article className={styles.thoughtListCard}>
                         <div className={styles.thoughtListTop}>
-                          <h3><Link href={item.href}>{item.title || "A thought"}</Link></h3>
-                          <div><span>{tagLabel(item.tags)}</span><time dateTime={item.publishedAt ?? item.createdAt}>{formatThoughtDate(item.publishedAt ?? item.createdAt)}</time></div>
+                          <h3><Link href={buildHref(item)}>{item.title || "A thought"}</Link></h3>
+                          <div><span>{tagLabel(item.tags)}</span><time dateTime={item.publishedAt}>{formatThoughtDate(item.publishedAt)}</time></div>
                         </div>
                         <ThoughtPreview item={item} />
                         <footer>
                           <ThoughtActions item={item} />
-                          <Link className={styles.thoughtReadLink} href={item.href}>Full thought <ArrowRight size={14} aria-hidden="true" /></Link>
+                          <Link className={styles.thoughtReadLink} href={buildHref(item)}>Full thought <ArrowRight size={14} aria-hidden="true" /></Link>
                         </footer>
                       </article>
                     </div>)}

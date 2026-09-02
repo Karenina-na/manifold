@@ -1,0 +1,133 @@
+{
+  "collection": {
+    "data": [
+      {
+        "id": "content_1750000000000000000",
+        "kind": "THOUGHT",
+        "slug": "a-quiet-thought",
+        "title": null,
+        "summary": "Summary text",
+        "excerpt": "Derived excerpt",
+        "tags": ["note", "meta"],
+        "metadata": { "mood": "calm", "question": null, "context": "reading", "source": null },
+        "publishedAt": "2026-08-24T10:00:00Z",
+        "createdAt": "2026-08-24T10:00:00Z",
+        "updatedAt": "2026-08-24T10:00:00Z",
+        "viewCount": 3,
+        "likeCount": 1,
+        "commentCount": 2
+      },
+      {
+        "id": "content_1750000000000000001",
+        "kind": "ARTICLE",
+        "slug": "an-article",
+        "title": "An Article",
+        "summary": "Article summary",
+        "excerpt": "Article excerpt",
+        "tags": [],
+        "metadata": {
+          "readingMinutes": 6,
+          "toc": [{ "id": "section", "label": "Section", "level": 2 }],
+          "language": "zh",
+          "aiAssisted": false
+        },
+        "publishedAt": "2026-08-25T10:00:00Z",
+        "createdAt": "2026-08-25T10:00:00Z",
+        "updatedAt": "2026-08-25T10:00:00Z",
+        "viewCount": 10,
+        "likeCount": 0,
+        "commentCount": 0
+      }
+    ],
+    "pagination": { "page": 1, "pageSize": 20, "totalItems": 2, "totalPages": 1 }
+  },
+  "adminContent": {
+    "id": "content_1750000000000000002",
+    "kind": "ARTICLE",
+    "status": "DRAFT",
+    "slug": "draft-article",
+    "title": "Draft Article",
+    "summary": "Draft summary",
+    "excerpt": "",
+    "tags": ["draft"],
+    "metadata": {
+      "readingMinutes": 0,
+      "toc": [],
+      "language": null,
+      "aiAssisted": false
+    },
+    "publishedAt": null,
+    "createdAt": "2026-08-26T10:00:00Z",
+    "updatedAt": "2026-08-26T10:00:00Z",
+    "version": 2,
+    "viewCount": 0,
+    "likeCount": 0,
+    "commentCount": 0,
+    "body": "# Draft"
+  },
+  "comment": {
+    "id": "comment_1750000000000000000",
+    "contentId": "content_1750000000000000000",
+    "authorName": "Guest",
+    "authorUrl": null,
+    "body": "Nice",
+    "createdAt": "2026-08-24T11:00:00Z",
+    "replyToId": null,
+    "avatarSeed": "seed-1"
+  },
+  "adminComment": {
+    "id": "comment_1750000000000000001",
+    "contentId": "content_1750000000000000000",
+    "authorName": "Admin",
+    "authorUrl": null,
+    "body": "Reply",
+    "createdAt": "2026-08-24T12:00:00Z",
+    "replyToId": "comment_1750000000000000000",
+    "avatarSeed": "seed-2",
+    "deletedAt": null,
+    "contentTitle": "A thought",
+    "contentSlug": "a-quiet-thought",
+    "contentKind": "THOUGHT"
+  },
+  "profile": {
+    "id": "profile_1",
+    "displayName": "Jane",
+    "handle": "@jane",
+    "headline": "Engineer",
+    "bio": "Bio",
+    "avatarUrl": "https://example.com/a.png",
+    "location": "Shanghai",
+    "organization": "Acme",
+    "websiteUrl": "https://jane.example",
+    "resumeUrl": null,
+    "interests": ["go"],
+    "education": [{ "institution": "MIT", "program": "CS", "period": "2010-2014" }],
+    "experience": [{ "organization": "Acme", "role": "Dev", "period": "2014-" }],
+    "series": [{ "name": "S", "url": "https://example.com", "description": "d", "category": null }],
+    "contacts": [{ "label": "Email", "url": "mailto:j@example.com", "handle": null, "icon": null }],
+    "updatedAt": "2026-08-24T10:00:00Z"
+  },
+  "site": {
+    "title": "Manifold",
+    "description": "Desc",
+    "footer": "Footer",
+    "social": [{ "label": "GitHub", "href": "https://github.com", "external": true }],
+    "commentsEnabled": true,
+    "navigation": [{ "label": "Thoughts", "href": "/thoughts", "external": false }],
+    "sections": ["PROFILE", "RECENT_CONTENT", "CONTACT"],
+    "featuredThought": null,
+    "featuredWriting": null
+  },
+  "auditEvent": {
+    "id": "audit_1750000000000000000",
+    "eventName": "content.updated",
+    "resourceType": "content",
+    "resourceId": "content_1750000000000000000",
+    "actor": "admin",
+    "requestId": "req_abc123",
+    "traceId": "trace_def456",
+    "metadataJson": "{\"ok\":true}",
+    "createdAt": "2026-08-24T10:00:00Z"
+  },
+  "error": { "error": { "code": "VALIDATION_FAILED", "message": "invalid input", "requestId": "req_abc123", "traceId": "trace_def456" } }
+}

@@ -14,13 +14,13 @@ Core 使用 Go REST/JSON、SQLite、JWT + Casbin，并由 `Store` 集中管理�
 
 状态：Accepted，当前枚举为 `THOUGHT` 和 `ARTICLE`。
 
-早期设计曾使用 `TECH`、`NOTE`、`POST`、`RESEARCH`、`MANUSCRIPT` 等类型。SQLite 迁移将旧值映射到当前两种类型；历史类型不再作为公共 API 枚举。Thought 使用正文优先的轻量 metadata，Article 使用阅读时长、TOC、frontmatter、技术标签等深度文稿 metadata。
+早期设计曾使用 `TECH`、`NOTE`、`POST`、`RESEARCH`、`MANUSCRIPT` 等类型；这些仅是历史规划，不属于当前 schema 或 API。Thought 使用正文优先的轻量 metadata，Article 使用 Core 派生阅读时长/TOC 与 `language`/`aiAssisted`。
 
 ## 决策：Thoughts 归档规则归 Core 所有
 
 状态：Accepted。
 
-Thoughts 页面需要一个独立可选的置顶项，以及排除置顶后的稳定分页。置顶配置使用 `thoughts_config` 单例表，Core 负责校验引用、失效回退、排序、排除和总页数；Web 只按 Core 返回的一页数据生成本地化月份标签和时间轴布局。旧 `site_config.featured_content_json` 中的 Thought 引用会在新表首次建立时迁移一次，但不继续双写。
+Thoughts 页面需要一个独立可选的置顶项，以及排除置顶后的稳定分页。置顶配置使用 `thoughts_config` 单例表，Core 负责校验引用、失效回退、排序、排除和总页数；Web 只按 Core 返回的一页数据生成本地化月份标签和时间轴布局。
 
 原因：通用内容列表最多返回 50 条，客户端先截断再分页会产生错误总页数，也会在多个消费者之间复制置顶规则；专用 aggregate 保持统一 Content 表不变，同时把跨页一致性和配置有效性收回唯一业务数据所有者。
 
@@ -28,7 +28,7 @@ Thoughts 页面需要一个独立可选的置顶项，以及排除置顶后的�
 
 状态：Accepted。
 
-内容状态为 `DRAFT`、`PUBLISHED`、`DELETED`。删除采用软删除；更新必须携带 `expectedVersion`，避免两个 Admin 标签页静默覆盖彼此的修改。评论独立使用 `PENDING`、`APPROVED`、`REJECTED`。
+内容状态为 `DRAFT`、`PUBLISHED`、`DELETED`。删除采用软删除；更新必须携带 `expectedVersion`，避免两个 Admin 标签页静默覆盖彼此的修改。评论创建即公开，使用 `deleted_at` 表达软删除；早期审核状态（`PENDING`、`APPROVED`、`REJECTED`）仅为历史规划，不属于当前 schema。
 
 ## 决策：非关键审计异步化
 

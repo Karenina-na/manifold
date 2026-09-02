@@ -1,5 +1,12 @@
--- Runtime schema mirror of the embedded bootstrap in internal/store/store.go.
--- Keep both in sync; the Go source is authoritative for fresh databases.
+-- Manifold baseline schema. This file is the single source of truth for the
+-- database shape; internal/store embeds it at build time and refuses to open
+-- databases whose schema_migrations version is newer than the binary knows.
+-- Resetting dev data is a documented operation: delete the .db file.
+
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    version INTEGER PRIMARY KEY,
+    applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 
 CREATE TABLE IF NOT EXISTS profile (
     id TEXT PRIMARY KEY,
@@ -11,7 +18,7 @@ CREATE TABLE IF NOT EXISTS profile (
     avatar_url TEXT NOT NULL DEFAULT '',
     organization TEXT NOT NULL DEFAULT '',
     website_url TEXT NOT NULL DEFAULT '',
-    resume_url TEXT NOT NULL DEFAULT '',
+    resume_url TEXT,
     interests_json TEXT NOT NULL DEFAULT '[]',
     education_json TEXT NOT NULL DEFAULT '[]',
     experience_json TEXT NOT NULL DEFAULT '[]',
@@ -24,17 +31,25 @@ CREATE TABLE IF NOT EXISTS content (
     id TEXT PRIMARY KEY,
     kind TEXT NOT NULL CHECK (kind IN ('THOUGHT', 'ARTICLE')),
     status TEXT NOT NULL DEFAULT 'DRAFT' CHECK (status IN ('DRAFT', 'PUBLISHED', 'DELETED')),
-    slug TEXT UNIQUE,
+    slug TEXT NOT NULL UNIQUE,
     title TEXT,
     summary TEXT NOT NULL DEFAULT '',
     body TEXT NOT NULL DEFAULT '',
-    tags_json TEXT NOT NULL DEFAULT '[]',
+    excerpt TEXT NOT NULL DEFAULT '',
     metadata_json TEXT NOT NULL DEFAULT '{}',
     published_at TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     version INTEGER NOT NULL DEFAULT 1,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    view_count INTEGER NOT NULL DEFAULT 0
+    view_count INTEGER NOT NULL DEFAULT 0,
+    like_count INTEGER NOT NULL DEFAULT 0,
+    comment_count INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS content_tags (
+    content_id TEXT NOT NULL REFERENCES content(id) ON DELETE CASCADE,
+    tag TEXT NOT NULL,
+    PRIMARY KEY (content_id, tag)
 );
 
 CREATE TABLE IF NOT EXISTS site_config (
@@ -65,11 +80,11 @@ CREATE TABLE IF NOT EXISTS comments (
     id TEXT PRIMARY KEY,
     content_id TEXT NOT NULL REFERENCES content(id),
     author_name TEXT NOT NULL,
-    author_url TEXT NOT NULL DEFAULT '',
+    author_url TEXT,
     body TEXT NOT NULL,
     reply_to_id TEXT REFERENCES comments(id),
     avatar_seed TEXT NOT NULL DEFAULT '',
-    deleted_at TEXT NOT NULL DEFAULT '',
+    deleted_at TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -92,8 +107,8 @@ CREATE TABLE IF NOT EXISTS audit_events (
     resource_type TEXT NOT NULL,
     resource_id TEXT NOT NULL DEFAULT '',
     actor TEXT NOT NULL DEFAULT 'anonymous',
-    request_id TEXT NOT NULL DEFAULT '',
-    trace_id TEXT NOT NULL DEFAULT '',
+    request_id TEXT,
+    trace_id TEXT,
     metadata_json TEXT NOT NULL DEFAULT '{}',
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -121,6 +136,7 @@ CREATE TABLE IF NOT EXISTS media (
 
 CREATE INDEX IF NOT EXISTS idx_content_publication ON content(status, published_at DESC);
 CREATE INDEX IF NOT EXISTS idx_content_kind_publication ON content(kind, status, published_at DESC);
+CREATE INDEX IF NOT EXISTS idx_content_tags ON content_tags(tag);
 CREATE INDEX IF NOT EXISTS idx_likes_content ON likes(content_id);
 CREATE INDEX IF NOT EXISTS idx_presence_last_seen ON presence(last_seen_at);
 CREATE INDEX IF NOT EXISTS idx_audit_events_created_at ON audit_events(created_at DESC);
@@ -129,4 +145,5 @@ CREATE INDEX IF NOT EXISTS idx_view_events_day ON content_view_events(day);
 CREATE INDEX IF NOT EXISTS idx_view_events_content ON content_view_events(content_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_view_events_dedup ON content_view_events(content_id, visitor_id, day) WHERE visitor_id != '';
 CREATE INDEX IF NOT EXISTS idx_media_created_at ON media(created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_comments_content_visibility ON comments(content_id, deleted_at, created_at);
+CREATE INDEX IF NOT EXISTS idx_comments_content_visibility ON comments(content_id, created_at) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_comments_reply ON comments(reply_to_id);

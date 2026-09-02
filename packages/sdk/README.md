@@ -6,7 +6,7 @@
 
 ```ts
 const client = new ManifoldClient({ baseUrl: coreUrl, token })
-const page = await client.content({ kind: "ARTICLE", limit: 20 })
+const page = await client.content({ kind: "ARTICLE", pageSize: 20 })
 ```
 
 - Web Server Component 使用无缓存 fetch 创建 client。
@@ -26,7 +26,7 @@ const page = await client.content({ kind: "ARTICLE", limit: 20 })
 
 每次请求：
 
-1. 以 `baseUrl + path` 组合 URL。
+1. 以 `baseUrl + path` 组合 URL；所有路径段一律经 `encodeURIComponent` 编码。
 2. 设置 `Accept: application/json`。
 3. 生成并发送 `X-Trace-ID`。
 4. 有 body 时设置 `Content-Type: application/json` 并 `JSON.stringify`；body 为 `Blob` 时按二进制透传（仅当 Blob 携带类型时设置 `Content-Type`）。
@@ -42,16 +42,13 @@ const page = await client.content({ kind: "ARTICLE", limit: 20 })
 | --- | --- | --- | --- |
 | `health()` | GET | `/healthz` | `HealthStatus` |
 | `profile()` | GET | `/api/v1/profile` | `Profile` |
-| `site()` | GET | `/api/v1/site` | `SiteComposition`（含站点身份、`commentsEnabled`、导航与 `sections` 枚举） |
-| `feed(query?)` | GET | `/api/v1/feed` | `Collection<Content>` |
-| `content(query?)` | GET | `/api/v1/content` | `Collection<Content>`，内容项包含纯文本 `excerpt`、`viewCount` / `likeCount` / `commentCount`；`query` 支持 `kind`、`tag`（单值或多值 `string[]`，数组序列化为逗号分隔，多值按 OR 命中任一标签）、`q`、`cursor` 或 `page`（互斥）、`sort`、`aiAssisted`、`skipFirst`（仅 `page` 模式） |
-| `thoughts(query?)` | GET | `/api/v1/thoughts` | `ThoughtArchive`，Core 负责置顶、排除、正文摘录和页码分页；`query` 支持 `page`、`limit`、`tag`（单值或多值 `string[]`，OR 语义）、`q` |
-| `writings(query?)` | GET | `/api/v1/writings` | `WritingArchive`，Core 负责置顶、排除、正文摘录和页码分页；`query` 支持 `page`、`limit`、`tag`（OR 语义）、`q`、`sort`（newest/oldest/updated）、`aiAssisted` |
+| `site()` | GET | `/api/v1/site` | `SiteComposition`（站点设置 + `featuredThought`/`featuredWriting` 置顶内容） |
+| `content(query?)` | GET | `/api/v1/content` | `Collection<Content>`，唯一公共列表面；`query` 支持 `kind`（单值或多值 `string[]`，数组序列化为逗号分隔，多值按 OR 命中任一标签）、`tag`（同上）、`q`、`page`/`pageSize`（页码分页）、`sort`、`aiAssisted` |
 | `tags(query?)` | GET | `/api/v1/tags` | `Collection<TagSummary>` 标签聚合，`query` 支持 `kind = "THOUGHT" \| "ARTICLE"` |
-| `contentBySlug(slug, options?)` | GET | `/api/v1/content/:slug` | `ContentDetail`；`{ trackView: false }` 用于不计入浏览量的 metadata 读取，`{ referrer }` 传 origin 形式的来源供浏览事件分析，`{ visitorId }` 附带 `X-Visitor-ID` 供 Core 按"同人同内容同 UTC 日"去重浏览事件（三者可组合） |
+| `contentBySlug(slug, query?, visitorId?)` | GET | `/api/v1/content/:slug` | `ContentDetail`；`query: { trackView: false }` 关闭浏览计数（默认计入），`referrer` 传 origin 形式的来源供浏览事件分析；`visitorId` 附带 `X-Visitor-ID` 供 Core 按"同人同内容同 UTC 日"去重浏览事件 |
 | `stats()` | GET | `/api/v1/stats` | `Stats` |
 | `presence(visitorId)` | POST | `/api/v1/presence` | `PresenceStatus` |
-| `comments(slug, query?)` | GET | `/api/v1/content/:slug/comments` | `Collection<Comment>`，`query` 支持 `page`（1 起）、`limit`（每页顶层评论数，默认 10）和 `q`（按作者或正文搜索，线程级命中）；带 `page` 时 `pagination` 附带 `page/pageSize/totalItems/totalPages`，分页只作用于顶层评论，回复随其顶层同页返回 |
+| `comments(slug, query?)` | GET | `/api/v1/content/:slug/comments` | `Collection<Comment>`，`query` 支持 `page`（1 起）、`pageSize`（每页顶层评论数）和 `q`（按作者或正文搜索，线程级命中）；分页只作用于顶层评论，回复随其顶层同页返回 |
 | `createComment(slug, input)` | POST | `/api/v1/content/:slug/comments` | `Comment` |
 | `likes(slug, visitorId?)` | GET | `/api/v1/content/:slug/likes` | `LikeSummary` |
 | `setLike(slug, visitorId, enabled)` | PUT/DELETE | `/api/v1/content/:slug/likes` | `LikeSummary` |
@@ -69,16 +66,17 @@ const page = await client.content({ kind: "ARTICLE", limit: 20 })
 | `listMedia(query?)` | GET | `/api/v1/admin/media` | `Collection<Media>`（服务端分页：`page`/`pageSize`/`q`） |
 | `uploadMedia(blob, filename)` | POST | `/api/v1/admin/media?filename=…` | `Media`（二进制 body，Core 按 201 返回含绝对 `url`） |
 | `deleteMedia(id)` | DELETE | `/api/v1/admin/media/{id}` | 204 |
-| `adminProfile()` / `updateProfile(input)` | GET/PATCH | `/api/v1/admin/profile` | `Profile` |
-| `adminSite()` / `updateSite(input)` | GET/PATCH | `/api/v1/admin/site` | `SiteConfig`；`updateSite` 全量提交站点设置（身份、social、评论开关、导航、sections），非法 sections/缺失 title 返回 422 |
-| `adminThoughtConfig()` / `updateThoughtConfig(input)` | GET/PATCH | `/api/v1/admin/thoughts/config` | `ThoughtConfig` |
-| `adminWritingConfig()` / `updateWritingConfig(input)` | GET/PATCH | `/api/v1/admin/writings/config` | `WritingConfig`，非空 `featuredWritingId` 必须引用已发布 ARTICLE |
-| `adminContent(query?)` | GET | `/api/v1/admin/content` | `Collection<AdminContent>`，内容项包含完整 `body`、`viewCount` / `likeCount` / `commentCount` |
-| `adminContentItem(id)` | GET | `/api/v1/admin/content/{id}` | `AdminContent`，单条管理内容（含完整 body 与 metadata） |
+| `adminProfile()` / `updateProfile(input)` | GET/PUT | `/api/v1/admin/profile` | `Profile` |
+| `adminSite()` / `updateSite(input)` | GET/PUT | `/api/v1/admin/site` | `SiteConfig`；`updateSite` 全量提交站点设置 |
+| `adminThoughtConfig()` / `updateThoughtConfig(input)` | GET/PUT | `/api/v1/admin/thoughts/config` | `ThoughtConfig` |
+| `adminWritingConfig()` / `updateWritingConfig(input)` | GET/PUT | `/api/v1/admin/writings/config` | `WritingConfig`，非空 `featuredWritingId` 必须引用已发布 ARTICLE |
+| `adminContent(query?)` | GET | `/api/v1/admin/content` | `Collection<AdminContent>`，`query` 在公共过滤之上追加 `status` |
+| `adminContentItem(id)` | GET | `/api/v1/admin/content/{id}` | `AdminContent`，单条管理内容 |
 | `createContent(input)` | POST | `/api/v1/admin/content` | `AdminContent` |
-| `updateContent(id, input)` | PATCH | `/api/v1/admin/content/:id` | `AdminContent` |
+| `updateContent(id, input)` | PUT | `/api/v1/admin/content/:id` | `AdminContent`；完整替换并携带 `expectedVersion` |
 | `publishContent(id)` / `unpublishContent(id)` | POST | `/publish` `/unpublish` | `AdminContent` |
-| `deleteContent(id)` | DELETE | `/api/v1/admin/content/:id` | `void`，204 |
+| `deleteContent(id)` | DELETE | `/api/v1/admin/content/:id` | `void`，204，软删除 |
+| `restoreContent(id)` | POST | `/api/v1/admin/content/:id/restore` | `AdminContent`，从软删除恢复为草稿 |
 | `adminComments(query?)` | GET | `/api/v1/admin/comments` | `Collection<AdminComment>`，线程分页（`AdminCommentQuery`：`contentId`/`q`/`page`/`pageSize`/`focus`），含已软删（`deletedAt`），行内附内容字段 |
 | `adminCreateComment(contentId, input)` | POST | `/api/v1/admin/content/:id/comments` | `Comment`，201；可在草稿上创建，作者为空归一化为 `Anonymous` |
 | `deleteComment(id)` | DELETE | `/api/v1/admin/comments/:id` | `void`，204，软删除 |

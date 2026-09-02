@@ -8,12 +8,13 @@ import (
 )
 
 func TestContentCacheExpiresAndInvalidatesEntries(t *testing.T) {
-	content := model.Content{ID: "content_1", Slug: "first", Title: "First", Tags: []string{"systems"}}
+	title := "First"
+	content := model.Content{ID: "content_1", Slug: "first", Title: &title, Tags: []string{"systems"}}
 	cache := NewContentCache(10 * time.Millisecond)
 
 	cache.Set(content.Slug, content)
 	cached, ok := cache.Get(content.Slug)
-	if !ok || cached.Title != "First" {
+	if !ok || cached.Title == nil || *cached.Title != title {
 		t.Fatalf("expected cached content, got %+v, %v", cached, ok)
 	}
 

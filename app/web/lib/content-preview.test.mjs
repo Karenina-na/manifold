@@ -9,16 +9,9 @@ test("keeps summary and body excerpt as distinct preview fields", () => {
   });
 });
 
-test("falls back to an available body when older Core responses omit excerpt", () => {
-  assert.deepEqual(previewForContent({ summary: "Summary", body: "Body fallback" }), {
+test("keeps the Core excerpt authoritative when empty", () => {
+  assert.deepEqual(previewForContent({ summary: "Summary", excerpt: "" }), {
     summary: "Summary",
-    excerpt: "Body fallback",
-  });
-});
-
-test("falls back to body when an excerpt is present but empty", () => {
-  assert.deepEqual(previewForContent({ summary: "Summary", excerpt: "", body: "Body fallback" }), {
-    summary: "Summary",
-    excerpt: "Body fallback",
+    excerpt: "",
   });
 });

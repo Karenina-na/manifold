@@ -2,9 +2,7 @@ import type { Content } from "@manifold/contracts";
 
 type Thought = Extract<Content, { kind: "THOUGHT" }>;
 
-export interface ThoughtTimelineItem extends Thought {
-  day: number;
-}
+export type ThoughtTimelineItem = Thought & { day: number };
 
 export interface ThoughtMonthGroup {
   key: string;
@@ -28,7 +26,7 @@ export function groupThoughtsByMonth(items: Thought[]) {
   const groups: ThoughtMonthGroup[] = [];
 
   for (const item of items) {
-    const date = new Date(item.publishedAt ?? item.createdAt);
+    const date = new Date(item.publishedAt);
     const key = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
     let group = groups.at(-1);
     if (group?.key !== key) {

@@ -17,6 +17,10 @@ export function createBrowserClient() {
   return new ManifoldClient({ baseUrl: coreUrl, fetch: noStoreFetch });
 }
 
+export function buildHref(content: Pick<Content, "kind" | "slug">) {
+  return content.kind === "ARTICLE" ? `/writing/${encodeURIComponent(content.slug)}` : `/thoughts/${encodeURIComponent(content.slug)}`;
+}
+
 export async function loadSiteData(): Promise<SiteComposition | null> {
   try {
     return await createServerClient().site();
@@ -38,22 +42,19 @@ export function getVisitorId() {
 
 async function fetchPublicContent(client: ManifoldClient, kind: Content["kind"], includeHistory: boolean) {
   const items: Content[] = [];
-  let cursor: string | undefined;
-  const seenCursors = new Set<string>();
+  let pageNumber = 1;
   do {
     try {
-      const page = await client.feed({ kind, limit: includeHistory ? 50 : 10, cursor });
+      const page = await client.content({ kind, page: pageNumber, pageSize: includeHistory ? 50 : 10 });
       items.push(...page.data);
       if (!includeHistory || items.length >= MAX_CONTENT_HISTORY) break;
-      const nextCursor = page.pagination.nextCursor ?? undefined;
-      if (!nextCursor || seenCursors.has(nextCursor)) break;
-      seenCursors.add(nextCursor);
-      cursor = nextCursor;
+      if (pageNumber >= page.pagination.totalPages) break;
+      pageNumber += 1;
     } catch (error) {
       if (!items.length) throw error;
       break;
     }
-  } while (cursor);
+  } while (items.length < MAX_CONTENT_HISTORY);
   return items.slice(0, MAX_CONTENT_HISTORY);
 }
 
@@ -65,7 +66,7 @@ export async function loadHomeData({ includeHistory = true }: { includeHistory?:
       client.profile(), client.site(), fetchContent("ARTICLE"), fetchContent("THOUGHT"), client.stats(),
     ]);
     const contentHistory = [...writings, ...thoughts].sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
-    const feed = [...contentHistory].sort((a, b) => Date.parse(b.publishedAt ?? b.createdAt) - Date.parse(a.publishedAt ?? a.createdAt));
+    const feed = [...contentHistory].sort((a, b) => Date.parse(b.publishedAt) - Date.parse(a.publishedAt));
     return { profile, site, feed, contentHistory, stats, error: null };
   } catch {
     return { profile: null, site: null, feed: null, contentHistory: [], stats: null, error: "Core is unavailable right now. Please try again in a moment." };
@@ -74,8 +75,8 @@ export async function loadHomeData({ includeHistory = true }: { includeHistory?:
 
 export async function loadPapers() {
   try {
-    const page = await createServerClient().content({ kind: "ARTICLE", limit: 50 });
-    return page.data.map((item) => ({ title: item.title ?? "Untitled writing", href: item.href }));
+    const page = await createServerClient().content({ kind: "ARTICLE", pageSize: 50 });
+    return page.data.map((item) => ({ title: item.title ?? "Untitled writing", href: buildHref(item) }));
   } catch {
     return [];
   }

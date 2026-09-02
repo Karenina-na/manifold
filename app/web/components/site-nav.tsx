@@ -4,7 +4,7 @@ import Link from "next/link";
 import { ArrowUpRight, Moon, Rss, Search, Sun, X } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { createBrowserClient } from "../lib/api";
+import { buildHref, createBrowserClient } from "../lib/api";
 import type { SiteNavigationItem } from "@manifold/contracts";
 import styles from "../app/site.module.css";
 
@@ -25,7 +25,7 @@ export function SiteNav({ navigation }: { navigation?: SiteNavigationItem[] }) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [searching, setSearching] = useState(false);
-  const [resumeUrl, setResumeUrl] = useState<string | undefined>();
+  const [resumeUrl, setResumeUrl] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(true);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -69,8 +69,8 @@ export function SiteNav({ navigation }: { navigation?: SiteNavigationItem[] }) {
     }
     const timer = window.setTimeout(() => { if (active) setSearching(true); }, 0);
     const searchTimer = window.setTimeout(() => {
-      void createBrowserClient().feed({ q: query.trim(), kind: ["ARTICLE", "THOUGHT"], limit: 8 })
-        .then((collection) => { if (active) setResults(collection.data.map((item) => ({ id: item.id, href: item.href, kind: item.kind, title: item.title ?? null, summary: item.summary, publishedAt: item.publishedAt }))); })
+      void createBrowserClient().content({ q: query.trim(), kind: ["ARTICLE", "THOUGHT"], pageSize: 8 })
+        .then((collection) => { if (active) setResults(collection.data.map((item) => ({ id: item.id, href: buildHref(item), kind: item.kind, title: item.title, summary: item.summary, publishedAt: item.publishedAt }))); })
         .catch(() => { if (active) setResults([]); })
         .finally(() => { if (active) setSearching(false); });
     }, 220);

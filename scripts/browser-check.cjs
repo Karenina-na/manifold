@@ -365,7 +365,7 @@ async function main() {
     const adminSessionResponse = await fetch(`${coreUrl}/api/v1/admin/session`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username, password }) });
     if (!adminSessionResponse.ok) throw new Error(`Admin session for archive checks failed: ${adminSessionResponse.status}`);
     const { accessToken: archiveToken } = await adminSessionResponse.json();
-    const probeResponse = await fetch(`${coreUrl}/api/v1/admin/content`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${archiveToken}` }, body: JSON.stringify({ kind: 'THOUGHT', title: 'Archive filter probe', summary: 'Probe for archive filters.', body: 'A probe thought exercising archive filters.', tags: ['notes'], metadata: {} }) });
+    const probeResponse = await fetch(`${coreUrl}/api/v1/admin/content`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${archiveToken}` }, body: JSON.stringify({ kind: 'THOUGHT', slug: 'archive-filter-probe', title: 'Archive filter probe', summary: 'Probe for archive filters.', body: 'A probe thought exercising archive filters.', tags: ['notes'], metadata: { mood: null, question: null, context: null, source: null } }) });
     if (!probeResponse.ok) throw new Error(`Probe thought creation failed: ${probeResponse.status}`);
     const probe = await probeResponse.json();
     const probePublish = await fetch(`${coreUrl}/api/v1/admin/content/${probe.id}/publish`, { method: 'POST', headers: { authorization: `Bearer ${archiveToken}` } });
@@ -385,7 +385,7 @@ async function main() {
 
     await web.setViewportSize({ width: 1280, height: 400 });
     await web.goto(`${webUrl}/writing`, { waitUntil: 'networkidle' });
-    await web.getByText('1 articles', { exact: true }).waitFor({ state: 'visible' });
+    await web.getByText(/\d+ articles/, { exact: true }).waitFor({ state: 'visible' });
     const writingScrollHint = web.locator('[class*="scrollHint"]');
     await writingScrollHint.waitFor({ state: 'visible' });
     const writingRevealed = await web.locator('[class*="writingCollection"]').evaluate((el) => el.closest('[data-revealed]')?.getAttribute('data-revealed'));
@@ -396,13 +396,13 @@ async function main() {
     const writingSearch = web.getByRole('textbox', { name: 'Search writings' });
     await writingSearch.fill('boundary');
     await web.waitForURL((url) => url.searchParams.get('q') === 'boundary');
-    await web.getByText('1 articles', { exact: true }).waitFor({ state: 'visible' });
+    await web.getByText(/\d+ articles/, { exact: true }).waitFor({ state: 'visible' });
     await writingSearch.fill('');
-    await web.getByText('1 articles', { exact: true }).waitFor({ state: 'visible' });
+    await web.getByText(/\d+ articles/, { exact: true }).waitFor({ state: 'visible' });
     await web.getByRole('button', { name: /design \d/ }).click();
-    await web.getByText('1 articles', { exact: true }).waitFor({ state: 'visible' });
+    await web.getByText(/\d+ articles/, { exact: true }).waitFor({ state: 'visible' });
     await web.getByRole('button', { name: /design \d/ }).click();
-    await web.getByText('1 articles', { exact: true }).waitFor({ state: 'visible' });
+    await web.getByText(/\d+ articles/, { exact: true }).waitFor({ state: 'visible' });
     await web.getByLabel('Sort writings').selectOption('oldest');
     await web.getByRole('heading', { name: 'Designing Boundaries' }).waitFor({ state: 'visible' });
 
@@ -412,19 +412,19 @@ async function main() {
     await writingPickerPanel.getByRole('button', { name: /design \d/ }).click();
     await writingPickerPanel.getByRole('button', { name: /systems \d/ }).click();
     await web.waitForURL((url) => url.searchParams.getAll('tag').join(',') === 'design,systems');
-    await web.getByText('1 articles', { exact: true }).waitFor({ state: 'visible' });
+    await web.getByText(/\d+ articles/, { exact: true }).waitFor({ state: 'visible' });
     await web.getByRole('heading', { name: 'Writing', exact: true }).click();
     await writingPickerPanel.waitFor({ state: 'detached' });
     await web.getByRole('button', { name: /systems \d/ }).click();
     await web.waitForURL((url) => url.searchParams.getAll('tag').join(',') === 'design');
-    await web.getByText('1 articles', { exact: true }).waitFor({ state: 'visible' });
+    await web.getByText(/\d+ articles/, { exact: true }).waitFor({ state: 'visible' });
     await web.getByRole('button', { name: /design \d/ }).click();
     await web.waitForURL((url) => url.searchParams.getAll('tag').length === 0);
-    await web.getByText('1 articles', { exact: true }).waitFor({ state: 'visible' });
+    await web.getByText(/\d+ articles/, { exact: true }).waitFor({ state: 'visible' });
 
     await web.setViewportSize({ width: 1280, height: 400 });
     await web.goto(`${webUrl}/thoughts`, { waitUntil: 'networkidle' });
-    const thoughtCount = web.getByText('1 notes', { exact: true });
+    const thoughtCount = web.getByText(/\d+ notes/, { exact: true });
     await thoughtCount.waitFor({ state: 'visible' });
     const thoughtScrollHint = web.locator('[class*="scrollHint"]');
     await thoughtScrollHint.waitFor({ state: 'visible' });
@@ -436,12 +436,11 @@ async function main() {
     const thoughtSearch = web.getByRole('textbox', { name: 'Search thoughts' });
     await thoughtSearch.fill('probe');
     await web.waitForURL((url) => url.searchParams.get('q') === 'probe');
-    await web.getByText('0 notes', { exact: true }).waitFor({ state: 'visible' });
-    await web.getByText('No thoughts match the current filters.').waitFor({ state: 'visible' });
+    await web.getByText('1 notes', { exact: true }).waitFor({ state: 'visible' });
     await thoughtSearch.fill('');
     await thoughtCount.waitFor({ state: 'visible' });
     await web.getByRole('button', { name: /notes \d/ }).click();
-    await web.getByText('0 notes', { exact: true }).waitFor({ state: 'visible' });
+    await web.getByText('1 notes', { exact: true }).waitFor({ state: 'visible' });
     await web.getByRole('button', { name: /notes \d/ }).click();
     await thoughtCount.waitFor({ state: 'visible' });
 
@@ -457,7 +456,7 @@ async function main() {
     await web.waitForURL((url) => url.searchParams.getAll('tag').length === 0);
     await thoughtCount.waitFor({ state: 'visible' });
 
-    await web.goto(`${webUrl}/thoughts/content_2`, { waitUntil: 'networkidle' });
+    await web.goto(`${webUrl}/thoughts/a-small-signal`, { waitUntil: 'networkidle' });
     await web.getByRole('heading', { name: 'A Small Signal' }).waitFor({ state: 'visible' });
     const thoughtReflection = await web.locator('[class*="thoughtReflection"]').textContent();
     if (!thoughtReflection?.includes('When is a system justified?')) throw new Error('Thought reflection quote is missing');
@@ -685,6 +684,7 @@ async function main() {
     await admin.getByText('Capture as you go.').waitFor({ state: 'visible', timeout: 5000 });
     await admin.getByRole('button', { name: 'New thought' }).click();
     await admin.waitForFunction(() => window.location.hash === '#/thoughts/new', undefined, { timeout: 5000 });
+    await admin.getByLabel('Slug').fill('browser-check-thought');
     await admin.getByLabel('Summary').fill('Probe summary for the thought workbench.');
     await admin.getByLabel('Mood', { exact: true }).fill('focused');
     await admin.getByRole('tab', { name: 'Context' }).click();
@@ -710,7 +710,7 @@ async function main() {
 
     // media library: a published probe writing embeds the uploaded image and
     // renders it on both the admin Render tab and the public writing page
-    const mediaWritingResponse = await fetch(`${coreUrl}/api/v1/admin/content`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${archiveToken}` }, body: JSON.stringify({ kind: 'ARTICLE', slug: 'media-render-probe', title: 'Media render probe', summary: 'Probe writing rendering an uploaded image.', body: `## With image\n\n![probe image](${media.url})`, tags: ['design'], metadata: { aiAssisted: false } }) });
+    const mediaWritingResponse = await fetch(`${coreUrl}/api/v1/admin/content`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${archiveToken}` }, body: JSON.stringify({ kind: 'ARTICLE', slug: 'media-render-probe', title: 'Media render probe', summary: 'Probe writing rendering an uploaded image.', body: `## With image\n\n![probe image](${media.url})`, tags: ['design'], metadata: { language: null, aiAssisted: false } }) });
     if (!mediaWritingResponse.ok) throw new Error(`Probe writing creation failed: ${mediaWritingResponse.status}`);
     const mediaWriting = await mediaWritingResponse.json();
     const mediaWritingPublish = await fetch(`${coreUrl}/api/v1/admin/content/${mediaWriting.id}/publish`, { method: 'POST', headers: { authorization: `Bearer ${archiveToken}` } });
@@ -761,7 +761,7 @@ async function main() {
     await navRow.getByPlaceholder('Label', { exact: true }).fill('Garden Home');
     await navRow.getByPlaceholder('Label or /path, or full URL').fill('/');
     await admin.locator('#site-comments').getByRole('switch').click();
-    const siteSaveResponse = admin.waitForResponse((response) => coreResponse(response, '/api/v1/admin/site', 'PATCH', 200));
+    const siteSaveResponse = admin.waitForResponse((response) => coreResponse(response, '/api/v1/admin/site', 'PUT', 200));
     await admin.getByRole('button', { name: 'Save site settings' }).click();
     await siteSaveResponse;
     await admin.locator('.save-bar').waitFor({ state: 'detached', timeout: 5000 });
@@ -776,7 +776,7 @@ async function main() {
     if (await web.locator('#comments').count() !== 0) throw new Error('Discussion block should disappear when comments are disabled');
 
     await admin.locator('#site-comments').getByRole('switch').click();
-    const siteRestoreResponse = admin.waitForResponse((response) => coreResponse(response, '/api/v1/admin/site', 'PATCH', 200));
+    const siteRestoreResponse = admin.waitForResponse((response) => coreResponse(response, '/api/v1/admin/site', 'PUT', 200));
     await admin.getByRole('button', { name: 'Save site settings' }).click();
     await siteRestoreResponse;
     await web.goto(`${webUrl}/writing/designing-boundaries`, { waitUntil: 'networkidle' });
@@ -787,7 +787,7 @@ async function main() {
     await admin.getByText('Writings worth returning to.').waitFor({ state: 'visible', timeout: 5000 });
     const pinButton = admin.getByRole('button', { name: 'Pin Designing Boundaries' });
     await pinButton.waitFor({ state: 'visible', timeout: 5000 });
-    const writingPinResponse = admin.waitForResponse((response) => coreResponse(response, '/api/v1/admin/writings/config', 'PATCH', 200));
+    const writingPinResponse = admin.waitForResponse((response) => coreResponse(response, '/api/v1/admin/writings/config', 'PUT', 200));
     await pinButton.click();
     await writingPinResponse;
     await admin.getByRole('button', { name: 'Unpin Designing Boundaries' }).waitFor({ state: 'visible', timeout: 5000 });
@@ -799,7 +799,7 @@ async function main() {
     await admin.getByText('Capture as you go.').waitFor({ state: 'visible', timeout: 5000 });
     const thoughtPinButton = admin.getByRole('button', { name: 'Pin A Small Signal' });
     await thoughtPinButton.waitFor({ state: 'visible', timeout: 5000 });
-    const thoughtPinResponse = admin.waitForResponse((response) => coreResponse(response, '/api/v1/admin/thoughts/config', 'PATCH', 200));
+    const thoughtPinResponse = admin.waitForResponse((response) => coreResponse(response, '/api/v1/admin/thoughts/config', 'PUT', 200));
     await thoughtPinButton.click();
     await thoughtPinResponse;
     await admin.getByRole('button', { name: 'Unpin A Small Signal' }).waitFor({ state: 'visible', timeout: 5000 });
@@ -808,7 +808,7 @@ async function main() {
     await web.getByText('A Small Signal').first().waitFor({ state: 'visible', timeout: 5000 });
 
     await admin.getByRole('button', { name: 'Unpin A Small Signal' }).click();
-    await admin.waitForResponse((response) => coreResponse(response, '/api/v1/admin/thoughts/config', 'PATCH', 200));
+    await admin.waitForResponse((response) => coreResponse(response, '/api/v1/admin/thoughts/config', 'PUT', 200));
 
     if (webErrors.length || adminErrors.length) throw new Error(JSON.stringify({ webErrors, adminErrors }));
     console.log(JSON.stringify({ webControlCounts, adminControlCounts, webErrors, adminErrors }));

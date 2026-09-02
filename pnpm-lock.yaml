@@ -29,9 +29,6 @@ importers:
       '@mantine/core':
         specifier: ^9.5.1
         version: 9.5.1(@mantine/hooks@9.5.1(react@19.2.8))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      '@mantine/hooks':
-        specifier: ^9.5.1
-        version: 9.5.1(react@19.2.8)
       '@tanstack/react-query':
         specifier: ^5.101.4
         version: 5.101.4(react@19.2.8)
@@ -50,27 +47,9 @@ importers:
       react-hook-form:
         specifier: ^7.85.0
         version: 7.85.0(react@19.2.8)
-      react-markdown:
-        specifier: ^10.1.0
-        version: 10.1.0(@types/react@19.2.18)(react@19.2.8)(supports-color@7.2.0)
       recharts:
         specifier: ^3.10.1
         version: 3.10.1(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react-is@16.13.1)(react@19.2.8)(redux@5.0.1)
-      rehype-highlight:
-        specifier: ^7.0.2
-        version: 7.0.2
-      rehype-katex:
-        specifier: ^7.0.1
-        version: 7.0.1
-      rehype-sanitize:
-        specifier: ^6.0.0
-        version: 6.0.0
-      remark-gfm:
-        specifier: ^4.0.1
-        version: 4.0.1(supports-color@7.2.0)
-      remark-math:
-        specifier: ^6.0.0
-        version: 6.0.0(supports-color@7.2.0)
       vditor:
         specifier: ^3.11.2
         version: 3.11.3
@@ -144,24 +123,6 @@ importers:
       react-hook-form:
         specifier: ^7.85.0
         version: 7.85.0(react@19.2.8)
-      react-markdown:
-        specifier: ^10.1.0
-        version: 10.1.0(@types/react@19.2.18)(react@19.2.8)(supports-color@7.2.0)
-      rehype-highlight:
-        specifier: ^7.0.2
-        version: 7.0.2
-      rehype-katex:
-        specifier: ^7.0.1
-        version: 7.0.1
-      rehype-sanitize:
-        specifier: ^6.0.0
-        version: 6.0.0
-      remark-gfm:
-        specifier: ^4.0.1
-        version: 4.0.1(supports-color@7.2.0)
-      remark-math:
-        specifier: ^6.0.0
-        version: 6.0.0(supports-color@7.2.0)
       zod:
         specifier: ^4.4.3
         version: 4.4.3
@@ -220,6 +181,12 @@ importers:
 
   packages/contracts:
     devDependencies:
+      '@types/node':
+        specifier: ^24.0.0
+        version: 24.13.3
+      tsx:
+        specifier: ^4.20.5
+        version: 4.23.12
       typescript:
         specifier: ^5.9.3
         version: 5.9.3

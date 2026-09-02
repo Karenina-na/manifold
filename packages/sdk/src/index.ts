@@ -1,4 +1,4 @@
-import type { AdminComment, AdminCommentQuery, AdminContent, AdminContentQuery, AdminOverview, AdminStats, AnalyticsViews, AnalyticsViewsQuery, AuditEventCollection, AuditQuery, Collection, Comment, CommentQuery, Content, ContentDetail, ContentInput, ContentQuery, CreateCommentInput, HealthStatus, LikeSummary, LoginInput, LoginResponse, Media, MediaQuery, PresenceStatus, Profile, ProfileInput, SiteComposition, SiteConfig, SiteConfigInput, Stats, SystemStatus, TagQuery, TagSummary, ThoughtArchive, ThoughtArchiveQuery, ThoughtConfig, ThoughtConfigInput, UpdateContentInput, WritingArchive, WritingArchiveQuery, WritingConfig, WritingConfigInput } from "@manifold/contracts";
+import type { AdminComment, AdminCommentQuery, AdminContent, AdminContentQuery, AdminOverview, AdminStats, AnalyticsViews, AnalyticsViewsQuery, AuditEventCollection, AuditQuery, Collection, Comment, CommentQuery, Content, ContentDetail, ContentDetailQuery, ContentInput, ContentQuery, CreateCommentInput, HealthStatus, LikeSummary, LoginInput, LoginResponse, Media, MediaQuery, PresenceStatus, Profile, ProfileInput, SiteComposition, SiteConfig, SiteConfigInput, Stats, SystemStatus, TagQuery, TagSummary, ThoughtConfig, ThoughtConfigInput, UpdateContentInput, WritingConfig, WritingConfigInput } from "@manifold/contracts";
 
 export class ApiError extends Error {
 	readonly status: number;
@@ -35,55 +35,56 @@ export class ManifoldClient {
 	health() { return this.request<HealthStatus>("/healthz"); }
 	profile() { return this.request<Profile>("/api/v1/profile"); }
 	site() { return this.request<SiteComposition>("/api/v1/site"); }
-	feed(query?: ContentQuery) { return this.request<Collection<Content>>(this.withQuery("/api/v1/feed", query)); }
-	content(query?: ContentQuery) { return this.request<Collection<Content>>(this.withQuery("/api/v1/content", query)); }
-	thoughts(query?: ThoughtArchiveQuery) { return this.request<ThoughtArchive>(this.withQuery("/api/v1/thoughts", query)); }
-	writings(query?: WritingArchiveQuery) { return this.request<WritingArchive>(this.withQuery("/api/v1/writings", query)); }
-	tags(query?: TagQuery) { return this.request<Collection<TagSummary>>(this.withQuery("/api/v1/tags", query)); }
-	contentBySlug(slug: string, options?: { trackView?: boolean; referrer?: string; visitorId?: string }) {
-		const headers = options?.visitorId ? { "X-Visitor-ID": options.visitorId } : undefined;
-		const url = this.withQuery(`/api/v1/content/${encodeURIComponent(slug)}`, options ? { trackView: options.trackView === false ? false : undefined, referrer: options.referrer } : undefined);
+	content(query?: ContentQuery) { return this.request<Collection<Content>>(this.withQuery("/api/v1/content", query, ["kind", "tag", "q", "page", "pageSize", "sort", "aiAssisted"])); }
+	tags(query?: TagQuery) { return this.request<Collection<TagSummary>>(this.withQuery("/api/v1/tags", query, ["kind"])); }
+	contentBySlug(slug: string, query?: ContentDetailQuery, visitorId?: string) {
+		const headers = visitorId ? { "X-Visitor-ID": visitorId } : undefined;
+		const url = this.withQuery(`/api/v1/content/${encodeURIComponent(slug)}`, query ? { trackView: query.trackView === false ? false : undefined, referrer: query.referrer } : undefined, ["trackView", "referrer"]);
 		return this.request<ContentDetail>(url, { headers });
 	}
 	stats() { return this.request<Stats>("/api/v1/stats"); }
 	presence(visitorId: string) { return this.request<PresenceStatus>("/api/v1/presence", { method: "POST", headers: { "X-Visitor-ID": visitorId } }); }
-	comments(slug: string, query?: CommentQuery) { return this.request<Collection<Comment>>(this.withQuery(`/api/v1/content/${encodeURIComponent(slug)}/comments`, query)); }
+	comments(slug: string, query?: CommentQuery) { return this.request<Collection<Comment>>(this.withQuery(`/api/v1/content/${encodeURIComponent(slug)}/comments`, query, ["page", "pageSize", "q"])); }
 	createComment(slug: string, input: CreateCommentInput) { return this.request<Comment>(`/api/v1/content/${encodeURIComponent(slug)}/comments`, { method: "POST", body: input }); }
 	likes(slug: string, visitorId?: string) { return this.request<LikeSummary>(`/api/v1/content/${encodeURIComponent(slug)}/likes`, { headers: visitorId ? { "X-Visitor-ID": visitorId } : undefined }); }
 	setLike(slug: string, visitorId: string, enabled: boolean) { return this.request<LikeSummary>(`/api/v1/content/${encodeURIComponent(slug)}/likes`, { method: enabled ? "PUT" : "DELETE", headers: { "X-Visitor-ID": visitorId } }); }
 	login(input: LoginInput) { return this.request<LoginResponse>("/api/v1/admin/session", { method: "POST", body: input }); }
 	adminStats() { return this.request<AdminStats>("/api/v1/admin/stats"); }
 	adminProfile() { return this.request<Profile>("/api/v1/admin/profile"); }
-	updateProfile(input: ProfileInput) { return this.request<Profile>("/api/v1/admin/profile", { method: "PATCH", body: input }); }
+	updateProfile(input: ProfileInput) { return this.request<Profile>("/api/v1/admin/profile", { method: "PUT", body: input }); }
 	adminSite() { return this.request<SiteConfig>("/api/v1/admin/site"); }
-	updateSite(input: SiteConfigInput) { return this.request<SiteConfig>("/api/v1/admin/site", { method: "PATCH", body: input }); }
+	updateSite(input: SiteConfigInput) { return this.request<SiteConfig>("/api/v1/admin/site", { method: "PUT", body: input }); }
 	adminThoughtConfig() { return this.request<ThoughtConfig>("/api/v1/admin/thoughts/config"); }
-	updateThoughtConfig(input: ThoughtConfigInput) { return this.request<ThoughtConfig>("/api/v1/admin/thoughts/config", { method: "PATCH", body: input }); }
+	updateThoughtConfig(input: ThoughtConfigInput) { return this.request<ThoughtConfig>("/api/v1/admin/thoughts/config", { method: "PUT", body: input }); }
 	adminWritingConfig() { return this.request<WritingConfig>("/api/v1/admin/writings/config"); }
-	updateWritingConfig(input: WritingConfigInput) { return this.request<WritingConfig>("/api/v1/admin/writings/config", { method: "PATCH", body: input }); }
-	adminContent(query?: AdminContentQuery) { return this.request<Collection<AdminContent>>(this.withQuery("/api/v1/admin/content", query)); }
-	adminContentItem(id: string) { return this.request<AdminContent>(`/api/v1/admin/content/${encodeURIComponent(id)}`); }
+	updateWritingConfig(input: WritingConfigInput) { return this.request<WritingConfig>("/api/v1/admin/writings/config", { method: "PUT", body: input }); }
+	adminContent(query?: AdminContentQuery) { return this.request<Collection<AdminContent>>(this.withQuery("/api/v1/admin/content", query, ["kind", "tag", "q", "page", "pageSize", "sort", "aiAssisted", "status"])); }
+	adminContentItem(id: string) { return this.request<AdminContent>(`/api/v1/admin/content/${this.path(id)}`); }
 	createContent(input: ContentInput) { return this.request<AdminContent>("/api/v1/admin/content", { method: "POST", body: input }); }
-	updateContent(id: string, input: UpdateContentInput) { return this.request<AdminContent>(`/api/v1/admin/content/${id}`, { method: "PATCH", body: input }); }
-	publishContent(id: string) { return this.request<AdminContent>(`/api/v1/admin/content/${id}/publish`, { method: "POST" }); }
-	unpublishContent(id: string) { return this.request<AdminContent>(`/api/v1/admin/content/${id}/unpublish`, { method: "POST" }); }
-	deleteContent(id: string) { return this.request<void>(`/api/v1/admin/content/${id}`, { method: "DELETE" }); }
-	adminComments(query?: AdminCommentQuery) { return this.request<Collection<AdminComment>>(this.withQuery("/api/v1/admin/comments", query)); }
-	adminCreateComment(contentId: string, input: CreateCommentInput) { return this.request<Comment>(`/api/v1/admin/content/${encodeURIComponent(contentId)}/comments`, { method: "POST", body: input }); }
-	deleteComment(id: string) { return this.request<void>(`/api/v1/admin/comments/${id}`, { method: "DELETE" }); }
-	restoreComment(id: string) { return this.request<void>(`/api/v1/admin/comments/${id}/restore`, { method: "POST" }); }
+	updateContent(id: string, input: UpdateContentInput) { return this.request<AdminContent>(`/api/v1/admin/content/${this.path(id)}`, { method: "PUT", body: input }); }
+	publishContent(id: string) { return this.request<AdminContent>(`/api/v1/admin/content/${this.path(id)}/publish`, { method: "POST" }); }
+	unpublishContent(id: string) { return this.request<AdminContent>(`/api/v1/admin/content/${this.path(id)}/unpublish`, { method: "POST" }); }
+	deleteContent(id: string) { return this.request<void>(`/api/v1/admin/content/${this.path(id)}`, { method: "DELETE" }); }
+	restoreContent(id: string) { return this.request<AdminContent>(`/api/v1/admin/content/${this.path(id)}/restore`, { method: "POST" }); }
+	adminComments(query?: AdminCommentQuery) { return this.request<Collection<AdminComment>>(this.withQuery("/api/v1/admin/comments", query, ["contentId", "q", "page", "pageSize", "focus"])); }
+	adminCreateComment(contentId: string, input: CreateCommentInput) { return this.request<Comment>(`/api/v1/admin/content/${this.path(contentId)}/comments`, { method: "POST", body: input }); }
+	deleteComment(id: string) { return this.request<void>(`/api/v1/admin/comments/${this.path(id)}`, { method: "DELETE" }); }
+	restoreComment(id: string) { return this.request<void>(`/api/v1/admin/comments/${this.path(id)}/restore`, { method: "POST" }); }
 	adminOverview() { return this.request<AdminOverview>("/api/v1/admin/overview"); }
-	adminAnalyticsViews(query?: AnalyticsViewsQuery) { return this.request<AnalyticsViews>(this.withQuery("/api/v1/admin/analytics/views", query)); }
+	adminAnalyticsViews(query?: AnalyticsViewsQuery) { return this.request<AnalyticsViews>(this.withQuery("/api/v1/admin/analytics/views", query, ["days"])); }
 	adminSystem() { return this.request<SystemStatus>("/api/v1/admin/system"); }
-	adminAudit(query?: AuditQuery) { return this.request<AuditEventCollection>(this.withQuery("/api/v1/admin/audit", query)); }
-	listMedia(query?: MediaQuery) { return this.request<Collection<Media>>(this.withQuery("/api/v1/admin/media", query)); }
-	uploadMedia(blob: Blob, filename: string) { return this.request<Media>(this.withQuery("/api/v1/admin/media", { filename }), { method: "POST", body: blob }); }
-	deleteMedia(id: string) { return this.request<void>(`/api/v1/admin/media/${encodeURIComponent(id)}`, { method: "DELETE" }); }
+	adminAudit(query?: AuditQuery) { return this.request<AuditEventCollection>(this.withQuery("/api/v1/admin/audit", query, ["page", "pageSize", "q"])); }
+	listMedia(query?: MediaQuery) { return this.request<Collection<Media>>(this.withQuery("/api/v1/admin/media", query, ["page", "pageSize", "q"])); }
+	uploadMedia(blob: Blob, filename: string) { return this.request<Media>(this.withQuery("/api/v1/admin/media", { filename }, ["filename"]), { method: "POST", body: blob }); }
+	deleteMedia(id: string) { return this.request<void>(`/api/v1/admin/media/${this.path(id)}`, { method: "DELETE" }); }
 
-	private withQuery(path: string, query?: object) {
+	private path(segment: string) { return encodeURIComponent(segment); }
+
+	private withQuery(path: string, query: object | undefined, allowedKeys: readonly string[]) {
 		if (!query) return path;
 		const params = new URLSearchParams();
 		for (const [key, value] of Object.entries(query)) {
+			if (!allowedKeys.includes(key)) continue;
 			if (value === undefined || value === null || value === "") continue;
 			params.set(key, Array.isArray(value) ? value.join(",") : String(value));
 		}

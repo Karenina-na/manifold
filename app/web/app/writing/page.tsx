@@ -21,26 +21,28 @@ export default async function WritingPage({ searchParams }: { searchParams: Sear
 
   const filtersActive = Boolean(query || tags.length || noAi);
   const client = createServerClient();
-  const [archive, tagPage] = await Promise.all([
-    client.writings({
+  const [archive, tagPage, site] = await Promise.all([
+    client.content({
+      kind: "ARTICLE",
       q: query || undefined,
       tag: tags.length ? tags : undefined,
       sort,
       aiAssisted: noAi ? false : undefined,
       page,
-      limit: PAGE_SIZE,
+      pageSize: PAGE_SIZE,
     }).catch(() => null),
     client.tags({ kind: "ARTICLE" }).catch(() => null),
+    client.site().catch(() => null),
   ]);
   return <WritingArchive
     key={`${query}|${tags.join(",")}|${sort}|${noAi ? 1 : 0}|${page}`}
     initialList={archive ? {
-      items: archive.data,
-      totalItems: archive.pagination.totalItems ?? 0,
-      totalPages: archive.pagination.totalPages ?? 1,
-      page: archive.pagination.page ?? page,
+      items: archive.data.filter((item): item is Extract<(typeof archive.data)[number], { kind: "ARTICLE" }> => item.kind === "ARTICLE"),
+      totalItems: archive.pagination.totalItems,
+      totalPages: archive.pagination.totalPages,
+      page: archive.pagination.page,
     } : null}
-    featured={filtersActive || sort !== "newest" ? null : archive?.featured ?? null}
+    featured={filtersActive || sort !== "newest" || site?.featuredWriting?.kind !== "ARTICLE" ? null : site.featuredWriting}
     tags={tagPage?.data ?? null}
     query={query}
     activeTags={tags}

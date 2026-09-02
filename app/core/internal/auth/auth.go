@@ -22,6 +22,13 @@ var (
 	ErrForbidden          = errors.New("forbidden")
 )
 
+// SessionTTL is the single source of truth for token lifetime; the login
+// response reports it instead of restating a literal.
+const SessionTTL = 12 * time.Hour
+
+// SessionTTLSeconds mirrors SessionTTL for the wire response.
+const SessionTTLSeconds = int(12 * time.Hour / time.Second)
+
 type Claims struct {
 	Role string `json:"role"`
 	jwt.RegisteredClaims
@@ -68,7 +75,7 @@ func (s *Service) Login(username, password string) (string, error) {
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   username,
 			IssuedAt:  jwt.NewNumericDate(now),
-			ExpiresAt: jwt.NewNumericDate(now.Add(12 * time.Hour)),
+			ExpiresAt: jwt.NewNumericDate(now.Add(SessionTTL)),
 		},
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)

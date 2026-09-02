@@ -4,7 +4,7 @@ import { Alert, Button, Switch, Textarea, TextInput } from '@mantine/core'
 import { BookOpen, Compass, Plus, Sparkles } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
-import type { AdminContent, ThoughtMetadata } from '@manifold/contracts'
+import type { AdminContent, ThoughtMetadataInput } from '@manifold/contracts'
 import { ThoughtSurface } from '@manifold/render'
 import { ApiError } from '@manifold/sdk'
 import { z } from 'zod'
@@ -18,7 +18,7 @@ import { ContentCommentsPanel } from '../components/ContentCommentsPanel'
 import { MarkdownEditor } from '../components/MarkdownEditor'
 
 const schema = z.object({
-  slug: z.string(),
+  slug: z.string().trim().min(1, 'Slug is required.'),
   title: z.string(),
   summary: z.string().max(4000),
   body: z.string().min(1, 'Content is required.'),
@@ -31,33 +31,27 @@ const schema = z.object({
 type Form = z.infer<typeof schema>
 const empty: Form = { slug: '', title: '', summary: '', body: '', tags: [], mood: '', question: '', context: '', source: '' }
 
-// PATCH metadata replaces the whole object in Core, so untouched fields must
-// ride along from the loaded item.
-function metadataFrom(form: Form, previous: AdminContent | null): ThoughtMetadata {
-  const metadata = { ...(previous?.metadata ?? {}) } as ThoughtMetadata
-  if (form.mood.trim()) metadata.mood = form.mood.trim()
-  else delete metadata.mood
-  if (form.question.trim()) metadata.question = form.question.trim()
-  else delete metadata.question
-  if (form.context.trim()) metadata.context = form.context.trim()
-  else delete metadata.context
-  if (form.source.trim()) metadata.source = form.source.trim()
-  else delete metadata.source
-  return metadata
+function metadataFrom(form: Form): ThoughtMetadataInput {
+  return {
+    mood: form.mood.trim() || null,
+    question: form.question.trim() || null,
+    context: form.context.trim() || null,
+    source: form.source.trim() || null,
+  }
 }
 
 function fromContent(content: AdminContent): Form {
-  const metadata = content.metadata as ThoughtMetadata
+  const metadata = content.kind === 'THOUGHT' ? content.metadata : null
   return {
-    slug: content.slug ?? '',
+    slug: content.slug,
     title: content.title ?? '',
     summary: content.summary,
     body: content.body ?? '',
     tags: content.tags,
-    mood: metadata.mood ?? '',
-    question: metadata.question ?? '',
-    context: metadata.context ?? '',
-    source: metadata.source ?? '',
+    mood: metadata?.mood ?? '',
+    question: metadata?.question ?? '',
+    context: metadata?.context ?? '',
+    source: metadata?.source ?? '',
   }
 }
 
@@ -95,7 +89,7 @@ function ThoughtsListPage({ client }: { client: ReturnType<typeof createAdminCli
     void queryClient.invalidateQueries({ queryKey: ['admin-thought-config'] })
   }
   const transition = useMutation<AdminContent | void, Error, { id: string; action: TransitionAction }>({
-    mutationFn: ({ id, action }) => action === 'publish' ? client.publishContent(id) : action === 'unpublish' ? client.unpublishContent(id) : client.deleteContent(id),
+    mutationFn: ({ id, action }) => action === 'publish' ? client.publishContent(id) : action === 'unpublish' ? client.unpublishContent(id) : action === 'restore' ? client.restoreContent(id) : client.deleteContent(id),
     onSuccess: () => invalidate(),
   })
   return <section className="workspace">
@@ -106,7 +100,7 @@ function ThoughtsListPage({ client }: { client: ReturnType<typeof createAdminCli
       singular="thought"
       onEdit={(content) => navigate(`#/thoughts/${content.id}`)}
       onTransition={(content, action) => transition.mutate({ id: content.id, action })}
-      hrefFor={(content) => `${webBaseUrl}/thoughts/${content.slug || content.id}`}
+      hrefFor={(content) => `${webBaseUrl}/thoughts/${content.slug}`}
       pin={pin.control}
     />
   </section>
@@ -150,8 +144,8 @@ function ThoughtEditorPage({ client, editingId, commentsRequested, routeQuery }:
   }
   const save = useMutation({
     mutationFn: (input: Form) => draft
-      ? client.updateContent(draft.id, { kind: 'THOUGHT', slug: input.slug || null, title: input.title, summary: input.summary, body: input.body, tags: input.tags, metadata: metadataFrom(input, draft), expectedVersion: draft.version })
-      : client.createContent({ kind: 'THOUGHT', slug: input.slug || null, title: input.title || null, summary: input.summary, body: input.body, tags: input.tags, metadata: metadataFrom(input, null) }),
+      ? client.updateContent(draft.id, { kind: 'THOUGHT', slug: input.slug, title: input.title || null, summary: input.summary, body: input.body, tags: input.tags, metadata: metadataFrom(input), expectedVersion: draft.version })
+      : client.createContent({ kind: 'THOUGHT', slug: input.slug, title: input.title || null, summary: input.summary, body: input.body, tags: input.tags, metadata: metadataFrom(input) }),
     onSuccess: (saved) => {
       invalidate()
       setConflict(false)
@@ -194,7 +188,7 @@ function ThoughtEditorPage({ client, editingId, commentsRequested, routeQuery }:
     {!isNew && item.isError && <Alert color="red" variant="light">This thought could not be loaded. Go back and try again.</Alert>}
     <div className="form-grid">
       <TextInput label="Title" {...form.register('title')} placeholder="Optional" />
-      <TextInput label="Slug" description={`${webBaseUrl}/thoughts/${watched.slug || '…'}`} {...form.register('slug')} placeholder="Optional; ID is used by default" />
+      <TextInput label="Slug" description={`${webBaseUrl}/thoughts/${watched.slug || '…'}`} {...form.register('slug')} placeholder="a-readable-url" error={form.formState.errors.slug?.message} />
     </div>
     <Textarea label="Summary" description={`✦ ${watched.summary.trim().length}/4000 — shown with the ✦ mark on cards`} {...form.register('summary')} minRows={2} error={form.formState.errors.summary?.message} />
     <div><label>Tags</label><ChipsInput value={watched.tags} onChange={(next) => form.setValue('tags', next, { shouldDirty: true })} placeholder="Add tag and press Enter" /></div>
@@ -249,7 +243,7 @@ function ThoughtEditorPage({ client, editingId, commentsRequested, routeQuery }:
 
   return <ContentEditorShell
     kindLabel="Thought"
-    hrefFor={(content) => `${webBaseUrl}/thoughts/${content.slug || content.id}`}
+    hrefFor={(content) => `${webBaseUrl}/thoughts/${content.slug}`}
     selected={draft}
     mode={mode}
     isDirty={form.formState.isDirty}

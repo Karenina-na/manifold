@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -13,35 +15,20 @@ import (
 
 	_ "modernc.org/sqlite"
 
+	"github.com/manifold-space/manifold/app/core/db"
 	"github.com/manifold-space/manifold/app/core/internal/model"
 )
 
-const schema = `
-CREATE TABLE IF NOT EXISTS profile (id TEXT PRIMARY KEY, display_name TEXT NOT NULL, handle TEXT NOT NULL DEFAULT '', headline TEXT NOT NULL DEFAULT '', bio TEXT NOT NULL DEFAULT '', location TEXT NOT NULL DEFAULT '', avatar_url TEXT NOT NULL DEFAULT '', organization TEXT NOT NULL DEFAULT '', website_url TEXT NOT NULL DEFAULT '', resume_url TEXT NOT NULL DEFAULT '', interests_json TEXT NOT NULL DEFAULT '[]', education_json TEXT NOT NULL DEFAULT '[]', experience_json TEXT NOT NULL DEFAULT '[]', series_json TEXT NOT NULL DEFAULT '[]', contacts_json TEXT NOT NULL DEFAULT '[]', updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
-CREATE TABLE IF NOT EXISTS content (id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK (kind IN ('THOUGHT', 'ARTICLE')), status TEXT NOT NULL DEFAULT 'DRAFT' CHECK (status IN ('DRAFT', 'PUBLISHED', 'DELETED')), slug TEXT UNIQUE, title TEXT, summary TEXT NOT NULL DEFAULT '', body TEXT NOT NULL DEFAULT '', tags_json TEXT NOT NULL DEFAULT '[]', metadata_json TEXT NOT NULL DEFAULT '{}', published_at TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, version INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, view_count INTEGER NOT NULL DEFAULT 0);
-CREATE TABLE IF NOT EXISTS site_config (id TEXT PRIMARY KEY, title TEXT NOT NULL DEFAULT 'Manifold', description TEXT NOT NULL DEFAULT 'Profile, technical writings, short thoughts, and personal projects.', footer_text TEXT NOT NULL DEFAULT 'Built for notes that stay in motion.', social_json TEXT NOT NULL DEFAULT '[]', comments_enabled INTEGER NOT NULL DEFAULT 1, navigation_json TEXT NOT NULL DEFAULT '[]', sections_json TEXT NOT NULL DEFAULT '[]', updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
-CREATE TABLE IF NOT EXISTS thoughts_config (id TEXT PRIMARY KEY, featured_thought_id TEXT REFERENCES content(id) ON DELETE SET NULL, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
-CREATE TABLE IF NOT EXISTS writings_config (id TEXT PRIMARY KEY, featured_writing_id TEXT REFERENCES content(id) ON DELETE SET NULL, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
-CREATE TABLE IF NOT EXISTS comments (id TEXT PRIMARY KEY, content_id TEXT NOT NULL REFERENCES content(id), author_name TEXT NOT NULL, author_url TEXT NOT NULL DEFAULT '', body TEXT NOT NULL, reply_to_id TEXT REFERENCES comments(id), avatar_seed TEXT NOT NULL DEFAULT '', deleted_at TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
-CREATE TABLE IF NOT EXISTS likes (id TEXT PRIMARY KEY, content_id TEXT NOT NULL REFERENCES content(id) ON DELETE CASCADE, visitor_id TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE (content_id, visitor_id));
-CREATE TABLE IF NOT EXISTS presence (visitor_id TEXT PRIMARY KEY, last_seen_at TEXT NOT NULL);
-CREATE TABLE IF NOT EXISTS audit_events (id TEXT PRIMARY KEY, event_name TEXT NOT NULL, resource_type TEXT NOT NULL, resource_id TEXT NOT NULL DEFAULT '', actor TEXT NOT NULL DEFAULT 'anonymous', request_id TEXT NOT NULL DEFAULT '', trace_id TEXT NOT NULL DEFAULT '', metadata_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
-CREATE TABLE IF NOT EXISTS content_view_events (id INTEGER PRIMARY KEY AUTOINCREMENT, content_id TEXT NOT NULL, visitor_id TEXT NOT NULL DEFAULT '', referrer TEXT NOT NULL DEFAULT '', day TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
-CREATE TABLE IF NOT EXISTS media (id TEXT PRIMARY KEY, mime TEXT NOT NULL, size INTEGER NOT NULL, sha256 TEXT NOT NULL UNIQUE, filename TEXT NOT NULL DEFAULT '', data BLOB NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
-CREATE INDEX IF NOT EXISTS idx_content_publication ON content(status, published_at DESC);
-CREATE INDEX IF NOT EXISTS idx_content_kind_publication ON content(kind, status, published_at DESC);
-CREATE INDEX IF NOT EXISTS idx_likes_content ON likes(content_id);
-CREATE INDEX IF NOT EXISTS idx_presence_last_seen ON presence(last_seen_at);
-CREATE INDEX IF NOT EXISTS idx_audit_events_created_at ON audit_events(created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_audit_events_content_views ON audit_events(event_name, resource_id);
-CREATE INDEX IF NOT EXISTS idx_view_events_day ON content_view_events(day);
-CREATE INDEX IF NOT EXISTS idx_view_events_content ON content_view_events(content_id);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_view_events_dedup ON content_view_events(content_id, visitor_id, day) WHERE visitor_id != '';
-CREATE INDEX IF NOT EXISTS idx_media_created_at ON media(created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_comments_content_visibility ON comments(content_id, deleted_at, created_at);
-`
+const schemaVersion = 1
 
-type Store struct{ DB *sql.DB }
+var (
+	ErrContentNotFound     = errors.New("content not found")
+	ErrVersionConflict     = errors.New("content version conflict")
+	ErrSlugTaken           = errors.New("content slug already taken")
+	ErrCommentReplyInvalid = errors.New("comment reply target is invalid")
+	ErrSchemaTooNew        = errors.New("database schema is newer than this binary")
+	ErrSchemaMismatch      = errors.New("database schema does not match this binary")
+)
 
 const presenceTTL = 5 * time.Minute
 
@@ -104,28 +91,21 @@ func contentExcerpt(body string) string {
 	return excerpt
 }
 
-var (
-	ErrContentNotFound     = errors.New("content not found")
-	ErrVersionConflict     = errors.New("content version conflict")
-	ErrCommentReplyInvalid = errors.New("comment reply target is invalid")
-)
+type Store struct{ DB *sql.DB }
 
 type ContentListOptions struct {
 	Kinds      []model.ContentKind
-	Status     string
+	Status     model.ContentStatus
 	Tags       []string
 	Query      string
 	AiAssisted *bool
 	Sort       string
 	Page       int
-	Offset     int
-	Limit      int
-	SkipFirst  bool
+	PageSize   int
 }
 
 type ContentListResult struct {
 	Items      []model.Content
-	HasMore    bool
 	Page       int
 	PageSize   int
 	TotalItems int
@@ -136,10 +116,11 @@ type ContentUpdate struct {
 	Kind            *model.ContentKind
 	Slug            *string
 	Title           *string
+	TitleSet        bool
 	Summary         *string
 	Body            *string
 	Tags            *[]string
-	Metadata        *map[string]any
+	Metadata        json.RawMessage
 	ExpectedVersion int
 }
 
@@ -153,12 +134,14 @@ func Open(path string) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
+	// SQLite is safest as a single-writer connection for this workload; it
+	// also makes transactions trivially serializable without busy retries.
 	db.SetMaxOpenConns(1)
-	if _, err = db.Exec("PRAGMA foreign_keys = ON;" + schema); err != nil {
+	s := &Store{DB: db}
+	if err := s.migrate(); err != nil {
 		_ = db.Close()
 		return nil, err
 	}
-	s := &Store{DB: db}
 	if err := s.seed(); err != nil {
 		_ = db.Close()
 		return nil, err
@@ -168,24 +151,101 @@ func Open(path string) (*Store, error) {
 
 func (s *Store) Close() error { return s.DB.Close() }
 
-func (s *Store) seed() error {
-	now := time.Now().UTC().Format(time.RFC3339)
-	if _, err := s.DB.Exec(`INSERT OR IGNORE INTO profile (id, display_name, handle, headline, bio, location, organization, website_url, resume_url, interests_json, education_json, experience_json, series_json, contacts_json, updated_at) VALUES ('profile_1', 'Manifold', '@manifold', 'Profile, writings, and thoughts.', 'Technical writings and short thoughts.', 'Peking, China', 'Independent', 'https://manifold.local', '', '["systems","research","writing"]', '[{"institution":"Independent","program":"Research and engineering","period":"Now"}]', '[{"organization":"Manifold","role":"Research and software","period":"Now"}]', '[{"name":"API relay","url":"https://api.weizixiang.dev","description":"A small public gateway for experiments and personal infrastructure.","category":"Infrastructure"},{"name":"OpenList","url":"https://openlist.weizixiang.dev","description":"A calm index for files, links, and things worth keeping close.","category":"Tool"}]', '[{"label":"GitHub","url":"https://github.com/manifold-space/manifold","handle":"@manifold-space"},{"label":"Email","url":"mailto:hello@manifold.local","handle":"hello@manifold.local"}]', ?)`, now); err != nil {
+// migrate applies every embedded migration below the schema's known version.
+// A database from a newer binary refuses to open rather than being silently
+// downgraded.
+func (s *Store) migrate() error {
+	if _, err := s.DB.Exec(`PRAGMA foreign_keys = ON`); err != nil {
 		return err
 	}
-	if _, err := s.DB.Exec(`INSERT OR IGNORE INTO site_config (id, navigation_json, sections_json, updated_at) VALUES ('site_1', ?, ?, ?)`, encodeJSON([]model.SiteNavigationItem{{Label: "Thoughts", Href: "/thoughts"}, {Label: "Writings", Href: "/writing"}}), encodeJSON(defaultSections), now); err != nil {
+	var userVersion int
+	if err := s.DB.QueryRow(`PRAGMA user_version`).Scan(&userVersion); err != nil {
+		return err
+	}
+	var existingTables int
+	if err := s.DB.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name != 'schema_migrations'`).Scan(&existingTables); err != nil {
+		return err
+	}
+	if existingTables > 0 && userVersion != schemaVersion {
+		return fmt.Errorf("%w: expected %d, found %d; delete the local database and recreate it", ErrSchemaMismatch, schemaVersion, userVersion)
+	}
+	if _, err := s.DB.Exec(`CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`); err != nil {
+		return err
+	}
+	var current int
+	if err := s.DB.QueryRow(`SELECT COALESCE(MAX(version), 0) FROM schema_migrations`).Scan(&current); err != nil {
+		return err
+	}
+	if current > schemaVersion {
+		return fmt.Errorf("%w: database at %d, binary knows %d", ErrSchemaTooNew, current, schemaVersion)
+	}
+	for version := current + 1; version <= schemaVersion; version++ {
+		script, err := fs.ReadFile(db.MigrationsFS, fmt.Sprintf("migrations/%04d_init.sql", version))
+		if err != nil {
+			return fmt.Errorf("read migration %d: %w", version, err)
+		}
+		tx, err := s.DB.Begin()
+		if err != nil {
+			return err
+		}
+		if _, err := tx.Exec(string(script)); err != nil {
+			_ = tx.Rollback()
+			return fmt.Errorf("apply migration %d: %w", version, err)
+		}
+		if _, err := tx.Exec(`INSERT INTO schema_migrations (version) VALUES (?)`, version); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+	}
+	if _, err := s.DB.Exec(fmt.Sprintf("PRAGMA user_version = %d", schemaVersion)); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *Store) seed() error {
+	var seeded int
+	if err := s.DB.QueryRow(`SELECT COUNT(*) FROM content`).Scan(&seeded); err != nil {
+		return err
+	}
+	if seeded > 0 {
+		return nil
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	if _, err := s.DB.Exec(`INSERT OR IGNORE INTO profile (id, display_name, handle, headline, bio, location, avatar_url, organization, website_url, resume_url, interests_json, education_json, experience_json, series_json, contacts_json, updated_at) VALUES ('profile_1', 'Manifold', '@manifold', 'Profile, writings, and thoughts.', 'Technical writings and short thoughts.', 'Peking, China', '', 'Independent', 'https://manifold.local', '', '["systems","research","writing"]', '[{"institution":"Independent","program":"Research and engineering","period":"Now"}]', '[{"organization":"Manifold","role":"Research and software","period":"Now"}]', '[{"name":"API relay","url":"https://api.weizixiang.dev","description":"A small public gateway for experiments and personal infrastructure.","category":"Infrastructure"},{"name":"OpenList","url":"https://openlist.weizixiang.dev","description":"A calm index for files, links, and things worth keeping close.","category":"Tool"}]', '[{"label":"GitHub","url":"https://github.com/manifold-space/manifold","handle":"@manifold-space"},{"label":"Email","url":"mailto:hello@manifold.local","handle":"hello@manifold.local"}]', ?)`, now); err != nil {
+		return err
+	}
+	if _, err := s.DB.Exec(`INSERT OR IGNORE INTO site_config (id, navigation_json, sections_json, updated_at) VALUES ('site_1', ?, ?, ?)`, encodeJSON([]model.SiteNavigationItem{{Label: "Home", Href: "/"}, {Label: "Writings", Href: "/writing"}, {Label: "Thoughts", Href: "/thoughts"}}), encodeJSON(defaultSections), now); err != nil {
 		return err
 	}
 	seedContent := []struct {
 		id, kind, slug, title, summary, body, tags, metadata string
 	}{
-		{"content_1", "ARTICLE", "designing-boundaries", "Designing Boundaries", "Notes on designing boundaries in personal systems.", "# Designing Boundaries\n\nA personal system should preserve attention and make the next action clear.\n\n## The boundary\n\nSmall interfaces reduce unnecessary decisions.", `["systems","design"]`, `{"technologies":["Go","SQLite","Next.js"],"language":"Go","difficulty":"INTERMEDIATE","readingMinutes":6,"toc":[{"id":"the-boundary","label":"The boundary","level":2}]}`},
+		{"content_1", "ARTICLE", "designing-boundaries", "Designing Boundaries", "Notes on designing boundaries in personal systems.", "# Designing Boundaries\n\nA personal system should preserve attention and make the next action clear.\n\n## The boundary\n\nSmall interfaces reduce unnecessary decisions.", `["systems","design"]`, `{"language":"Go","aiAssisted":false}`},
 		{"content_2", "THOUGHT", "a-small-signal", "A Small Signal", "Short note on when to turn an observation into a system.", "Not every observation needs a system. First decide whether it changes the way you work.", `["thinking"]`, `{"mood":"Curious","question":"When is a system justified?"}`},
-		{"content_3", "ARTICLE", "reading-the-edge", "Reading the Edge", "Questions about the relationship between software and daily life.", "## Open question\n\nHow do small tools change the way we notice the world?", `["systems"]`, `{"readingMinutes":3,"toc":[{"id":"open-question","label":"Open question","level":2}]}`},
+		{"content_3", "ARTICLE", "reading-the-edge", "Reading the Edge", "Questions about the relationship between software and daily life.", "## Open question\n\nHow do small tools change the way we notice the world?", `["systems"]`, `{}`},
 	}
 	for _, item := range seedContent {
-		if _, err := s.DB.Exec(`INSERT OR IGNORE INTO content (id, kind, status, slug, title, summary, body, tags_json, metadata_json, published_at, created_at, updated_at) VALUES (?, ?, 'PUBLISHED', NULLIF(?, ''), NULLIF(?, ''), ?, ?, ?, ?, ?, ?, ?)`, item.id, item.kind, item.slug, item.title, item.summary, item.body, item.tags, item.metadata, now, now, now); err != nil {
+		kind := model.ContentKind(item.kind)
+		metadata, err := model.NormalizeMetadataFor(kind, item.body, json.RawMessage(item.metadata))
+		if err != nil {
 			return err
+		}
+		excerpt := contentExcerpt(item.body)
+		var title any
+		if item.title != "" {
+			title = item.title
+		}
+		if _, err := s.DB.Exec(`INSERT INTO content (id, kind, status, slug, title, summary, body, excerpt, metadata_json, published_at, created_at, updated_at) VALUES (?, ?, 'PUBLISHED', ?, ?, ?, ?, ?, ?, ?, ?, ?)`, item.id, kind, item.slug, title, item.summary, item.body, excerpt, encodeJSON(metadata), now, now, now); err != nil {
+			return err
+		}
+		for _, tag := range decodeTags(item.tags) {
+			if _, err := s.DB.Exec(`INSERT INTO content_tags (content_id, tag) VALUES (?, ?)`, item.id, tag); err != nil {
+				return err
+			}
 		}
 	}
 	if _, err := s.DB.Exec(`INSERT OR IGNORE INTO thoughts_config (id, featured_thought_id, updated_at) VALUES ('thoughts_1', NULL, ?)`, now); err != nil {
@@ -197,25 +257,6 @@ func (s *Store) seed() error {
 	return nil
 }
 
-func decodeStrings(raw string) []string {
-	var values []string
-	_ = json.Unmarshal([]byte(raw), &values)
-	return values
-}
-
-func decodeMetadata(raw string) map[string]any {
-	values := map[string]any{}
-	if err := json.Unmarshal([]byte(raw), &values); err != nil || values == nil {
-		return map[string]any{}
-	}
-	return values
-}
-
-func encodeStrings(values []string) string {
-	raw, _ := json.Marshal(values)
-	return string(raw)
-}
-
 func encodeJSON(value any) string {
 	raw, err := json.Marshal(value)
 	if err == nil {
@@ -224,49 +265,13 @@ func encodeJSON(value any) string {
 	return "[]"
 }
 
-func (s *Store) GetProfile() (model.Profile, error) {
-	var p model.Profile
-	var interests, education, experience, series, contacts string
-	err := s.DB.QueryRow(`SELECT id, display_name, handle, headline, bio, avatar_url, location, organization, website_url, resume_url, interests_json, education_json, experience_json, series_json, contacts_json, updated_at FROM profile WHERE id = 'profile_1'`).Scan(&p.ID, &p.DisplayName, &p.Handle, &p.Headline, &p.Bio, &p.AvatarURL, &p.Location, &p.Organization, &p.WebsiteURL, &p.ResumeURL, &interests, &education, &experience, &series, &contacts, &p.UpdatedAt)
-	_ = json.Unmarshal([]byte(interests), &p.Interests)
-	_ = json.Unmarshal([]byte(education), &p.Education)
-	_ = json.Unmarshal([]byte(experience), &p.Experience)
-	_ = json.Unmarshal([]byte(series), &p.Series)
-	_ = json.Unmarshal([]byte(contacts), &p.Contacts)
-	return p, err
-}
-
-func (s *Store) UpdateProfile(p model.Profile) error {
-	_, err := s.DB.Exec(`UPDATE profile SET display_name = ?, handle = ?, headline = ?, bio = ?, avatar_url = ?, location = ?, organization = ?, website_url = ?, resume_url = ?, interests_json = ?, education_json = ?, experience_json = ?, series_json = ?, contacts_json = ?, updated_at = ? WHERE id = 'profile_1'`, p.DisplayName, p.Handle, p.Headline, p.Bio, p.AvatarURL, p.Location, p.Organization, p.WebsiteURL, p.ResumeURL, encodeJSON(p.Interests), encodeJSON(p.Education), encodeJSON(p.Experience), encodeJSON(p.Series), encodeJSON(p.Contacts), time.Now().UTC().Format(time.RFC3339))
-	return err
-}
-
-func (s *Store) GetSiteConfig() (model.SiteConfig, error) {
-	var title, description, footerText, rawSocial, rawNavigation, rawSections string
-	var commentsEnabled int
-	if err := s.DB.QueryRow(`SELECT title, description, footer_text, social_json, comments_enabled, navigation_json, sections_json FROM site_config WHERE id = 'site_1'`).Scan(&title, &description, &footerText, &rawSocial, &commentsEnabled, &rawNavigation, &rawSections); err != nil {
-		return model.SiteConfig{}, err
+func decodeTags(raw string) []string {
+	var tags []string
+	_ = json.Unmarshal([]byte(raw), &tags)
+	if tags == nil {
+		return []string{}
 	}
-	var config model.SiteConfig
-	config.Title = title
-	config.Description = description
-	config.Footer = footerText
-	config.CommentsEnabled = commentsEnabled != 0
-	if err := json.Unmarshal([]byte(rawSocial), &config.Social); err != nil {
-		return model.SiteConfig{}, err
-	}
-	if err := json.Unmarshal([]byte(rawNavigation), &config.Navigation); err != nil {
-		return model.SiteConfig{}, err
-	}
-	if err := json.Unmarshal([]byte(rawSections), &config.Sections); err != nil {
-		return model.SiteConfig{}, err
-	}
-	return config, nil
-}
-
-func (s *Store) UpdateSiteConfig(config model.SiteConfig) error {
-	_, err := s.DB.Exec(`UPDATE site_config SET title = ?, description = ?, footer_text = ?, social_json = ?, comments_enabled = ?, navigation_json = ?, sections_json = ?, updated_at = ? WHERE id = 'site_1'`, config.Title, config.Description, config.Footer, encodeJSON(config.Social), boolToInt(config.CommentsEnabled), encodeJSON(config.Navigation), encodeJSON(config.Sections), time.Now().UTC().Format(time.RFC3339))
-	return err
+	return tags
 }
 
 func boolToInt(value bool) int {
@@ -276,389 +281,10 @@ func boolToInt(value bool) int {
 	return 0
 }
 
-func (s *Store) GetThoughtConfig() (model.ThoughtConfig, error) {
-	var config model.ThoughtConfig
-	var featuredThoughtID sql.NullString
-	err := s.DB.QueryRow(`SELECT featured_thought_id, updated_at FROM thoughts_config WHERE id = 'thoughts_1'`).Scan(&featuredThoughtID, &config.UpdatedAt)
-	if featuredThoughtID.Valid {
-		config.FeaturedThoughtID = &featuredThoughtID.String
-	}
-	return config, err
-}
+func nowRFC3339() string { return time.Now().UTC().Format(time.RFC3339) }
 
-func (s *Store) UpdateThoughtConfig(featuredThoughtID *string) error {
-	_, err := s.DB.Exec(`UPDATE thoughts_config SET featured_thought_id = ?, updated_at = ? WHERE id = 'thoughts_1'`, featuredThoughtID, time.Now().UTC().Format(time.RFC3339))
-	return err
-}
-
-func (s *Store) GetWritingConfig() (model.WritingConfig, error) {
-	var config model.WritingConfig
-	var featuredWritingID sql.NullString
-	err := s.DB.QueryRow(`SELECT featured_writing_id, updated_at FROM writings_config WHERE id = 'writings_1'`).Scan(&featuredWritingID, &config.UpdatedAt)
-	if featuredWritingID.Valid {
-		config.FeaturedWritingID = &featuredWritingID.String
-	}
-	return config, err
-}
-
-func (s *Store) UpdateWritingConfig(featuredWritingID *string) error {
-	_, err := s.DB.Exec(`UPDATE writings_config SET featured_writing_id = ?, updated_at = ? WHERE id = 'writings_1'`, featuredWritingID, time.Now().UTC().Format(time.RFC3339))
-	return err
-}
-
-func contentListWhere(includeDrafts bool, options ContentListOptions) (string, []any) {
-	query := `WHERE 1 = 1`
-	args := make([]any, 0, 8)
-	if !includeDrafts {
-		query += ` AND status = 'PUBLISHED'`
-	} else if options.Status == "" {
-		query += ` AND status != 'DELETED'`
-	}
-	if options.Status != "" {
-		query += ` AND status = ?`
-		args = append(args, options.Status)
-	}
-	if len(options.Kinds) > 0 {
-		placeholders := make([]string, len(options.Kinds))
-		for i, kind := range options.Kinds {
-			placeholders[i] = "?"
-			args = append(args, kind)
-		}
-		query += ` AND kind IN (` + strings.Join(placeholders, ",") + `)`
-	}
-	if len(options.Tags) > 0 {
-		placeholders := make([]string, len(options.Tags))
-		for i, tag := range options.Tags {
-			placeholders[i] = "?"
-			args = append(args, tag)
-		}
-		query += ` AND EXISTS (SELECT 1 FROM json_each(content.tags_json) WHERE json_each.value IN (` + strings.Join(placeholders, ",") + `))`
-	}
-	if options.Query != "" {
-		query += ` AND (LOWER(title) LIKE ? OR LOWER(summary) LIKE ? OR LOWER(body) LIKE ?)`
-		term := "%" + strings.ToLower(options.Query) + "%"
-		args = append(args, term, term, term)
-	}
-	if options.AiAssisted != nil {
-		query += ` AND COALESCE(json_extract(metadata_json, '$.aiAssisted'), 0) IN (1, 'true') = ?`
-		args = append(args, *options.AiAssisted)
-	}
-	return query, args
-}
-
-func contentSortClause(sort string) string {
-	switch sort {
-	case "oldest":
-		return ` ORDER BY COALESCE(published_at, created_at) ASC, id ASC`
-	case "updated":
-		return ` ORDER BY updated_at DESC, id DESC`
-	default:
-		return ` ORDER BY COALESCE(published_at, created_at) DESC, id DESC`
-	}
-}
-
-func scanContentRows(rows *sql.Rows) ([]model.Content, error) {
-	defer rows.Close()
-	var items []model.Content
-	for rows.Next() {
-		var c model.Content
-		var tags, metadata, published, slug, title sql.NullString
-		if err := rows.Scan(&c.ID, &c.Kind, &c.Status, &slug, &title, &c.Summary, &c.Body, &tags, &metadata, &published, &c.CreatedAt, &c.UpdatedAt, &c.Version, &c.ViewCount, &c.LikeCount, &c.CommentCount); err != nil {
-			return nil, err
-		}
-		c.Slug, c.Title = slug.String, title.String
-		c.Tags = decodeStrings(tags.String)
-		c.Metadata = decodeMetadata(metadata.String)
-		if published.Valid {
-			c.PublishedAt = &published.String
-		}
-		if c.Kind == model.ContentKindThought {
-			c.Href = "/thoughts/" + c.ID
-		} else {
-			c.Href = "/writing/" + c.Slug
-		}
-		c.Excerpt = contentExcerpt(c.Body)
-		items = append(items, c)
-	}
-	return items, rows.Err()
-}
-
-func (s *Store) ListContent(includeDrafts bool, options ContentListOptions) (ContentListResult, error) {
-	result := ContentListResult{Page: 1, TotalItems: -1, TotalPages: 1}
-	limit := options.Limit
-	if limit <= 0 {
-		limit = 20
-	}
-	where, args := contentListWhere(includeDrafts, options)
-	if options.Page > 0 {
-		var total int
-		if err := s.DB.QueryRow(`SELECT COUNT(*) FROM content `+where, args...).Scan(&total); err != nil {
-			return result, err
-		}
-		effective := total
-		if options.SkipFirst && effective > 0 {
-			effective--
-		}
-		totalPages := (effective + limit - 1) / limit
-		if totalPages < 1 {
-			totalPages = 1
-		}
-		page := options.Page
-		if page > totalPages {
-			page = totalPages
-		}
-		result.TotalItems, result.TotalPages, result.Page, result.PageSize = total, totalPages, page, limit
-		options.Offset = (page - 1) * limit
-		if options.SkipFirst {
-			options.Offset++
-		}
-	}
-	query := `SELECT id, kind, status, slug, title, summary, body, tags_json, metadata_json, published_at, created_at, updated_at, version, view_count, (SELECT COUNT(*) FROM likes WHERE content_id = content.id), (SELECT COUNT(*) FROM comments WHERE content_id = content.id AND deleted_at = '') FROM content ` + where + contentSortClause(options.Sort) + ` LIMIT ? OFFSET ?`
-	rows, err := s.DB.Query(query, append(args, limit+1, options.Offset)...)
-	if err != nil {
-		return result, err
-	}
-	items, err := scanContentRows(rows)
-	if err != nil {
-		return result, err
-	}
-	if !includeDrafts {
-		for i := range items {
-			items[i].Body = ""
-		}
-	}
-	hasMore := len(items) > limit
-	if hasMore {
-		items = items[:limit]
-	}
-	result.Items, result.HasMore = items, hasMore
-	return result, nil
-}
-
-func (s *Store) Tags(kind model.ContentKind) ([]model.TagSummary, error) {
-	query := `SELECT json_each.value, COUNT(*) FROM content, json_each(content.tags_json) WHERE content.status = 'PUBLISHED'`
-	args := []any{}
-	if kind != "" {
-		query += ` AND content.kind = ?`
-		args = append(args, kind)
-	}
-	query += ` GROUP BY json_each.value ORDER BY COUNT(*) DESC, json_each.value ASC`
-	rows, err := s.DB.Query(query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	tags := []model.TagSummary{}
-	for rows.Next() {
-		var tag model.TagSummary
-		if err := rows.Scan(&tag.Name, &tag.Count); err != nil {
-			return nil, err
-		}
-		tags = append(tags, tag)
-	}
-	return tags, rows.Err()
-}
-
-func (s *Store) ThoughtArchive(requestedPage, pageSize int, tags []string, search string) (model.ThoughtArchive, error) {
-	featured, excludedID, err := s.archivedFeatured(model.ContentKindThought)
-	if err != nil {
-		return model.ThoughtArchive{}, err
-	}
-	items, pagination, err := s.archivedPage(model.ContentKindThought, excludedID, requestedPage, pageSize, tags, search, "", nil)
-	if err != nil {
-		return model.ThoughtArchive{}, err
-	}
-	return model.ThoughtArchive{Featured: featured, Data: items, Pagination: pagination}, nil
-}
-
-func (s *Store) WritingArchive(requestedPage, pageSize int, tags []string, search, sort string, aiAssisted *bool) (model.WritingArchive, error) {
-	featured, excludedID, err := s.archivedFeatured(model.ContentKindArticle)
-	if err != nil {
-		return model.WritingArchive{}, err
-	}
-	items, pagination, err := s.archivedPage(model.ContentKindArticle, excludedID, requestedPage, pageSize, tags, search, sort, aiAssisted)
-	if err != nil {
-		return model.WritingArchive{}, err
-	}
-	return model.WritingArchive{Featured: featured, Data: items, Pagination: pagination}, nil
-}
-
-// archivedFeatured resolves the configured pin for an archive; a missing or
-// withdrawn pin falls back to the newest published item of the same kind.
-func (s *Store) archivedFeatured(kind model.ContentKind) (*model.Content, string, error) {
-	var featuredID *string
-	if kind == model.ContentKindThought {
-		config, err := s.GetThoughtConfig()
-		if err != nil {
-			return nil, "", err
-		}
-		featuredID = config.FeaturedThoughtID
-	} else {
-		config, err := s.GetWritingConfig()
-		if err != nil {
-			return nil, "", err
-		}
-		featuredID = config.FeaturedWritingID
-	}
-	var featured *model.Content
-	if featuredID != nil {
-		item, readErr := s.GetContentByID(*featuredID, false)
-		if readErr == nil && item.Kind == kind {
-			item.Body = ""
-			featured = &item
-		} else if readErr != nil && !errors.Is(readErr, sql.ErrNoRows) {
-			return nil, "", readErr
-		}
-	}
-	if featured == nil {
-		list, listErr := s.ListContent(false, ContentListOptions{Kinds: []model.ContentKind{kind}, Limit: 1})
-		if listErr != nil {
-			return nil, "", listErr
-		}
-		if len(list.Items) > 0 {
-			featured = &list.Items[0]
-		}
-	}
-	excludedID := ""
-	if featured != nil {
-		excludedID = featured.ID
-	}
-	return featured, excludedID, nil
-}
-
-func (s *Store) archivedPage(kind model.ContentKind, excludedID string, requestedPage, pageSize int, tags []string, search, sort string, aiAssisted *bool) ([]model.Content, model.PagePagination, error) {
-	where := `WHERE kind = ? AND status = 'PUBLISHED' AND (? = '' OR id != ?)`
-	args := []any{kind, excludedID, excludedID}
-	if len(tags) > 0 {
-		placeholders := make([]string, len(tags))
-		for i, tag := range tags {
-			placeholders[i] = "?"
-			args = append(args, tag)
-		}
-		where += ` AND EXISTS (SELECT 1 FROM json_each(content.tags_json) WHERE json_each.value IN (` + strings.Join(placeholders, ",") + `))`
-	}
-	if search != "" {
-		where += ` AND (LOWER(title) LIKE ? OR LOWER(summary) LIKE ? OR LOWER(body) LIKE ?)`
-		term := "%" + strings.ToLower(search) + "%"
-		args = append(args, term, term, term)
-	}
-	if aiAssisted != nil {
-		where += ` AND COALESCE(json_extract(metadata_json, '$.aiAssisted'), 0) IN (1, 'true') = ?`
-		args = append(args, *aiAssisted)
-	}
-	var totalItems int
-	if err := s.DB.QueryRow(`SELECT COUNT(*) FROM content `+where, args...).Scan(&totalItems); err != nil {
-		return nil, model.PagePagination{}, err
-	}
-	totalPages := (totalItems + pageSize - 1) / pageSize
-	if totalPages < 1 {
-		totalPages = 1
-	}
-	page := requestedPage
-	if page < 1 {
-		page = 1
-	}
-	if page > totalPages {
-		page = totalPages
-	}
-	order := `COALESCE(published_at, created_at) DESC, id DESC`
-	switch sort {
-	case "oldest":
-		order = `COALESCE(published_at, created_at) ASC, id ASC`
-	case "updated":
-		order = `updated_at DESC, id DESC`
-	}
-	query := `SELECT id, kind, status, slug, title, summary, body, tags_json, metadata_json, published_at, created_at, updated_at, version, view_count, (SELECT COUNT(*) FROM likes WHERE content_id = content.id), (SELECT COUNT(*) FROM comments WHERE content_id = content.id AND deleted_at = '')
-		FROM content ` + where + `
-		ORDER BY ` + order + `
-		LIMIT ? OFFSET ?`
-	rows, err := s.DB.Query(query, append(args, pageSize, (page-1)*pageSize)...)
-	if err != nil {
-		return nil, model.PagePagination{}, err
-	}
-	items, err := scanContentRows(rows)
-	if err != nil {
-		return nil, model.PagePagination{}, err
-	}
-	for i := range items {
-		items[i].Body = ""
-	}
-	return items, model.PagePagination{Page: page, PageSize: pageSize, TotalItems: totalItems, TotalPages: totalPages}, nil
-}
-
-func (s *Store) GetContent(slug string, includeDrafts bool) (model.Content, error) {
-	var c model.Content
-	var tags, metadata, published, slugValue, titleValue sql.NullString
-	query := `SELECT id, kind, status, slug, title, summary, body, tags_json, metadata_json, published_at, created_at, updated_at, version, view_count, (SELECT COUNT(*) FROM likes WHERE content_id = content.id), (SELECT COUNT(*) FROM comments WHERE content_id = content.id AND deleted_at = '') FROM content WHERE (slug = ? OR id = ?) AND status != 'DELETED'`
-	if !includeDrafts {
-		query += ` AND status = 'PUBLISHED'`
-	}
-	err := s.DB.QueryRow(query, slug, slug).Scan(&c.ID, &c.Kind, &c.Status, &slugValue, &titleValue, &c.Summary, &c.Body, &tags, &metadata, &published, &c.CreatedAt, &c.UpdatedAt, &c.Version, &c.ViewCount, &c.LikeCount, &c.CommentCount)
-	c.Slug, c.Title = slugValue.String, titleValue.String
-	c.Tags = decodeStrings(tags.String)
-	c.Metadata = decodeMetadata(metadata.String)
-	if published.Valid {
-		c.PublishedAt = &published.String
-	}
-	if c.Kind == model.ContentKindThought {
-		c.Href = "/thoughts/" + c.ID
-	} else {
-		c.Href = "/writing/" + c.Slug
-	}
-	c.Excerpt = contentExcerpt(c.Body)
-	return c, err
-}
-
-func (s *Store) GetContentByID(id string, includeDrafts bool) (model.Content, error) {
-	var c model.Content
-	var tags, metadata, published, slug, title sql.NullString
-	query := `SELECT id, kind, status, slug, title, summary, body, tags_json, metadata_json, published_at, created_at, updated_at, version, view_count, (SELECT COUNT(*) FROM likes WHERE content_id = content.id), (SELECT COUNT(*) FROM comments WHERE content_id = content.id AND deleted_at = '') FROM content WHERE id = ? AND status != 'DELETED'`
-	if !includeDrafts {
-		query += ` AND status = 'PUBLISHED'`
-	}
-	err := s.DB.QueryRow(query, id).Scan(&c.ID, &c.Kind, &c.Status, &slug, &title, &c.Summary, &c.Body, &tags, &metadata, &published, &c.CreatedAt, &c.UpdatedAt, &c.Version, &c.ViewCount, &c.LikeCount, &c.CommentCount)
-	c.Slug, c.Title = slug.String, title.String
-	c.Tags = decodeStrings(tags.String)
-	c.Metadata = decodeMetadata(metadata.String)
-	if published.Valid {
-		c.PublishedAt = &published.String
-	}
-	if c.Kind == model.ContentKindThought {
-		c.Href = "/thoughts/" + c.ID
-	} else {
-		c.Href = "/writing/" + c.Slug
-	}
-	c.Excerpt = contentExcerpt(c.Body)
-	return c, err
-}
-
-// Stats counts published content. The word total uses the same tokenizer as
-// reading-time estimates: every latin/digit word counts once and every CJK
-// character counts as a word, so unspaced CJK prose is no longer a single word.
-func (s *Store) Stats() (model.Stats, error) {
-	var stats model.Stats
-	err := s.DB.QueryRow(`SELECT COUNT(*), COALESCE(SUM(kind = 'ARTICLE'), 0), COALESCE(SUM(kind = 'THOUGHT'), 0) FROM content WHERE status = 'PUBLISHED'`).Scan(&stats.ContentCount, &stats.ArticleCount, &stats.ThoughtCount)
-	if err != nil {
-		return stats, err
-	}
-	rows, err := s.DB.Query(`SELECT body FROM content WHERE status = 'PUBLISHED'`)
-	if err != nil {
-		return stats, err
-	}
-	defer rows.Close()
-	stats.WordCount = 0
-	for rows.Next() {
-		var body string
-		if err := rows.Scan(&body); err != nil {
-			return stats, err
-		}
-		stats.WordCount += countWords(body)
-	}
-	if err := rows.Err(); err != nil {
-		return stats, err
-	}
-	stats.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
-	return stats, nil
+func newID(prefix string) string {
+	return prefix + "_" + time.Now().UTC().Format("20060102150405.000000000")
 }
 
 func countWords(body string) int {
@@ -682,695 +308,6 @@ func countWords(body string) int {
 	return latinWords + cjkCharacters
 }
 
-func (s *Store) TouchPresence(visitorID string) (int, error) {
-	now := time.Now().UTC()
-	cutoff := now.Add(-presenceTTL).Format(time.RFC3339)
-	if _, err := s.DB.Exec(`DELETE FROM presence WHERE last_seen_at < ?`, cutoff); err != nil {
-		return 0, err
-	}
-	if _, err := s.DB.Exec(`INSERT INTO presence (visitor_id, last_seen_at) VALUES (?, ?) ON CONFLICT(visitor_id) DO UPDATE SET last_seen_at = excluded.last_seen_at`, visitorID, now.Format(time.RFC3339)); err != nil {
-		return 0, err
-	}
-	var activeVisitors int
-	if err := s.DB.QueryRow(`SELECT COUNT(*) FROM presence WHERE last_seen_at >= ?`, cutoff).Scan(&activeVisitors); err != nil {
-		return 0, err
-	}
-	return activeVisitors, nil
+func isCJK(r rune) bool {
+	return (r >= 0x4e00 && r <= 0x9fff) || (r >= 0x3400 && r <= 0x4dbf) || (r >= 0x3040 && r <= 0x30ff) || (r >= 0xac00 && r <= 0xd7af)
 }
-
-type CommentListOptions struct {
-	Page     int
-	PageSize int
-	Query    string
-}
-
-type CommentListResult struct {
-	Comments   []model.Comment
-	Page       int
-	PageSize   int
-	TotalItems int
-	TotalPages int
-}
-
-const commentColumns = `id, content_id, author_name, author_url, body, created_at, reply_to_id, avatar_seed, deleted_at`
-
-// matchedCommentThreads returns a CTE of top-level comments whose own
-// author/body matches the needle or that own any matching reply, so a hit
-// always exposes the whole thread. An empty needle matches every root. The
-// CTE carries created_at so nested LIMIT/OFFSET subqueries can order without
-// binding to the outer query's columns.
-func matchedCommentThreads() string {
-	return `WITH matched AS (
-		SELECT id, created_at FROM comments
-		WHERE content_id = ? AND deleted_at = '' AND COALESCE(reply_to_id, '') = ''
-		AND (? = '' OR INSTR(LOWER(author_name), ?) > 0 OR INSTR(LOWER(body), ?) > 0
-			OR EXISTS (SELECT 1 FROM comments reply WHERE reply.reply_to_id = comments.id AND reply.deleted_at = '' AND (INSTR(LOWER(reply.author_name), ?) > 0 OR INSTR(LOWER(reply.body), ?) > 0)))
-	)`
-}
-
-func (s *Store) ListComments(contentID string, options CommentListOptions) (CommentListResult, error) {
-	result := CommentListResult{Page: 1, TotalPages: 1}
-	if options.Page <= 0 {
-		comments, err := s.scanComments(`SELECT `+commentColumns+` FROM comments WHERE content_id = ? AND deleted_at = '' ORDER BY created_at ASC`, contentID)
-		if comments == nil {
-			comments = []model.Comment{}
-		}
-		result.Comments = comments
-		result.TotalItems = len(comments)
-		return result, err
-	}
-	pageSize := options.PageSize
-	if pageSize <= 0 {
-		pageSize = 10
-	}
-	needle := strings.ToLower(strings.TrimSpace(options.Query))
-	matched := matchedCommentThreads()
-	matchArgs := []any{contentID, needle, needle, needle, needle, needle}
-
-	var totalItems, totalRoots int
-	if err := s.DB.QueryRow(matched+`SELECT COUNT(*), COALESCE(SUM(CASE WHEN COALESCE(reply_to_id, '') = '' THEN 1 ELSE 0 END), 0) FROM comments WHERE deleted_at = '' AND content_id = ? AND (id IN (SELECT id FROM matched) OR reply_to_id IN (SELECT id FROM matched))`, append(matchArgs, contentID)...).Scan(&totalItems, &totalRoots); err != nil {
-		return result, err
-	}
-	totalPages := (totalRoots + pageSize - 1) / pageSize
-	if totalPages < 1 {
-		totalPages = 1
-	}
-	page := options.Page
-	if page > totalPages {
-		page = totalPages
-	}
-	result.Page, result.PageSize, result.TotalItems, result.TotalPages = page, pageSize, totalItems, totalPages
-
-	offset := (page - 1) * pageSize
-	roots, err := s.scanComments(matched+`SELECT `+commentColumns+` FROM comments WHERE id IN (SELECT id FROM matched) ORDER BY created_at ASC, id ASC LIMIT ? OFFSET ?`, append(matchArgs, pageSize, offset)...)
-	if err != nil {
-		return result, err
-	}
-	if roots == nil {
-		roots = []model.Comment{}
-	}
-	if len(roots) == 0 {
-		result.Comments = roots
-		return result, nil
-	}
-	replies, err := s.scanComments(matched+`SELECT `+commentColumns+` FROM comments WHERE deleted_at = '' AND content_id = ? AND COALESCE(reply_to_id, '') != '' AND reply_to_id IN (SELECT id FROM matched ORDER BY created_at ASC, id ASC LIMIT ? OFFSET ?) ORDER BY created_at ASC, id ASC`, append(matchArgs, contentID, pageSize, offset)...)
-	if err != nil {
-		return result, err
-	}
-	result.Comments = append(roots, replies...)
-	return result, nil
-}
-
-// AdminCommentListOptions mirrors the public thread-listing options; the
-// admin variant includes soft-deleted rows, orders roots newest-first, and
-// spans every content item when ContentID is empty.
-type AdminCommentListOptions struct {
-	ContentID string
-	Page      int
-	PageSize  int
-	Query     string
-	Focus     string
-}
-
-type AdminCommentListResult struct {
-	Comments   []model.AdminComment
-	Page       int
-	PageSize   int
-	TotalItems int
-	TotalPages int
-}
-
-// matchedAdminCommentThreads is the thread-matching CTE without the visibility
-// filter so deleted replies still pull their root into the result set. An
-// empty content filter spans every content item. The CTE carries created_at
-// so nested LIMIT/OFFSET subqueries can order without binding to the outer
-// query's columns.
-func matchedAdminCommentThreads() string {
-	return `WITH matched AS (
-		SELECT id, created_at FROM comments
-		WHERE (? = '' OR content_id = ?) AND COALESCE(reply_to_id, '') = ''
-		AND (? = '' OR INSTR(LOWER(author_name), ?) > 0 OR INSTR(LOWER(body), ?) > 0
-			OR EXISTS (SELECT 1 FROM comments reply WHERE reply.reply_to_id = comments.id AND (INSTR(LOWER(reply.author_name), ?) > 0 OR INSTR(LOWER(reply.body), ?) > 0)))
-	)`
-}
-
-// ListAdminComments paginates threads for one content item. When Focus is set
-// to a comment id (a root or a reply), the page containing its thread is
-// returned regardless of the requested page; unknown or non-matching focus
-// values fall back to the requested page.
-func (s *Store) ListAdminComments(options AdminCommentListOptions) (AdminCommentListResult, error) {
-	result := AdminCommentListResult{Page: 1, TotalPages: 1}
-	pageSize := options.PageSize
-	if pageSize <= 0 {
-		pageSize = 20
-	}
-	if pageSize > 100 {
-		pageSize = 100
-	}
-	needle := strings.ToLower(strings.TrimSpace(options.Query))
-	matched := matchedAdminCommentThreads()
-	matchArgs := []any{options.ContentID, options.ContentID, needle, needle, needle, needle, needle}
-
-	var totalItems, totalRoots int
-	if err := s.DB.QueryRow(matched+`SELECT COUNT(*), COALESCE(SUM(CASE WHEN COALESCE(reply_to_id, '') = '' THEN 1 ELSE 0 END), 0) FROM comments WHERE (? = '' OR content_id = ?) AND (id IN (SELECT id FROM matched) OR reply_to_id IN (SELECT id FROM matched))`, append(matchArgs, options.ContentID, options.ContentID)...).Scan(&totalItems, &totalRoots); err != nil {
-		return result, err
-	}
-	totalPages := (totalRoots + pageSize - 1) / pageSize
-	if totalPages < 1 {
-		totalPages = 1
-	}
-	page := options.Page
-	if page <= 0 {
-		page = 1
-	}
-	if options.Focus != "" {
-		page = s.adminFocusPage(matched, matchArgs, options.Focus, totalRoots, pageSize)
-	}
-	if page > totalPages {
-		page = totalPages
-	}
-	result.Page, result.PageSize, result.TotalItems, result.TotalPages = page, pageSize, totalItems, totalPages
-
-	offset := (page - 1) * pageSize
-	roots, err := s.scanAdminComments(matched+`SELECT `+adminCommentColumns+` FROM comments JOIN content ON content.id = comments.content_id WHERE comments.id IN (SELECT id FROM matched) ORDER BY comments.created_at DESC, comments.id DESC LIMIT ? OFFSET ?`, append(matchArgs, pageSize, offset)...)
-	if err != nil {
-		return result, err
-	}
-	if len(roots) == 0 {
-		result.Comments = []model.AdminComment{}
-		return result, nil
-	}
-	replies, err := s.scanAdminComments(matched+`SELECT `+adminCommentColumns+` FROM comments JOIN content ON content.id = comments.content_id WHERE (? = '' OR comments.content_id = ?) AND COALESCE(comments.reply_to_id, '') != '' AND comments.reply_to_id IN (SELECT id FROM matched ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?) ORDER BY comments.created_at ASC, comments.id ASC`, append(matchArgs, options.ContentID, options.ContentID, pageSize, offset)...)
-	if err != nil {
-		return result, err
-	}
-	result.Comments = append(roots, replies...)
-	return result, nil
-}
-
-// adminFocusPage resolves the 1-based page holding the focused thread by
-// counting matching roots created after it (newest-first ordering). A missing
-// or non-matching focus returns 1.
-func (s *Store) adminFocusPage(matched string, matchArgs []any, focus string, totalRoots, pageSize int) int {
-	if totalRoots == 0 {
-		return 1
-	}
-	focusRoot := focus
-	var replyTo string
-	if err := s.DB.QueryRow(`SELECT COALESCE(reply_to_id, '') FROM comments WHERE id = ?`, focus).Scan(&replyTo); err != nil {
-		return 1
-	}
-	if replyTo != "" {
-		focusRoot = replyTo
-	}
-	var earlier int
-	if err := s.DB.QueryRow(matched+`SELECT COUNT(*) FROM comments WHERE id IN (SELECT id FROM matched) AND (created_at > (SELECT created_at FROM comments WHERE id = ?) OR (created_at = (SELECT created_at FROM comments WHERE id = ?) AND id > (SELECT id FROM comments WHERE id = ?)))`, append(matchArgs, focusRoot, focusRoot, focusRoot)...).Scan(&earlier); err != nil {
-		return 1
-	}
-	return earlier/pageSize + 1
-}
-
-const adminCommentColumns = `comments.id, comments.content_id, comments.author_name, comments.author_url, comments.body, comments.created_at, comments.reply_to_id, comments.avatar_seed, comments.deleted_at, COALESCE(content.title, ''), COALESCE(content.slug, ''), COALESCE(content.kind, '')`
-
-func (s *Store) scanAdminComments(query string, args ...any) ([]model.AdminComment, error) {
-	rows, err := s.DB.Query(query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []model.AdminComment
-	for rows.Next() {
-		var c model.AdminComment
-		var replyToID, avatarSeed, deletedAt sql.NullString
-		if err := rows.Scan(&c.ID, &c.ContentID, &c.AuthorName, &c.AuthorURL, &c.Body, &c.CreatedAt, &replyToID, &avatarSeed, &deletedAt, &c.ContentTitle, &c.ContentSlug, &c.ContentKind); err != nil {
-			return nil, err
-		}
-		if replyToID.Valid && replyToID.String != "" {
-			c.ReplyToID = &replyToID.String
-		}
-		c.AvatarSeed = avatarSeed.String
-		c.DeletedAt = deletedAt.String
-		items = append(items, c)
-	}
-	return items, rows.Err()
-}
-
-func (s *Store) scanComments(query string, args ...any) ([]model.Comment, error) {
-	rows, err := s.DB.Query(query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []model.Comment
-	for rows.Next() {
-		var c model.Comment
-		var replyToID, avatarSeed, deletedAt sql.NullString
-		if err := rows.Scan(&c.ID, &c.ContentID, &c.AuthorName, &c.AuthorURL, &c.Body, &c.CreatedAt, &replyToID, &avatarSeed, &deletedAt); err != nil {
-			return nil, err
-		}
-		if replyToID.Valid && replyToID.String != "" {
-			c.ReplyToID = &replyToID.String
-		}
-		c.AvatarSeed = avatarSeed.String
-		c.DeletedAt = deletedAt.String
-		items = append(items, c)
-	}
-	return items, rows.Err()
-}
-
-func (s *Store) CreateComment(contentID, authorName, authorURL, body string, replyToID *string, avatarSeed string) (model.Comment, error) {
-	if replyToID != nil && *replyToID != "" {
-		var replyContentID, deletedAt string
-		err := s.DB.QueryRow(`SELECT content_id, deleted_at FROM comments WHERE id = ?`, *replyToID).Scan(&replyContentID, &deletedAt)
-		if errors.Is(err, sql.ErrNoRows) {
-			return model.Comment{}, ErrCommentReplyInvalid
-		}
-		if err != nil {
-			return model.Comment{}, err
-		}
-		if replyContentID != contentID || deletedAt != "" {
-			return model.Comment{}, ErrCommentReplyInvalid
-		}
-	}
-	id := "comment_" + time.Now().UTC().Format("20060102150405.000000000")
-	created := time.Now().UTC().Format(time.RFC3339)
-	_, err := s.DB.Exec(`INSERT INTO comments (id, content_id, author_name, author_url, body, reply_to_id, avatar_seed, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, id, contentID, authorName, authorURL, body, replyToID, avatarSeed, created)
-	return model.Comment{ID: id, ContentID: contentID, AuthorName: authorName, AuthorURL: authorURL, Body: body, CreatedAt: created, ReplyToID: replyToID, AvatarSeed: avatarSeed}, err
-}
-
-func (s *Store) SoftDeleteComment(id string) (string, error) {
-	var contentID string
-	err := s.DB.QueryRow(`UPDATE comments SET deleted_at = ? WHERE id = ? AND deleted_at = '' RETURNING content_id`, time.Now().UTC().Format(time.RFC3339), id).Scan(&contentID)
-	return contentID, err
-}
-
-func (s *Store) RestoreComment(id string) (string, error) {
-	var contentID string
-	err := s.DB.QueryRow(`UPDATE comments SET deleted_at = '' WHERE id = ? AND deleted_at != '' RETURNING content_id`, id).Scan(&contentID)
-	return contentID, err
-}
-
-func (s *Store) GetLikeSummary(contentID, visitorID string) (model.LikeSummary, error) {
-	var summary model.LikeSummary
-	var viewerLiked int
-	err := s.DB.QueryRow(`
-		SELECT (SELECT COUNT(*) FROM likes WHERE content_id = ?),
-		EXISTS(SELECT 1 FROM likes WHERE content_id = ? AND visitor_id = ?)`, contentID, contentID, visitorID).Scan(&summary.LikeCount, &viewerLiked)
-	if err != nil {
-		return summary, err
-	}
-	summary.ViewerLiked = viewerLiked == 1
-	return summary, nil
-}
-
-// RecordContentView increments the cumulative public view counter and appends a
-// per-day analytics event. Identified visitors dedupe to one event per
-// content per UTC day via the partial unique index; anonymous views append
-// one row each so traffic totals keep reflecting every request.
-func (s *Store) RecordContentView(contentID, visitorID, referrer string) (int, int, error) {
-	if _, err := s.DB.Exec(`UPDATE content SET view_count = view_count + 1 WHERE id = ?`, contentID); err != nil {
-		return 0, 0, err
-	}
-	now := time.Now().UTC()
-	day := now.Format("2006-01-02")
-	var err error
-	if visitorID == "" {
-		_, err = s.DB.Exec(`INSERT INTO content_view_events (content_id, visitor_id, referrer, day, created_at) VALUES (?, '', ?, ?, ?)`, contentID, referrer, day, now.Format(time.RFC3339))
-	} else {
-		_, err = s.DB.Exec(`INSERT OR IGNORE INTO content_view_events (content_id, visitor_id, referrer, day, created_at) VALUES (?, ?, ?, ?, ?)`, contentID, visitorID, referrer, day, now.Format(time.RFC3339))
-	}
-	if err != nil {
-		return 0, 0, err
-	}
-	var viewCount, likeCount int
-	if err := s.DB.QueryRow(`SELECT view_count, (SELECT COUNT(*) FROM likes WHERE content_id = content.id) FROM content WHERE id = ?`, contentID).Scan(&viewCount, &likeCount); err != nil {
-		return 0, 0, err
-	}
-	return viewCount, likeCount, nil
-}
-
-func (s *Store) SetLike(contentID, visitorID string) error {
-	id := "like_" + contentID + "_" + visitorID
-	_, err := s.DB.Exec(`INSERT OR IGNORE INTO likes (id, content_id, visitor_id, created_at) VALUES (?, ?, ?, ?)`, id, contentID, visitorID, time.Now().UTC().Format(time.RFC3339))
-	return err
-}
-
-func (s *Store) DeleteLike(contentID, visitorID string) error {
-	_, err := s.DB.Exec(`DELETE FROM likes WHERE content_id = ? AND visitor_id = ?`, contentID, visitorID)
-	return err
-}
-
-func (s *Store) RecordAuditEvent(eventName, resourceType, resourceID, actor, requestID, traceID string, metadata map[string]string) error {
-	if metadata == nil {
-		metadata = map[string]string{}
-	}
-	raw, err := json.Marshal(metadata)
-	if err != nil {
-		return err
-	}
-	id := "audit_" + time.Now().UTC().Format("20060102150405.000000000")
-	_, err = s.DB.Exec(`INSERT INTO audit_events (id, event_name, resource_type, resource_id, actor, request_id, trace_id, metadata_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, id, eventName, resourceType, resourceID, actor, requestID, traceID, string(raw), time.Now().UTC().Format(time.RFC3339))
-	return err
-}
-
-func (s *Store) AuditEventCount() (int, error) {
-	var count int
-	err := s.DB.QueryRow(`SELECT COUNT(*) FROM audit_events`).Scan(&count)
-	return count, err
-}
-
-const overviewTrendMonths = 12
-
-func (s *Store) Overview() (model.AdminOverview, error) {
-	overview := model.AdminOverview{Trend: model.AdminOverviewTrend{Monthly: []model.AdminOverviewTrendPoint{}}, TopContent: []model.AdminOverviewContentItem{}, Tags: []model.TagSummary{}}
-	cutoff := time.Now().UTC().Add(-presenceTTL).Format(time.RFC3339)
-	var content model.AdminOverviewContent
-	err := s.DB.QueryRow(`SELECT
-		(SELECT COUNT(*) FROM content WHERE status = 'PUBLISHED'),
-		(SELECT COUNT(*) FROM content WHERE status = 'DRAFT'),
-		(SELECT COUNT(*) FROM content WHERE status = 'PUBLISHED' AND kind = 'ARTICLE'),
-		(SELECT COUNT(*) FROM content WHERE status = 'PUBLISHED' AND kind = 'THOUGHT'),
-		(SELECT COALESCE(SUM(view_count), 0) FROM content WHERE status != 'DELETED'),
-		(SELECT COUNT(*) FROM likes JOIN content ON content.id = likes.content_id WHERE content.status != 'DELETED'),
-		(SELECT COUNT(*) FROM comments JOIN content ON content.id = comments.content_id WHERE comments.deleted_at = '' AND content.status != 'DELETED'),
-		(SELECT COUNT(*) FROM presence WHERE last_seen_at >= ?)`, cutoff).Scan(&content.ContentCount, &content.DraftCount, &content.ArticleCount, &content.ThoughtCount, &content.TotalViews, &content.TotalLikes, &content.TotalComments, &content.ActiveVisitors)
-	if err != nil {
-		return overview, err
-	}
-	overview.Content = content
-	overview.Content.WordCount = 0
-	rows, err := s.DB.Query(`SELECT body FROM content WHERE status = 'PUBLISHED'`)
-	if err != nil {
-		return overview, err
-	}
-	for rows.Next() {
-		var body string
-		if err := rows.Scan(&body); err != nil {
-			_ = rows.Close()
-			return overview, err
-		}
-		overview.Content.WordCount += countWords(body)
-	}
-	if err := rows.Err(); err != nil {
-		_ = rows.Close()
-		return overview, err
-	}
-	if err := rows.Close(); err != nil {
-		return overview, err
-	}
-
-	now := time.Now().UTC()
-	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC).AddDate(0, -(overviewTrendMonths - 1), 0)
-	createdBy, err := s.monthlyCounts(`SELECT strftime('%Y-%m', created_at), COUNT(*) FROM content WHERE status != 'DELETED' AND created_at >= ? GROUP BY 1`, monthStart.Format("2006-01-02"))
-	if err != nil {
-		return overview, err
-	}
-	publishedBy, err := s.monthlyCounts(`SELECT strftime('%Y-%m', published_at), COUNT(*) FROM content WHERE status = 'PUBLISHED' AND published_at IS NOT NULL AND published_at >= ? GROUP BY 1`, monthStart.Format("2006-01-02"))
-	if err != nil {
-		return overview, err
-	}
-	for i := 0; i < overviewTrendMonths; i++ {
-		month := monthStart.AddDate(0, i, 0).Format("2006-01")
-		overview.Trend.Monthly = append(overview.Trend.Monthly, model.AdminOverviewTrendPoint{Month: month, Created: createdBy[month], Published: publishedBy[month]})
-	}
-
-	overview.TopContent, err = s.topPublishedContent(5)
-	if err != nil {
-		return overview, err
-	}
-	tags, err := s.Tags("")
-	if err != nil {
-		return overview, err
-	}
-	if len(tags) > 10 {
-		tags = tags[:10]
-	}
-	overview.Tags = tags
-	return overview, nil
-}
-
-func (s *Store) monthlyCounts(query, from string) (map[string]int, error) {
-	rows, err := s.DB.Query(query, from)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	counts := map[string]int{}
-	for rows.Next() {
-		var month string
-		var count int
-		if err := rows.Scan(&month, &count); err != nil {
-			return nil, err
-		}
-		counts[month] = count
-	}
-	return counts, rows.Err()
-}
-
-func (s *Store) topPublishedContent(limit int) ([]model.AdminOverviewContentItem, error) {
-	rows, err := s.DB.Query(`SELECT id, kind, COALESCE(slug, ''), COALESCE(title, ''), view_count, (SELECT COUNT(*) FROM likes WHERE content_id = content.id), (SELECT COUNT(*) FROM comments WHERE content_id = content.id AND deleted_at = '') FROM content WHERE status = 'PUBLISHED' ORDER BY view_count DESC, id ASC LIMIT ?`, limit)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []model.AdminOverviewContentItem{}
-	for rows.Next() {
-		var item model.AdminOverviewContentItem
-		if err := rows.Scan(&item.ID, &item.Kind, &item.Slug, &item.Title, &item.ViewCount, &item.LikeCount, &item.CommentCount); err != nil {
-			return nil, err
-		}
-		items = append(items, item)
-	}
-	return items, rows.Err()
-}
-
-const maxAnalyticsDays = 90
-
-func (s *Store) AnalyticsViews(days int) (model.AnalyticsViews, error) {
-	if days <= 0 {
-		days = 30
-	}
-	if days > maxAnalyticsDays {
-		days = maxAnalyticsDays
-	}
-	today := time.Now().UTC()
-	views := model.AnalyticsViews{Range: model.AnalyticsRange{Days: days, From: today.AddDate(0, 0, -(days - 1)).Format("2006-01-02"), To: today.Format("2006-01-02")}, Daily: []model.AnalyticsDay{}, Referrers: []model.AnalyticsReferrer{}}
-	if err := s.DB.QueryRow(`SELECT COUNT(*), COUNT(DISTINCT CASE WHEN visitor_id != '' THEN visitor_id END) FROM content_view_events WHERE day >= ?`, views.Range.From).Scan(&views.TotalViews, &views.UniqueVisitors); err != nil {
-		return views, err
-	}
-	byDay, err := s.viewEventDaily(views.Range.From)
-	if err != nil {
-		return views, err
-	}
-	for i := 0; i < days; i++ {
-		date := today.AddDate(0, 0, -(days - 1 - i)).Format("2006-01-02")
-		if day, ok := byDay[date]; ok {
-			views.Daily = append(views.Daily, day)
-			continue
-		}
-		views.Daily = append(views.Daily, model.AnalyticsDay{Date: date})
-	}
-	views.Referrers, err = s.viewEventReferrers(views.Range.From, 10)
-	return views, err
-}
-
-func (s *Store) viewEventDaily(from string) (map[string]model.AnalyticsDay, error) {
-	rows, err := s.DB.Query(`SELECT day, COUNT(*), COUNT(DISTINCT CASE WHEN visitor_id != '' THEN visitor_id END) FROM content_view_events WHERE day >= ? GROUP BY day`, from)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	days := map[string]model.AnalyticsDay{}
-	for rows.Next() {
-		var day model.AnalyticsDay
-		if err := rows.Scan(&day.Date, &day.Views, &day.UniqueVisitors); err != nil {
-			return nil, err
-		}
-		days[day.Date] = day
-	}
-	return days, rows.Err()
-}
-
-func (s *Store) viewEventReferrers(from string, limit int) ([]model.AnalyticsReferrer, error) {
-	rows, err := s.DB.Query(`SELECT CASE WHEN referrer = '' THEN 'direct' ELSE referrer END, COUNT(*) FROM content_view_events WHERE day >= ? GROUP BY 1 ORDER BY COUNT(*) DESC, 1 ASC LIMIT ?`, from, limit)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	referrers := []model.AnalyticsReferrer{}
-	for rows.Next() {
-		var referrer model.AnalyticsReferrer
-		if err := rows.Scan(&referrer.Source, &referrer.Count); err != nil {
-			return nil, err
-		}
-		referrers = append(referrers, referrer)
-	}
-	return referrers, rows.Err()
-}
-
-// ListAuditEvents returns one page of recent audit events, newest first.
-// The needle filters by event name, actor, or resource id; an empty needle
-// matches everything.
-func (s *Store) ListAuditEvents(page, pageSize int, needle string) ([]model.AuditEvent, int, error) {
-	if page < 1 {
-		page = 1
-	}
-	if pageSize < 1 {
-		pageSize = 10
-	}
-	if pageSize > 50 {
-		pageSize = 50
-	}
-	filter := `WHERE (? = '' OR event_name LIKE '%' || ? || '%' OR actor LIKE '%' || ? || '%' OR resource_id LIKE '%' || ? || '%')`
-	args := []any{needle, needle, needle, needle}
-	var total int
-	if err := s.DB.QueryRow(`SELECT COUNT(*) FROM audit_events `+filter, args...).Scan(&total); err != nil {
-		return nil, 0, err
-	}
-	offset := (page - 1) * pageSize
-	if offset >= total && total > 0 {
-		page = (total + pageSize - 1) / pageSize
-		offset = (page - 1) * pageSize
-	}
-	rows, err := s.DB.Query(`SELECT id, event_name, resource_type, resource_id, actor, metadata_json, created_at FROM audit_events `+filter+` ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`, append(args, pageSize, offset)...)
-	if err != nil {
-		return nil, 0, err
-	}
-	defer rows.Close()
-	events := []model.AuditEvent{}
-	for rows.Next() {
-		var event model.AuditEvent
-		if err := rows.Scan(&event.ID, &event.EventName, &event.ResourceType, &event.ResourceID, &event.Actor, &event.MetadataJSON, &event.CreatedAt); err != nil {
-			return nil, 0, err
-		}
-		events = append(events, event)
-	}
-	return events, total, rows.Err()
-}
-
-func (s *Store) DatabaseSizeBytes() (int64, error) {
-	var pageCount, pageSize int64
-	if err := s.DB.QueryRow(`PRAGMA page_count`).Scan(&pageCount); err != nil {
-		return 0, err
-	}
-	if err := s.DB.QueryRow(`PRAGMA page_size`).Scan(&pageSize); err != nil {
-		return 0, err
-	}
-	return pageCount * pageSize, nil
-}
-
-func (s *Store) CreateContent(c model.Content) (model.Content, error) {
-	now := time.Now().UTC().Format(time.RFC3339)
-	c.ID, c.Status, c.CreatedAt, c.UpdatedAt, c.Version = "content_"+time.Now().UTC().Format("20060102150405.000000000"), "DRAFT", now, now, 1
-	c.Metadata = normalizeArticleMetadata(string(c.Kind), c.Body, c.Metadata)
-	c.Excerpt = contentExcerpt(c.Body)
-	_, err := s.DB.Exec(`INSERT INTO content (id, kind, status, slug, title, summary, body, tags_json, metadata_json, created_at, updated_at) VALUES (?, ?, ?, NULLIF(?, ''), NULLIF(?, ''), ?, ?, ?, ?, ?, ?)`, c.ID, c.Kind, c.Status, c.Slug, c.Title, c.Summary, c.Body, encodeStrings(c.Tags), encodeJSON(c.Metadata), now, now)
-	return c, err
-}
-
-func (s *Store) UpdateContent(id string, update ContentUpdate) error {
-	if update.Body != nil || update.Metadata != nil || update.Kind != nil {
-		current, err := s.GetContentByID(id, true)
-		if err != nil {
-			return err
-		}
-		effectiveKind := current.Kind
-		if update.Kind != nil {
-			effectiveKind = *update.Kind
-		}
-		effectiveBody := current.Body
-		if update.Body != nil {
-			effectiveBody = *update.Body
-		}
-		effectiveMetadata := current.Metadata
-		if update.Metadata != nil {
-			effectiveMetadata = *update.Metadata
-		}
-		if effectiveKind == model.ContentKindArticle {
-			normalized := normalizeArticleMetadata(string(effectiveKind), effectiveBody, effectiveMetadata)
-			update.Metadata = &normalized
-		}
-	}
-	sets := make([]string, 0, 4)
-	args := make([]any, 0, 7)
-	if update.Title != nil {
-		sets = append(sets, "title = ?")
-		args = append(args, *update.Title)
-	}
-	if update.Slug != nil {
-		sets = append(sets, "slug = NULLIF(?, '')")
-		args = append(args, *update.Slug)
-	}
-	if update.Kind != nil {
-		sets = append(sets, "kind = ?")
-		args = append(args, *update.Kind)
-	}
-	if update.Summary != nil {
-		sets = append(sets, "summary = ?")
-		args = append(args, *update.Summary)
-	}
-	if update.Body != nil {
-		sets = append(sets, "body = ?")
-		args = append(args, *update.Body)
-	}
-	if update.Tags != nil {
-		sets = append(sets, "tags_json = ?")
-		args = append(args, encodeStrings(*update.Tags))
-	}
-	if update.Metadata != nil {
-		sets = append(sets, "metadata_json = ?")
-		args = append(args, encodeJSON(*update.Metadata))
-	}
-	sets = append(sets, "version = version + 1", "updated_at = ?")
-	args = append(args, time.Now().UTC().Format(time.RFC3339), id, update.ExpectedVersion)
-	result, err := s.DB.Exec(`UPDATE content SET `+strings.Join(sets, ", ")+` WHERE id = ? AND status != 'DELETED' AND version = ?`, args...)
-	if err != nil {
-		return err
-	}
-	count, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if count > 0 {
-		return nil
-	}
-	var exists int
-	if err := s.DB.QueryRow(`SELECT 1 FROM content WHERE id = ? AND status != 'DELETED'`, id).Scan(&exists); errors.Is(err, sql.ErrNoRows) {
-		return ErrContentNotFound
-	}
-	return ErrVersionConflict
-}
-
-// SetContentStatus transitions a content item's lifecycle. published_at is an
-// immutable first-publication fact: publishing only stamps it when NULL and
-// unpublishing keeps it, so a withdraw-and-republish cycle never rewrites the
-// original date or shifts trend analytics.
-func (s *Store) SetContentStatus(id, status string) error {
-	result, err := s.DB.Exec(`UPDATE content
-		SET status = ?,
-			published_at = CASE WHEN ? = 'PUBLISHED' AND published_at IS NULL THEN ? ELSE published_at END,
-			version = version + 1,
-			updated_at = ?
-		WHERE id = ? AND status != 'DELETED'`, status, status, time.Now().UTC().Format(time.RFC3339), time.Now().UTC().Format(time.RFC3339), id)
-	if err != nil {
-		return err
-	}
-	count, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if count > 0 {
-		return nil
-	}
-	// Zero affected rows means either the id is unknown or the row is
-	// soft-deleted (excluded by the WHERE clause); both are equally
-	// "not found" to callers because deleted content cannot transition.
-	var exists int
-	err = s.DB.QueryRow(`SELECT 1 FROM content WHERE id = ?`, id).Scan(&exists)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return err
-	}
-	return ErrContentNotFound
-}
-
-func (s *Store) DeleteContent(id string) error { return s.SetContentStatus(id, "DELETED") }

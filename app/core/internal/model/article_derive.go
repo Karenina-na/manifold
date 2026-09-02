@@ -1,4 +1,4 @@
-package store
+package model
 
 import (
 	"regexp"
@@ -12,27 +12,14 @@ var (
 	markdownLabelPattern   = regexp.MustCompile(`[*_` + "`" + `~]`)
 )
 
-// normalizeArticleMetadata keeps editorial fields intact while making derived
-// reading metadata authoritative at the Core boundary.
-func normalizeArticleMetadata(kind string, body string, metadata map[string]any) map[string]any {
-	if kind != "ARTICLE" {
-		return metadata
-	}
-	result := make(map[string]any, len(metadata)+2)
-	for key, value := range metadata {
-		result[key] = value
-	}
-	result["readingMinutes"] = float64(estimateReadingMinutes(body))
-	result["toc"] = deriveTableOfContents(body)
-	return result
-}
-
+// estimateReadingMinutes matches the tokenizer used for word statistics: every
+// latin/digit word counts once and every CJK character counts as half a unit.
 func estimateReadingMinutes(body string) int {
 	latinWords := 0
 	cjkCharacters := 0
 	inWord := false
 	for _, r := range body {
-		if isCJK(r) {
+		if isCJKRune(r) {
 			cjkCharacters++
 			inWord = false
 			continue
@@ -54,8 +41,8 @@ func estimateReadingMinutes(body string) int {
 	return minutes
 }
 
-func deriveTableOfContents(body string) []map[string]any {
-	entries := make([]map[string]any, 0)
+func deriveTableOfContents(body string) []TocItem {
+	entries := make([]TocItem, 0)
 	usedIDs := make(map[string]int)
 	inFence := false
 	for _, line := range strings.Split(body, "\n") {
@@ -93,7 +80,7 @@ func deriveTableOfContents(body string) []map[string]any {
 		if len(match[1]) == 3 {
 			level = 3
 		}
-		entries = append(entries, map[string]any{"id": id, "label": label, "level": float64(level)})
+		entries = append(entries, TocItem{ID: id, Label: label, Level: level})
 		if len(entries) >= 100 {
 			break
 		}
@@ -118,6 +105,6 @@ func slugifyHeading(value string) string {
 	return strings.Trim(builder.String(), "-")
 }
 
-func isCJK(r rune) bool {
+func isCJKRune(r rune) bool {
 	return (r >= 0x4e00 && r <= 0x9fff) || (r >= 0x3400 && r <= 0x4dbf) || (r >= 0x3040 && r <= 0x30ff) || (r >= 0xac00 && r <= 0xd7af)
 }

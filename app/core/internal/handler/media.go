@@ -27,9 +27,19 @@ var allowedMediaMimes = map[string]bool{
 }
 
 func (h *apiHandler) adminUploadMedia(w http.ResponseWriter, r *http.Request) {
-	filename := store.SanitizeMediaFilename(r.URL.Query().Get("filename"))
+	if err := rejectUnknownQuery(r.URL.Query(), "filename"); err != nil {
+		WriteError(w, http.StatusBadRequest, "INVALID_QUERY", err.Error())
+		return
+	}
+	rawFilename := strings.TrimSpace(r.URL.Query().Get("filename"))
+	if rawFilename == "" {
+		WriteError(w, http.StatusUnprocessableEntity, "VALIDATION_ERROR", "filename is required.")
+		return
+	}
+	filename := store.SanitizeMediaFilename(rawFilename)
 	if filename == "" {
-		filename = "upload"
+		WriteError(w, http.StatusUnprocessableEntity, "VALIDATION_ERROR", "filename is invalid.")
+		return
 	}
 	limit := h.cfg.MediaMaxBytes
 	if limit <= 0 {
@@ -70,6 +80,10 @@ func (h *apiHandler) adminUploadMedia(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *apiHandler) adminListMedia(w http.ResponseWriter, r *http.Request) {
+	if err := rejectUnknownQuery(r.URL.Query(), "page", "pageSize", "q"); err != nil {
+		WriteError(w, http.StatusBadRequest, "INVALID_QUERY", err.Error())
+		return
+	}
 	page, pageSize, needle, ok := parseMediaQuery(w, r)
 	if !ok {
 		return
@@ -89,7 +103,7 @@ func (h *apiHandler) adminListMedia(w http.ResponseWriter, r *http.Request) {
 	if page > totalPages {
 		page = totalPages
 	}
-	WriteJSON(w, http.StatusOK, map[string]any{"data": items, "pagination": model.PagePagination{Page: page, PageSize: pageSize, TotalItems: total, TotalPages: totalPages}})
+	WriteJSON(w, http.StatusOK, map[string]any{"data": items, "pagination": model.Pagination{Page: page, PageSize: pageSize, TotalItems: total, TotalPages: totalPages}})
 }
 
 func (h *apiHandler) adminDeleteMedia(w http.ResponseWriter, r *http.Request) {

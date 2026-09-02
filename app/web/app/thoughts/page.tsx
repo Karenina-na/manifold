@@ -1,4 +1,5 @@
 import { createServerClient } from "../../lib/api";
+import type { Content } from "@manifold/contracts";
 import { readSearchPage, readSearchTags, readSearchText } from "../../lib/search-params";
 import ThoughtArchive from "./thought-archive";
 
@@ -14,9 +15,11 @@ export default async function ThoughtsPage({ searchParams }: { searchParams: Sea
   const tags = readSearchTags(params);
   const page = readSearchPage(params);
   const client = createServerClient();
-  const [archive, tagsPage] = await Promise.all([
-    client.thoughts({ page, limit: PAGE_SIZE, q: query || undefined, tag: tags.length ? tags : undefined }).catch(() => null),
+  const [archive, tagsPage, site] = await Promise.all([
+    client.content({ kind: "THOUGHT", page, pageSize: PAGE_SIZE, q: query || undefined, tag: tags.length ? tags : undefined }).then((result) => ({ ...result, data: result.data.filter((item): item is Extract<Content, { kind: "THOUGHT" }> => item.kind === "THOUGHT") })).catch(() => null),
     client.tags({ kind: "THOUGHT" }).catch(() => null),
+    client.site().catch(() => null),
   ]);
-  return <ThoughtArchive key={`${query}|${tags.join(",")}|${page}`} initialArchive={archive} tags={tagsPage?.data ?? null} initialQuery={query} initialTags={tags} />;
+  const featured = site?.featuredThought?.kind === "THOUGHT" ? site.featuredThought : null;
+  return <ThoughtArchive key={`${query}|${tags.join(",")}|${page}`} initialArchive={archive} featured={featured} tags={tagsPage?.data ?? null} initialQuery={query} initialTags={tags} />;
 }

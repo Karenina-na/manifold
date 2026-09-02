@@ -5,12 +5,11 @@ import { lazy, Suspense, useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useMutation } from '@tanstack/react-query'
 import { z } from 'zod'
-import { clearSession, createAdminClient, readStoredSession, storeSession } from './api'
+import { clearSession, createAdminClient, readStoredSession, storeSession, unauthorizedEvent, type Session } from './api'
 import { navigate, requestNavigate, setNavConfirm, useHashRoute } from './lib/useHashRoute'
 import './App.css'
 
 type View = 'dashboard' | 'profile' | 'writings' | 'thoughts' | 'media' | 'comments' | 'settings'
-type Session = { accessToken: string; username: string; expiresAt: number }
 
 const DashboardWorkspace = lazy(() => import('./workspaces/DashboardWorkspace'))
 const ProfileWorkspace = lazy(() => import('./workspaces/ProfileWorkspace'))
@@ -69,6 +68,11 @@ function App() {
   useEffect(() => {
     setNavConfirm((to) => setPendingNav(to))
     return () => setNavConfirm(null)
+  }, [])
+  useEffect(() => {
+    const logout = () => { clearSession(); setSession(null) }
+    window.addEventListener(unauthorizedEvent, logout)
+    return () => window.removeEventListener(unauthorizedEvent, logout)
   }, [])
   const requestView = (next: View) => {
     if (next === view && route.segments.length === 1) return

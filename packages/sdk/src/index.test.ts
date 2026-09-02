@@ -27,27 +27,13 @@ test("encodes collection queries and bearer authentication", async () => {
 		token: "token-1",
 		fetch: async (input, init) => {
 			captured = new Request(input, init);
-			return new Response(JSON.stringify({ data: [], pagination: { nextCursor: null, hasMore: false } }), { status: 200 });
+			return new Response(JSON.stringify({ data: [], pagination: { page: 1, pageSize: 10, totalItems: 0, totalPages: 0 } }), { status: 200 });
 		},
 	});
 
-	await client.feed({ kind: ["ARTICLE", "THOUGHT"], tag: "systems", limit: 10 });
-	assert.equal(captured?.url, "http://core.test/api/v1/feed?kind=ARTICLE%2CTHOUGHT&tag=systems&limit=10");
+	await client.content({ kind: ["ARTICLE", "THOUGHT"], tag: "systems", pageSize: 10, limit: 99 } as never);
+	assert.equal(captured?.url, "http://core.test/api/v1/content?kind=ARTICLE%2CTHOUGHT&tag=systems&pageSize=10");
 	assert.equal(captured?.headers.get("Authorization"), "Bearer token-1");
-});
-
-test("reads the paginated thought archive from Core", async () => {
-	let captured: Request | undefined;
-	const client = new ManifoldClient({
-		baseUrl: "http://core.test",
-		fetch: async (input, init) => {
-			captured = new Request(input, init);
-			return new Response(JSON.stringify({ featured: null, data: [], pagination: { page: 2, pageSize: 8, totalItems: 0, totalPages: 1 } }), { status: 200 });
-		},
-	});
-
-	await client.thoughts({ page: 2, limit: 8 });
-	assert.equal(captured?.url, "http://core.test/api/v1/thoughts?page=2&limit=8");
 });
 
 test("requests tag aggregation and encodes content page filters", async () => {
@@ -56,21 +42,18 @@ test("requests tag aggregation and encodes content page filters", async () => {
 		baseUrl: "http://core.test",
 		fetch: async (input, init) => {
 			requests.push(new Request(input, init));
-			return new Response(JSON.stringify({ data: [], pagination: { nextCursor: null, hasMore: false } }), { status: 200 });
+			return new Response(JSON.stringify({ data: [], pagination: { page: 1, pageSize: 10, totalItems: 0, totalPages: 0 } }), { status: 200 });
 		},
 	});
 
 	await client.tags({ kind: "THOUGHT" });
 	assert.equal(requests[0]?.url, "http://core.test/api/v1/tags?kind=THOUGHT");
 
-	await client.content({ kind: "ARTICLE", q: "boundary", sort: "updated", aiAssisted: false, page: 3, limit: 10, skipFirst: true });
-	assert.equal(requests[1]?.url, "http://core.test/api/v1/content?kind=ARTICLE&q=boundary&sort=updated&aiAssisted=false&page=3&limit=10&skipFirst=true");
+	await client.content({ kind: "ARTICLE", q: "boundary", sort: "updated", aiAssisted: false, page: 3, pageSize: 10 });
+	assert.equal(requests[1]?.url, "http://core.test/api/v1/content?kind=ARTICLE&q=boundary&sort=updated&aiAssisted=false&page=3&pageSize=10");
 
 	await client.content({ kind: "ARTICLE", tag: ["systems", "go"] });
 	assert.equal(requests[2]?.url, "http://core.test/api/v1/content?kind=ARTICLE&tag=systems%2Cgo");
-
-	await client.thoughts({ tag: ["notes", "meta"], q: "drift" });
-	assert.equal(requests[3]?.url, "http://core.test/api/v1/thoughts?tag=notes%2Cmeta&q=drift");
 });
 
 test("reads and updates the admin thought configuration", async () => {
@@ -87,26 +70,49 @@ test("reads and updates the admin thought configuration", async () => {
 	await client.adminThoughtConfig();
 	await client.updateThoughtConfig({ featuredThoughtId: "thought-1" });
 	assert.equal(requests[0]?.url, "http://core.test/api/v1/admin/thoughts/config");
-	assert.equal(requests[1]?.method, "PATCH");
+	assert.equal(requests[1]?.method, "PUT");
 	assert.deepEqual(await requests[1]?.json(), { featuredThoughtId: "thought-1" });
 });
 
-test("encodes admin status, cursor, and partial update inputs", async () => {
+test("encodes admin status and full replacement update inputs", async () => {
 	const requests: Request[] = [];
 	const client = new ManifoldClient({
 		baseUrl: "http://core.test",
 		token: "token-1",
 		fetch: async (input, init) => {
 			requests.push(new Request(input, init));
-			return new Response(JSON.stringify({ data: [], pagination: { nextCursor: null, hasMore: false } }), { status: 200 });
+			return new Response(JSON.stringify({ data: [], pagination: { page: 1, pageSize: 10, totalItems: 0, totalPages: 0 } }), { status: 200 });
 		},
 	});
 
-	await client.adminContent({ status: "DRAFT", cursor: "MQ", limit: 10 });
-	await client.updateContent("content-1", { title: "Updated", expectedVersion: 3 });
-	assert.equal(requests[0]?.url, "http://core.test/api/v1/admin/content?status=DRAFT&cursor=MQ&limit=10");
-	assert.equal(requests[1]?.method, "PATCH");
-	assert.deepEqual(await requests[1]?.json(), { title: "Updated", expectedVersion: 3 });
+	await client.adminContent({ status: "DRAFT", pageSize: 10 });
+	await client.updateContent("content-1", { kind: "ARTICLE", slug: "updated", title: "Updated", summary: "", body: "Body", tags: [], metadata: { language: null, aiAssisted: false }, expectedVersion: 3 });
+	assert.equal(requests[0]?.url, "http://core.test/api/v1/admin/content?status=DRAFT&pageSize=10");
+	assert.equal(requests[1]?.url, "http://core.test/api/v1/admin/content/content-1");
+	assert.equal(requests[1]?.method, "PUT");
+	assert.deepEqual(await requests[1]?.json(), { kind: "ARTICLE", slug: "updated", title: "Updated", summary: "", body: "Body", tags: [], metadata: { language: null, aiAssisted: false }, expectedVersion: 3 });
+});
+
+test("URL-encodes path segments for admin mutations", async () => {
+	const requests: Request[] = [];
+	const client = new ManifoldClient({
+		baseUrl: "http://core.test",
+		fetch: async (input, init) => {
+			requests.push(new Request(input, init));
+			return new Response(JSON.stringify({ id: "x" }), { status: 200 });
+		},
+	});
+
+	await client.publishContent("content 1/x");
+	await client.deleteContent("content 1/x");
+	await client.restoreContent("content 1/x");
+	await client.deleteComment("comment 1/x");
+	await client.updateContent("content 1/x", { kind: "THOUGHT", slug: "thought", title: null, summary: "", body: "Body", tags: [], metadata: { mood: null, question: null, context: null, source: null }, expectedVersion: 1 });
+	assert.equal(requests[0]?.url, "http://core.test/api/v1/admin/content/content%201%2Fx/publish");
+	assert.equal(requests[1]?.url, "http://core.test/api/v1/admin/content/content%201%2Fx");
+	assert.equal(requests[2]?.url, "http://core.test/api/v1/admin/content/content%201%2Fx/restore");
+	assert.equal(requests[3]?.url, "http://core.test/api/v1/admin/comments/comment%201%2Fx");
+	assert.equal(requests[4]?.url, "http://core.test/api/v1/admin/content/content%201%2Fx");
 });
 
 test("encodes typed content metadata for admin creation", async () => {
@@ -118,8 +124,8 @@ test("encodes typed content metadata for admin creation", async () => {
 			return new Response(JSON.stringify({ id: "content-1" }), { status: 201 });
 		},
 	});
-	await client.createContent({ kind: "ARTICLE", slug: "draft", title: "Draft", summary: "", body: "Body", tags: [], metadata: { readingMinutes: 10 } });
-	assert.deepEqual(await captured?.json(), { kind: "ARTICLE", slug: "draft", title: "Draft", summary: "", body: "Body", tags: [], metadata: { readingMinutes: 10 } });
+	await client.createContent({ kind: "ARTICLE", slug: "draft", title: "Draft", summary: "", body: "Body", tags: [], metadata: { language: null, aiAssisted: false } });
+	assert.deepEqual(await captured?.json(), { kind: "ARTICLE", slug: "draft", title: "Draft", summary: "", body: "Body", tags: [], metadata: { language: null, aiAssisted: false } });
 });
 
 test("handles empty success responses", async () => {
@@ -155,10 +161,11 @@ test("sends the visitor id on tracked detail reads", async () => {
 		},
 	});
 
-	await client.contentBySlug("a-piece", { visitorId: "visitor-123" });
-	await client.contentBySlug("a-piece");
+	await client.contentBySlug("a-piece", undefined, "visitor-123");
+	await client.contentBySlug("a-piece", { trackView: false, referrer: "https://example.com" });
 	assert.equal(requests[0]?.url, "http://core.test/api/v1/content/a-piece");
 	assert.equal(requests[0]?.headers.get("X-Visitor-ID"), "visitor-123");
+	assert.equal(requests[1]?.url, "http://core.test/api/v1/content/a-piece?trackView=false&referrer=https%3A%2F%2Fexample.com");
 	assert.equal(requests[1]?.headers.get("X-Visitor-ID"), null);
 });
 

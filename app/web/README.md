@@ -4,7 +4,7 @@ Manifold 公开阅读端，负责 Home、Thoughts、Writings、Markdown 阅读�
 
 当前详细契约见 [`docs/decisions/web.md`](../../docs/decisions/web.md)，摘要索引见 [`docs/web.md`](../../docs/web.md)。其中记录 Next.js App Router 的页面、Server/Client Component 边界、SEO 数据流、Core 请求、评论/反应 query、Markdown 公式/高亮/sanitize/TOC/复制能力，以及 Design System 约束。
 
-当前路由：`/`、`/thoughts`、`/thoughts/[id]`、`/writing`、`/writing/[slug]`、`/feed.xml`、`/health`。
+当前路由：`/`、`/thoughts`、`/thoughts/[slug]`、`/writing`、`/writing/[slug]`、`/feed.xml`、`/health`。
 
 `/thoughts` 由 Server Component 读取 Core 的 Thoughts aggregate，翻页时请求 Core 的对应页；置顶有效性、最新回退、置顶排除、正文摘录和页数均由 Core 负责，Web 只把当前页按 UTC 年份/月份/日期组织成分块时间轴：年份为卡片 surface 之外的分节标题行，月份标签与日期节点在左栏和纵轴上，内容 surface 按年份框住卡片。Thoughts 与 Writings 归档都把星号灰色摘要和正文摘录分开，普通项限制两行正文、置顶项限制四行；归档页显示 Core 返回的点赞、观看和已审核评论数，不在 Web 端额外请求评论或计算统计。
 

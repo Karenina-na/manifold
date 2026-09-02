@@ -1,17 +1,16 @@
 import { TextInput } from '@mantine/core'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowUpRight, Eye, Heart, MessageCircle, Pin, PinOff, Search, Send, Trash2, X } from 'lucide-react'
+import { ArrowUpRight, Eye, Heart, MessageCircle, Pin, PinOff, RotateCcw, Search, Send, Trash2, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { AdminContent, ContentKind, ContentSort } from '@manifold/contracts'
 import type { ManifoldClient } from '@manifold/sdk'
 import { formatDate } from '@manifold/render'
-import { deriveExcerpt } from '../lib/content-derive'
 import { ConfirmButton } from './ConfirmButton'
 import { Pager } from './Pager'
 
-export type StatusFilter = 'ALL' | 'DRAFT' | 'PUBLISHED'
+export type StatusFilter = 'ALL' | 'DRAFT' | 'PUBLISHED' | 'DELETED'
 
-export type TransitionAction = 'publish' | 'unpublish' | 'delete'
+export type TransitionAction = 'publish' | 'unpublish' | 'delete' | 'restore'
 
 export type PinControl = { pinnedId: string | null; onToggle: (content: AdminContent) => void; pending: boolean }
 
@@ -58,12 +57,12 @@ export function ContentListPanel({ client, kind, singular, onEdit, onTransition,
         onChange={(event) => setSearch(event.currentTarget.value)}
       />
       <div className="filter-chips" role="group" aria-label="Status filter">
-        {(['ALL', 'DRAFT', 'PUBLISHED'] as const).map((option) => <button
+        {(['ALL', 'DRAFT', 'PUBLISHED', 'DELETED'] as const).map((option) => <button
           key={option}
           type="button"
           className={status === option ? 'filter-chip active' : 'filter-chip'}
           onClick={() => { setStatus(option); setPage(1) }}
-        >{option === 'ALL' ? 'All' : option === 'DRAFT' ? 'Drafts' : 'Published'}</button>)}
+        >{option === 'ALL' ? 'All' : option === 'DRAFT' ? 'Drafts' : option === 'PUBLISHED' ? 'Published' : 'Deleted'}</button>)}
       </div>
       <select className="filter-sort" value={sort} onChange={(event) => { setSort(event.currentTarget.value as ContentSort); setPage(1) }} aria-label="Sort">
         <option value="newest">Newest</option>
@@ -91,7 +90,7 @@ export function ContentListPanel({ client, kind, singular, onEdit, onTransition,
 function ContentRow({ content, singular, onEdit, onTransition, hrefFor, pin }: { content: AdminContent; singular: string; onEdit: (content: AdminContent) => void; onTransition: (content: AdminContent, action: TransitionAction) => void; hrefFor: (content: AdminContent) => string; pin?: PinControl }) {
   const preview = content.summary?.trim()
     ? `✦ ${content.summary.trim()}`
-    : deriveExcerpt(content.body ?? '')
+    : content.excerpt
   const pinned = pin?.pinnedId === content.id
   return <article className="content-row" onClick={() => onEdit(content)}>
     <div>
@@ -120,6 +119,7 @@ function ContentRow({ content, singular, onEdit, onTransition, hrefFor, pin }: {
       {content.status === 'DRAFT' && <ConfirmButton label={`Publish ${content.title || content.id}`} confirmLabel="Publish now" confirmBody={`Publish this ${singular} to the public site?`} icon={<Send size={14} />} stopPropagation onConfirm={() => onTransition(content, 'publish')} />}
       {content.status === 'PUBLISHED' && <ConfirmButton label={`Unpublish ${content.title || content.id}`} confirmLabel="Unpublish" confirmBody="Take this piece off the public site? It returns to drafts." danger icon={<X size={14} />} stopPropagation onConfirm={() => onTransition(content, 'unpublish')} />}
       {content.status !== 'DELETED' && <ConfirmButton label={`Delete ${content.title || content.id}`} confirmLabel="Delete" confirmBody="Delete this piece? It leaves the public site immediately." danger icon={<Trash2 size={14} />} stopPropagation onConfirm={() => onTransition(content, 'delete')} />}
+      {content.status === 'DELETED' && <ConfirmButton label={`Restore ${content.title || content.id}`} confirmLabel="Restore" confirmBody={`Restore this ${singular} to drafts?`} icon={<RotateCcw size={14} />} stopPropagation onConfirm={() => onTransition(content, 'restore')} />}
     </div>
   </article>
 }

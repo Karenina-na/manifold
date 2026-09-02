@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Eye, Heart, Search, SlidersHorizontal } from "lucide-react";
-import { formatDate } from "../../lib/api";
+import { buildHref, formatDate } from "../../lib/api";
 import { useRef } from "react";
 import type { Content, ContentSort, TagSummary } from "@manifold/contracts";
 import styles from "../site.module.css";
@@ -19,11 +19,12 @@ import { Pagination } from "../../components/pagination";
 
 const PAGE_SIZE = 10;
 
-type WritingListData = { items: Content[]; totalItems: number; totalPages: number; page: number };
+type Article = Extract<Content, { kind: "ARTICLE" }>;
+type WritingListData = { items: Article[]; totalItems: number; totalPages: number; page: number };
 
 type WritingArchiveProps = {
   initialList: WritingListData | null;
-  featured: Content | null;
+  featured: Article | null;
   tags: TagSummary[] | null;
   query: string;
   activeTags: string[];
@@ -33,15 +34,15 @@ type WritingArchiveProps = {
 
 async function fetchWritingPage(state: { query: string; tags: string[]; page: number }, extra: Record<string, string | undefined>): Promise<WritingListData> {
   const sort = extra.sort as ContentSort | undefined;
-  const page = await createBrowserClient().writings({
+  const page = await createBrowserClient().content({ kind: "ARTICLE",
     q: state.query || undefined,
     tag: state.tags.length ? state.tags : undefined,
     sort,
     aiAssisted: extra.noAi === "1" ? false : undefined,
     page: state.page,
-    limit: PAGE_SIZE,
+    pageSize: PAGE_SIZE,
   });
-  return { items: page.data, totalItems: page.pagination.totalItems ?? 0, totalPages: page.pagination.totalPages ?? 1, page: page.pagination.page ?? state.page };
+  return { items: page.data.filter((item): item is Article => item.kind === "ARTICLE"), totalItems: page.pagination.totalItems, totalPages: page.pagination.totalPages, page: page.pagination.page };
 }
 
 export default function WritingArchive({ initialList, featured, tags, query, activeTags, sort, noAi }: WritingArchiveProps) {
@@ -72,11 +73,11 @@ export default function WritingArchive({ initialList, featured, tags, query, act
       <header className={styles.writingHero}><span className={styles.eyebrow}>Writings</span><h1>Writing</h1></header>
     </Reveal>
     {showFeatured && featured && <Reveal className={styles.writingReveal}>
-      <Link href={featured.href} className={styles.featuredCard}>
+      <Link href={buildHref(featured)} className={styles.featuredCard}>
         <div className={styles.featuredTop}><span className={styles.featuredBadge}>Featured</span><span>{formatDate(featured.publishedAt ?? featured.createdAt)}</span></div>
         <h2>{featured.title}</h2>
         <WritingPreview item={featured} featured />
-        <div className={styles.featuredFooter}><span>{formatDate(featured.publishedAt ?? featured.createdAt)} · {featured.tags.map((value) => `#${value}`).join(" ")} · {featured.kind === "ARTICLE" && featured.metadata.readingMinutes ? `${featured.metadata.readingMinutes} min read` : "Article"}</span><span><Eye size={14} /> Views {featured.viewCount ?? 0} · <Heart size={14} /> Likes {featured.likeCount ?? 0}</span></div>
+         <div className={styles.featuredFooter}><span>{formatDate(featured.publishedAt)} · {featured.tags.map((value) => `#${value}`).join(" ")} · {featured.metadata.readingMinutes ? `${featured.metadata.readingMinutes} min read` : "Article"}</span><span><Eye size={14} /> Views {featured.viewCount} · <Heart size={14} /> Likes {featured.likeCount}</span></div>
         <span className={styles.featuredArrow} aria-hidden="true">→</span>
       </Link>
     </Reveal>}
@@ -97,14 +98,14 @@ export default function WritingArchive({ initialList, featured, tags, query, act
         </div>
         <div className={styles.writingListSurface} data-pending={isPending}>
           <div className={styles.writingList}>
-            {articles.map((item) => <Link className={styles.writingItem} key={item.id} href={item.href}>
+            {articles.map((item) => <Link className={styles.writingItem} key={item.id} href={buildHref(item)}>
               <h3>{item.title}</h3>
               <WritingPreview item={item} />
               <div>
-                <span>{formatDate(item.publishedAt ?? item.createdAt)}</span>
+                <span>{formatDate(item.publishedAt)}</span>
                 <span>{item.tags.map((value) => `#${value}`).join(" ")}</span>
-                <span>{item.kind === "ARTICLE" && item.metadata.readingMinutes ? `${item.metadata.readingMinutes} min read` : "Article"}</span>
-                <span><Eye size={12} /> {item.viewCount ?? 0} · <Heart size={12} /> {item.likeCount ?? 0}</span>
+                <span>{item.metadata.readingMinutes ? `${item.metadata.readingMinutes} min read` : "Article"}</span>
+                <span><Eye size={12} /> {item.viewCount} · <Heart size={12} /> {item.likeCount}</span>
               </div>
             </Link>)}
           </div>

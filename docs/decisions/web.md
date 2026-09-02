@@ -22,14 +22,14 @@ Server Component 负责首屏数据、详情读取和 SEO；Client Component 负
 | 路由 | 类型 | Core 数据 | 行为 |
 | --- | --- | --- | --- |
 | `/` | Dynamic Server Component | profile、site、全部公开 Article/Thought 历史、stats | 站点设置 `sections` 驱动的首页区块（枚举 `PROFILE/BACKGROUND/RECENT_CONTENT/UPDATES/SERIES/CONTACT`，含顺序）、按时间排序的 Recent Content 双列、年度 Contribution activity 等 |
-| `/thoughts` | Dynamic Server Component + client archive controls | `thoughts({ page, limit: 8, tag, q })`、`tags({ kind: "THOUGHT" })` | Core 配置驱动的置顶 Thought（仅默认视图展示）、按年份/月份/日期分块的纵向时间轴、服务端分页，以及置顶与时间轴之间的搜索和多 tag 过滤（OR 语义，URL `q`/`tag` 可重复/`page` 同步） |
+| `/thoughts` | Dynamic Server Component + client archive controls | `content({ kind: "THOUGHT", page, pageSize: 8, tag, q })`、`tags({ kind: "THOUGHT" })` | Core 配置驱动的置顶 Thought（仅默认视图展示）、按年份/月份/日期分块的纵向时间轴、服务端分页，以及置顶与时间轴之间的搜索和多 tag 过滤（OR 语义，URL `q`/`tag` 可重复/`page` 同步） |
 | `/thoughts/[id]` | Dynamic Server Component | `contentBySlug(id, { referrer, visitorId })` | 专属 Thought 详情页：沿用 Writing 详情的纸面结构（返回行、标题面、正文面、讨论面、添加评论面）但不使用阅读壳；标题面展示 eyebrow、✦ 灰色摘要、日期/tag 与点赞/观看/评论计数，`question` 作为 serif 反思引言块，`context`/`source` 作 mono 脚注；标题面与正文面之间渲染 `packages/render` 的 `ReadingProgress` 阅读进度轨（经 `ThoughtSurface` 的 `progress` 开关，复用 Writing 右侧目录的轨道与百分比视觉，无目录链接：宽屏为正文右侧吸附竖轨，≤1300px 退化为正文面上方的横向进度行）；讨论面（统计、搜索、筛选）与添加评论面作为两个独立块依次置于正文面下方，与 Writing 详情同构，无目录链接与浮动动作卡；非 THOUGHT 内容或读取失败一律 404 |
-| `/writing` | Dynamic Server Component + client archive controls | `writings({ q, tag, sort, aiAssisted, page, limit })`、`tags({ kind: "ARTICLE" })` | 双栏长文归档、置顶首篇、搜索、多标签筛选（OR 语义）、最新/最早/最近更新排序与悬浮侧栏（视口垂直居中：滚动中随内容冻结，停止后防抖 160ms 重算并动画归位，布局变化同样动画跟随，导航净空 112px，760px 以下回退静态）；两页归档共用 `useArchiveFilters` 客户端取数：搜索/tag/排序/No AI 开关和分页由 Core 在数据层执行，筛选状态经 `history.replaceState` 同步到 URL `q`/`tag`（可重复）/`page`/`sort`/`noAi`；置顶卡取 `writings()` aggregate 的 `featured`（Admin 在 Writings 工作区设置的 pin，未配置时回退最新文章），仅在默认视图（无 `q`/`tag`/`noAi` 且 `sort=newest`）展示，aggregate 的 `data`/`totalItems` 始终排除置顶项（与 Thoughts 归档同口径）；tag 云和计数来自 `/api/v1/tags`，选中的 tag 在云中排最前；卡片区分摘要与 Core 正文摘录，并展示聚合的浏览量和点赞数；从详情页通过浏览器历史返回时刷新 RSC 数据 |
+| `/writing` | Dynamic Server Component + client archive controls | `content({ kind: "ARTICLE", q, tag, sort, aiAssisted, page, pageSize })`、`tags({ kind: "ARTICLE" })` | 双栏长文归档、置顶首篇、搜索、多标签筛选（OR 语义）、最新/最早/最近更新排序与悬浮侧栏 |
 | `/writing/[slug]` | Dynamic Server Component + client reading controls | `contentBySlug(slug, { referrer, visitorId })` | 返回 Writing 入口作为标题阅读面的独立上方行；其下为四段同宽的不透明阅读面（标题、正文、讨论、添加评论）、同排日期/阅读时长/语言/统计、Markdown、右侧进度目录、评论和反应；讨论面展示统计、搜索和筛选，添加评论面在接近底部时由桌面/平板左侧紧凑动作卡通过共享布局动画展开；越过激活线后继续下滑保持展开，仅向上越回激活线才恢复左侧，手机端在讨论面之后堆叠；非 ARTICLE 内容、未发布或读取失败一律走标准 404（`not-found.tsx` 渲染 "That piece is not here." 安抚页） |
 | `/health` | Route Handler | 无 | Web 进程 liveness，Core 健康检查仍为 `/healthz` |
 | `/feed.xml` | Dynamic Route Handler | site、2 条 Article、3 条 Thought | 输出同源 RSS 2.0 feed，channel title/description 取站点设置（回退内置 "Manifold" 文案） |
 
-详情页根据 content kind 选择返回路径：Thought 用 `/thoughts/{id}`，Article 用 `/writing/{slug}`。Core 返回的 `href` 是列表链接的来源，页面不自行重建业务 URL。
+详情页根据 content kind 选择返回路径：Thought 用 `/thoughts/{slug}`，Article 用 `/writing/{slug}`。`buildHref()` 在 Web 边界生成链接，Core 不返回 `href`。
 
 详情页的浏览事件归因：SSR 读取 `manifold-vid` cookie 并经 `contentBySlug` 的 `visitorId` 附带 `X-Visitor-ID`，Core 按"同人同内容同 UTC 日"去重统计独立访客。访客 ID 唯一来源是 localStorage `manifold.visitorId`（`getVisitorId()`），每次客户端挂载时镜像到 `manifold-vid` cookie（`path=/`、1 年 sliding、`samesite=lax`）；Server Component 无法读 localStorage，浏览器首次直接深链详情页时 cookie 尚未生成，该次浏览按匿名事件计入，完成任一页面的客户端挂载后开始去重。
 
@@ -54,8 +54,8 @@ Thoughts、Writings 两个归档和评论讨论面的 Previous/Next 分页器来
 ```text
 profile()
 site()
-feed({ limit: 50, kind: "ARTICLE", cursor })  // repeat until pagination ends or 1000 items
-feed({ limit: 50, kind: "THOUGHT", cursor })  // repeat until pagination ends or 1000 items
+content({ pageSize: 50, kind: "ARTICLE", page })  // repeat until pagination ends or 1000 items
+content({ pageSize: 50, kind: "THOUGHT", page })  // repeat until pagination ends or 1000 items
 stats()
 ```
 
@@ -86,7 +86,7 @@ Article 的 `metadata.toc` 和 `readingMinutes` 由 Core 在保存时从 Markdow
 
 `ArticleDiscussion`、`CommentList`/`CommentItem` 与 `CommentComposer` 使用 React Hook Form、Zod 和 TanStack Query；Thought 详情页通过 `CommentsSection` 在同一 `ReplyContext` 下组合讨论面与独立的添加评论面，Writing 详情由 `ArticleReadingShell` 提供同一 Provider：
 
-1. `comments(slug, { page, limit, q })` 分页读取 Core 返回的公开评论（创建即公开，无审核状态；已软删评论不会出现）。分页只作用于顶层评论，每页 10 条，回复随其顶层同页返回；Web 按平铺的 `createdAt` 升序列表以 `replyToId` 组装线程。回复缩进封顶两级，更深的回复保持同级，由 `.commentNest` 提供竖线缩进。
+1. `comments(slug, { page, pageSize, q })` 分页读取 Core 返回的公开评论（创建即公开；已软删评论不会出现）。分页只作用于顶层评论，每页 10 条，回复随其顶层同页返回；Web 按平铺的 `createdAt` 升序列表以 `replyToId` 组装线程。回复缩进封顶两级，更深的回复保持同级，由 `.commentNest` 提供竖线缩进。
 2. 评论渲染为点阵头像（`CommentAvatar`，按 `avatarSeed` 或评论 ID 确定性生成）+ 微信式气泡（圆角矩形、左下角尖角）；名字旁以 `formatRelativeTime` 显示英文相对时间。hover 或键盘聚焦气泡时右上淡入 Reply 按钮。
 3. Reply 点击写入 `ReplyContext`，平滑滚动到 `#comment-composer` 并聚焦正文输入；composer 顶部显示 `Replying to @name` 引用条（灰色引用原文）可取消，提交携带 `replyToId`。
 4. 表单要求正文 3 到 4000 字符，作者名/网站可选，附轻量验证码；Name 字段预填 `lib/identity.ts` 生成的组合词默认名（来自 `manifold.visitorId` 种子，持久化于 `localStorage` 的 `manifold.identity`），头像选择器 `AvatarPicker` 提供 6 个确定性候选可点选，身份随评论提交（`avatarSeed`）并在发送成功后回写本地。

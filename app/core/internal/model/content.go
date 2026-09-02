@@ -7,44 +7,81 @@ const (
 	ContentKindArticle ContentKind = "ARTICLE"
 )
 
-type Profile struct {
-	ID           string              `json:"id"`
-	DisplayName  string              `json:"displayName"`
-	Handle       string              `json:"handle"`
-	Headline     string              `json:"headline"`
-	Bio          string              `json:"bio"`
-	AvatarURL    string              `json:"avatarUrl"`
-	Location     string              `json:"location"`
-	Organization string              `json:"organization"`
-	WebsiteURL   string              `json:"websiteUrl"`
-	ResumeURL    string              `json:"resumeUrl,omitempty"`
-	Interests    []string            `json:"interests,omitempty"`
-	Education    []map[string]string `json:"education,omitempty"`
-	Experience   []map[string]string `json:"experience,omitempty"`
-	Series       []map[string]string `json:"series,omitempty"`
-	Contacts     []map[string]string `json:"contacts,omitempty"`
-	UpdatedAt    string              `json:"updatedAt"`
+type ContentStatus string
+
+const (
+	StatusDraft     ContentStatus = "DRAFT"
+	StatusPublished ContentStatus = "PUBLISHED"
+	StatusDeleted   ContentStatus = "DELETED"
+)
+
+type ProfileEducationItem struct {
+	Institution string `json:"institution"`
+	Program     string `json:"program"`
+	Period      string `json:"period"`
 }
 
-type Content struct {
-	ID           string         `json:"id"`
-	Kind         ContentKind    `json:"kind"`
-	Status       string         `json:"status"`
-	Slug         string         `json:"slug,omitempty"`
-	Title        string         `json:"title,omitempty"`
-	Summary      string         `json:"summary"`
-	Excerpt      string         `json:"excerpt,omitempty"`
-	Body         string         `json:"body,omitempty"`
-	Tags         []string       `json:"tags"`
-	PublishedAt  *string        `json:"publishedAt"`
-	CreatedAt    string         `json:"createdAt"`
-	UpdatedAt    string         `json:"updatedAt"`
-	Version      int            `json:"version"`
-	Href         string         `json:"href,omitempty"`
-	ViewCount    int            `json:"viewCount"`
-	LikeCount    int            `json:"likeCount"`
-	CommentCount int            `json:"commentCount"`
-	Metadata     map[string]any `json:"metadata"`
+type ProfileExperienceItem struct {
+	Organization string `json:"organization"`
+	Role         string `json:"role"`
+	Period       string `json:"period"`
+}
+
+type ProfileSeriesItem struct {
+	Name        string  `json:"name"`
+	URL         string  `json:"url"`
+	Description string  `json:"description"`
+	Category    *string `json:"category"`
+}
+
+type ProfileContact struct {
+	Label  string  `json:"label"`
+	URL    string  `json:"url"`
+	Handle *string `json:"handle"`
+	Icon   *string `json:"icon"`
+}
+
+type Profile struct {
+	ID           string                  `json:"id"`
+	DisplayName  string                  `json:"displayName"`
+	Handle       string                  `json:"handle"`
+	Headline     string                  `json:"headline"`
+	Bio          string                  `json:"bio"`
+	AvatarURL    string                  `json:"avatarUrl"`
+	Location     string                  `json:"location"`
+	Organization string                  `json:"organization"`
+	WebsiteURL   string                  `json:"websiteUrl"`
+	ResumeURL    *string                 `json:"resumeUrl"`
+	Interests    []string                `json:"interests"`
+	Education    []ProfileEducationItem  `json:"education"`
+	Experience   []ProfileExperienceItem `json:"experience"`
+	Series       []ProfileSeriesItem     `json:"series"`
+	Contacts     []ProfileContact        `json:"contacts"`
+	UpdatedAt    string                  `json:"updatedAt"`
+}
+
+// ThoughtMetadata is the whole metadata object for THOUGHT content. Null means
+// "no value"; keys are always emitted.
+type ThoughtMetadata struct {
+	Mood     *string `json:"mood"`
+	Question *string `json:"question"`
+	Context  *string `json:"context"`
+	Source   *string `json:"source"`
+}
+
+type TocItem struct {
+	ID    string `json:"id"`
+	Label string `json:"label"`
+	Level int    `json:"level"`
+}
+
+// ArticleMetadata is the whole metadata object for ARTICLE content.
+// readingMinutes and toc are derived by Core on save.
+type ArticleMetadata struct {
+	ReadingMinutes int       `json:"readingMinutes"`
+	Toc            []TocItem `json:"toc"`
+	Language       *string   `json:"language"`
+	AiAssisted     bool      `json:"aiAssisted"`
 }
 
 type SiteConfig struct {
@@ -55,11 +92,6 @@ type SiteConfig struct {
 	CommentsEnabled bool                 `json:"commentsEnabled"`
 	Navigation      []SiteNavigationItem `json:"navigation" validate:"min=1,max=10,dive"`
 	Sections        []string             `json:"sections" validate:"min=1,max=10,unique,dive,required,oneof=PROFILE BACKGROUND RECENT_CONTENT UPDATES SERIES CONTACT"`
-}
-
-type SiteContentRef struct {
-	ID   string      `json:"id" validate:"required,max=160"`
-	Kind ContentKind `json:"kind" validate:"required,oneof=THOUGHT ARTICLE"`
 }
 
 type SiteNavigationItem struct {
@@ -78,7 +110,7 @@ type WritingConfig struct {
 	UpdatedAt         string  `json:"updatedAt"`
 }
 
-type PagePagination struct {
+type Pagination struct {
 	Page       int `json:"page"`
 	PageSize   int `json:"pageSize"`
 	TotalItems int `json:"totalItems"`
@@ -90,34 +122,24 @@ type TagSummary struct {
 	Count int    `json:"count"`
 }
 
-type ThoughtArchive struct {
-	Featured   *Content       `json:"featured"`
-	Data       []Content      `json:"data"`
-	Pagination PagePagination `json:"pagination"`
-}
-
-type WritingArchive struct {
-	Featured   *Content       `json:"featured"`
-	Data       []Content      `json:"data"`
-	Pagination PagePagination `json:"pagination"`
-}
-
+// Comment is the public comment shape; soft-deletion timestamps exist only in
+// the admin view.
 type Comment struct {
 	ID         string  `json:"id"`
 	ContentID  string  `json:"contentId"`
 	AuthorName string  `json:"authorName"`
-	AuthorURL  string  `json:"authorUrl,omitempty"`
+	AuthorURL  *string `json:"authorUrl"`
 	Body       string  `json:"body"`
 	CreatedAt  string  `json:"createdAt"`
-	ReplyToID  *string `json:"replyToId,omitempty"`
-	AvatarSeed string  `json:"avatarSeed,omitempty"`
-	DeletedAt  string  `json:"deletedAt,omitempty"`
+	ReplyToID  *string `json:"replyToId"`
+	AvatarSeed string  `json:"avatarSeed"`
 }
 
 type AdminComment struct {
 	Comment
+	DeletedAt    *string     `json:"deletedAt"`
 	ContentTitle string      `json:"contentTitle"`
-	ContentSlug  string      `json:"contentSlug,omitempty"`
+	ContentSlug  string      `json:"contentSlug"`
 	ContentKind  ContentKind `json:"contentKind"`
 }
 
@@ -155,7 +177,7 @@ type AdminOverviewContentItem struct {
 	ID           string      `json:"id"`
 	Kind         ContentKind `json:"kind"`
 	Slug         string      `json:"slug"`
-	Title        string      `json:"title"`
+	Title        *string     `json:"title"`
 	ViewCount    int         `json:"viewCount"`
 	LikeCount    int         `json:"likeCount"`
 	CommentCount int         `json:"commentCount"`
@@ -167,15 +189,15 @@ type AdminOverviewTrendPoint struct {
 	Published int    `json:"published"`
 }
 
+type AdminOverviewTrend struct {
+	Monthly []AdminOverviewTrendPoint `json:"monthly"`
+}
+
 type AdminOverview struct {
 	Content    AdminOverviewContent       `json:"content"`
 	Trend      AdminOverviewTrend         `json:"trend"`
 	TopContent []AdminOverviewContentItem `json:"topContent"`
 	Tags       []TagSummary               `json:"tags"`
-}
-
-type AdminOverviewTrend struct {
-	Monthly []AdminOverviewTrendPoint `json:"monthly"`
 }
 
 type AnalyticsRange struct {
@@ -251,16 +273,18 @@ type SystemStatus struct {
 }
 
 type AuditEvent struct {
-	ID           string `json:"id"`
-	EventName    string `json:"eventName"`
-	ResourceType string `json:"resourceType"`
-	ResourceID   string `json:"resourceId"`
-	Actor        string `json:"actor"`
-	MetadataJSON string `json:"metadataJson"`
-	CreatedAt    string `json:"createdAt"`
+	ID           string  `json:"id"`
+	EventName    string  `json:"eventName"`
+	ResourceType string  `json:"resourceType"`
+	ResourceID   string  `json:"resourceId"`
+	Actor        string  `json:"actor"`
+	RequestID    *string `json:"requestId"`
+	TraceID      *string `json:"traceId"`
+	MetadataJSON string  `json:"metadataJson"`
+	CreatedAt    string  `json:"createdAt"`
 }
 
 type AuditEventList struct {
-	Events     []AuditEvent   `json:"events"`
-	Pagination PagePagination `json:"pagination"`
+	Events     []AuditEvent `json:"events"`
+	Pagination Pagination   `json:"pagination"`
 }

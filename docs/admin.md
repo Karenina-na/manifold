@@ -4,7 +4,7 @@
 
 ## 1. 背景与边界
 
-`app/admin` 是单一 owner 使用的私有管理端，负责登录、统计与 Now 状态、Profile、Writings/Thoughts 发布、评论管理（软删除/恢复）和首页 composition。它是独立的 Vite/React 应用，不复用 Web 页面组件、不访问 Core SQLite、不复制 Core 业务规则。
+`app/admin` 是单一 owner 使用的私有管理端，负责登录、统计、Profile、Writings/Thoughts 发布、评论管理（软删除/恢复）、媒体和首页 composition。它是独立的 Vite/React 应用，不复用 Web 页面组件、不访问 Core SQLite、不复制 Core 业务规则。
 
 Core 负责最终鉴权和状态转换；Admin 只持有 session token，组织表单、查询缓存和用户反馈。
 
@@ -24,7 +24,7 @@ Vite + React 19
 └── @manifold/sdk -> Core /api/v1/admin
 ```
 
-主要模块：`src/App.tsx` 管理登录、hash 路由（`#/writings`、`#/writings/{id}`、`#/writings/{id}/comments?…` 等二级页面，支持 hash query）和未保存离开确认；`src/api.ts` 创建 SDK client；`src/lib/` 提供 hash 路由、dirty 守卫和 Core 派生规则的浏览器镜像（`content-derive.ts`）；`src/components/` 提供内容工作区共享组件（`ContentListPanel`/`ContentEditorShell`/`ContentCommentsPanel`/`SaveBar`/`ChipsInput`/`ConfirmButton`/`MarkdownEditor`/`Pager`/`LinkRowsField`）；`SettingsWorkspace.tsx` 管理站点设置（身份、导航、评论开关、首页区块组合）；`workspaces/` 下分别负责 Dashboard（数据总览）、Profile、Writings、Thoughts、Media（图片上传与媒体库）和评论管理；`ErrorBoundary.tsx` 负责渲染恢复。组件文件用 PascalCase，工具与 hook 用 kebab-case。
+主要模块：`src/App.tsx` 管理登录、hash 路由（`#/writings`、`#/writings/{id}`、`#/writings/{id}/comments?…` 等二级页面，支持 hash query）和未保存离开确认；`src/api.ts` 创建 SDK client；`src/lib/` 提供 hash 路由、dirty 守卫和共享包导出的 Core 派生规则；`src/components/` 提供内容工作区共享组件（`ContentListPanel`/`ContentEditorShell`/`ContentCommentsPanel`/`SaveBar`/`ChipsInput`/`ConfirmButton`/`MarkdownEditor`/`Pager`/`LinkRowsField`）；`SettingsWorkspace.tsx` 管理站点设置（身份、导航、评论开关、首页区块组合）；`workspaces/` 下分别负责 Dashboard（数据总览）、Profile、Writings、Thoughts、Media（图片上传与媒体库）和评论管理；`ErrorBoundary.tsx` 负责渲染恢复。组件文件用 PascalCase，工具与 hook 用 kebab-case。
 
 Dashboard、Profile、Writings、Thoughts、Comments、Settings 通过 lazy chunk 加载，登录壳同步加载。
 
@@ -51,13 +51,13 @@ Dashboard、Profile、Writings、Thoughts、Comments、Settings 通过 lazy chun
   - Recent activity：`adminAudit({ page, pageSize: 10, q })` 服务端分页，`q` OR 匹配事件名/操作者/资源 ID，搜索 250ms 防抖且重置回第 1 页。
 - 底部系统健康卡：顶部 CPU/内存/磁盘三个环形图（used vs free，`isAnimationActive` 关闭）+ cells（version、uptime、Host（hostname · platform）、CPU（核数 · 占比）、内存/磁盘（used/total · percent，磁盘为数据库所在分区）、load average 1/5/15、进程 RSS、heap、goroutines、DB 体积、内容缓存条目、审计事件总数和启动时间）；卡片标题区带独立刷新按钮，仅失效 `admin-system` query（`system.isFetching` 时图标旋转）。资源指标由 Core 经 gopsutil 采样，单项失败显示为零值。
 
-Refresh 按钮同时 refetch 四个 query。Now 状态功能已整体移除（Core 端点与 `NowStatus` 契约删除），Dashboard 不再承载任何 Now 编辑。
+Refresh 按钮同时 refetch 四个 query。
 
 ### Profile
 
 三栏工作台：左侧分区锚点导航（Identity / Links / Interests / CV / Series / Contact）+ 中间分组表单 + 右侧实时预览（随输入渲染公开首页的简化版，Admin 自绘，不依赖 Web 组件）。窄屏（<1180px）隐藏导航，<900px 时预览移到表单下方。
 
-`GET/PATCH /api/v1/admin/profile`，包含 displayName、handle、headline、bio、avatarUrl、location、organization、websiteUrl、resumeUrl、interests、education、experience、series、contacts。表单为结构化编辑器（react-hook-form `useFieldArray` + 嵌套 zod，行级错误落位）：
+`GET/PUT /api/v1/admin/profile`，包含 displayName、handle、headline、bio、avatarUrl、location、organization、websiteUrl、resumeUrl、interests、education、experience、series、contacts。表单为结构化编辑器（react-hook-form `useFieldArray` + 嵌套 zod，行级错误落位）：
 
 - interests 使用 chip 输入（Enter/逗号添加、× 移除、Backspace 删除末项）；
 - education/experience/series/contacts 为可增删、上下排序的行编辑器，不再手写 JSON；
@@ -82,7 +82,7 @@ Writings 工作区为二级页面结构，路由走 hash：列表页 `#/writings
 
 详情页由共享 `ContentEditorShell` 渲染：顶部返回链接（dirty 时经 App 确认 Modal）、状态标签、发布/撤回（Popover 确认）、Web 外链和删除；标题区带 **编辑态/锁定态切换**——查看已有内容默认锁定（`<fieldset disabled>` 整体只读，chips 移除按钮隐藏），点 Edit 解锁，点 Lock 且存在未保存修改时弹确认（放弃修改并锁定）；新建直接进入编辑态，首次保存后 `history.replaceState` 换成 `#/writings/{id}`（不产生回退步骤）。内容区分三个 Mantine Tab：
 
-- **Meta（元信息）**：表单 `#writing-form`，按 Web 可见性分组——title、slug（新建时从 title 自动生成建议，描述行实时预览公开 URL）、summary、tags（chip 输入）、language（下拉）；`aiAssisted` 开关（写入 `metadata.aiAssisted`，Web 归档的 “No AI writing” 过滤据此生效）；派生只读展示（预计阅读时长，由 `content-derive.ts` 复刻 Core 规则）；`frontmatter`/`technologies`/`difficulty`/`repositoryUrl` 已从 UI 移除，因 Core PATCH 对 metadata 整体替换，保存时未编辑字段从已加载内容原样透传；
+- **Meta（元信息）**：表单 `#writing-form`，按 Web 可见性分组——title、slug、summary、tags、language 与 `aiAssisted`；阅读时长和 TOC 由 Core 派生，保存使用完整 PUT payload。
 - **Context（正文）**：vditor IR（instant-rendering，MarkText 式）全宽编辑器，输入即得纯 Markdown 存入表单 `body`；锁定态经 `fieldset disabled` + `editor.disabled()` 只读。vditor 通过 `cdn: '/vditor'` 从 Admin 自身加载 lute/图标/语言包（`scripts/sync-vditor.mjs` 在 dev/build/browser-test 前把 `node_modules/vditor/dist` 的子集复制到 `public/vditor/`，gitignore 掉产物）；编辑器内部预览不求渲染公式/图表/代码高亮，权威渲染以 `@manifold/render` 为准。**图片上传**：粘贴、拖拽和工具栏“Upload image”按钮（触发隐藏 file input）都经 `upload.handler` 调用 `uploadMedia(file, file.name)`，成功后由编辑器 `insertValue` 插入 `![文件名](绝对 url)`；vditor handler 的返回值只是 tip 文案（不为内容插入），类型白名单外的文件与上传失败经 `vditor.tip(...)` 呈现；Writings/Thoughts 通过 `onUploadImage` 注入同一 `uploadMedia` 通路；
 - **Render（渲染的）**：直接复用 `@manifold/render` 的 `ArticleSurface`（标题块、meta 行、TOC、`MarkdownContent` 正文），与 Web 阅读面同源组件；外层包 `.articleSurface/.articleSurfaceInner` 容器（Admin 侧收起横向内边距）。ArticleSurface 不传 rail slot，ReadingShell 自动切到 `no-rail` 网格——正文列（≤860px）与 220px TOC 并列居中，≤1300px 时 TOC 变为顶部横带；标题块随正文同列对齐。Context tab 的编辑器限宽 860px 居中，与正文列视觉一致。
 
@@ -94,7 +94,7 @@ Thoughts 工作区为同构的二级页面（`#/thoughts`、`#/thoughts/new`、`
 
 Meta tab 字段：正文在 Context tab（vditor IR）必填；title、slug 可选（slug 为空时 Core 使用 ID，更新时置空即清除）；summary（`✦` 标记，Web 卡片与详情均渲染）；tags（chip 输入）；溯源组按 Web 图标语义分组——mood（Sparkles）、question（反引 blockquote）、context（Compass）、source（BookOpen）。Render tab 直接复用 `@manifold/render` 的 `ThoughtSurface`（含 ReadingProgress）。保存条、锁定切换、快捷键、vditor 提交时序与 409 处理与 Writings 一致；详情数据来自 `['admin-content-item', 'THOUGHT', id]`。
 
-共享模块：`lib/useHashRoute.ts`（hash 解析/导航/受守卫的 `requestNavigate`）、`lib/dirty-guard.ts`（编辑器注册 dirty 检查，App 侧栏与返回链接共用确认 Modal）、`lib/content-derive.ts`（excerpt/阅读时长/TOC 的 Core 规则浏览器镜像）、`components/ContentListPanel.tsx`（列表面板、行、状态/排序/分页）、`components/ChipsInput.tsx`（标签 chips 输入）、`components/SaveBar.tsx`（未保存横条与跨 Tab 提交按钮）、`components/ContentEditorShell.tsx`（详情页壳：三 Tab、锁定切换、状态操作、409 Modal）、`components/ConfirmButton.tsx`（Popover 内联二次确认，支持 icon-only）与 `components/MarkdownEditor.tsx`（vditor IR 封装：初始化就绪门槛 `after()`、`input`/`setValue` 值桥、锁定 `disabled()/enable()`）。`ProfileWorkspace` 的 interests chip 输入复用同一 `ChipsInput`；`lib/content-derive.ts` 与 Core 的派生实现必须保持同步；日期展示统一使用 `@manifold/render` 的 `formatDate`。
+共享模块：`lib/useHashRoute.ts`（hash 解析/导航/受守卫的 `requestNavigate`）、`lib/dirty-guard.ts`（编辑器注册 dirty 检查，App 侧栏与返回链接共用确认 Modal）、`@manifold/render` 的 `content-derive`（excerpt/阅读时长/TOC 的共享纯函数）、`components/ContentListPanel.tsx`（列表面板、行、状态/排序/分页）、`components/ChipsInput.tsx`（标签 chips 输入）、`components/SaveBar.tsx`（未保存横条与跨 Tab 提交按钮）、`components/ContentEditorShell.tsx`（详情页壳：三 Tab、锁定切换、状态操作、409 Modal）、`components/ConfirmButton.tsx`（Popover 内联二次确认，支持 icon-only）与 `components/MarkdownEditor.tsx`（vditor IR 封装：初始化就绪门槛 `after()`、`input`/`setValue` 值桥、锁定 `disabled()/enable()`）。`ProfileWorkspace` 的 interests chip 输入复用同一 `ChipsInput`；日期展示统一使用 `@manifold/render` 的 `formatDate`。
 
 规则：所有更新带 `expectedVersion`；新建总是 DRAFT；两个内容工作区的写入失效统一使用 `['admin-content']` 前缀并同步失效 `admin-overview`（Thoughts 另失效 `admin-thought-config`，保证置顶选择器同步）。
 
@@ -110,18 +110,16 @@ Meta tab 字段：正文在 Context tab（vditor IR）必填；title、slug 可�
 
 Writings/Thoughts 编辑页在 Meta/Context/Render 之外提供 Comments tab（新建内容不显示）。`ContentCommentsPanel` 按线程展示当前内容的评论：顶层评论行内可 Reply（composer 以 Profile displayName 预填作者名，作为站点作者发出；清空则 Core 归一化为 `Anonymous`）、Delete、Restore。tab 的 `page/q/focus` 状态镜像到 hash（`#/writings/{id}/comments?page=2&q=…`），focus 命中后滚动高亮该行并从 URL 摘除。评论 tab 与内容编辑状态无关（锁定只影响 Meta/Context 的表单）。创建/删除/恢复后失效 `admin-comments`、`admin-overview`、`admin-content`。
 
-Now 状态功能已整体移除（Core 端点删除），本仓库无对应工作区。
-
 ### Settings
 
-Site 调用 `GET/PATCH /api/v1/admin/site`，对整个站点设置做结构化表单（`src/lib/siteSettingsSchema.ts` 为唯一 Zod schema 与 `SiteSettingsForm` 类型源）：
+Site 调用 `GET/PUT /api/v1/admin/site`，对整个站点设置做结构化表单（`src/lib/siteSettingsSchema.ts` 为唯一 Zod schema 与 `SiteSettingsForm` 类型源）：
 
 - **Identity**：`title`（必填 ≤80）、`description`（≤200）、`footer`（≤200）和 `social`（≤6 项，`LinkRowsField` 行编辑：label/href/"Opens in a new tab" 复选框 + 上下移/删除）。
 - **Navigation**：同一 `LinkRowsField`，1..10 项，替换历史上的 JSON textarea。
 - **Comments**：`commentsEnabled` Switch，关闭后 Core 公开评论接口返回 403、Web 隐藏评论区。
 - **Homepage**：`sections` 用 section-picker 编辑（六区块枚举开关 + 上下移排序，至少保留一个）。首页内容列不做置顶策划，始终按发布时间展示；内容置顶属于各自内容工作区（见下）。
 
-站点设置是单个全量 PATCH（一个保存条、`['admin-site']` 失效）。内容置顶（pin）在各自工作区设置：Writings 用 `['admin-writings-config']` + `updateWritingConfig`，Thoughts 用 `['admin-thought-config']` + `updateThoughtConfig`；Core 校验非空引用必须是已发布的对应类型内容。
+站点设置是单个全量 PUT（一个保存条、`['admin-site']` 失效）。内容置顶（pin）在各自工作区设置：Writings 用 `['admin-writings-config']` + `updateWritingConfig`，Thoughts 用 `['admin-thought-config']` + `updateThoughtConfig`；Core 校验非空引用必须是已发布的对应类型内容。
 
 ## 5. Query key 和失效
 
@@ -138,7 +136,7 @@ Site 调用 `GET/PATCH /api/v1/admin/site`，对整个站点设置做结构化�
 | `admin-content` + `THOUGHT` + `{ status, q, sort, page }` | Thoughts 列表 `adminContent({ kind: 'THOUGHT', … })` | 同上 |
 | `admin-content-item` + kind + id | 详情页 `adminContentItem(id)` | 单条保存、发布/撤回后直接 setDraft 更新；重载时失效该 key |
 | `admin-profile` | `adminProfile()` | 保存 Profile |
-| `admin-site` | `adminSite()` | 保存 Site（全量 PATCH，含身份/social/评论开关/首页组合） |
+| `admin-site` | `adminSite()` | 保存 Site（全量 PUT，含身份/social/评论开关/首页组合） |
 | `admin-thought-config` | `adminThoughtConfig()` | 保存 Thoughts 置顶配置 |
 | `admin-media` + `{ q, page }` | Media 库 `listMedia({ q?, page? })` | 上传、删除（统一失效 `['admin-media']` 前缀） |
 

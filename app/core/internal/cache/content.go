@@ -53,5 +53,9 @@ func cloneContent(content model.Content) model.Content {
 		publishedAt := *content.PublishedAt
 		content.PublishedAt = &publishedAt
 	}
+	if content.Title != nil {
+		title := *content.Title
+		content.Title = &title
+	}
 	return content
 }

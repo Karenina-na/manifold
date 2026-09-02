@@ -5,10 +5,10 @@ Manifold 是一个 API-first 的个人 digital garden：同一套内容和个人
 当前 MVP 已包含：
 
 - Web 首页、写作归档、文章详情和 SEO 元数据。
-- `THOUGHT` 与 `ARTICLE` Markdown 内容，支持标签、搜索和 cursor 分页；文稿支持数学公式、代码高亮和一键复制代码。
-- Thoughts 是轻量碎记；Articles 是带阅读时长、目录和 frontmatter 的深度文稿。
+- `THOUGHT` 与 `ARTICLE` Markdown 内容，支持标签、搜索和页码分页；文稿支持数学公式、代码高亮和一键复制代码。
+- Thoughts 是轻量碎记；Articles 提供由 Core 派生的阅读时长和目录。
 - 匿名评论提交与 Admin 审核、`LIKE` 访客反应。
-- Admin 登录、内容发布生命周期、评论审核、Now、Profile 和首页 composition 管理。
+- Admin 登录、内容发布生命周期、评论管理、Profile、Site 和首页 composition 管理。
 - Go Core、SQLite、JWT + Casbin 鉴权、请求/追踪 ID、审计事件和 TTL 缓存。
 
 ## 架构
@@ -54,7 +54,7 @@ Core 是唯一拥有业务持久化的服务。Web/Admin 不导入 Go 代码、�
 
 ## 快速开始
 
-Core、Web、Admin 是独立进程。Core 首次启动会自动建表、创建 SQLite 父目录，并对旧内容表执行兼容迁移后写入演示数据。
+Core、Web、Admin 是独立进程。Core 首次启动会创建当前 SQLite schema、创建父目录并写入演示数据；已有非当前 schema 的数据库会拒绝启动，请删除本地数据库后重建。
 
 ```bash
 pnpm install
@@ -131,7 +131,7 @@ Admin 的 `VITE_CORE_URL` 必须指向 Core（默认 `http://localhost:8080`）�
 
 ### Web
 
-- `/`：Profile、Now、统计和最近内容。
+- `/`：Profile、统计和最近内容。
 - `/writing`：公开内容归档。
 - `/writing/:slug`：Markdown 详情、标签、评论和反应。
 
@@ -139,11 +139,11 @@ Admin 的 `VITE_CORE_URL` 必须指向 Core（默认 `http://localhost:8080`）�
 
 ### Admin
 
-登录后提供 Dashboard、Content、Comments、Now、Settings 五个工作区，分别覆盖统计、草稿/发布、评论审核、当前状态和 Profile/Site 管理。Admin 使用 Core 签发的 Bearer JWT；当前没有公开注册、访客登录或多用户账号体系。
+登录后提供 Dashboard、Thoughts、Writings、Comments、Media、Profile 和 Settings 工作区，分别覆盖统计、内容全量编辑、评论管理、媒体、Profile/Site 配置。Admin 使用 Core 签发的 Bearer JWT；当前没有公开注册、访客登录或多用户账号体系。
 
 ## Core API 概览
 
-基础路径为 `/api/v1`。集合统一返回 `{ data, pagination }`；内容流支持 `kind`、`tag`、`q`、`cursor`、`limit`（`1..50`，默认 `20`）。
+基础路径为 `/api/v1`。集合统一返回 `{ data, pagination }`；内容列表支持 `kind`、`tag`、`q`、`page`、`pageSize`、`sort` 和 `aiAssisted`。
 
 公开接口：
 
@@ -151,30 +151,30 @@ Admin 的 `VITE_CORE_URL` 必须指向 Core（默认 `http://localhost:8080`）�
 | --- | --- | --- |
 | `GET` | `/healthz` | 健康检查和版本 |
 | `GET` | `/api/v1/profile`、`/api/v1/site` | 资料和首页 composition |
-| `GET` | `/api/v1/feed`、`/api/v1/content` | 内容流和筛选列表 |
+| `GET` | `/api/v1/content` | 内容流和筛选列表 |
 | `GET` | `/api/v1/content/:slug` | Markdown 详情 |
 | `GET/POST` | `/api/v1/content/:slug/comments` | 评论读取/提交 |
 | `GET/PUT/DELETE` | `/api/v1/content/:slug/likes` | 点赞统计、添加和移除 |
-| `GET` | `/api/v1/now`、`/api/v1/stats` | 当前状态、统计 |
+| `GET` | `/api/v1/stats` | 统计 |
 
-管理接口位于 `/api/v1/admin`，除 `POST /session` 外都需要 `Authorization: Bearer <token>`，覆盖 Profile、Site、Content、Comments、Now 和 Stats 的读写。
+管理接口位于 `/api/v1/admin`，除 `POST /session` 外都需要 `Authorization: Bearer <token>`，覆盖 Profile、Site、Content、Comments、Media 和 Stats 的读写。
 
 错误统一为 `{ error: { code, message, details?, requestId?, traceId? } }`；Core 会返回 `X-Request-ID` 和 `X-Trace-ID`。具体实现说明见 [`app/core/README.md`](app/core/README.md)、[`app/web/README.md`](app/web/README.md) 和 [`app/admin/README.md`](app/admin/README.md)。
 
 ## 数据与生命周期
 
-- SQLite 由 Core 独占；store 负责建表、兼容旧列和种子数据。
+- SQLite 由 Core 独占；Core 只接受当前 schema，schema version 不匹配时要求删除本地数据库后重建。
 - Content 类型为 `THOUGHT`、`ARTICLE`；状态为 `DRAFT`、`PUBLISHED`、`DELETED`。
 - 更新带 `expectedVersion`；版本冲突会拒绝覆盖。
 - 删除是软删除；草稿和已删除内容不进入公开接口。
-- 评论创建后是 `PENDING`，批准后才公开。
+- 评论创建后立即公开；删除通过 `deleted_at` 隐藏评论或整条线程。
 - 反应按 `(content, visitor, kind)` 唯一，`PUT` / `DELETE` 幂等。
 - 内容详情和已发布统计使用 TTL 缓存；状态变化会失效对应缓存。
 - 审计事件通过有界异步队列写入 SQLite；队列满不会让原始请求失败。
 
 ## 当前边界
 
-P0 聚焦首页、Profile、Site、Now、Thoughts、Writings、Comments、Likes 和 Stats。跨资源搜索、links、媒体资产、经历详情和 research series 不属于当前产品范围。
+P0 聚焦首页、Profile、Site、Thoughts、Writings、Comments、Media、Likes 和 Stats。跨资源搜索、经历详情和 research series 不属于当前产品范围。
 
 ## 贡献
 

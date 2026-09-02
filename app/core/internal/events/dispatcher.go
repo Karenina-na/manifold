@@ -10,8 +10,8 @@ type AuditEvent struct {
 	ResourceType string
 	ResourceID   string
 	Actor        string
-	RequestID    string
-	TraceID      string
+	RequestID    *string
+	TraceID      *string
 	Metadata     map[string]string
 }
 

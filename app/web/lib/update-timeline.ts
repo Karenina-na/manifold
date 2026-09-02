@@ -100,7 +100,7 @@ export function buildUpdateTimeline(items: Content[]): UpdateTimeline {
       updates: entries.slice().reverse().map(({ item }) => ({
         id: item.id,
         kind: item.kind,
-        href: item.href,
+        href: item.kind === "ARTICLE" ? `/writing/${encodeURIComponent(item.slug)}` : `/thoughts/${encodeURIComponent(item.slug)}`,
         title: item.title || "Untitled thought",
         summary: item.summary || "A quiet note waiting for its next sentence.",
         date: item.updatedAt || item.publishedAt || item.createdAt,

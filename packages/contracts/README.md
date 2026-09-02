@@ -12,6 +12,12 @@ app/core JSON <--> packages/contracts <--> packages/sdk <--> Web / Admin
 - Contracts 把运行时 JSON 形状表达为 TypeScript 类型。
 - SDK 使用这些类型约束 HTTP 方法的输入和输出。
 - Web/Admin 不应自行声明同名的 API 类型或通过 `any` 绕过契约。
+- 一致性由跨层测试锁定：Core 的 handler/store API 测试覆盖运行时 JSON 形状；本包的 `test/fixtures.test.ts` 断言 `test/fixtures/wire.json` 满足共享类型。
+
+## 空值语义（全契约统一）
+
+- `?:` 仅表示"该视图不携带此概念"（如 `body` 仅详情视图、`deletedAt` 仅管理端评论）。
+- `| null` 表示"概念存在但值可空"；Core 一律输出键并以 `null` 表达空值，不再省略键。
 
 ## 导出类型
 
@@ -19,71 +25,63 @@ app/core JSON <--> packages/contracts <--> packages/sdk <--> Web / Admin
 
 - `ContentKind = "THOUGHT" | "ARTICLE"`
 - `ContentStatus = "DRAFT" | "PUBLISHED" | "DELETED"`
-- `ContentSummary`：列表和轻量内容对象，`slug`、`title` 可选且可为 `null`（Core 对空值省略键，与 `omitempty` 行为一致），并包含 Core 从 Markdown 正文派生的可选纯文本 `excerpt`、聚合的 `viewCount`、`likeCount` 与未软删 `commentCount`。`summary` 与 `excerpt` 语义独立。
-- `Content`：公开摘要对象，不含完整 `body`，并按 `kind` 判别 metadata。
-- `AdminContent`：管理端内容对象，包含完整 Markdown `body`。
-- `ContentDetail`：详情对象，`body` 必填。
-- `ContentInput`：创建输入的判别联合：Thought 和 Article 使用不同 metadata。
-- `UpdateContentInput`：带必填 `expectedVersion` 的局部更新，可改变 `kind` 和 `slug`。
-- `ThoughtArchive` / `ThoughtArchiveQuery`：Core 计算的置顶 Thought、非置顶归档页和页码参数；`ThoughtArchiveQuery` 额外接受 `tag`/`q`，只过滤时间轴，不影响置顶。`tag` 支持单值或多值（`string[]`），多值按 OR（命中任一标签）过滤。
+- `Content`：公开内容对象（列表与详情共用基底）。所有内容统一 slug 寻址（`slug` 必填）；`title: string | null`（Thought 可无标题）；`publishedAt: string` 非空（公开视图仅含已发布内容）；不含 `status`/`version`/`href`——公开内容恒为已发布、版本号是管理端锁概念、URL 由 Web 端按路由拼接。
+- `ContentDetail = Content & { body }`：公开详情，含完整 Markdown 正文。
+- `AdminContent`：管理端全状态视图（`status`、`publishedAt: string | null`（草稿未发布）、乐观锁 `version`、`body`）。
+- `ContentInput`：创建输入的判别联合（`kind` 与 metadata 绑定）。`slug` 必填；metadata 使用 `ThoughtMetadataInput`/`ArticleMetadataInput`。
+- `ThoughtMetadataInput`：`mood`/`question`/`context`/`source` 均为必需键，值可为字符串或 `null`。
+- `ArticleMetadataInput`：`language: string | null` 与 `aiAssisted: boolean`。`readingMinutes`/`toc` 是 Core 保存时从正文派生的字段，只出现在响应 `ArticleMetadata` 中，不接受客户端输入。
+- `UpdateContentInput`：判别联合的全量替换输入，`kind` 与 `metadata` 类型绑定，`expectedVersion` 必填。
+- `ContentQuery`：`kind`（单值或多值 `string[]`，多值 OR）、`tag`（同上）、`q`、`page`/`pageSize`、`sort = "newest" | "oldest" | "updated"`、`aiAssisted`。
+- `AdminContentQuery extends ContentQuery`：追加 `status`。
+- `ContentDetailQuery`：公开详情参数 `trackView`（默认 true，传 `false` 关闭浏览计数）、`referrer`。
 - `ThoughtConfig` / `ThoughtConfigInput`：可空 `featuredThoughtId` 的 Admin 配置读写契约。
-- `WritingArchive` / `WritingArchiveQuery`：Core 计算的置顶 Writing、非置顶归档页和页码参数；`WritingArchiveQuery` 额外接受 `tag`/`q`/`sort`/`aiAssisted`，只过滤时间轴，不影响置顶。
 - `WritingConfig` / `WritingConfigInput`：可空 `featuredWritingId` 的 Admin 配置读写契约。
 - `TagQuery` / `TagSummary`：`/api/v1/tags` 的可选 `kind` 参数和 `{ name, count }` 聚合项。
-- `Media` / `MediaQuery`：管理端上传的媒体对象（`url` 为绝对地址，写入 Markdown 正文使用）与媒体库列表参数（`page`/`pageSize`/`q` 按文件名或媒体 ID 过滤）。
+- `Media` / `MediaQuery`：管理端媒体对象（`url` 为绝对地址，写入 Markdown 正文使用）与媒体库列表参数。
 
-Article 的 `ArticleMetadata` 字段：
+响应端 `ArticleMetadata`：`readingMinutes`、`toc`、`language`、`aiAssisted`；前两项由 Core 派生。响应端 `ThoughtMetadata`：`mood`/`question`/`context`/`source` 全部输出，可空值用 `null`。
 
-| 字段 | 类型 | 语义 |
-| --- | --- | --- |
-| `readingMinutes` | `number` | Core 根据文章正文计算的阅读时长 |
-| `toc` | `{ id, label, level }[]` | Core 根据二、三级 Markdown 标题生成，`level` 只能是 2 或 3 |
-| `frontmatter` | `Record<string, string>` | 独立 JSON 元数据，不是 YAML 解析结果 |
-| `technologies` | `string[]` | 技术标签 |
-| `language` | `string` | 文章主要语言 |
-| `difficulty` | `BEGINNER \| INTERMEDIATE \| ADVANCED` | 难度 |
-| `repositoryUrl` | `string` | 可选仓库地址字符串 |
-| `aiAssisted` | `boolean` | AI 辅助标记。Admin 编辑端写入 `metadata_json`，Core 透传保存；公开列表 `aiAssisted=false` 过滤据此生效，缺省视为 false |
+### 分页（唯一模型）
 
-Thought 的 `ThoughtMetadata` 字段为 `mood`、`question`、`context`、`source`，全部可选字符串。
+- `Pagination = { page, pageSize, totalItems, totalPages }`：全部列表端点使用同一页码分页模型，不再有 cursor 语义。
+- `Collection<T> = { data, pagination }`：统一列表响应信封。
 
 ### 其他公共资源
 
-- `Profile` / `ProfileInput`：身份、简介、网站、简历、兴趣、教育、经历、个人 Series 和联系方式。`series` 使用 `{ name, url, description, category? }`，`contacts` 使用 `{ label, url, handle?, icon? }`。
-- `SiteComposition` / `SiteConfig` / `SiteConfigInput`：站点设置与站点组合。`SiteConfig`（Admin 读写）包含站点身份 `title`（必填 ≤80）/`description`（≤200）/`footer`（≤200）、`social`（≤6 项，结构同 `SiteNavigationItem`）、`commentsEnabled` 布尔开关、`navigation`（1..10 项）和 `sections`（1..10 项，`HomepageSection` 枚举 `PROFILE/BACKGROUND/RECENT_CONTENT/UPDATES/SERIES/CONTACT`）。公开 `SiteComposition`（`GET /api/v1/site`）返回同样的读字段。`sections` 驱动公开首页区块的内容与顺序；首页内容列按发布时间排序展示，不含置顶语义。
+- `Profile` / `ProfileInput`：身份、简介、网站、简历、兴趣、教育（`ProfileEducationItem`）、经历（`ProfileExperienceItem`）、个人 Series（`ProfileSeriesItem`）和联系方式（`ProfileContact`）。数组字段全部必填键（可为空数组），`resumeUrl: string | null`。
+- `SiteConfig` / `SiteConfigInput`：站点设置（Admin 读写），含 `title`（必填 ≤80）/`description`（≤200）/`footer`（≤200）/`social`（≤6 项）/`commentsEnabled`/`navigation`（1..10 项）/`sections`（1..10 项，`HomepageSection` 枚举）。
+- `SiteComposition extends SiteConfig`：公开 `GET /api/v1/site` 响应，追加按 kind 限定的 `featuredThought` 与 `featuredWriting`（置顶内容随站点组合下发）。
 - `Stats` / `AdminStats`：公开统计和 Admin 统计包装。
-- `AdminOverview` 及其子类型：Admin 总览聚合（内容计数含草稿、浏览/点赞/评论总量、在线访客、月度趋势、Top 内容、标签分布）。
-- `AnalyticsViews` / `AnalyticsViewsQuery`：去重浏览事件分析（总量、独立访客、逐日曲线、referrer Top N，`days` 默认 30 上限 90）。
-- `SystemStatus`：Core 运行状态（version、startedAt、uptime、DB 体积、缓存条目、heap/goroutine/进程 RSS、`resources` 服务器资源块、`host` 主机信息块、审计事件总数）。
-- `AuditEvent` / `AuditEventCollection` / `AuditQuery`：审计事件服务端分页读取（`page`/`pageSize` 默认 10 上限 50、`q` 过滤），响应附 `PagePagination`。
-- `PresenceStatus`：匿名在线心跳返回的活跃访客数和观测时间；Core 只保留短期心跳，不返回访客身份。
-- `Comment`、`CreateCommentInput`：评论对象与创建输入。评论无审核状态，创建即公开；`Comment` 含 `replyToId`、`avatarSeed`（访客头像种子），admin 视图额外携带 `deletedAt`。
-- `AdminComment`：管理端评论视图，在 `Comment` 基础上追加所属内容字段 `contentTitle`/`contentSlug`/`contentKind`。
-- `CommentQuery`：公开评论列表参数。`page`（1 起）与 `limit`（每页顶层评论数）用于页码分页，`q` 按作者或正文做大小写不敏感子串搜索；`cursor` 目前为预留字段，Core 忽略。带 `page` 时响应 `pagination` 附带 `page/pageSize/totalItems/totalPages`：`totalItems` 计匹配集内全部公开评论（含回复），`totalPages` 按匹配的顶层评论计。搜索为线程级命中——任一评论命中即整条线程（顶层加全部回复）返回；分页只作用于顶层评论，回复永远随其顶层同页。
-- `AdminCommentQuery`：管理评论列表参数。`contentId`（可选，缺省跨全部内容）、`q`（线程级搜索）、`page`/`pageSize`（默认 20，上限 100）与 `focus`（评论 id；命中时返回该线程所在页，未命中回落请求页）。响应含已软删评论，顶层评论降序。
-- `LikeSummary`：文章点赞统计和当前访客状态。
-- `Collection<T>`、`Pagination`：统一列表响应。`Pagination` 在 cursor 模式为 `{ nextCursor, hasMore }`；使用 `page` 参数时额外返回 `page/pageSize/totalItems/totalPages`。
-- `PagePagination`：Thoughts aggregate 使用的 `page/pageSize/totalItems/totalPages` 页码响应。
-- `ContentQuery`、`AdminContentQuery`：服务端筛选和分页参数。`ContentQuery` 支持 `kind`、`tag`（单值或多值 `string[]`，多值按 OR 命中任一标签）、`q`、cursor 或 `page`（互斥）、`sort = "newest" | "oldest" | "updated"`、`aiAssisted` 布尔过滤和 `skipFirst`（仅 `page` 模式，列表跳过排序后的第一条）。
+- `AdminOverview` 及其子类型：Admin 总览聚合。
+- `AnalyticsViews` / `AnalyticsViewsQuery`：去重浏览事件分析（`days` 默认 30 上限 90）。
+- `SystemStatus`：Core 运行状态。
+- `AuditEvent` / `AuditEventCollection` / `AuditQuery`：审计事件（含 `requestId`/`traceId: string | null` 关联键），`page`/`pageSize` 分页。
+- `PresenceStatus`：匿名在线心跳。
+- `Comment`：公开评论。`authorUrl`/`replyToId` 可空值用 `null`；`avatarSeed` 必有；软删时间 `deletedAt` 仅出现在管理端视图。
+- `AdminComment extends Comment`：管理端评论视图，追加 `deletedAt: string | null` 与所属内容 `contentTitle`/`contentSlug`/`contentKind`；内容外键和 slug 均为数据库非空约束。
+- `CreateCommentInput`：评论创建输入。
+- `CommentQuery`：公开评论参数 `page`/`pageSize`/`q`；分页只作用于顶层评论，回复永远随其顶层同页。
+- `AdminCommentQuery`：管理评论参数 `contentId`/`q`/`page`/`pageSize`/`focus`。
+- `LikeSummary`：点赞统计和当前访客状态。
 - `ApiErrorBody`：Core 结构化错误响应字段；SDK 的运行时 `ApiError` 见 [`packages/sdk/README.md`](../sdk/README.md)。
 
 ## 契约规则
 
 1. 时间戳使用 Core 返回的 UTC RFC3339 字符串；客户端不得重新定义时间格式。
-2. `Collection<T>` 的 `pagination.nextCursor` 是不透明字符串，只能原样转发。
-3. `ContentInput` 与 `Content` 的 metadata 必须通过 `kind` 判别，不能把 Thought 和 Article 合并成无约束的 `Record<string, unknown>`。
-4. Core 仍会做最终校验：Article 创建/转换需要 title 和 slug；更新需要 `expectedVersion`。
-5. 可选字段的 `undefined`、`null` 和空字符串由具体 API 约定决定，新增字段必须明确是否向后兼容。
+2. `ContentInput`/`UpdateContentInput` 与响应的 metadata 必须通过 `kind` 判别，不能把 Thought 和 Article 合并成无约束的 `Record<string, unknown>`。
+3. Core 仍会做最终校验：slug 全局唯一且创建时必填；更新需要 `expectedVersion`；Article 语义要求 `title` 非空。
+4. 修改任何导出类型时，同步更新本 README 与 `test/fixtures/wire.json`，保持 Go golden 测试与 TS fixtures 测试同时通过。
 
 ## 修改流程
 
 修改 `src/index.ts` 时：
 
 1. 先确认 Core JSON 真实响应和错误语义。
-2. 更新类型和本 README 的字段/枚举说明。
+2. 更新类型、本 README 的字段/枚举说明与 `test/fixtures/wire.json`。
 3. 更新 `packages/sdk/README.md`、SDK 方法和测试。
 4. 检查 `docs/core.md`、`docs/admin.md`、`docs/decisions/web.md` 及调用方。
-5. 运行 `pnpm --filter @manifold/contracts typecheck`、`pnpm check` 和 `pnpm test`。
+5. 运行 `pnpm --filter @manifold/contracts test`、`pnpm check` 和 `pnpm test`。
 
 不要在这里只记录尚未实现的规划资源；规划内容应放到 `docs/decisions/` 并明确状态。
 
@@ -92,4 +90,4 @@ Thought 的 `ThoughtMetadata` 字段为 `mood`、`question`、`context`、`sourc
 | 命令 | 作用 |
 | --- | --- |
 | `pnpm --filter @manifold/contracts typecheck` | 检查公共类型 |
-| `pnpm --filter @manifold/contracts test` | 当前等价于 TypeScript 检查 |
+| `pnpm --filter @manifold/contracts test` | fixtures 类型断言 + TypeScript 检查 |

@@ -1,4 +1,4 @@
-import { loadHomeData, loadSiteData, fallbackSiteDescription, fallbackSiteTitle } from "../../lib/api";
+import { buildHref, loadHomeData, loadSiteData, fallbackSiteDescription, fallbackSiteTitle } from "../../lib/api";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +19,8 @@ export async function GET() {
     const title = item.title || "Untitled thought";
     const description = item.summary || "A published note from Manifold.";
     const date = item.publishedAt ?? item.createdAt;
-    return `<item><title>${escapeXml(title)}</title><description>${escapeXml(description)}</description><link>${siteUrl}${item.href}</link><guid>${siteUrl}${item.href}</guid><pubDate>${new Date(date).toUTCString()}</pubDate></item>`;
+     const href = buildHref(item);
+     return `<item><title>${escapeXml(title)}</title><description>${escapeXml(description)}</description><link>${siteUrl}${href}</link><guid>${siteUrl}${href}</guid><pubDate>${new Date(date).toUTCString()}</pubDate></item>`;
   }).join("") ?? "";
   const body = `<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel><title>${escapeXml(channelTitle)}</title><description>${escapeXml(channelDescription)}</description><link>${siteUrl}</link><atom:link href="${siteUrl}/feed.xml" rel="self" type="application/rss+xml" xmlns:atom="http://www.w3.org/2005/Atom"/>${items}</channel></rss>`;
   return new Response(body, { headers: { "Content-Type": "application/rss+xml; charset=utf-8", "Cache-Control": "public, max-age=300" } });
