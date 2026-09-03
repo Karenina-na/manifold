@@ -81,22 +81,28 @@ export default async function Home() {
       </section></Reveal>;
       case "BACKGROUND": return <Reveal className={styles.sectionReveal} key={section}><section className={styles.backgroundSection} id="background-section" aria-labelledby="background-heading">
         <div className={styles.sectionHeading}><div><span className={styles.eyebrow}>◇ Background <span className={styles.eyebrowIndex}>/ {sectionIndex(index)}</span></span><h2 id="background-heading">Background</h2></div><span className={styles.sectionHint}>Education and experience</span></div>
-        <div className={styles.backgroundColumns}>
-          <div className={styles.backgroundColumn}>
-            <h3 className={styles.backgroundColumnTitle}>Education</h3>
-            {education.length ? education.map((item, itemIndex) => <div className={styles.backgroundItem} key={`${item.institution}-${itemIndex}`}>
-              <span className={styles.backgroundPeriod}>{item.period}</span>
-              <strong>{item.program}</strong>
-              <span>{item.institution}</span>
-            </div>) : <p className={styles.muted}>Education history will appear here.</p>}
-          </div>
-          <div className={styles.backgroundColumn}>
-            <h3 className={styles.backgroundColumnTitle}>Experience</h3>
-            {experience.length ? experience.map((item, itemIndex) => <div className={styles.backgroundItem} key={`${item.organization}-${itemIndex}`}>
-              <span className={styles.backgroundPeriod}>{item.period}</span>
-              <strong>{item.role}</strong>
-              <span>{item.organization}</span>
-            </div>) : <p className={styles.muted}>Experience will appear here.</p>}
+        <div className={styles.backgroundSurface} data-background-surface>
+          <div className={styles.backgroundColumns}>
+            <div className={styles.backgroundColumn}>
+              <h3 className={styles.backgroundColumnTitle}>Education</h3>
+              {education.length ? education.map((item, itemIndex) => <div className={styles.backgroundItem} key={`${item.institution}-${itemIndex}`}>
+                <span className={styles.backgroundPeriod}>{item.period}</span>
+                <span className={styles.backgroundItemBody}>
+                  <strong>{item.program}</strong>
+                  <span>{item.institution}</span>
+                </span>
+              </div>) : <p className={styles.muted}>Education history will appear here.</p>}
+            </div>
+            <div className={styles.backgroundColumn}>
+              <h3 className={styles.backgroundColumnTitle}>Experience</h3>
+              {experience.length ? experience.map((item, itemIndex) => <div className={styles.backgroundItem} key={`${item.organization}-${itemIndex}`}>
+                <span className={styles.backgroundPeriod}>{item.period}</span>
+                <span className={styles.backgroundItemBody}>
+                  <strong>{item.role}</strong>
+                  <span>{item.organization}</span>
+                </span>
+              </div>) : <p className={styles.muted}>Experience will appear here.</p>}
+            </div>
           </div>
         </div>
       </section></Reveal>;

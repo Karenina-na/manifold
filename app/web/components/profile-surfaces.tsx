@@ -58,10 +58,18 @@ function SeriesLink({ item, index }: { item: ProfileSeriesItem; index: number })
   const anchorRef = useRef<HTMLAnchorElement>(null);
   const [open, setOpen] = useState(false);
   const tooltipId = useId();
+  const host = item.url.replace(/^https?:\/\//, "").replace(/\/$/, "");
   return <span className={styles.seriesTooltipAnchor} onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)} onFocus={() => setOpen(true)} onBlur={() => setOpen(false)}>
     <a ref={anchorRef} className={styles.seriesCard} data-series-card href={item.url} target="_blank" rel="noreferrer" aria-label={`${item.name}: ${item.description}`} aria-describedby={tooltipId}>
-      <span className={styles.seriesCardTop}><span className={styles.seriesIdentity}><span className={styles.seriesIndex}>0{index + 1}</span><span className={styles.seriesIcon}><Globe2 size={15} /></span></span><ExternalLink size={14} aria-hidden="true" /></span>
-      <span className={styles.seriesCardBody}><span className={styles.seriesCategory}>{item.category ?? "Series"}</span><h3>{item.name}</h3></span>
+      <span className={styles.seriesIndex} aria-hidden="true">{String(index + 1).padStart(2, "0")}</span>
+      <span className={styles.seriesIcon} aria-hidden="true"><Globe2 size={14} /></span>
+      <span className={styles.seriesName}>{item.name}</span>
+      <span className={styles.seriesMeta}>
+        <span className={styles.seriesCategory}>{item.category ?? "Series"}</span>
+        <span className={styles.seriesMetaDot} aria-hidden="true">·</span>
+        <span className={styles.seriesHost}>{host}</span>
+      </span>
+      <ExternalLink size={13} className={styles.seriesArrow} aria-hidden="true" />
     </a>
     <FloatingTooltip anchorRef={anchorRef} open={open} placement="bottom" dataAttribute="data-series-tooltip" id={tooltipId}>
       <span className={styles.tooltipMeta}>{item.category ?? "Series"}</span>

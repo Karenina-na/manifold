@@ -247,7 +247,7 @@ async function main() {
     const sceneBreakCount = await web.locator('[data-scene-break]').count();
     if (sceneBreakCount < 4) throw new Error(`Expected scene transition separators between major sections, received ${sceneBreakCount}`);
     await web.mouse.move(20, 20);
-    const surfaceStyles = await web.evaluate(() => [...document.querySelectorAll('[data-content-surface], [data-update-rail], [data-series-card]')].map((element) => {
+    const surfaceStyles = await web.evaluate(() => [...document.querySelectorAll('[data-content-surface], [data-update-rail], [data-series-card], [data-background-surface]')].map((element) => {
       const style = getComputedStyle(element);
       return { backgroundColor: style.backgroundColor, backdropFilter: style.backdropFilter };
     }));
