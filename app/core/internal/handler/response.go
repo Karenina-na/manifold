@@ -81,7 +81,7 @@ func recordAuditEvent(database *store.Store) func(events.AuditEvent) {
 }
 
 func newRouter(cfg config.Config, database *store.Store, auditEvents events.AuditPublisher) http.Handler {
-	authService, err := auth.New(cfg)
+	authService, err := auth.New(cfg, database)
 	if err != nil {
 		panic(err)
 	}

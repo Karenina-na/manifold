@@ -2,8 +2,10 @@ package auth
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -37,10 +39,29 @@ type Claims struct {
 type Service struct {
 	config   config.Config
 	enforcer *casbin.Enforcer
+	store    SessionStore
 	now      func() time.Time
 }
 
-func New(cfg config.Config) (*Service, error) {
+// SessionStore is the persistence surface auth needs. *store.Store satisfies it.
+type SessionStore interface {
+	GetAdminCredential(username string) (string, error)
+	UpdateAdminCredential(username, passwordHash string) error
+	CreateSession(id, subject string, now, expiresAt time.Time) error
+	SessionLive(id string, now time.Time) (bool, error)
+	RevokeSession(id string, now time.Time) error
+	RevokeSessions(subject string, exceptCurrentID string, now time.Time) error
+}
+
+func newSessionID() string {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return fmt.Sprintf("ses_%d", time.Now().UnixNano())
+	}
+	return fmt.Sprintf("ses_%x", b)
+}
+
+func New(cfg config.Config, db SessionStore) (*Service, error) {
 	model, err := casbinmodel.NewModelFromString(`[request_definition]
 r = sub, obj, act
 
@@ -62,14 +83,19 @@ m = r.sub == p.sub && keyMatch(r.obj, p.obj) && (p.act == "*" || r.act == p.act)
 	if _, err := enforcer.AddPolicy("admin", "/api/v1/admin/*", "*"); err != nil {
 		return nil, err
 	}
-	return &Service{config: cfg, enforcer: enforcer, now: time.Now}, nil
+	return &Service{config: cfg, enforcer: enforcer, store: db, now: time.Now}, nil
 }
 
 func (s *Service) Login(username, password string) (string, error) {
-	if username != s.config.AdminUsername || bcrypt.CompareHashAndPassword([]byte(s.config.AdminPasswordHash), []byte(password)) != nil {
+	hash, err := s.store.GetAdminCredential(username)
+	if err != nil {
+		return "", ErrInvalidCredentials
+	}
+	if bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)) != nil {
 		return "", ErrInvalidCredentials
 	}
 	now := s.now()
+	sessionID := newSessionID()
 	claims := Claims{
 		Role: "admin",
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -77,6 +103,10 @@ func (s *Service) Login(username, password string) (string, error) {
 			IssuedAt:  jwt.NewNumericDate(now),
 			ExpiresAt: jwt.NewNumericDate(now.Add(SessionTTL)),
 		},
+	}
+	claims.ID = sessionID
+	if err := s.store.CreateSession(sessionID, username, now, now.Add(SessionTTL)); err != nil {
+		return "", err
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString([]byte(s.config.JWTSecret))
@@ -104,6 +134,19 @@ func (s *Service) RequireAdmin(next http.Handler) http.Handler {
 			writeAuthError(w, http.StatusUnauthorized, "UNAUTHORIZED", "A valid JWT is required.")
 			return
 		}
+		if claims.ID == "" {
+			writeAuthError(w, http.StatusUnauthorized, "UNAUTHORIZED", "A valid session is required.")
+			return
+		}
+		live, err := s.store.SessionLive(claims.ID, s.now())
+		if err != nil {
+			writeAuthError(w, http.StatusInternalServerError, "SESSION_UNAVAILABLE", "Session state is unavailable.")
+			return
+		}
+		if !live {
+			writeAuthError(w, http.StatusUnauthorized, "UNAUTHORIZED", "Session is no longer active.")
+			return
+		}
 		allowed, err := s.enforcer.Enforce(claims.Role, r.URL.Path, r.Method)
 		if err != nil || !allowed {
 			writeAuthError(w, http.StatusForbidden, "FORBIDDEN", "The role cannot access this resource.")
@@ -111,6 +154,26 @@ func (s *Service) RequireAdmin(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), claimsKey{}, claims)))
 	})
+}
+
+// UpdateCredential verifies the current password, replaces the stored hash, and
+// revokes every other active session for the subject.
+func (s *Service) UpdateCredential(username, currentPassword, newPassword string, currentSessionID string) error {
+	hash, err := s.store.GetAdminCredential(username)
+	if err != nil {
+		return ErrInvalidCredentials
+	}
+	if bcrypt.CompareHashAndPassword([]byte(hash), []byte(currentPassword)) != nil {
+		return ErrInvalidCredentials
+	}
+	nextHash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+	if err := s.store.UpdateAdminCredential(username, string(nextHash)); err != nil {
+		return err
+	}
+	return s.store.RevokeSessions(username, currentSessionID, s.now())
 }
 
 type claimsKey struct{}

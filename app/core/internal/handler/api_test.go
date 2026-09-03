@@ -20,12 +20,12 @@ import (
 
 func newTestRouter(t *testing.T) http.Handler {
 	t.Helper()
-	database, err := store.Open(":memory:")
+	hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.MinCost)
+	database, err := store.Open(":memory:", store.WithAdminCredential("admin", string(hash)))
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = database.Close() })
-	hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.MinCost)
 	cfg := config.Config{JWTSecret: "test-secret", AdminUsername: "admin", AdminPasswordHash: string(hash), AllowedOrigins: []string{"*"}, AuditEventBuffer: 256}
 	router, closeRouter := handler.RouterWithLifecycle(cfg, database)
 	t.Cleanup(closeRouter)
@@ -34,12 +34,12 @@ func newTestRouter(t *testing.T) http.Handler {
 
 func newTestRouterWithConfig(t *testing.T, mutate func(*config.Config)) (http.Handler, *store.Store) {
 	t.Helper()
-	database, err := store.Open(":memory:")
+	hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.MinCost)
+	database, err := store.Open(":memory:", store.WithAdminCredential("admin", string(hash)))
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = database.Close() })
-	hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.MinCost)
 	cfg := config.Config{JWTSecret: "test-secret", AdminUsername: "admin", AdminPasswordHash: string(hash), AllowedOrigins: []string{"*"}, AuditEventBuffer: 256}
 	mutate(&cfg)
 	router, closeRouter := handler.RouterWithLifecycle(cfg, database)
