@@ -7,6 +7,7 @@ import { Controller, useForm } from 'react-hook-form'
 import type { HomepageSection, SiteConfig } from '@manifold/contracts'
 import { createAdminClient } from './api'
 import { LinkRowsField } from './components/LinkRowsField'
+import { SecuritySection } from './components/SecuritySection'
 import { settingsSchema, type SiteSettingsForm } from './lib/siteSettingsSchema'
 
 const sectionLabels: Record<HomepageSection, string> = {
@@ -32,7 +33,7 @@ function settingsValues(site: SiteConfig): SiteSettingsForm {
   }
 }
 
-export function SettingsWorkspace({ token }: { token: string }) {
+export function SettingsWorkspace({ token, onLoggedOut }: { token: string; onLoggedOut: () => void }) {
   const client = useMemo(() => createAdminClient(token), [token])
   const queryClient = useQueryClient()
   const site = useQuery({ queryKey: ['admin-site'], queryFn: () => client.adminSite() })
@@ -128,6 +129,7 @@ export function SettingsWorkspace({ token }: { token: string }) {
         </div>
       </section>
     </form>
+    <SecuritySection token={token} onLoggedOut={onLoggedOut} />
     {form.formState.isDirty && <div className="save-bar">
       <span>Unsaved changes</span>
       <div className="save-bar-actions">

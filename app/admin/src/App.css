@@ -37,6 +37,9 @@ button { cursor: pointer; }
 .form-stack input:focus, .form-stack select:focus, .form-stack textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .form-stack input:disabled { color: var(--muted); background: #f2f0eb; }
 .form-stack small { color: var(--danger); font-size: 12px; font-weight: 500; }
+.form-stack-actions { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.form-stack-actions .icon-hint { margin: 0; }
+.panel-divider { border: 0; border-top: 1px solid var(--line); margin: 8px 0 20px; }
 .button, .icon-button, .mini-button, .side-link { border: 0; }
 .button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 40px; padding: 0 15px; border-radius: 2px; font-size: 13px; font-weight: 800; transition: transform 160ms ease, background 160ms ease, color 160ms ease; }
 .button:hover { transform: translateY(-1px); }

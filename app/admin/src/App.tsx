@@ -79,7 +79,12 @@ function App() {
     requestNavigate(`#/${next}`)
   }
   if (!session) return <LoginScreen onLogin={setSession} />
-  const logout = () => { clearSession(); setSession(null) }
+  const logout = () => {
+    const token = session.accessToken
+    clearSession()
+    setSession(null)
+    if (token) void createAdminClient(token).logoutSession().catch(() => {})
+  }
   const subSegments = route.segments.slice(1)
   return <div className="admin-shell">
     <Sidebar view={view} onNavigate={requestView} onLogout={logout} collapsed={collapsed} setCollapsed={setCollapsed} />
@@ -95,7 +100,7 @@ function App() {
         {view === 'thoughts' && <ThoughtsWorkspace token={session.accessToken} segments={subSegments} query={route.query} />}
         {view === 'media' && <MediaWorkspace token={session.accessToken} />}
         {view === 'comments' && <CommentsWorkspace token={session.accessToken} />}
-        {view === 'settings' && <SettingsWorkspace token={session.accessToken} />}
+        {view === 'settings' && <SettingsWorkspace token={session.accessToken} onLoggedOut={logout} />}
       </Suspense>
     </main>
     {pendingNav !== null && <Modal opened onClose={() => setPendingNav(null)} title="Unsaved changes" centered>

@@ -10,6 +10,14 @@ import { ConfirmButton } from '../components/ConfirmButton'
 import { Pager } from '../components/Pager'
 
 const UPLOAD_ACCEPT = 'image/png,image/jpeg,image/webp,image/gif,image/avif'
+
+function describeMediaError(error: unknown): string {
+  if (error instanceof ApiError && error.code === 'MEDIA_IN_USE') {
+    return 'This image is used in published or draft content. Remove those references first.'
+  }
+  if (error instanceof ApiError) return `${error.message} (${error.code})`
+  return 'Media could not be deleted.'
+}
 const allowedImageTypes = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/avif'])
 
 export function MediaWorkspace({ token }: { token: string }) {
@@ -21,6 +29,7 @@ export function MediaWorkspace({ token }: { token: string }) {
   const [q, setQ] = useState('')
   const [dragOver, setDragOver] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
   const [copiedID, setCopiedID] = useState<string | null>(null)
   const copyTimer = useRef<number | null>(null)
   useEffect(() => {
@@ -52,7 +61,11 @@ export function MediaWorkspace({ token }: { token: string }) {
   })
   const remove = useMutation({
     mutationFn: (id: string) => client.deleteMedia(id),
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['admin-media'] }),
+    onSuccess: () => {
+      setDeleteError(null)
+      void queryClient.invalidateQueries({ queryKey: ['admin-media'] })
+    },
+    onError: (error) => setDeleteError(describeMediaError(error)),
   })
 
   const startUpload = (files: File[]) => {
@@ -114,6 +127,7 @@ export function MediaWorkspace({ token }: { token: string }) {
       }}
     />
     {uploadError && <Alert color="red" variant="light" withCloseButton onClose={() => setUploadError(null)}>{uploadError}</Alert>}
+    {deleteError && <Alert color="red" variant="light" withCloseButton onClose={() => setDeleteError(null)}>{deleteError}</Alert>}
     {list.isError && <p className="content-list-error">The media list could not be loaded. Please try again.</p>}
     {list.isPending && <p className="content-list-hint">Loading…</p>}
     {items.length > 0 && <div className="media-grid">
