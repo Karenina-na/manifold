@@ -46,7 +46,7 @@ func run(ctx context.Context, cfg config.Config) error {
 	}
 	defer listener.Close()
 
-	database, err := store.Open(cfg.DatabasePath, store.WithSeedPlan(plan))
+	database, err := store.Open(cfg.DatabasePath, store.WithSeedPlan(plan), store.WithAdminCredential(cfg.AdminUsername, cfg.AdminPasswordHash))
 	if err != nil {
 		return fmt.Errorf("open database: %w", err)
 	}

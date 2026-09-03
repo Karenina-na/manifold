@@ -20,7 +20,7 @@ import (
 	"github.com/manifold-space/manifold/app/core/internal/seed"
 )
 
-const schemaVersion = 1
+const schemaVersion = 2
 
 var (
 	ErrContentNotFound     = errors.New("content not found")
@@ -128,6 +128,10 @@ type ContentUpdate struct {
 }
 
 func Open(path string, options ...Option) (*Store, error) {
+	oo := openOptions{}
+	for _, apply := range options {
+		apply(&oo)
+	}
 	plan, err := seedPlanFor(options)
 	if err != nil {
 		return nil, err
@@ -153,13 +157,19 @@ func Open(path string, options ...Option) (*Store, error) {
 		_ = db.Close()
 		return nil, err
 	}
+	if err := s.ensureAdminCredential(oo.adminUsername, oo.adminPasswordHash); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
 	return s, nil
 }
 
 // openOptions collects the optional behaviors of Open.
 type openOptions struct {
-	seedPlan    seed.Plan
-	hasSeedPlan bool
+	seedPlan          seed.Plan
+	hasSeedPlan       bool
+	adminUsername     string
+	adminPasswordHash string
 }
 
 // Option customizes how a database is opened.
@@ -172,6 +182,16 @@ func WithSeedPlan(plan seed.Plan) Option {
 	return func(options *openOptions) {
 		options.seedPlan = plan
 		options.hasSeedPlan = true
+	}
+}
+
+// WithAdminCredential supplies the bootstrap credential for a fresh database.
+// The env value seeds the admin_credentials table once; afterwards the row is
+// authoritative and the env value is ignored.
+func WithAdminCredential(username, passwordHash string) Option {
+	return func(options *openOptions) {
+		options.adminUsername = username
+		options.adminPasswordHash = passwordHash
 	}
 }
 
@@ -207,8 +227,8 @@ func (s *Store) migrate() error {
 	if err := s.DB.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name != 'schema_migrations'`).Scan(&existingTables); err != nil {
 		return err
 	}
-	if existingTables > 0 && userVersion != schemaVersion {
-		return fmt.Errorf("%w: expected %d, found %d; delete the local database and recreate it", ErrSchemaMismatch, schemaVersion, userVersion)
+	if existingTables > 0 && userVersion > schemaVersion {
+		return fmt.Errorf("%w: database at %d, binary knows %d; upgrade the Core binary", ErrSchemaMismatch, userVersion, schemaVersion)
 	}
 	if _, err := s.DB.Exec(`CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`); err != nil {
 		return err

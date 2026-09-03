@@ -37,6 +37,15 @@ func TestOpenFreshDatabaseAppliesBaselineSchema(t *testing.T) {
 			t.Fatalf("expected %s without legacy column %s", legacy.table, legacy.column)
 		}
 	}
+	for _, table := range []string{"admin_credentials", "admin_sessions"} {
+		var count int
+		if err := database.DB.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?`, table).Scan(&count); err != nil {
+			t.Fatal(err)
+		}
+		if count == 0 {
+			t.Fatalf("expected fresh database to include table %s", table)
+		}
+	}
 	var version int
 	if err := database.DB.QueryRow(`SELECT MAX(version) FROM schema_migrations`).Scan(&version); err != nil {
 		t.Fatal(err)

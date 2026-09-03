@@ -94,6 +94,29 @@ func (s *Store) ListMedia(page, pageSize int, needle string) ([]model.Media, int
 	return items, total, rows.Err()
 }
 
+// MediaReferences lists non-deleted content whose body embeds this media URL.
+func (s *Store) MediaReferences(id string) ([]model.MediaReference, error) {
+	needle := "/api/v1/media/" + id
+	rows, err := s.DB.Query(`SELECT id, kind, slug, title FROM content WHERE status != 'DELETED' AND body LIKE '%' || ? || '%'`, needle)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	refs := []model.MediaReference{}
+	for rows.Next() {
+		var ref model.MediaReference
+		var title sql.NullString
+		if err := rows.Scan(&ref.ContentID, &ref.Kind, &ref.Slug, &title); err != nil {
+			return nil, err
+		}
+		if title.Valid {
+			ref.Title = &title.String
+		}
+		refs = append(refs, ref)
+	}
+	return refs, rows.Err()
+}
+
 func (s *Store) DeleteMedia(id string) error {
 	result, err := s.DB.Exec(`DELETE FROM media WHERE id = ?`, id)
 	if err != nil {

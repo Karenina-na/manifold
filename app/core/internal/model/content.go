@@ -100,6 +100,14 @@ type SiteNavigationItem struct {
 	External bool   `json:"external"`
 }
 
+// MediaReference is one content row that embeds a media URL in its body.
+type MediaReference struct {
+	ContentID string      `json:"contentId"`
+	Kind      ContentKind `json:"kind"`
+	Title     *string     `json:"title"`
+	Slug      string      `json:"slug"`
+}
+
 type ThoughtConfig struct {
 	FeaturedThoughtID *string `json:"featuredThoughtId"`
 	UpdatedAt         string  `json:"updatedAt"`
