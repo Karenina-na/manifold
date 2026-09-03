@@ -121,7 +121,7 @@ func TestRemovedEndpointsStayRemoved(t *testing.T) {
 
 func TestPublicListContract(t *testing.T) {
 	router := newTestRouter(t)
-	response := request(t, router, http.MethodGet, "/api/v1/content?kind=THOUGHT&pageSize=1&q=small", nil)
+	response := request(t, router, http.MethodGet, "/api/v1/content?kind=THOUGHT&pageSize=1&q=signal", nil)
 	if response.Code != http.StatusOK {
 		t.Fatalf("expected content 200, got %d", response.Code)
 	}
@@ -224,7 +224,7 @@ func TestContentListPageSortFilterAndTags(t *testing.T) {
 	if got := slugs(); len(got) != 2 || got[0] != "article-d" || got[1] != "article-c" {
 		t.Fatalf("unexpected newest page order: %v", got)
 	}
-	if payload.Pagination.Page != 1 || payload.Pagination.PageSize != 2 || payload.Pagination.TotalItems != 6 || payload.Pagination.TotalPages != 3 {
+	if payload.Pagination.Page != 1 || payload.Pagination.PageSize != 2 || payload.Pagination.TotalItems != 15 || payload.Pagination.TotalPages != 8 {
 		t.Fatalf("unexpected page pagination: %+v", payload.Pagination)
 	}
 
@@ -239,7 +239,7 @@ func TestContentListPageSortFilterAndTags(t *testing.T) {
 	}
 
 	decode(request(t, router, http.MethodGet, "/api/v1/content?kind=ARTICLE&aiAssisted=false&page=1&pageSize=10", nil))
-	if payload.Pagination.TotalItems != 5 || strings.Contains(strings.Join(slugs(), ","), "article-a") {
+	if payload.Pagination.TotalItems != 14 || strings.Contains(strings.Join(slugs(), ","), "article-a") {
 		t.Fatalf("expected aiAssisted=false to exclude article-a, got %s", responseOf(t, router, "/api/v1/content?kind=ARTICLE&aiAssisted=false&page=1&pageSize=10"))
 	}
 
@@ -249,27 +249,27 @@ func TestContentListPageSortFilterAndTags(t *testing.T) {
 	}
 
 	decode(request(t, router, http.MethodGet, "/api/v1/content?kind=ARTICLE&tag=go&page=1&pageSize=10", nil))
-	if payload.Pagination.TotalItems != 3 || strings.Contains(strings.Join(slugs(), ","), "article-c") {
-		t.Fatalf("expected tag=go to match three articles, got %v", slugs())
+	if payload.Pagination.TotalItems != 8 || strings.Contains(strings.Join(slugs(), ","), "article-c") {
+		t.Fatalf("expected tag=go to match eight articles, got %v", slugs())
 	}
 
 	decode(request(t, router, http.MethodGet, "/api/v1/content?kind=ARTICLE&tag=go,design&page=1&pageSize=10", nil))
-	if payload.Pagination.TotalItems != 5 {
-		t.Fatalf("expected tag=go,design to match five articles, got %d", payload.Pagination.TotalItems)
+	if payload.Pagination.TotalItems != 12 {
+		t.Fatalf("expected tag=go,design to match twelve articles, got %d", payload.Pagination.TotalItems)
 	}
 
 	decode(request(t, router, http.MethodGet, "/api/v1/content?kind=ARTICLE&tag=go&tag=sqlite&page=1&pageSize=10", nil))
-	if payload.Pagination.TotalItems != 4 {
-		t.Fatalf("expected repeated tag params to match four articles, got %d", payload.Pagination.TotalItems)
+	if payload.Pagination.TotalItems != 9 {
+		t.Fatalf("expected repeated tag params to match nine articles, got %d", payload.Pagination.TotalItems)
 	}
 
 	decode(request(t, router, http.MethodGet, "/api/v1/content?kind=ARTICLE&tag=go,go&page=1&pageSize=10", nil))
-	if payload.Pagination.TotalItems != 3 {
+	if payload.Pagination.TotalItems != 8 {
 		t.Fatalf("expected duplicate tags to dedupe, got %d", payload.Pagination.TotalItems)
 	}
 
 	decode(request(t, router, http.MethodGet, "/api/v1/content?kind=ARTICLE&page=99&pageSize=2", nil))
-	if payload.Pagination.Page != 3 || len(slugs()) != 2 {
+	if payload.Pagination.Page != 8 || len(slugs()) != 1 {
 		t.Fatalf("expected out-of-range page to clamp, got page %d", payload.Pagination.Page)
 	}
 
@@ -285,7 +285,7 @@ func TestContentListPageSortFilterAndTags(t *testing.T) {
 		t.Fatalf("expected thought tags, got %d %s", tags.Code, tags.Body.String())
 	}
 	allTags := request(t, router, http.MethodGet, "/api/v1/tags", nil)
-	if allTags.Code != http.StatusOK || !strings.Contains(allTags.Body.String(), `"name":"go","count":3`) || !strings.Contains(allTags.Body.String(), `"name":"design","count":3`) {
+	if allTags.Code != http.StatusOK || !strings.Contains(allTags.Body.String(), `"name":"go","count":8`) || !strings.Contains(allTags.Body.String(), `"name":"design","count":9`) {
 		t.Fatalf("expected aggregated tags, got %d %s", allTags.Code, allTags.Body.String())
 	}
 	if invalidTags := request(t, router, http.MethodGet, "/api/v1/tags?kind=NOPE", nil); invalidTags.Code != http.StatusBadRequest {
@@ -323,18 +323,26 @@ func seedRows(t *testing.T, router http.Handler, token string, database *store.S
 			t.Fatal(err)
 		}
 	}
-	// Backdate the three seeded articles so seeded + test rows share one
-	// deterministic ordering window.
-	for slug, month := range map[string]int{"designing-boundaries": 1, "reading-the-edge": 2} {
-		stamp := fmt.Sprintf("2025-%02d-01T09:00:00Z", month)
+	// Backdate the four oldest seeded articles so seeded + test rows share one
+	// deterministic ordering window. The dev set spans 2024-10 through 2025-10
+	// except these four, which are pinned before the test rows in 2026.
+	stamps := map[string]string{
+		"designing-boundaries":       "2025-01-02T09:00:00Z",
+		"github-flavored-markdown":   "2025-02-05T09:00:00Z",
+		"reading-the-edge":           "2025-11-20T09:00:00Z",
+		"a-small-signal":             "2025-03-01T09:00:00Z",
+	}
+	for slug, stamp := range stamps {
 		if _, err := database.DB.Exec(`UPDATE content SET published_at = ?, created_at = ?, updated_at = ? WHERE slug = ?`, stamp, stamp, stamp, slug); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if _, err := database.DB.Exec(`UPDATE content SET published_at = '2025-03-01T09:00:00Z', created_at = '2025-03-01T09:00:00Z', updated_at = '2025-03-01T09:00:00Z' WHERE slug = 'a-small-signal'`); err != nil {
+	// Every row's updated_at is aligned to its published_at so the "updated"
+	// sort is deterministic regardless of when the database was seeded.
+	if _, err := database.DB.Exec(`UPDATE content SET updated_at = COALESCE(published_at, created_at)`); err != nil {
 		t.Fatal(err)
 	}
-	// article-a was updated most recently.
+	// article-a is the most recently updated row.
 	if _, err := database.DB.Exec(`UPDATE content SET updated_at = '2026-06-01T09:00:00Z' WHERE slug = 'article-a'`); err != nil {
 		t.Fatal(err)
 	}
@@ -866,7 +874,7 @@ func TestStatsSnapshotInvalidatesAfterPublishingContent(t *testing.T) {
 	token := adminToken(t, router)
 
 	initial := request(t, router, http.MethodGet, "/api/v1/stats", nil)
-	if initial.Code != http.StatusOK || !strings.Contains(initial.Body.String(), `"contentCount":3`) {
+	if initial.Code != http.StatusOK || !strings.Contains(initial.Body.String(), `"contentCount":20`) {
 		t.Fatalf("expected initial stats, got %d %s", initial.Code, initial.Body.String())
 	}
 	created := adminRequest(t, router, token, http.MethodPost, "/api/v1/admin/content", `{"kind":"THOUGHT","slug":"stats-snapshot-thought","title":"Snapshot","summary":"","body":"one two","tags":[],"metadata":{"mood":null,"question":null,"context":null,"source":null}}`)
@@ -881,7 +889,7 @@ func TestStatsSnapshotInvalidatesAfterPublishingContent(t *testing.T) {
 		t.Fatalf("expected publish 200, got %d %s", published.Code, published.Body.String())
 	}
 	refreshed := request(t, router, http.MethodGet, "/api/v1/stats", nil)
-	if refreshed.Code != http.StatusOK || !strings.Contains(refreshed.Body.String(), `"contentCount":4`) {
+	if refreshed.Code != http.StatusOK || !strings.Contains(refreshed.Body.String(), `"contentCount":21`) {
 		t.Fatalf("expected invalidated stats snapshot, got %d %s", refreshed.Code, refreshed.Body.String())
 	}
 }
@@ -999,10 +1007,10 @@ func TestOverviewAndAnalytics(t *testing.T) {
 	if err := json.Unmarshal(overview.Body.Bytes(), &decoded); err != nil {
 		t.Fatal(err)
 	}
-	if decoded.Content.ContentCount != 3 || decoded.Content.ArticleCount != 2 || decoded.Content.ThoughtCount != 1 || decoded.Content.TotalLikes != 1 {
+	if decoded.Content.ContentCount != 20 || decoded.Content.ArticleCount != 11 || decoded.Content.ThoughtCount != 9 || decoded.Content.TotalLikes != 1 {
 		t.Fatalf("unexpected overview counts: %+v", decoded.Content)
 	}
-	if len(decoded.TopContent) != 3 || len(decoded.Trend.Monthly) != 12 {
+	if len(decoded.TopContent) != 5 || len(decoded.Trend.Monthly) != 12 {
 		t.Fatalf("expected top content and 12 trend months, got %+v", decoded.Trend.Monthly)
 	}
 

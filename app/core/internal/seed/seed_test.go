@@ -31,21 +31,48 @@ func TestDevPlanMatchesHistoricalSeed(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := map[string]string{
-		"content_1": "designing-boundaries",
-		"content_2": "a-small-signal",
-		"content_3": "reading-the-edge",
+		"content_1":  "designing-boundaries",
+		"content_2":  "a-small-signal",
+		"content_3":  "reading-the-edge",
+		"content_4":  "github-flavored-markdown",
+		"content_5":  "a-single-writer-sqlite-core",
+		"content_6":  "cache-coherence-by-id",
+		"content_7":  "an-api-relay-gateway",
+		"content_8":  "openlist-a-calm-index",
+		"content_9":  "compile-time-schema-guards",
+		"content_10": "rate-limiting-as-a-conversation",
+		"content_11": "validation-at-the-boundary",
+		"content_12": "observability-without-a-dashboard",
+		"content_13": "what-does-software-owe",
+		"content_14": "the-cost-of-defaults",
+		"content_15": "notes-on-finishing",
+		"content_16": "a-tool-you-trust",
+		"content_17": "writing-is-thinking",
+		"content_18": "why-keep-a-garden",
+		"content_19": "interfaces-as-constraints",
+		"content_20": "pagination-as-a-contract",
+		"content_21": "draft-notes-on-scaling",
 	}
 	if len(plan.Contents) != len(want) {
 		t.Fatalf("expected %d dev contents, got %d", len(want), len(plan.Contents))
 	}
+	published, draft := 0, 0
 	for _, item := range plan.Contents {
 		slug, ok := want[item.ID]
 		if !ok || item.Slug != slug {
 			t.Fatalf("unexpected dev content %q slug %q", item.ID, item.Slug)
 		}
-		if item.Status != model.ContentStatus("") && item.Status != model.StatusPublished {
-			t.Fatalf("dev content %q should default to PUBLISHED, got %q", item.ID, item.Status)
+		switch item.Status {
+		case model.ContentStatus(""), model.StatusPublished:
+			published++
+		case model.StatusDraft:
+			draft++
+		default:
+			t.Fatalf("dev content %q has invalid status %q", item.ID, item.Status)
 		}
+	}
+	if published != 20 || draft != 1 {
+		t.Fatalf("expected 20 published and 1 draft dev contents, got %d/%d", published, draft)
 	}
 }
 
@@ -65,8 +92,8 @@ func TestResolveFollowsEnvironment(t *testing.T) {
 	if len(prodPlan.Contents) != 0 {
 		t.Fatal("production resolution must drop starter content")
 	}
-	if prodPlan.Profile.DisplayName != devPlan.Profile.DisplayName || len(prodPlan.Profile.Contacts) != len(devPlan.Profile.Contacts) {
-		t.Fatal("production resolution should keep the structural skeleton")
+	if prodPlan.Profile.DisplayName == "" || len(prodPlan.Profile.Contacts) == 0 {
+		t.Fatal("production resolution should keep a complete structural skeleton")
 	}
 }
 

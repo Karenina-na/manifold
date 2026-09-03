@@ -1,20 +1,48 @@
 {
   "profile": {
-    "displayName": "Manifold",
-    "handle": "@manifold",
-    "headline": "Profile, writings, and thoughts.",
-    "bio": "Technical writings and short thoughts.",
+    "displayName": "weizixiang",
+    "handle": "@weizixiang",
+    "headline": "Systems, research, and small tools.",
+    "bio": "I build small public infrastructure and write about the boundaries between software and daily life.",
     "location": "Peking, China",
     "organization": "Independent",
-    "websiteUrl": "https://manifold.local",
+    "websiteUrl": "https://api.weizixiang.dev",
     "resumeUrl": "",
     "avatarUrl": "",
-    "interests": ["systems", "research", "writing"],
+    "interests": [
+      "systems",
+      "research",
+      "writing",
+      "tools"
+    ],
     "education": [
-      { "institution": "Independent", "program": "Research and engineering", "period": "Now" }
+      {
+        "institution": "Independent",
+        "program": "Research and software engineering",
+        "period": "Now"
+      },
+      {
+        "institution": "Manifold",
+        "program": "Experimental infrastructure",
+        "period": "Ongoing"
+      }
     ],
     "experience": [
-      { "organization": "Manifold", "role": "Research and software", "period": "Now" }
+      {
+        "organization": "API relay",
+        "role": "Design, implementation, and operations",
+        "period": "Ongoing"
+      },
+      {
+        "organization": "OpenList",
+        "role": "Research and engineering",
+        "period": "Ongoing"
+      },
+      {
+        "organization": "Manifold",
+        "role": "Research and software",
+        "period": "Now"
+      }
     ],
     "series": [
       {
@@ -31,17 +59,51 @@
       }
     ],
     "contacts": [
-      { "label": "GitHub", "url": "https://github.com/manifold-space/manifold", "handle": "@manifold-space" },
-      { "label": "Email", "url": "mailto:hello@manifold.local", "handle": "hello@manifold.local" }
+      {
+        "label": "GitHub",
+        "url": "https://github.com/manifold-space/manifold",
+        "handle": "@manifold-space"
+      },
+      {
+        "label": "API relay",
+        "url": "https://api.weizixiang.dev",
+        "handle": ""
+      },
+      {
+        "label": "OpenList",
+        "url": "https://openlist.weizixiang.dev",
+        "handle": ""
+      },
+      {
+        "label": "Email",
+        "url": "mailto:hello@manifold.local",
+        "handle": "hello@manifold.local"
+      }
     ]
   },
   "siteConfig": {
     "navigation": [
-      { "label": "Home", "href": "/" },
-      { "label": "Writings", "href": "/writing" },
-      { "label": "Thoughts", "href": "/thoughts" }
+      {
+        "label": "Home",
+        "href": "/"
+      },
+      {
+        "label": "Writings",
+        "href": "/writing"
+      },
+      {
+        "label": "Thoughts",
+        "href": "/thoughts"
+      }
     ],
-    "sections": ["PROFILE", "BACKGROUND", "RECENT_CONTENT", "UPDATES", "SERIES", "CONTACT"]
+    "sections": [
+      "PROFILE",
+      "BACKGROUND",
+      "RECENT_CONTENT",
+      "UPDATES",
+      "SERIES",
+      "CONTACT"
+    ]
   },
   "contents": [
     {
@@ -51,8 +113,373 @@
       "title": "Designing Boundaries",
       "summary": "Notes on designing boundaries in personal systems.",
       "body": "# Designing Boundaries\n\nA personal system should preserve attention and make the next action clear.\n\n## The boundary\n\nSmall interfaces reduce unnecessary decisions.",
-      "tags": ["systems", "design"],
-      "metadata": { "language": "Go", "aiAssisted": false }
+      "status": "PUBLISHED",
+      "tags": [
+        "systems",
+        "design"
+      ],
+      "metadata": {
+        "language": "Go",
+        "aiAssisted": false
+      },
+      "publishedAt": "2025-01-02T09:00:00Z"
+    },
+    {
+      "id": "content_3",
+      "kind": "ARTICLE",
+      "slug": "reading-the-edge",
+      "title": "Reading the Edge",
+      "summary": "Questions about the relationship between software and daily life.",
+      "body": "# Open question\n\nHow do small tools change the way we notice the world?",
+      "status": "PUBLISHED",
+      "tags": [
+        "systems"
+      ],
+      "metadata": {
+        "language": "English",
+        "aiAssisted": false
+      },
+      "publishedAt": "2025-11-20T09:00:00Z"
+    },
+    {
+      "id": "content_4",
+      "kind": "ARTICLE",
+      "slug": "github-flavored-markdown",
+      "title": "GitHub Flavored Markdown",
+      "summary": "A reference article exercising tables, code fences, blockquotes, and inline formatting for renderer validation.",
+      "body": "### This README can be used as a reference for github-flavored-markdown styling (and possibly behavior).\n\n---\n\n# H1\nfollowed by some text\n\n## H2\nfollowed by some text\n\n### H3\nfollowed by some text\n\n#### H4\nfollowed by some text\n\n##### H5\nfollowed by some text\n\n###### H6\nfollowed by some text\n\nAuto-detected link: http://www.france.com\n\nSome Ignored_multiple_underscore_italics here\n\nA line of normal text with `inline code` and *italics*, **strong font**, and even some μ†ℱ ╋ℯ╳╋. Followed by lots of Lorem ipsum dolor sit amet, consectetur adipiscing elit. Duis id sem purus, eu commodo tortor. Donec malesuada ultricies dolor a eleifend. In hac habitasse platea dictumst. Vivamus a faucibus ligula. Nullam molestie tristique arcu, eu elementum metus ultricies sed. Aenean luctus congue lectus, vitae semper erat rhoncus non. Nulla facilisi.\n\nFollowed by another line of normal text with `inline code` and *italics*, **strong font**, and even some μ†ℱ ╋ℯ╳╋. Followed by lots of Lorem ipsum dolor sit amet, consectetur adipiscing elit. Duis id sem purus, eu commodo tortor. Donec malesuada ultricies dolor a eleifend. In hac habitasse platea dictumst. Vivamus a faucibus ligula. Nullam molestie tristique arcu, eu elementum metus ultricies sed. Aenean luctus congue lectus, vitae semper erat rhoncus non. Nulla facilisi.\n\nThin horizontal rule:\n\n--\n\nThick horizontal rule:\n\n------\n\n|Table Header 1|Table Header 2           |\n|--------------|-------------------------|\n|Content       |http://example.org       |\n|Content       |http://localhost:\\<port\\>|\nText right below table. Follows is a table with an empty cell, and unaligned indenting.\n\n|Table Header 1|Table Header 2|\n|--------------|--------------|\n|Content  |  Cntent        |\n|Content       |      |\n\nEmpty line between table and this text\n\n    def this_is\n      puts \"some #{4-space-indent} code\"\n    end\n\n<code>\ndef this_is\n  puts \"some #{code tag} code\"\nend\n</code>\n\n<pre>\ndef this_is\n  puts \"some #{pre tag} code\"\nend\n</pre>\n\n```\ndef this_is\n  puts \"some #{fenced} code\"\nend\n```\n\n```ruby\nclass Classy\n  def this_is\n    puts \"some #{colored} ruby code with ruby syntax highlighting\"\n    @someobj.do_it(1, 2)\n  end\nend\n```\n\n```javascript\nvar test = function this_is(){\n  console.log(\"some\" + colored + \"javascript code with javascript syntax highlighting really long\");\n}\n```\n\n```clojure\n(defproject myproject \"0.5.0-SNAPSHOT\"\n  :description \"Some clojure code with syntax highlighting.\"\n  :dependencies [[org.clojure/clojure \"1.5.1\"]]\n  :plugins [[lein-tar \"3.2.0\"]])\n```\n\n```js\nvar test = function this_is(){\n  console.log(\"language declared as 'js' instead\");\n}\n```\n\n```bogus_language\nvar test = function this_is(){\n  console.log(\"language declared as bogus_language\");\n}\n```\n\n> here is blockquote\n\n[Relative image link](afu.png)\n",
+      "status": "PUBLISHED",
+      "tags": [
+        "markdown",
+        "render",
+        "testing"
+      ],
+      "metadata": {
+        "language": "English",
+        "aiAssisted": false
+      },
+      "publishedAt": "2025-02-05T09:00:00Z"
+    },
+    {
+      "id": "content_5",
+      "kind": "ARTICLE",
+      "slug": "a-single-writer-sqlite-core",
+      "title": "A Single-Writer SQLite Core",
+      "summary": "Why one backend owns all business data and a single SQLite connection keeps write ordering trivial.",
+      "body": "# A Single-Writer SQLite Core\n\nEvery read and write flows through one process, which lets SQLite operate as a serialized single-writer store.\n\n## Why one writer\n\nWhen only one connection writes, transactions are trivially serializable without busy retries.\n\n## What the admin gets\n\nA deterministic content store, cheap backups, and no distributed-cache invalidation between services.",
+      "status": "PUBLISHED",
+      "tags": [
+        "go",
+        "sqlite",
+        "architecture"
+      ],
+      "metadata": {
+        "language": "Go",
+        "aiAssisted": false
+      },
+      "publishedAt": "2025-03-10T09:00:00Z"
+    },
+    {
+      "id": "content_6",
+      "kind": "ARTICLE",
+      "slug": "cache-coherence-by-id",
+      "title": "Cache Coherence by ID",
+      "summary": "Invalidating public caches by content identifier instead of by whole-list keys.",
+      "body": "# Cache Coherence by ID\n\nA content row changes rarely, but aggregate lists change whenever any row does.\n\n## Key by identifier\n\nThe public detail is cached by slug; any mutation drops the matching key.\n\n## Derived fields stay at the core\n\nExcerpts and reading minutes are derived at write time so the cache never holds a stale projection.",
+      "status": "PUBLISHED",
+      "tags": [
+        "go",
+        "cache",
+        "systems"
+      ],
+      "metadata": {
+        "language": "Go",
+        "aiAssisted": false
+      },
+      "publishedAt": "2025-04-12T09:00:00Z"
+    },
+    {
+      "id": "content_7",
+      "kind": "ARTICLE",
+      "slug": "an-api-relay-gateway",
+      "title": "A Public Relay Gateway",
+      "summary": "A small public gateway for experiments and personal infrastructure.",
+      "body": "# A Public Relay Gateway\n\nThe relay exposes a handful of endpoints so side projects can share one entry point.\n\n## What it forwards\n\nRequests pass through rate limiting and presence tracking before reaching a backend.\n\n## Why keep it public\n\nExperiments need a stable URL that does not change when the underlying service moves.",
+      "status": "PUBLISHED",
+      "tags": [
+        "infrastructure",
+        "go"
+      ],
+      "metadata": {
+        "language": "Go",
+        "aiAssisted": false
+      },
+      "publishedAt": "2025-05-15T09:00:00Z"
+    },
+    {
+      "id": "content_8",
+      "kind": "ARTICLE",
+      "slug": "openlist-a-calm-index",
+      "title": "OpenList, a Calm Index",
+      "summary": "A quiet place to keep files, links, and things worth holding close.",
+      "body": "# OpenList, a Calm Index\n\nOpenList is a deliberate counterweight to feeds that demand attention.\n\n## Gather instead of stream\n\nItems are collected and organized by hand rather than pushed by an algorithm.\n\n## What calm means here\n\nFewer choices per view, and no unread badge.",
+      "status": "PUBLISHED",
+      "tags": [
+        "tools",
+        "design"
+      ],
+      "metadata": {
+        "language": "English",
+        "aiAssisted": false
+      },
+      "publishedAt": "2025-06-18T09:00:00Z"
+    },
+    {
+      "id": "content_9",
+      "kind": "ARTICLE",
+      "slug": "compile-time-schema-guards",
+      "title": "Compile-Time Schema Guards",
+      "summary": "Refusing to open a database whose schema the binary does not know.",
+      "body": "# Compile-Time Schema Guards\n\nThe migration list is embedded into the binary at build time.\n\n## A newer database refuses to open\n\nIf the on-disk schema version exceeds what the binary knows, the process stops instead of degrading.\n\n## Embedded migrations\n\nThere is exactly one source of truth for the schema, versioned and immutable.",
+      "status": "PUBLISHED",
+      "tags": [
+        "go",
+        "sqlite",
+        "migration"
+      ],
+      "metadata": {
+        "language": "Go",
+        "aiAssisted": false
+      },
+      "publishedAt": "2025-07-21T09:00:00Z"
+    },
+    {
+      "id": "content_10",
+      "kind": "ARTICLE",
+      "slug": "rate-limiting-as-a-conversation",
+      "title": "Rate Limiting as a Conversation",
+      "summary": "Throttling, presence, and backpressure read as a dialogue with the visitor.",
+      "body": "# Rate Limiting as a Conversation\n\nLimits are most useful when they read as guidance rather than a wall.\n\n## Buckets by origin\n\nTrusted proxies supply a cleaned client address to bucket requests.\n\n## Backpressure\n\nA paced failure tells the client to slow down without losing trust.",
+      "status": "PUBLISHED",
+      "tags": [
+        "systems",
+        "design"
+      ],
+      "metadata": {
+        "language": "English",
+        "aiAssisted": false
+      },
+      "publishedAt": "2025-08-23T09:00:00Z"
+    },
+    {
+      "id": "content_11",
+      "kind": "ARTICLE",
+      "slug": "validation-at-the-boundary",
+      "title": "Validation at the Boundary",
+      "summary": "Strict decoding and field checks at the HTTP edge keep the store honest.",
+      "body": "# Validation at the Boundary\n\nThe HTTP handler rejects unknown fields and wrong types before a write reaches the store.\n\n## Strict decoding\n\nDisallowUnknownFields means a typo cannot silently drop a column.\n\n## Derived fields are not input\n\nReading minutes and TOC are computed by the core, never accepted from the client.",
+      "status": "PUBLISHED",
+      "tags": [
+        "go",
+        "design"
+      ],
+      "metadata": {
+        "language": "Go",
+        "aiAssisted": false
+      },
+      "publishedAt": "2025-09-25T09:00:00Z"
+    },
+    {
+      "id": "content_12",
+      "kind": "ARTICLE",
+      "slug": "observability-without-a-dashboard",
+      "title": "Observability Without a Dashboard",
+      "summary": "Audit events and a system status endpoint instead of a wall of graphs.",
+      "body": "# Observability Without a Dashboard\n\nAn audit trail and a single health endpoint cover most of what a small service needs.\n\n## Audit events\n\nEvery mutation is recorded with its request and trace identifiers.\n\n## System status\n\nOne endpoint reports runtime, resources, and host in a plain shape.",
+      "status": "PUBLISHED",
+      "tags": [
+        "systems",
+        "ops"
+      ],
+      "metadata": {
+        "language": "English",
+        "aiAssisted": false
+      },
+      "publishedAt": "2025-10-27T09:00:00Z"
+    },
+    {
+      "id": "content_21",
+      "kind": "ARTICLE",
+      "slug": "draft-notes-on-scaling",
+      "title": "Draft: Notes on Scaling",
+      "summary": "An unpublished draft exploring a second writer for the content store.",
+      "body": "# Draft: Notes on Scaling\n\nA draft only visible to the admin surface.\n\n## Open question\n\nWhen does a single writer stop being enough?",
+      "status": "DRAFT",
+      "tags": [
+        "notes"
+      ],
+      "metadata": {
+        "language": "English",
+        "aiAssisted": false
+      }
+    },
+    {
+      "id": "content_13",
+      "kind": "THOUGHT",
+      "slug": "what-does-software-owe",
+      "title": "What Software Owes",
+      "summary": "A note on the responsibility that comes with shipping a tool.",
+      "body": "Most software asks for attention and rarely gives it back. A tool owes more than a feature list: it owes the clarity of not being needed. The best software becomes a habit you stop noticing.",
+      "status": "PUBLISHED",
+      "tags": [
+        "software",
+        "ethics"
+      ],
+      "metadata": {
+        "mood": "Reflective",
+        "question": "What does a tool owe its users?",
+        "context": "After an afternoon of quiet maintenance.",
+        "source": ""
+      },
+      "publishedAt": "2024-02-03T09:00:00Z"
+    },
+    {
+      "id": "content_14",
+      "kind": "THOUGHT",
+      "slug": "the-cost-of-defaults",
+      "title": "The Cost of Defaults",
+      "summary": "Defaults are decisions made on your behalf.",
+      "body": "A default is not a neutral starting point. It is a decision made on your behalf, often to optimize for the median user you are not. Choosing the defaults deliberately is mostly work.",
+      "status": "PUBLISHED",
+      "tags": [
+        "design"
+      ],
+      "metadata": {
+        "mood": "Questioning",
+        "question": "Which of my defaults are actually my choice?",
+        "context": "Reviewing a settings page.",
+        "source": ""
+      },
+      "publishedAt": "2024-03-05T09:00:00Z"
+    },
+    {
+      "id": "content_15",
+      "kind": "THOUGHT",
+      "slug": "notes-on-finishing",
+      "title": "Notes on Finishing",
+      "summary": "Ending a project is a skill.",
+      "body": "Starting is generous; finishing is disciplined. The last ten percent is where a project becomes useful or remains a sketch. A good ending is smaller than the vision and sharper than the draft.",
+      "status": "PUBLISHED",
+      "tags": [
+        "writing",
+        "process"
+      ],
+      "metadata": {
+        "mood": "Focused",
+        "question": "When is something done enough to ship?",
+        "context": "Closing out a small release.",
+        "source": ""
+      },
+      "publishedAt": "2025-01-08T09:00:00Z"
+    },
+    {
+      "id": "content_16",
+      "kind": "THOUGHT",
+      "slug": "a-tool-you-trust",
+      "title": "A Tool You Trust",
+      "summary": "Trust is built by predictable behavior, not promises.",
+      "body": "Trust in a tool is not a marketing claim. It is the accumulation of predictable behavior across many small interactions. Once trust is lost, no changelog restores it.",
+      "status": "PUBLISHED",
+      "tags": [
+        "tools",
+        "systems"
+      ],
+      "metadata": {
+        "mood": "Curious",
+        "question": "What makes a tool trustworthy?",
+        "context": "Deciding whether to depend on a new library.",
+        "source": ""
+      },
+      "publishedAt": "2025-02-12T09:00:00Z"
+    },
+    {
+      "id": "content_17",
+      "kind": "THOUGHT",
+      "slug": "writing-is-thinking",
+      "title": "Writing Is Thinking",
+      "summary": "Clarity of expression is clarity of thought.",
+      "body": "Writing is not the output of thinking; it is the process. The sentence that refuses to be written is usually an idea that refuses to be understood.",
+      "status": "PUBLISHED",
+      "tags": [
+        "writing"
+      ],
+      "metadata": {
+        "mood": "Reflective",
+        "question": "Do I think in order to write, or write in order to think?",
+        "context": "Editing a draft at the edge of a deadline.",
+        "source": ""
+      },
+      "publishedAt": "2025-03-16T09:00:00Z"
+    },
+    {
+      "id": "content_18",
+      "kind": "THOUGHT",
+      "slug": "why-keep-a-garden",
+      "title": "Why Keep a Garden",
+      "summary": "A maintained space is an act of continued attention.",
+      "body": "A garden is not a file dump. It is a place you keep tending, pruning, and rearranging. The value is not the size of the garden but the fact that you return to it.",
+      "status": "PUBLISHED",
+      "tags": [
+        "process",
+        "writing"
+      ],
+      "metadata": {
+        "mood": "Calm",
+        "question": "What deserves the effort of being kept?",
+        "context": "A quiet morning tending the index.",
+        "source": ""
+      },
+      "publishedAt": "2025-04-20T09:00:00Z"
+    },
+    {
+      "id": "content_19",
+      "kind": "THOUGHT",
+      "slug": "interfaces-as-constraints",
+      "title": "Interfaces as Constraints",
+      "summary": "A well-designed interface limits what can go wrong.",
+      "body": "An interface is not a list of things you can do. It is a set of things you cannot do wrong. The best constraint is the one that makes the correct action the easy one.",
+      "status": "PUBLISHED",
+      "tags": [
+        "design",
+        "systems"
+      ],
+      "metadata": {
+        "mood": "Curious",
+        "question": "Where does a boundary save more than it costs?",
+        "context": "Comparing two API shapes.",
+        "source": ""
+      },
+      "publishedAt": "2025-05-24T09:00:00Z"
+    },
+    {
+      "id": "content_20",
+      "kind": "THOUGHT",
+      "slug": "pagination-as-a-contract",
+      "title": "Pagination as a Contract",
+      "summary": "A paged API is a promise about ordering.",
+      "body": "Pagination quietly enforces an ordering promise. If the ordering is unstable, every page is a coin flip. Deterministic sorting is not a detail; it is the contract.",
+      "status": "PUBLISHED",
+      "tags": [
+        "systems",
+        "design"
+      ],
+      "metadata": {
+        "mood": "Questioning",
+        "question": "Is my ordering stable across pages?",
+        "context": "Writing a listing endpoint.",
+        "source": ""
+      },
+      "publishedAt": "2025-06-28T09:00:00Z"
     },
     {
       "id": "content_2",
@@ -61,18 +488,17 @@
       "title": "A Small Signal",
       "summary": "Short note on when to turn an observation into a system.",
       "body": "Not every observation needs a system. First decide whether it changes the way you work.",
-      "tags": ["thinking"],
-      "metadata": { "mood": "Curious", "question": "When is a system justified?" }
-    },
-    {
-      "id": "content_3",
-      "kind": "ARTICLE",
-      "slug": "reading-the-edge",
-      "title": "Reading the Edge",
-      "summary": "Questions about the relationship between software and daily life.",
-      "body": "## Open question\n\nHow do small tools change the way we notice the world?",
-      "tags": ["systems"],
-      "metadata": {}
+      "status": "PUBLISHED",
+      "tags": [
+        "thinking"
+      ],
+      "metadata": {
+        "mood": "Curious",
+        "question": "When is a system justified?",
+        "context": null,
+        "source": null
+      },
+      "publishedAt": "2025-10-30T09:00:00Z"
     }
   ]
 }
