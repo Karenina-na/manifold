@@ -20,15 +20,15 @@ Admin 端目前对评论只有「删除 / 恢复」两种控制。需要新增�
 
 ## 1. 数据库（0002 增量迁移）
 
-新增 `app/core/db/migrations/0002_comment_hidden.sql`：
+新增 `app/core/db/migrations/0002_init.sql`（文件名必须严格为 `0002_init.sql`，因为 `store.go:224` 用 `migrations/%04d_init.sql` 拼出迁移路径，后缀 `_init` 是硬编码的）：
 
 ```sql
 ALTER TABLE comments ADD COLUMN hidden_at TEXT;
-CREATE INDEX IF NOT EXISTS idx_comments_hidden ON comments(content_id, created_at) WHERE hidden_at IS NULL;
 ```
 
 - `hidden_at` 与 `deleted_at` 并存，都是可空时间戳软状态。一行可同时处于：正常 / 已隐藏 / 已删除 / 两者兼有。
 - `schemaVersion` 从 `1` 升到 `2`（`store.go:23`）。
+- 不加新索引：没有任何查询按 `hidden_at` 过滤（公开列表仍按 `deleted_at IS NULL`，隐藏项以 `hidden: true` 一并返回占位；管理列表不过滤隐藏），公开列表已由 `idx_comments_content_visibility`（`content_id, created_at WHERE deleted_at IS NULL`）覆盖。遵循最小迁移原则。
 
 ### 必需：放宽迁移门禁（本次改动的一部分）
 
@@ -93,7 +93,7 @@ if existingTables > 0 && userVersion > schemaVersion {
 - 新增 store 层测试：隐藏→计数归零→恢复→计数回升；隐藏与删除正交（可同时为真）；作者资料覆盖后公开端读到新值；增量迁移 `0002` 在 `userVersion=1` 的旧库上正确升级。
 - 更新 fixtures、SDK 方法（新增 `hideComment`/`unhideComment`/`updateCommentAuthor`）与对应测试。
 
-## 开放项
+## 已确定细节
 
-- 占位文案默认 "This comment was hidden by moderation."（可再定夺）。
-- 是否在同一 PR 显式更新 docs/core.md、docs/admin.md、docs/decisions/web.md —— 需同步，遵循项目约定的同步门槛。
+- 占位文案固定为 "This comment was hidden by moderation."。
+- 同一 PR 内同步更新 `docs/core.md`、`docs/admin.md`、`docs/decisions/web.md`、`docs/decisions/core.md`（新增决策条目）以及 `packages/sdk/README.md`，遵循项目约定的「contracts → sdk → core → web/admin → docs → tests」同步与验证门槛。
