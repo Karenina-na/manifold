@@ -1,13 +1,21 @@
-export type ContributionItem = {
-  updatedAt?: string | null;
-  publishedAt?: string | null;
-  createdAt?: string | null;
-};
+import type { Content } from "@manifold/contracts";
+
+export type ContributionItem = Content;
+
+export interface ContributionEntry {
+  id: string;
+  kind: Content["kind"];
+  href: string;
+  title: string;
+  summary: string;
+  date: string;
+}
 
 export interface ContributionDay {
   date: string;
   count: number;
   level: number;
+  updates: ContributionEntry[];
 }
 
 export interface ContributionMonth {
@@ -41,6 +49,17 @@ function dayDifference(start: Date, end: Date) {
   return Math.round((end.getTime() - start.getTime()) / 86_400_000);
 }
 
+function toEntry(item: ContributionItem): ContributionEntry {
+  return {
+    id: item.id,
+    kind: item.kind,
+    href: item.kind === "ARTICLE" ? `/writing/${encodeURIComponent(item.slug)}` : `/thoughts/${encodeURIComponent(item.slug)}`,
+    title: item.title || "Untitled thought",
+    summary: item.summary || "A quiet note waiting for its next sentence.",
+    date: itemDate(item) || item.publishedAt || item.createdAt || item.updatedAt || "",
+  };
+}
+
 export function getContributionYears(items: ContributionItem[]) {
   return [...new Set(items.map((item) => parseDate(itemDate(item))?.getUTCFullYear()).filter((year): year is number => year !== undefined))].sort((a, b) => b - a);
 }
@@ -52,13 +71,15 @@ export function buildContributionCalendar(items: ContributionItem[], year: numbe
   calendarStart.setUTCDate(calendarStart.getUTCDate() - calendarStart.getUTCDay());
   const calendarEnd = new Date(lastDay);
   calendarEnd.setUTCDate(calendarEnd.getUTCDate() + (6 - calendarEnd.getUTCDay()));
-  const dayCounts = new Map<string, number>();
+  const dayItems = new Map<string, ContributionItem[]>();
 
   for (const item of items) {
     const date = parseDate(itemDate(item));
     if (!date || date.getUTCFullYear() !== year) continue;
     const key = dateKey(date);
-    dayCounts.set(key, (dayCounts.get(key) ?? 0) + 1);
+    const list = dayItems.get(key) ?? [];
+    list.push(item);
+    dayItems.set(key, list);
   }
 
   const days: ContributionDay[] = [];
@@ -69,8 +90,8 @@ export function buildContributionCalendar(items: ContributionItem[], year: numbe
     date.setUTCDate(calendarStart.getUTCDate() + offset);
     const key = dateKey(date);
     const isInYear = date.getUTCFullYear() === year;
-    const count = dayCounts.get(key) ?? 0;
-    const day = isInYear ? { date: key, count, level: Math.min(4, count) } : null;
+    const updates = (dayItems.get(key) ?? []).map(toEntry);
+    const day = isInYear ? { date: key, count: updates.length, level: Math.min(4, updates.length), updates } : null;
     if (day) days.push(day);
     const week = Math.floor(offset / 7);
     weeks[week] ??= [];

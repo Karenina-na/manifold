@@ -24,8 +24,12 @@ type FloatingTooltipProps = {
   showArrow?: boolean;
   interactive?: boolean;
   className?: string;
-  dataAttribute?: "data-series-tooltip" | "data-contact-tooltip" | string;
+  dataAttribute?: "data-series-tooltip" | "data-contact-tooltip" | "data-contribution-tooltip" | string;
   id?: string;
+  onMouseEnter?: (event: React.MouseEvent<HTMLDivElement>) => void;
+  onMouseLeave?: (event: React.MouseEvent<HTMLDivElement>) => void;
+  onFocus?: (event: React.FocusEvent<HTMLDivElement>) => void;
+  onBlur?: (event: React.FocusEvent<HTMLDivElement>) => void;
 };
 
 type PositionState = {
@@ -49,6 +53,10 @@ export function FloatingTooltip({
   className = "",
   dataAttribute,
   id,
+  onMouseEnter,
+  onMouseLeave,
+  onFocus,
+  onBlur,
 }: FloatingTooltipProps) {
   const [visible, setVisible] = useState(false);
   const [position, setPosition] = useState<PositionState | null>(null);
@@ -183,6 +191,10 @@ export function FloatingTooltip({
       data-floating-tooltip
       {...(dataAttribute ? { [dataAttribute]: true } : {})}
       className={`${styles.floatingTooltip} ${className}`}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
+      onFocus={onFocus}
+      onBlur={onBlur}
       style={{
         position: "absolute",
         top: `${position?.top ?? 0}px`,

@@ -1,14 +1,66 @@
 "use client";
 
 import { CalendarDays, ChevronDown } from "lucide-react";
-import { useMemo, useState, type CSSProperties } from "react";
-import { buildContributionCalendar, getContributionYears, type ContributionItem } from "../lib/contribution-heatmap";
+import { useMemo, useRef, useState, type CSSProperties } from "react";
+import Link from "next/link";
+import { buildContributionCalendar, getContributionYears, type ContributionDay, type ContributionItem } from "../lib/contribution-heatmap";
+import { FloatingTooltip } from "./floating-tooltip";
+import { formatDate } from "../lib/api";
 import styles from "../app/site.module.css";
 
 const weekdayLabels = ["", "Mon", "", "Wed", "", "Fri", ""];
 
 function formatDay(date: string) {
   return new Intl.DateTimeFormat("en", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" }).format(new Date(`${date}T00:00:00Z`));
+}
+
+function ContributionCell({ day }: { day: ContributionDay }) {
+  const anchorRef = useRef<HTMLSpanElement>(null);
+  const [open, setOpen] = useState(false);
+  const hoverTimer = useRef<number>(0);
+  const interactive = day.updates.length > 0;
+  const label = `${day.count} ${day.count === 1 ? "update" : "updates"} on ${formatDay(day.date)}`;
+
+  const cancelTimer = () => window.clearTimeout(hoverTimer.current);
+  const openTooltip = () => { cancelTimer(); setOpen(true); };
+  const closeTooltip = () => { cancelTimer(); hoverTimer.current = window.setTimeout(() => setOpen(false), 120); };
+
+  if (!interactive) {
+    return <span
+      role="img"
+      aria-label={label}
+      title={label}
+      data-contribution-cell
+      data-level={day.level}
+      className={styles.contributionCell}
+    />;
+  }
+
+  return <span
+    ref={anchorRef}
+    role="img"
+    aria-label={label}
+    tabIndex={0}
+    data-contribution-cell
+    data-contribution-interactive="true"
+    data-level={day.level}
+    className={styles.contributionCell}
+    onMouseEnter={openTooltip}
+    onMouseLeave={closeTooltip}
+    onFocus={openTooltip}
+    onBlur={closeTooltip}
+  >
+    <FloatingTooltip anchorRef={anchorRef} open={open} placement="top" dataAttribute="data-contribution-tooltip" interactive onMouseEnter={openTooltip} onMouseLeave={closeTooltip}>
+      <span className={styles.tooltipMeta}>{formatDay(day.date)} · {day.count} {day.count === 1 ? "update" : "updates"}</span>
+      <span className={styles.updatePreviewList}>
+        {day.updates.map((entry) => <Link className={styles.updatePreviewItem} href={entry.href} key={entry.id} tabIndex={open ? 0 : -1}>
+          <span className={styles.updatePreviewItemMeta}>{entry.kind === "ARTICLE" ? "WRITING" : "THOUGHT"} · {formatDate(entry.date)}</span>
+          <strong>{entry.title}</strong>
+          <span>{entry.summary}</span>
+        </Link>)}
+      </span>
+    </FloatingTooltip>
+  </span>;
 }
 
 export function ContributionHeatmap({ items }: { items: ContributionItem[] }) {
@@ -46,15 +98,7 @@ export function ContributionHeatmap({ items }: { items: ContributionItem[] }) {
           <div className={styles.contributionWeekdays} aria-hidden="true">{weekdayLabels.map((label, index) => <span key={`${label}-${index}`}>{label}</span>)}</div>
           <div className={styles.contributionGrid}>
             {calendar.weeks.map((week, weekIndex) => <div className={styles.contributionWeek} key={`${year}-week-${weekIndex}`}>
-              {week.map((day, dayIndex) => day ? <span
-                className={styles.contributionCell}
-                data-contribution-cell
-                data-level={day.level}
-                key={day.date}
-                role="img"
-                aria-label={`${day.count} ${day.count === 1 ? "update" : "updates"} on ${formatDay(day.date)}`}
-                title={`${day.count} ${day.count === 1 ? "update" : "updates"} on ${formatDay(day.date)}`}
-              /> : <span className={styles.contributionCellOutside} aria-hidden="true" key={`${year}-outside-${weekIndex}-${dayIndex}`} />)}
+              {week.map((day, dayIndex) => day ? <ContributionCell key={day.date} day={day} /> : <span className={styles.contributionCellOutside} aria-hidden="true" key={`${year}-outside-${weekIndex}-${dayIndex}`} />)}
             </div>)}
           </div>
         </div>

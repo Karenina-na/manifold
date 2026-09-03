@@ -376,6 +376,10 @@ html { scroll-behavior: smooth; }
 .floatingTooltip[data-contact-tooltip] .tooltipMeta,
 .floatingTooltip[data-contact-tooltip] .tooltipInner > span:not(.tooltipMeta) { display: none; }
 .floatingTooltip[data-contact-tooltip] strong { font-family: var(--app-font-sans); font-size: 16px; font-weight: 400; line-height: 1.2; }
+.floatingTooltip[data-contribution-tooltip] { gap: 6px; width: min(280px, calc(100vw - 24px)); padding: 11px 12px; }
+.floatingTooltip[data-contribution-tooltip] .tooltipMeta { letter-spacing: .08em; }
+.floatingTooltip[data-contribution-tooltip] .updatePreviewList { gap: 0; }
+.floatingTooltip[data-contribution-tooltip] .updatePreviewItem { padding-top: 7px; }
 .floatingTooltip { opacity: 0; transform: translateY(6px); transition: opacity 360ms var(--motion-ease), transform 360ms var(--motion-ease); }
 .floatingTooltip[data-state="open"] { opacity: 1; transform: translateY(0); }
 .floatingTooltip[data-state="closed"] { opacity: 0; pointer-events: none; }
@@ -532,6 +536,7 @@ html { scroll-behavior: smooth; }
 .contributionCell[data-level="4"] { border-color: var(--color-accent); background: var(--color-accent); }
 [data-theme="dark"] .contributionCell[data-level="0"] { background: color-mix(in srgb, var(--color-line) 70%, transparent); }
 .contributionCell[role="img"] { cursor: help; transition: transform .16s ease, border-color .16s ease; }
+.contributionCell[role="img"][data-contribution-interactive="true"] { cursor: pointer; }
 .contributionCell[role="img"]:hover, .contributionCell[role="img"]:focus-visible { border-color: var(--color-ink); transform: scale(1.35); outline: 0; }
 .contributionFooter { display: flex; align-items: center; justify-content: flex-end; gap: 6px; margin-top: 8px; color: var(--color-muted); font-family: var(--font-mono); font-size: 9px; }
 .contributionLegend { display: inline-flex; gap: 3px; }
