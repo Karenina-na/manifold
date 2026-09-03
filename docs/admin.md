@@ -38,6 +38,9 @@ Dashboard、Profile、Writings、Thoughts、Comments、Settings 通过 lazy chun
 - SDK 自动发送 `Authorization: Bearer <token>` 和 `X-Trace-ID`。
 - Core 返回 `ApiError`，UI 显示稳定的用户提示；不要在 Admin 重新实现 JWT 验证。
 - 当前只有 `admin` 角色，没有注册、角色管理或多用户 UI。
+- **Sign out** 先调 `POST /api/v1/admin/session/logout`（fire-and-forget，失败不阻断）再清 `sessionStorage` 回登录页；Core 端吊销该会话后同 token 再请求返回 401。
+- **改密码**（Settings 的 Security 区）调 `POST /api/v1/admin/password`；成功后 Core 吊销除当前外所有会话。
+- **Sign out everywhere**（Settings 的 Security 区）调 `POST /api/v1/admin/session/logout-all`；成功后吊销其他设备会话并登出本机。
 
 ## 4. 工作区和 API
 
@@ -102,7 +105,7 @@ Meta tab 字段：正文在 Context tab（vditor IR）必填；title、slug 可�
 
 ### Media
 
-侧栏 Media 项路由 `#/media`（`MediaWorkspace.tsx`）。列表来自 `listMedia({ q?, page? })`，query key `['admin-media', { q, page }]`（失效统一 `['admin-media']` 前缀）：搜索防抖 300ms，`page`/`pageSize` 分页，按 `createdAt` 降序。上传入口三个——拖放区、点击区（隐藏 file input）、编辑器（见 Context tab）；经 `uploadMedia(file, file.name)` 逐个上传，白名单 png/jpeg/webp/gif/avif，失败（超限 413、类型 415 等）在 dropzone 下方的 Alert 呈现 `error.message (code)`。卡片网格（缩略图懒加载、mime/体积/日期），每张卡提供 **Copy markdown**（剪贴板写入 `![filename](url)`，2.4s 内回显 Copied）和 ConfirmButton Popover 删除（`deleteMedia` → 204 后失效列表；Markdown 引用会变死链，Core 不做引用追踪）。发布正文里的图片由 `@manifold/render` 直接渲染。
+侧栏 Media 项路由 `#/media`（`MediaWorkspace.tsx`）。列表来自 `listMedia({ q?, page? })`，query key `['admin-media', { q, page }]`（失效统一 `['admin-media']` 前缀）：搜索防抖 300ms，`page`/`pageSize` 分页，按 `createdAt` 降序。上传入口三个——拖放区、点击区（隐藏 file input）、编辑器（见 Context tab）；经 `uploadMedia(file, file.name)` 逐个上传，白名单 png/jpeg/webp/gif/avif，失败（超限 413、类型 415 等）在 dropzone 下方的 Alert 呈现 `error.message (code)`。卡片网格（缩略图懒加载、mime/体积/日期），每张卡提供 **Copy markdown**（剪贴板写入 `![filename](url)`，2.4s 内回显 Copied）和 ConfirmButton Popover 删除（`deleteMedia` → 204 后失效列表）。删除失败时在 dropzone 下方 Alert 展示原因：Core 返回 409 `MEDIA_IN_USE` 时提示 "This image is used in published or draft content. Remove those references first."（Core 已做引用校验，被引用的媒体拒绝删除并附 `details.references`）。发布正文里的图片由 `@manifold/render` 直接渲染。
 
 ### Comments
 
@@ -122,6 +125,13 @@ Site 调用 `GET/PUT /api/v1/admin/site`，对整个站点设置做结构化表�
 - **Homepage**：`sections` 用 section-picker 编辑（六区块枚举开关 + 上下移排序，至少保留一个）。首页内容列不做置顶策划，始终按发布时间展示；内容置顶属于各自内容工作区（见下）。
 
 站点设置是单个全量 PUT（一个保存条、`['admin-site']` 失效）。内容置顶（pin）在各自工作区设置：Writings 用 `['admin-writings-config']` + `updateWritingConfig`，Thoughts 用 `['admin-thought-config']` + `updateThoughtConfig`；Core 校验非空引用必须是已发布的对应类型内容。
+
+### Security
+
+Settings 底部的独立 panel（`components/SecuritySection.tsx`），不属于站点设置表单：
+
+- **改密码**：current + new + confirm 三个 `PasswordInput`（Zod 校验 ≥8 且两次一致），调 `changePassword`；成功后按钮 2.4s 回显 "Password updated"，失败 Alert 提示检查当前密码。Core 端成功后吊销其他设备会话，当前会话保持有效。
+- **Sign out everywhere**：调 `logoutAllSessions`，成功后回显 "Sessions revoked" 并回调 `onLoggedOut`（由 `App.tsx` 清 session 回登录页）。
 
 ## 5. Query key 和失效
 

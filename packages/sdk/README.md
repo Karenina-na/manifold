@@ -58,6 +58,9 @@ const page = await client.content({ kind: "ARTICLE", pageSize: 20 })
 | 方法 | HTTP | Core 路径 | 返回 |
 | --- | --- | --- | --- |
 | `login(input)` | POST | `/api/v1/admin/session` | `LoginResponse` |
+| `logoutSession()` | POST | `/api/v1/admin/session/logout` | `void`，204；吊销当前会话（token 立即失效） |
+| `logoutAllSessions()` | POST | `/api/v1/admin/session/logout-all` | `void`，204；吊销该用户除当前外所有会话 |
+| `changePassword(input)` | POST | `/api/v1/admin/password` | `void`，204；body `ChangePasswordInput{currentPassword,newPassword}`，成功后吊销其他会话；旧密码错误抛 `ApiError` 401 |
 | `adminStats()` | GET | `/api/v1/admin/stats` | `AdminStats` |
 | `adminOverview()` | GET | `/api/v1/admin/overview` | `AdminOverview`（TTL 缓存聚合） |
 | `adminAnalyticsViews(query?)` | GET | `/api/v1/admin/analytics/views` | `AnalyticsViews` |
@@ -65,7 +68,7 @@ const page = await client.content({ kind: "ARTICLE", pageSize: 20 })
 | `adminAudit(query?)` | GET | `/api/v1/admin/audit` | `AuditEventCollection`（服务端分页：`page`/`pageSize`/`q` + `pagination`） |
 | `listMedia(query?)` | GET | `/api/v1/admin/media` | `Collection<Media>`（服务端分页：`page`/`pageSize`/`q`） |
 | `uploadMedia(blob, filename)` | POST | `/api/v1/admin/media?filename=…` | `Media`（二进制 body，Core 按 201 返回含绝对 `url`） |
-| `deleteMedia(id)` | DELETE | `/api/v1/admin/media/{id}` | 204 |
+| `deleteMedia(id)` | DELETE | `/api/v1/admin/media/{id}` | `void`，204；媒体被内容引用时抛 `ApiError` 409 `MEDIA_IN_USE`（`details.references` 列出引用内容） |
 | `adminProfile()` / `updateProfile(input)` | GET/PUT | `/api/v1/admin/profile` | `Profile` |
 | `adminSite()` / `updateSite(input)` | GET/PUT | `/api/v1/admin/site` | `SiteConfig`；`updateSite` 全量提交站点设置 |
 | `adminThoughtConfig()` / `updateThoughtConfig(input)` | GET/PUT | `/api/v1/admin/thoughts/config` | `ThoughtConfig` |

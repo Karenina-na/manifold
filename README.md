@@ -8,8 +8,8 @@ Manifold 是一个 API-first 的个人 digital garden：同一套内容和个人
 - `THOUGHT` 与 `ARTICLE` Markdown 内容，支持标签、搜索和页码分页；文稿支持数学公式、代码高亮和一键复制代码。
 - Thoughts 是轻量碎记；Articles 提供由 Core 派生的阅读时长和目录。
 - 匿名评论提交与 Admin 审核、`LIKE` 访客反应。
-- Admin 登录、内容发布生命周期、评论管理、Profile、Site 和首页 composition 管理。
-- Go Core、SQLite、JWT + Casbin 鉴权、请求/追踪 ID、审计事件和 TTL 缓存。
+- Admin 登录、可撤销会话（logout/logout-all）、在线改密码、内容发布生命周期、评论管理、Profile、Site 和首页 composition 管理。
+- Go Core、SQLite、JWT + Casbin 鉴权（DB 会话校验、可撤销）、请求/追踪 ID、审计事件和 TTL 缓存。
 
 ## 架构
 
@@ -54,7 +54,7 @@ Core 是唯一拥有业务持久化的服务。Web/Admin 不导入 Go 代码、�
 
 ## 快速开始
 
-Core、Web、Admin 是独立进程。Core 首次启动会创建当前 SQLite schema、创建父目录并写入演示数据；已有非当前 schema 的数据库会拒绝启动，请删除本地数据库后重建。
+Core、Web、Admin 是独立进程。Core 首次启动会创建当前 SQLite schema、创建父目录并写入演示数据；旧 schema 的数据库会原地增量升级，只有比当前 binary 更新的数据库才拒绝启动。
 
 ```bash
 pnpm install
@@ -195,7 +195,7 @@ OpenResty 使用独立域名时，将 Web、Admin、Core 分别代理到 `http:/
 
 ## 数据与生命周期
 
-- SQLite 由 Core 独占；Core 只接受当前 schema，schema version 不匹配时要求删除本地数据库后重建。
+- SQLite 由 Core 独占；迁移按版本顺序原地升级旧库，只有比 binary 更新的数据库才拒绝启动。
 - Content 类型为 `THOUGHT`、`ARTICLE`；状态为 `DRAFT`、`PUBLISHED`、`DELETED`。
 - 更新带 `expectedVersion`；版本冲突会拒绝覆盖。
 - 删除是软删除；草稿和已删除内容不进入公开接口。

@@ -39,6 +39,8 @@ app/core JSON <--> packages/contracts <--> packages/sdk <--> Web / Admin
 - `WritingConfig` / `WritingConfigInput`：可空 `featuredWritingId` 的 Admin 配置读写契约。
 - `TagQuery` / `TagSummary`：`/api/v1/tags` 的可选 `kind` 参数和 `{ name, count }` 聚合项。
 - `Media` / `MediaQuery`：管理端媒体对象（`url` 为绝对地址，写入 Markdown 正文使用）与媒体库列表参数。
+- `MediaReference`：媒体被内容引用时的引用条目 `{ contentId, kind, title, slug }`，出现在 `DELETE /admin/media/{id}` 的 409 `MEDIA_IN_USE` 错误 `details.references` 中。
+- `ChangePasswordInput`：`POST /admin/password` 请求体 `{ currentPassword, newPassword }`（新密码 ≥8 字符）。
 
 响应端 `ArticleMetadata`：`readingMinutes`、`toc`、`language`、`aiAssisted`；前两项由 Core 派生。响应端 `ThoughtMetadata`：`mood`/`question`/`context`/`source` 全部输出，可空值用 `null`。
 

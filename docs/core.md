@@ -55,11 +55,12 @@ app/core/
 ├── internal/seed/                  # 种子数据文件（bootstrap.json、dev.json）与解析校验
 ├── internal/cache/                 # 内容/统计缓存
 ├── internal/events/                # 审计发布器和 worker
-├── db/migrations/0001_init.sql     # 当前唯一 schema 来源
+├── db/migrations/0001_init.sql     # baseline schema
+├── db/migrations/0002_init.sql     # admin security (credentials + sessions)
 └── Dockerfile
 ```
 
-运行时 schema 由 `app/core/db/migrations/0001_init.sql` 初始化；数据库文件与当前 schema 不兼容时直接拒绝启动，删除本地数据库后重建。
+运行时 schema 由 `app/core/db/migrations/` 下的迁移初始化，迁移按版本顺序应用（`store.go` 的 `migrate()`）。旧库（版本低于 binary）原地增量升级；只有版本高于 binary 的库才拒绝启动，提示升级 Core binary。
 
 ## 3. 运行配置
 
@@ -179,7 +180,7 @@ Thoughts 归档参数为 `page`（默认 1）、`pageSize`（默认 8，范围 1
 
 ## 6. Admin API
 
-`POST /api/v1/admin/session` 使用用户名和 bcrypt 密码登录，返回 12 小时 HS256 JWT。除登录接口外，所有 Admin 请求都需要 `Authorization: Bearer <token>`。
+`POST /api/v1/admin/session` 使用用户名和 bcrypt 密码登录，返回 12 小时 HS256 JWT（claims 携带 `jti`，对应 `admin_sessions` 一行）。除登录接口外，所有 Admin 请求都需要 `Authorization: Bearer <token>`，且服务端逐请求校验 session 未吊销、未过期。登录失败会写入 `admin.session.failed` 审计（含 username 与源 IP，**绝不记录明文密码**）。
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
@@ -203,9 +204,12 @@ Thoughts 归档参数为 `page`（默认 1）、`pageSize`（默认 8，范围 1
 | `GET` | `/api/v1/admin/analytics/views` | `AnalyticsViews`：`days`（默认 30，上限 90）范围内去重浏览事件总数、独立访客、逐日 `{date, views, uniqueVisitors}`（缺失日补零）和 Top 10 referrer（空记 `direct`） |
 | `GET` | `/api/v1/admin/system` | `SystemStatus`：version、`startedAt`、`uptimeSeconds`、SQLite 体积、内容缓存条目、Go heap/goroutine/进程 RSS（`sysRssBytes`）和审计事件总数；`resources` 块（CPU 占比与逻辑核数、内存 used/total/percent、load average 1/5/15、数据库所在分区的磁盘 used/total/percent）和 `host` 块（`hostname`/`os`/`platform`/`kernelArch`）。资源指标经 gopsutil 采样，单项失败降级为零值不报错；CPU 采用 `cpu.Percent(0, false)` 非阻塞差值采样，进程启动后首次请求 CPU 占比为 0 |
 | `GET` | `/api/v1/admin/audit` | `AuditEventCollection`：审计事件服务端分页，`page`（默认 1）、`pageSize`（默认 10，上限 50）、`q`（OR 匹配 `event_name`/`actor`/`resource_id`，≤200 字符）；响应附 `pagination: PagePagination`，`page` 超界时钳制到最后一页返回，按 `createdAt` 降序 |
+| `POST` | `/api/v1/admin/session/logout` | 吊销当前会话（JWT `jti`），204；审计 `admin.session.revoked`。吊销后该 token 再请求返回 401 |
+| `POST` | `/api/v1/admin/session/logout-all` | 吊销该 subject 除当前外所有活跃会话，204；审计 `admin.sessions.revoked_all` |
+| `POST` | `/api/v1/admin/password` | `ChangePasswordInput{currentPassword,newPassword}`，校验旧密码 → 写新 bcrypt hash → 吊销当前外所有会话，204；审计 `admin.password.changed`。旧密码错误返回 401 `INVALID_CREDENTIALS` |
 | `GET` | `/api/v1/admin/media` | `Collection<Media>`：媒体库服务端分页，`page`（默认 1）、`pageSize`（默认 20，上限 50）、`q`（按文件名/ID 过滤，≤200 字符）；`url` 为绝对地址，按 `createdAt` 降序 |
 | `POST` | `/api/v1/admin/media` | 上传图片：raw bytes（非 multipart）+ `?filename=`；`http.DetectContentType` 嗅探并仅接受 png/jpeg/webp/gif/avif（拒绝 SVG，415）；超过 `CORE_MEDIA_MAX_BYTES` 返回 413；按 SHA256 去重幂等（重复上传返回已有记录）；响应 201 `Media`（含绝对 `url`，写进 Markdown 正文使用）；审计 `media.uploaded` |
-| `DELETE` | `/api/v1/admin/media/{id}` | 物理删除媒体，204；Markdown 中的引用会变成死链，由编辑端自行清理；审计 `media.deleted` |
+| `DELETE` | `/api/v1/admin/media/{id}` | 物理删除媒体，204；删除前检查非删除内容正文是否引用该媒体，被引用则返回 409 `MEDIA_IN_USE`（`details.references` 列出引用内容），否则删除；审计 `media.deleted` |
 
 内容创建和更新的 Article 必须有非空 `title` 和 `slug`；Thought 两者可为空。更新使用 PUT，必须提交完整内容和 `expectedVersion`，版本不匹配返回 `409 VERSION_CONFLICT`。类型转换为 Article 时，最终 title/slug 也必须满足 Article 规则。
 
@@ -228,9 +232,9 @@ Thoughts 归档参数为 `page`（默认 1）、`pageSize`（默认 8，范围 1
 
 Metadata：Thought 使用 `mood/question/context/source`；Article 使用 Core 派生的 `readingMinutes/toc` 与可编辑的 `language/aiAssisted`。`excerpt` 在保存时由 Core 从正文生成并持久化。客户端不得提交派生字段，未知 metadata 字段和错误 null/type 直接拒绝。
 
-其他表：`profile`、`site_config`、`thoughts_config`、`writings_config`、`comments`、`likes`、`presence`、`audit_events`、`content_view_events`、`media`。`media`（`id`、`mime`、`size`、`sha256 UNIQUE`、`filename`、`data BLOB`、`created_at`）保存上传的图片字节，按 SHA256 去重（相同字节复用同一行）；`mime` 只允许 png/jpeg/webp/gif/avif（上传时嗅探，SVG 永不入库）；公开访问 `GET /api/v1/media/{id}` 依赖该表，缓存语义见路由表。`content_view_events` 是浏览事件表（`content_id`、`visitor_id`、`referrer`（origin 或空）、`day`（UTC 日期）、`created_at`）：识别访客通过部分唯一索引 `(content_id, visitor_id, day) WHERE visitor_id != ''` 按"同人同内容同 UTC 日"去重，匿名浏览每次插入一条；该表驱动 `GET /admin/analytics/views`，与累计 `view_count` 并存——`view_count` 保持无条件递增，分析口径只统计去重事件，Admin 侧两处浏览量（Overview 的 `totalViews` 与 Analytics 的 `totalViews`）设计上不相等，差异即匿名与重复访问。`thoughts_config` 是 `thoughts_1` 单例，`featured_thought_id` 是可空的 `content(id)` 外键；`writings_config` 是 `writings_1` 单例，`featured_writing_id` 同构，分别承载 Thoughts/Writings 归档置顶。Core 为归档查询维护 `(kind,status,published_at DESC)` 索引。`content.view_count` 在公开详情读取时同步原子递增，列表响应直接返回该持久化计数；`likeCount` 从 `likes` 聚合，`commentCount` 只统计可见线程中的可见评论，评论创建、软删除或恢复时 Core 会失效对应内容详情缓存。详情读取同时写入 `audit_events(event_name = 'content.viewed', resource_type = 'content')` 供观测使用，审计队列丢弃不会影响浏览量统计。Profile 包含 `resume_url`、`interests_json`、`education_json`、`experience_json`、`series_json`、`contacts_json`；Series 项为 `{name,url,description,category}`（category 可为 null），联系方式为 `{label,url,handle,icon}`（handle/icon 可为 null）；`site_config` 是 `site_1` 单例，包含站点身份列（`title`、`description`、`footer_text`、`social_json`、`comments_enabled`）与首页组合列（`navigation_json`、`sections_json`）。评论创建即公开（无审核状态，`deleted_at` 软删标记，`avatar_seed` 保存访客头像种子），可见性索引为 `idx_comments_content_visibility (content_id, deleted_at, created_at)`；点赞有 `(content_id, visitor_id)` 唯一约束；Presence 只保存匿名 visitor ID 的最近心跳时间，过期窗口为 5 分钟。
+其他表：`profile`、`site_config`、`thoughts_config`、`writings_config`、`comments`、`likes`、`presence`、`audit_events`、`content_view_events`、`media`、`admin_credentials`、`admin_sessions`。`media`（`id`、`mime`、`size`、`sha256 UNIQUE`、`filename`、`data BLOB`、`created_at`）保存上传的图片字节，按 SHA256 去重（相同字节复用同一行）；`mime` 只允许 png/jpeg/webp/gif/avif（上传时嗅探，SVG 永不入库）；公开访问 `GET /api/v1/media/{id}` 依赖该表，缓存语义见路由表。`admin_credentials`（`id`、`username`、`password_hash`、`updated_at`）保存管理员 bcrypt 凭据：首次启动用 `CORE_ADMIN_PASSWORD_HASH` 播种一行，之后以 DB 行为权威，`CORE_ADMIN_PASSWORD_HASH` 不再覆盖（改密码写入此行、重启保留）。`admin_sessions`（`id`（= JWT `jti`）、`subject`、`created_at`、`expires_at`、`revoked_at`）支持可撤销会话：登录时插入一行，`RequireAdmin` 每次校验 `revoked_at IS NULL AND expires_at > now`，`logout`/`logout-all`/改密码都会写 `revoked_at`。`content_view_events` 是浏览事件表（`content_id`、`visitor_id`、`referrer`（origin 或空）、`day`（UTC 日期）、`created_at`）：识别访客通过部分唯一索引 `(content_id, visitor_id, day) WHERE visitor_id != ''` 按"同人同内容同 UTC 日"去重，匿名浏览每次插入一条；该表驱动 `GET /admin/analytics/views`，与累计 `view_count` 并存——`view_count` 保持无条件递增，分析口径只统计去重事件，Admin 侧两处浏览量（Overview 的 `totalViews` 与 Analytics 的 `totalViews`）设计上不相等，差异即匿名与重复访问。`thoughts_config` 是 `thoughts_1` 单例，`featured_thought_id` 是可空的 `content(id)` 外键；`writings_config` 是 `writings_1` 单例，`featured_writing_id` 同构，分别承载 Thoughts/Writings 归档置顶。Core 为归档查询维护 `(kind,status,published_at DESC)` 索引。`content.view_count` 在公开详情读取时同步原子递增，列表响应直接返回该持久化计数；`likeCount` 从 `likes` 聚合，`commentCount` 只统计可见线程中的可见评论，评论创建、软删除或恢复时 Core 会失效对应内容详情缓存。详情读取同时写入 `audit_events(event_name = 'content.viewed', resource_type = 'content')` 供观测使用，审计队列丢弃不会影响浏览量统计。Profile 包含 `resume_url`、`interests_json`、`education_json`、`experience_json`、`series_json`、`contacts_json`；Series 项为 `{name,url,description,category}`（category 可为 null），联系方式为 `{label,url,handle,icon}`（handle/icon 可为 null）；`site_config` 是 `site_1` 单例，包含站点身份列（`title`、`description`、`footer_text`、`social_json`、`comments_enabled`）与首页组合列（`navigation_json`、`sections_json`）。评论创建即公开（无审核状态，`deleted_at` 软删标记，`avatar_seed` 保存访客头像种子），可见性索引为 `idx_comments_content_visibility (content_id, deleted_at, created_at)`；点赞有 `(content_id, visitor_id)` 唯一约束；Presence 只保存匿名 visitor ID 的最近心跳时间，过期窗口为 5 分钟。
 
-> **不兼容历史 schema**：Core 只接受当前 schema；检测到旧库或未知 schema version 时拒绝启动。删除数据库文件后由当前 schema 重新创建。
+> **不兼容历史 schema**：程序按版本顺序应用迁移，旧库（版本低于 binary）原地升级；只有版本高于 binary 的库才拒绝启动，提示升级 Core binary。
 
 ## 8. 缓存、审计和关闭
 
