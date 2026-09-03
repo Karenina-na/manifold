@@ -71,7 +71,7 @@ export function BackgroundCanvas() {
       for (let x = 0; x <= width + GRID_GAP; x += GRID_GAP) {
         for (let y = 0; y <= height + GRID_GAP; y += GRID_GAP) {
           const horizontalDistance = Math.min(1, Math.abs(x - width * 0.5) / Math.max(1, width * 0.5));
-          const focus = 0.28 + 0.72 * Math.pow(1 - horizontalDistance, 1.15);
+          const focus = 0.28 + 0.72 * Math.pow(horizontalDistance, 1.15);
           const waveX = Math.sin(y * 0.018 + time * 1.3) * Math.cos(x * 0.003 + time * 0.45);
           const waveY = Math.cos(x * 0.015 - time * 0.95) * Math.sin(y * 0.0035 + time * 0.55);
           const ambientDrift = Math.sin(time * 0.34) * 0.7 + Math.sin(time * 0.19 + 1.2) * 0.35;
