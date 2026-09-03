@@ -108,6 +108,15 @@ func (h *apiHandler) adminListMedia(w http.ResponseWriter, r *http.Request) {
 
 func (h *apiHandler) adminDeleteMedia(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
+	refs, err := h.store.MediaReferences(id)
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, "MEDIA_UNAVAILABLE", "Media references could not be checked.")
+		return
+	}
+	if len(refs) > 0 {
+		WriteJSON(w, http.StatusConflict, map[string]any{"error": map[string]any{"code": "MEDIA_IN_USE", "message": "This media is referenced by published or draft content and cannot be deleted.", "details": map[string]any{"references": refs}}})
+		return
+	}
 	if err := h.store.DeleteMedia(id); err != nil {
 		if errors.Is(err, store.ErrMediaNotFound) {
 			WriteError(w, http.StatusNotFound, "MEDIA_NOT_FOUND", "Media was not found.")

@@ -30,6 +30,7 @@ func (h *apiHandler) login(w http.ResponseWriter, r *http.Request) {
 	}
 	token, err := h.auth.Login(input.Username, input.Password)
 	if err != nil {
+		h.audit(r, "admin.session.failed", "session", input.Username, map[string]string{"ip": clientAddress(r, trustedProxyNetworks(h.cfg.TrustedProxyCIDRs))})
 		WriteError(w, http.StatusUnauthorized, "INVALID_CREDENTIALS", "Username or password is incorrect.")
 		return
 	}
@@ -113,6 +114,62 @@ func (h *apiHandler) adminUpdateProfile(w http.ResponseWriter, r *http.Request) 
 	}
 	h.audit(r, "profile.updated", "profile", "profile_1", nil)
 	h.profile(w, r)
+}
+
+func (h *apiHandler) adminLogoutSession(w http.ResponseWriter, r *http.Request) {
+	claims := auth.ClaimsFromContext(r.Context())
+	if claims == nil || claims.ID == "" {
+		WriteError(w, http.StatusUnauthorized, "UNAUTHORIZED", "A valid session is required.")
+		return
+	}
+	if err := h.store.RevokeSession(claims.ID, time.Now().UTC()); err != nil {
+		WriteError(w, http.StatusInternalServerError, "SESSION_REVOKE_FAILED", "Session could not be revoked.")
+		return
+	}
+	h.audit(r, "admin.session.revoked", "session", claims.ID, nil)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *apiHandler) adminLogoutSessions(w http.ResponseWriter, r *http.Request) {
+	claims := auth.ClaimsFromContext(r.Context())
+	if claims == nil || claims.Subject == "" {
+		WriteError(w, http.StatusUnauthorized, "UNAUTHORIZED", "A valid session is required.")
+		return
+	}
+	if err := h.store.RevokeSessions(claims.Subject, claims.ID, time.Now().UTC()); err != nil {
+		WriteError(w, http.StatusInternalServerError, "SESSION_REVOKE_FAILED", "Sessions could not be revoked.")
+		return
+	}
+	h.audit(r, "admin.sessions.revoked_all", "session", claims.Subject, nil)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+type changePasswordInput struct {
+	CurrentPassword string `json:"currentPassword" validate:"required,min=1,max=200"`
+	NewPassword     string `json:"newPassword" validate:"required,min=8,max=200"`
+}
+
+func (h *apiHandler) adminChangePassword(w http.ResponseWriter, r *http.Request) {
+	var input changePasswordInput
+	if err := decodeJSON(r, &input); err != nil || h.validate.Struct(input) != nil {
+		WriteError(w, http.StatusUnprocessableEntity, "VALIDATION_ERROR", "currentPassword and newPassword are required; newPassword must be at least 8 characters.")
+		return
+	}
+	claims := auth.ClaimsFromContext(r.Context())
+	if claims == nil {
+		WriteError(w, http.StatusUnauthorized, "UNAUTHORIZED", "A valid session is required.")
+		return
+	}
+	if err := h.auth.UpdateCredential(claims.Subject, input.CurrentPassword, input.NewPassword, claims.ID); err != nil {
+		if errors.Is(err, auth.ErrInvalidCredentials) {
+			WriteError(w, http.StatusUnauthorized, "INVALID_CREDENTIALS", "Current password is incorrect.")
+			return
+		}
+		WriteError(w, http.StatusInternalServerError, "PASSWORD_CHANGE_FAILED", "Password could not be updated.")
+		return
+	}
+	h.audit(r, "admin.password.changed", "password", claims.Subject, nil)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *apiHandler) adminSite(w http.ResponseWriter, _ *http.Request) {

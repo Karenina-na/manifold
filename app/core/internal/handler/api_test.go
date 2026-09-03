@@ -1167,3 +1167,77 @@ func TestMetadataValidationRejectsWrongTypes(t *testing.T) {
 		}
 	}
 }
+
+func TestAdminChangePasswordRevokesOtherSessions(t *testing.T) {
+	router := newTestRouter(t)
+	token := adminToken(t, router)
+	response := adminRequest(t, router, token, http.MethodPost, "/api/v1/admin/password", `{"currentPassword":"password","newPassword":"new-secret-9"}`)
+	if response.Code != http.StatusNoContent {
+		t.Fatalf("expected password change 204, got %d %s", response.Code, response.Body.String())
+	}
+	if bad := adminRequest(t, router, token, http.MethodPost, "/api/v1/admin/password", `{"currentPassword":"wrong","newPassword":"another-1"}`); bad.Code != http.StatusUnauthorized {
+		t.Fatalf("expected wrong current password 401, got %d", bad.Code)
+	}
+	login := request(t, router, http.MethodPost, "/api/v1/admin/session", strings.NewReader(`{"username":"admin","password":"new-secret-9"}`))
+	if login.Code != http.StatusOK {
+		t.Fatalf("expected login with new password 200, got %d %s", login.Code, login.Body.String())
+	}
+}
+
+func TestAdminLogoutRevokesCurrentSession(t *testing.T) {
+	router := newTestRouter(t)
+	token := adminToken(t, router)
+	if response := adminRequest(t, router, token, http.MethodPost, "/api/v1/admin/session/logout", ""); response.Code != http.StatusNoContent {
+		t.Fatalf("expected logout 204, got %d", response.Code)
+	}
+	if response := adminRequest(t, router, token, http.MethodGet, "/api/v1/admin/content", ""); response.Code != http.StatusUnauthorized {
+		t.Fatalf("expected revoked token 401, got %d", response.Code)
+	}
+}
+
+func TestAdminLogoutAllSessionsKeepsCurrent(t *testing.T) {
+	router := newTestRouter(t)
+	tokenA := adminToken(t, router)
+	tokenB := adminToken(t, router)
+	if response := adminRequest(t, router, tokenA, http.MethodPost, "/api/v1/admin/session/logout-all", ""); response.Code != http.StatusNoContent {
+		t.Fatalf("expected logout-all 204, got %d", response.Code)
+	}
+	if response := adminRequest(t, router, tokenA, http.MethodGet, "/api/v1/admin/content", ""); response.Code != http.StatusOK {
+		t.Fatalf("expected current session to stay valid, got %d", response.Code)
+	}
+	if response := adminRequest(t, router, tokenB, http.MethodGet, "/api/v1/admin/content", ""); response.Code != http.StatusUnauthorized {
+		t.Fatalf("expected other session revoked, got %d", response.Code)
+	}
+}
+
+func TestMediaDeleteBlockedWhenReferenced(t *testing.T) {
+	router := newTestRouter(t)
+	token := adminToken(t, router)
+	png, _ := base64.StdEncoding.DecodeString("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==")
+	uploaded := adminRequest(t, router, token, http.MethodPost, "/api/v1/admin/media?filename=ref.png", string(png))
+	if uploaded.Code != http.StatusCreated {
+		t.Fatalf("expected upload 201, got %d %s", uploaded.Code, uploaded.Body.String())
+	}
+	var media struct {
+		ID  string `json:"id"`
+		URL string `json:"url"`
+	}
+	_ = json.Unmarshal(uploaded.Body.Bytes(), &media)
+	created := adminRequest(t, router, token, http.MethodPost, "/api/v1/admin/content", `{"kind":"THOUGHT","slug":"ref-media","title":null,"summary":"s","body":"![x](`+media.URL+`)","tags":[],"metadata":{"mood":null,"question":null,"context":null,"source":null}}`)
+	if created.Code != http.StatusCreated {
+		t.Fatalf("expected content 201, got %d %s", created.Code, created.Body.String())
+	}
+	blocked := adminRequest(t, router, token, http.MethodDelete, "/api/v1/admin/media/"+media.ID, "")
+	if blocked.Code != http.StatusConflict {
+		t.Fatalf("expected conflict 409, got %d", blocked.Code)
+	}
+	var body struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	_ = json.Unmarshal(blocked.Body.Bytes(), &body)
+	if body.Error.Code != "MEDIA_IN_USE" {
+		t.Fatalf("expected MEDIA_IN_USE, got %s", body.Error.Code)
+	}
+}
