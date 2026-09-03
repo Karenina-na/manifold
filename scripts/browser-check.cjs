@@ -504,7 +504,7 @@ async function main() {
     await web.getByRole('button', { name: 'View your comment' }).click();
     await postedBubble.waitFor({ state: 'visible', timeout: 5000 });
     await web.getByRole('button', { name: 'Comment again' }).click();
-    await web.locator('#comment-body').waitFor({ state: 'visible', timeout: 5000 });
+    await web.getByRole('region', { name: 'Add a comment' }).locator('#comment-body').waitFor({ state: 'visible', timeout: 5000 });
     await postedBubble.hover();
     await postedBubble.getByRole('button', { name: 'Reply' }).click();
     await web.getByText(/Replying to/).first().waitFor({ state: 'visible', timeout: 5000 });
@@ -526,7 +526,9 @@ async function main() {
 
     const admin = await browser.newPage();
     const adminErrors = [];
-    admin.on('console', (message) => { if (message.type() === 'error') adminErrors.push(`console:${message.text()}`); });
+    // The media-in-use probe intentionally triggers a 409; the browser logs
+    // that as a "Failed to load resource" console error, so ignore 409s.
+    admin.on('console', (message) => { if (message.type() === 'error' && !message.text().includes('409 (Conflict)')) adminErrors.push(`console:${message.text()}`); });
     admin.on('pageerror', (error) => adminErrors.push(`pageerror:${error.message}`));
     await admin.goto(adminUrl, { waitUntil: 'networkidle' });
     const adminControlCounts = {
@@ -542,6 +544,9 @@ async function main() {
     const dashboardCommentsResponse = admin.waitForResponse((response) => coreResponse(response, '/api/v1/admin/comments', 'GET', 200));
     await admin.getByRole('button', { name: 'Enter workspace' }).click();
     await loginResponse;
+    // Capture the browser's own session token from its storage so the
+    // logout-all probe can verify the current session survives.
+    const browserToken = await admin.evaluate(() => JSON.parse(sessionStorage.getItem('manifold.admin.session')).accessToken);
     await overviewResponse;
     await dashboardCommentsResponse;
     await admin.getByRole('heading', { name: 'Dashboard' }).waitFor({ state: 'visible', timeout: 5000 });
@@ -744,12 +749,31 @@ async function main() {
     await mediaCard.waitFor({ state: 'visible', timeout: 8000 });
     await mediaCard.getByRole('button', { name: 'Copy markdown' }).click();
     await admin.getByRole('button', { name: 'Copied' }).waitFor({ state: 'visible', timeout: 3000 });
+    // The published media-render-probe writing embeds this image, so deletion
+    // is blocked with 409 MEDIA_IN_USE and the Alert surfaces the reason.
+    await mediaCard.getByRole('button', { name: 'Delete probe.png' }).click();
+    await admin.getByText('Delete this image? Markdown that references it will show a broken image.').waitFor({ state: 'visible', timeout: 5000 });
+    await admin.getByRole('button', { name: 'Delete', exact: true }).last().click();
+    await admin.getByText('This image is used in published or draft content. Remove those references first.').waitFor({ state: 'visible', timeout: 5000 });
+    // Remove the reference by deleting the probe writing, then retry deletion.
+    const mediaWritingDelete = await fetch(`${coreUrl}/api/v1/admin/content/${mediaWriting.id}`, { method: 'DELETE', headers: { authorization: `Bearer ${archiveToken}` } });
+    if (!mediaWritingDelete.ok) throw new Error(`Probe writing delete failed: ${mediaWritingDelete.status}`);
     await mediaCard.getByRole('button', { name: 'Delete probe.png' }).click();
     await admin.getByText('Delete this image? Markdown that references it will show a broken image.').waitFor({ state: 'visible', timeout: 5000 });
     const mediaDeleteResponse = admin.waitForResponse((response) => /\/api\/v1\/admin\/media\/[^/]+$/.test(new URL(response.url()).pathname) && response.request().method() === 'DELETE' && response.status() === 204);
     await admin.getByRole('button', { name: 'Delete', exact: true }).last().click();
     await mediaDeleteResponse;
     await admin.getByText('No images uploaded yet — drop files above or paste into the editor.').waitFor({ state: 'visible', timeout: 5000 });
+
+    // Security: logout-all revokes the browser's other sessions server-side.
+    // The browser session and archiveToken are separate logins, so logging out
+    // everything except the browser's current session kills archiveToken.
+    const logoutAll = await fetch(`${coreUrl}/api/v1/admin/session/logout-all`, { method: 'POST', headers: { authorization: `Bearer ${browserToken}` } });
+    if (logoutAll.status !== 204) throw new Error(`Logout-all failed: ${logoutAll.status}`);
+    const archiveCheck = await fetch(`${coreUrl}/api/v1/admin/stats`, { headers: { authorization: `Bearer ${archiveToken}` } });
+    if (archiveCheck.status !== 401) throw new Error(`Expected logout-all to revoke the archive session, got ${archiveCheck.status}`);
+    const browserStillValid = await fetch(`${coreUrl}/api/v1/admin/stats`, { headers: { authorization: `Bearer ${browserToken}` } });
+    if (browserStillValid.status !== 200) throw new Error(`Expected browser session to stay valid after logout-all, got ${browserStillValid.status}`);
 
     // Settings round-trip: identity, navigation, comments toggle
     await admin.getByRole('button', { name: 'Settings' }).click();
@@ -759,7 +783,7 @@ async function main() {
     await admin.locator('#site-navigation').getByRole('button', { name: 'Add navigation link' }).click();
     const navRow = admin.locator('#site-navigation .list-row').last();
     await navRow.getByPlaceholder('Label', { exact: true }).fill('Garden Home');
-    await navRow.getByPlaceholder('Label or /path, or full URL').fill('/');
+    await navRow.getByPlaceholder('Label or /path, or full URL').fill('/garden');
     await admin.locator('#site-comments').getByRole('switch').click();
     const siteSaveResponse = admin.waitForResponse((response) => coreResponse(response, '/api/v1/admin/site', 'PUT', 200));
     await admin.getByRole('button', { name: 'Save site settings' }).click();
@@ -809,6 +833,25 @@ async function main() {
 
     await admin.getByRole('button', { name: 'Unpin A Small Signal' }).click();
     await admin.waitForResponse((response) => coreResponse(response, '/api/v1/admin/thoughts/config', 'PUT', 200));
+
+    // Security section: change password revokes other sessions; sign-out
+    // revokes the current session server-side.
+    await admin.setViewportSize({ width: 1440, height: 1000 });
+    await admin.getByRole('button', { name: 'Settings' }).click();
+    await admin.getByRole('heading', { name: 'Site settings.' }).waitFor({ state: 'visible', timeout: 5000 });
+    await admin.getByLabel('Current password').fill(password);
+    await admin.getByLabel('New password', { exact: true }).fill('rotated-pass-1');
+    await admin.getByLabel('Confirm new password').fill('rotated-pass-1');
+    await admin.getByRole('button', { name: 'Change password' }).click();
+    await admin.getByRole('button', { name: 'Password updated' }).waitFor({ state: 'visible', timeout: 5000 });
+    const otherSession = await fetch(`${coreUrl}/api/v1/admin/session`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username, password }) });
+    if (otherSession.status !== 401) throw new Error(`Expected old password rejected after change, got ${otherSession.status}`);
+    const rotatedLogin = await fetch(`${coreUrl}/api/v1/admin/session`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username, password: 'rotated-pass-1' }) });
+    if (rotatedLogin.status !== 200) throw new Error(`Expected rotated password to authenticate, got ${rotatedLogin.status}`);
+    await admin.getByRole('button', { name: 'Sign out', exact: true }).click();
+    await admin.getByRole('button', { name: 'Enter workspace' }).waitFor({ state: 'visible', timeout: 5000 });
+    const browserTokenGone = await fetch(`${coreUrl}/api/v1/admin/stats`, { headers: { authorization: `Bearer ${browserToken}` } });
+    if (browserTokenGone.status !== 401) throw new Error(`Expected signed-out session revoked server-side, got ${browserTokenGone.status}`);
 
     if (webErrors.length || adminErrors.length) throw new Error(JSON.stringify({ webErrors, adminErrors }));
     console.log(JSON.stringify({ webControlCounts, adminControlCounts, webErrors, adminErrors }));
