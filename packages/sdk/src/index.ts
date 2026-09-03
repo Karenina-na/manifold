@@ -1,4 +1,4 @@
-import type { AdminComment, AdminCommentQuery, AdminContent, AdminContentQuery, AdminOverview, AdminStats, AnalyticsViews, AnalyticsViewsQuery, AuditEventCollection, AuditQuery, Collection, Comment, CommentQuery, Content, ContentDetail, ContentDetailQuery, ContentInput, ContentQuery, CreateCommentInput, HealthStatus, LikeSummary, LoginInput, LoginResponse, Media, MediaQuery, PresenceStatus, Profile, ProfileInput, SiteComposition, SiteConfig, SiteConfigInput, Stats, SystemStatus, TagQuery, TagSummary, ThoughtConfig, ThoughtConfigInput, UpdateContentInput, WritingConfig, WritingConfigInput } from "@manifold/contracts";
+import type { AdminComment, AdminCommentQuery, AdminContent, AdminContentQuery, AdminOverview, AdminStats, AnalyticsViews, AnalyticsViewsQuery, AuditEventCollection, AuditQuery, ChangePasswordInput, Collection, Comment, CommentQuery, Content, ContentDetail, ContentDetailQuery, ContentInput, ContentQuery, CreateCommentInput, HealthStatus, LikeSummary, LoginInput, LoginResponse, Media, MediaQuery, PresenceStatus, Profile, ProfileInput, SiteComposition, SiteConfig, SiteConfigInput, Stats, SystemStatus, TagQuery, TagSummary, ThoughtConfig, ThoughtConfigInput, UpdateContentInput, WritingConfig, WritingConfigInput } from "@manifold/contracts";
 
 export class ApiError extends Error {
 	readonly status: number;
@@ -49,6 +49,9 @@ export class ManifoldClient {
 	likes(slug: string, visitorId?: string) { return this.request<LikeSummary>(`/api/v1/content/${encodeURIComponent(slug)}/likes`, { headers: visitorId ? { "X-Visitor-ID": visitorId } : undefined }); }
 	setLike(slug: string, visitorId: string, enabled: boolean) { return this.request<LikeSummary>(`/api/v1/content/${encodeURIComponent(slug)}/likes`, { method: enabled ? "PUT" : "DELETE", headers: { "X-Visitor-ID": visitorId } }); }
 	login(input: LoginInput) { return this.request<LoginResponse>("/api/v1/admin/session", { method: "POST", body: input }); }
+	logoutSession() { return this.request<void>("/api/v1/admin/session/logout", { method: "POST" }); }
+	logoutAllSessions() { return this.request<void>("/api/v1/admin/session/logout-all", { method: "POST" }); }
+	changePassword(input: ChangePasswordInput) { return this.request<void>("/api/v1/admin/password", { method: "POST", body: input }); }
 	adminStats() { return this.request<AdminStats>("/api/v1/admin/stats"); }
 	adminProfile() { return this.request<Profile>("/api/v1/admin/profile"); }
 	updateProfile(input: ProfileInput) { return this.request<Profile>("/api/v1/admin/profile", { method: "PUT", body: input }); }

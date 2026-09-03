@@ -200,3 +200,35 @@ test("binds the default fetch implementation to its global owner", async () => {
 		globalThis.fetch = originalFetch;
 	}
 });
+
+test("posts change-password payload and returns void on 204", async () => {
+	let captured: Request | undefined;
+	const client = new ManifoldClient({
+		baseUrl: "http://core.test",
+		token: "token-1",
+		fetch: async (input, init) => {
+			captured = new Request(input, init);
+			return new Response(null, { status: 204 });
+		},
+	});
+	await client.changePassword({ currentPassword: "old", newPassword: "new-secret-9" });
+	assert.equal(captured?.url, "http://core.test/api/v1/admin/password");
+	assert.equal(captured?.method, "POST");
+	assert.deepEqual(await captured?.json(), { currentPassword: "old", newPassword: "new-secret-9" });
+	assert.equal(captured?.headers.get("Authorization"), "Bearer token-1");
+});
+
+test("posts logout endpoints", async () => {
+	const urls: string[] = [];
+	const client = new ManifoldClient({
+		baseUrl: "http://core.test",
+		token: "token-1",
+		fetch: async (input, init) => {
+			urls.push(new Request(input, init).url);
+			return new Response(null, { status: 204 });
+		},
+	});
+	await client.logoutSession();
+	await client.logoutAllSessions();
+	assert.deepEqual(urls, ["http://core.test/api/v1/admin/session/logout", "http://core.test/api/v1/admin/session/logout-all"]);
+});

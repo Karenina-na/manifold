@@ -161,6 +161,8 @@ export interface MediaQuery { page?: number; pageSize?: number; q?: string }
 
 export interface LoginInput { username: string; password: string }
 export interface LoginResponse { accessToken: string; tokenType: "Bearer"; expiresIn: number; user: { username: string; role: "admin" } }
+export interface ChangePasswordInput { currentPassword: string; newPassword: string }
+export interface MediaReference { contentId: string; kind: ContentKind; title: string | null; slug: string }
 
 interface BaseContentInput { slug: string; title: string | null; summary: string; body: string; tags: string[] }
 export interface ThoughtMetadataInput { mood: string | null; question: string | null; context: string | null; source: string | null }
