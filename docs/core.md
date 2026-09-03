@@ -240,7 +240,7 @@ Metadata：Thought 使用 `mood/question/context/source`；Article 使用 Core �
 - Stats 与 Admin Overview 各使用单条 TTL 快照（共用 `CORE_STATS_CACHE_TTL`）。
 - 审计事件通过有界异步队列写入 `audit_events`；队列满会记录丢弃但不让业务请求失败。
 - `RouterWithLifecycle` 用于生产入口；监听失败会结束进程，正常关闭时最多等待 5 秒排空已接受事件；`Router` 仅用于同步内部调用/测试。公共 HTTP 契约不受启动生命周期影响。
-- 发布包 supervisor 在 Core 或 Web 任一子进程异常退出时向其余进程发送 SIGTERM；`stop` 等待正常退出，超时后才发送 SIGKILL。包内后台运行不包含开机自启、日志轮转、HTTPS 或反向代理。
+- 发布包 supervisor 在 Web 子进程异常退出时按退避独立重启 Web，Core 和 Admin 保持运行；Core 异常退出或 Admin 监听失败时才向其余进程发送 SIGTERM。`stop` 等待正常退出，超时后才发送 SIGKILL。包内后台运行不包含开机自启、日志轮转、HTTPS 或反向代理。
 - Core 限流默认按 TCP 对端地址分桶。仅当对端位于 `CORE_TRUSTED_PROXY_CIDRS` 时才读取 `X-Real-IP`；反向代理必须覆盖并清洗该头，不能透传客户端输入。该配置只改变限流身份识别，不改变 HTTP 契约。
 
 ### 依赖记录：github.com/shirou/gopsutil/v4

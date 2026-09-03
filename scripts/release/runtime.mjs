@@ -53,6 +53,19 @@ function processIsAlive(pid) {
   }
 }
 
+function signalProcessGroup(pid, signal) {
+  try {
+    process.kill(-pid, signal)
+  } catch (error) {
+    if (error.code !== 'ESRCH') throw error
+    try {
+      process.kill(pid, signal)
+    } catch (fallbackError) {
+      if (fallbackError.code !== 'ESRCH') throw fallbackError
+    }
+  }
+}
+
 async function processMatchesSupervisor(pid, token) {
   if (process.platform !== 'linux') return true
   const commandLine = await readFile(`/proc/${pid}/cmdline`, 'utf8').catch((error) => {
@@ -179,7 +192,7 @@ async function start(root) {
     const timeout = Number(process.env.MANIFOLD_START_TIMEOUT_MS || 60_000)
     await waitForHealthyServices(manifest, supervisor, pidPath, root, timeout)
   } catch (error) {
-    if (processIsAlive(supervisor.pid)) process.kill(supervisor.pid, 'SIGTERM')
+    if (processIsAlive(supervisor.pid)) signalProcessGroup(supervisor.pid, 'SIGTERM')
     throw error
   }
   console.log(`Manifold started\nWeb: ${manifest.web.url}\nAdmin: ${manifest.admin.url}\nCore: ${manifest.core.url}`)
@@ -201,9 +214,9 @@ async function stop(root, { quiet = false } = {}) {
     if (!quiet) console.log('Manifold is not running')
     return
   }
-  process.kill(record.pid, 'SIGTERM')
+  signalProcessGroup(record.pid, 'SIGTERM')
   if (!(await waitForProcessExit(record.pid, 10_000))) {
-    process.kill(record.pid, 'SIGKILL')
+    signalProcessGroup(record.pid, 'SIGKILL')
     await waitForProcessExit(record.pid, 2_000)
   }
   await removePidRecord(pidPath, record)
@@ -249,6 +262,8 @@ async function supervise(root) {
   const baseEnvironment = serviceEnvironment(environment)
   let adminServer
   let shuttingDown = false
+  let webRestartTimer
+  let webRestartAttempt = 0
   const launch = (command, args, options, logName) => {
     const logFd = openSync(join(logDirectory, logName), 'a')
     fchmodSync(logFd, 0o600)
@@ -260,6 +275,7 @@ async function supervise(root) {
   const shutdown = async (exitCode) => {
     if (shuttingDown) return
     shuttingDown = true
+    if (webRestartTimer) clearTimeout(webRestartTimer)
     for (const child of children) if (child.exitCode === null && child.signalCode === null) child.kill('SIGTERM')
     await Promise.all(children.map(async (child) => {
       if (!(await waitForChild(child, 8_000)) && child.exitCode === null && child.signalCode === null) child.kill('SIGKILL')
@@ -277,22 +293,47 @@ async function supervise(root) {
       env: { ...baseEnvironment, CORE_ADDR: `:${manifest.core.port}` },
     }, 'core.log')
     const webDirectory = join(root, 'web', 'app', 'web')
-    const web = launch(process.execPath, [join(webDirectory, 'server.js')], {
-      cwd: webDirectory,
-      env: { ...baseEnvironment, NODE_ENV: 'production', HOSTNAME: manifest.web.host, PORT: String(manifest.web.port) },
-    }, 'web.log')
-    for (const child of [core, web]) {
-      child.once('error', (error) => {
-        console.error('service_spawn_error', error)
-        void shutdown(1)
+    const launchWeb = () => {
+      const web = launch(process.execPath, [join(webDirectory, 'server.js')], {
+        cwd: webDirectory,
+        env: { ...baseEnvironment, NODE_ENV: 'production', HOSTNAME: manifest.web.host, PORT: String(manifest.web.port) },
+      }, 'web.log')
+      const forgetWeb = () => {
+        const index = children.indexOf(web)
+        if (index >= 0) children.splice(index, 1)
+      }
+      web.once('error', (error) => {
+        forgetWeb()
+        console.error('service_spawn_error', { service: 'web', error })
+        scheduleWebRestart()
       })
-      child.once('exit', (code, signal) => {
-        if (!shuttingDown) {
-          console.error('service_exited', { pid: child.pid, code, signal })
-          void shutdown(code || 1)
-        }
+      web.once('exit', (code, signal) => {
+        forgetWeb()
+        if (shuttingDown) return
+        const delay = Math.min(30_000, 250 * (2 ** webRestartAttempt))
+        webRestartAttempt += 1
+        console.error('service_exited', { service: 'web', pid: web.pid, code, signal, restartInMs: delay })
+        scheduleWebRestart(delay)
       })
     }
+    const scheduleWebRestart = (delay = Math.min(30_000, 250 * (2 ** webRestartAttempt))) => {
+      if (shuttingDown || webRestartTimer) return
+      webRestartTimer = setTimeout(() => {
+        webRestartTimer = undefined
+        launchWeb()
+      }, delay)
+    }
+    core.once('error', (error) => {
+      console.error('service_spawn_error', { service: 'core', error })
+      void shutdown(1)
+    })
+    core.once('exit', (code, signal) => {
+      if (!shuttingDown) {
+        console.error('service_exited', { service: 'core', pid: core.pid, code, signal })
+        void shutdown(code || 1)
+      }
+    })
+    launchWeb()
     adminServer = createAdminServer({ root: join(root, 'admin') })
     adminServer.once('error', (error) => {
       console.error('admin_server_error', error)

@@ -65,6 +65,7 @@ VITE_WEB_URL=http://203.0.113.10:3000
   }))
 const serviceSource = `#!/usr/bin/env node
 const http = require('node:http')
+const fs = require('node:fs')
 if (!process.env.PORT && process.env.CORE_SEED_FILE) process.exit(23)
 const port = Number(process.env.PORT || process.env.CORE_ADDR.split(':').at(-1))
 const health = process.env.PORT ? (process.env.MANIFOLD_FIXTURE_WEB_HEALTH || '/health') : '/healthz'
@@ -74,6 +75,10 @@ const server = http.createServer((request, response) => {
 }).listen(port, '0.0.0.0')
 if (!process.env.PORT && process.env.MANIFOLD_FIXTURE_CORE_EXIT_MS) {
   setTimeout(() => server.close(() => process.exit(42)), Number(process.env.MANIFOLD_FIXTURE_CORE_EXIT_MS))
+}
+if (process.env.PORT && process.env.MANIFOLD_FIXTURE_WEB_EXIT_MS && (!process.env.MANIFOLD_FIXTURE_WEB_EXIT_ONCE || !fs.existsSync(process.env.MANIFOLD_FIXTURE_WEB_EXIT_ONCE))) {
+  if (process.env.MANIFOLD_FIXTURE_WEB_EXIT_ONCE) fs.writeFileSync(process.env.MANIFOLD_FIXTURE_WEB_EXIT_ONCE, '1')
+  setTimeout(() => server.close(() => process.exit(43)), Number(process.env.MANIFOLD_FIXTURE_WEB_EXIT_MS))
 }
 `
   await writeFile(join(root, 'bin', 'manifold-core'), serviceSource)
@@ -144,6 +149,7 @@ test('start rejects a service whose health endpoint returns 404', { timeout: 10_
     const started = await execute(process.execPath, [runtimePath, 'start'], { env: environment }).catch((error) => error)
     assert.notEqual(started.code, 0)
     assert.match(started.stderr, /services did not become healthy/)
+    for (const port of fixture.ports) await assert.rejects(fetch(`http://127.0.0.1:${port}`))
   } finally {
     await stopFixture(fixture.root, environment)
     await rm(fixture.root, { recursive: true, force: true })
@@ -186,6 +192,28 @@ test('supervisor stops the service group when Core exits unexpectedly', { timeou
     }
     await assert.rejects(readFile(join(fixture.root, 'run', 'manifold.pid')), /ENOENT/)
     for (const port of fixture.ports) await assert.rejects(fetch(`http://127.0.0.1:${port}`))
+  } finally {
+    await stopFixture(fixture.root, environment)
+    await rm(fixture.root, { recursive: true, force: true })
+  }
+})
+
+test('supervisor restarts Web without stopping healthy Core and Admin', { timeout: 10_000 }, async () => {
+  const fixture = await createFixture()
+  const environment = {
+    ...process.env,
+    MANIFOLD_FIXTURE_WEB_EXIT_MS: '1200',
+    MANIFOLD_FIXTURE_WEB_EXIT_ONCE: join(fixture.root, 'web-exit-once'),
+    MANIFOLD_RELEASE_ROOT: fixture.root,
+    MANIFOLD_START_TIMEOUT_MS: '5000',
+  }
+  try {
+    await execute(process.execPath, [runtimePath, 'start'], { env: environment })
+    await new Promise((resolveWait) => setTimeout(resolveWait, 2_000))
+    await assert.doesNotReject(fetch(`http://127.0.0.1:${fixture.ports[0]}/healthz`))
+    await assert.doesNotReject(fetch(`http://127.0.0.1:${fixture.ports[1]}/health`))
+    await assert.doesNotReject(fetch(`http://127.0.0.1:${fixture.ports[2]}/`))
+    assert.match(await readFile(join(fixture.root, 'run', 'manifold.pid'), 'utf8'), /"pid"/)
   } finally {
     await stopFixture(fixture.root, environment)
     await rm(fixture.root, { recursive: true, force: true })

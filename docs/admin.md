@@ -8,6 +8,8 @@
 
 Core 负责最终鉴权和状态转换；Admin 只持有 session token，组织表单、查询缓存和用户反馈。
 
+根目录 `pnpm dev` 使用开发 supervisor 同时托管 Web 和 Admin；任一前端异常退出（包括退出码 143）会按退避自动重启。直接运行 Admin 工作区命令时由调用方负责进程重启。
+
 ## 2. 技术架构
 
 ```text

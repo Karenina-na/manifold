@@ -61,7 +61,7 @@ pnpm install
 make core-run
 ```
 
-另开终端启动两个前端：
+另开终端启动两个前端（开发 supervisor 会分别托管 Web/Admin；任一前端异常退出后按退避自动重启）：
 
 ```bash
 pnpm dev
@@ -112,7 +112,7 @@ Admin 的 `VITE_CORE_URL` 必须指向 Core（默认 `http://localhost:8080`）�
 
 | 命令 | 作用 |
 | --- | --- |
-| `pnpm dev` | 并行启动 Web 和 Admin，不启动 Core |
+| `pnpm dev` | 由开发 supervisor 启动 Web 和 Admin，不启动 Core；异常退出自动重启 |
 | `make core-run` | 启动 Go API |
 | `pnpm build` | 构建全部 workspace |
 | `pnpm check` | TypeScript 类型检查 |
@@ -151,7 +151,7 @@ pnpm package:release -- --env .env.production
 ./manifold stop
 ```
 
-`start` 在后台启动 Web `:3000`、Admin `:5173` 和 Core `:8080`，完成三项健康检查后才返回。PID 状态位于 `run/manifold.pid`，日志位于 `logs/`；`.env`、日志和归档使用 `0600`，`data/`、`logs/`、`run/` 使用 `0700`。任一服务意外退出时 supervisor 会停止整组服务。首次启动在 `data/manifold.db` 初始化空的生产站点骨架。发布包不会注册开机自启或终止 TLS，但支持由 OpenResty 等反向代理公开三个服务。
+`start` 在后台启动 Web `:3000`、Admin `:5173` 和 Core `:8080`，完成三项健康检查后才返回。PID 状态位于 `run/manifold.pid`，日志位于 `logs/`；`.env`、日志和归档使用 `0600`，`data/`、`logs/`、`run/` 使用 `0700`。Web 意外退出时 supervisor 会按退避独立重启 Web，保留 Core 和 Admin；Core 意外退出或 Admin 监听失败时才停止整组服务。首次启动在 `data/manifold.db` 初始化空的生产站点骨架。发布包不会注册开机自启或终止 TLS，但支持由 OpenResty 等反向代理公开三个服务。
 
 OpenResty 使用独立域名时，将 Web、Admin、Core 分别代理到 `http://127.0.0.1:3000`、`http://127.0.0.1:5173`、`http://127.0.0.1:8080`。三个 location 都应传递 `Host $host`、`X-Forwarded-Proto $scheme`，Core 还必须传递由 OpenResty 清洗后的 `X-Real-IP $remote_addr`；只有来源命中 `CORE_TRUSTED_PROXY_CIDRS` 时 Core 才用该值区分限流客户端。若 OpenResty 位于 Cloudflare 后方，先用 realip 模块和 Cloudflare 官方网段恢复 `$remote_addr`，不要直接透传客户端可伪造的请求头。服务器防火墙应阻止公网绕过代理直接访问 `3000/5173/8080`。
 

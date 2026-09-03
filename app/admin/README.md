@@ -14,6 +14,8 @@ pnpm --filter @manifold/admin build
 pnpm --filter @manifold/admin preview
 ```
 
+根目录 `pnpm dev` 使用开发 supervisor 同时启动 Web 和 Admin；任一前端异常退出（包括 `SIGTERM` 导致的退出码 143）会按退避自动重启。直接运行本工作区命令时仍由调用方负责进程重启。
+
 配置 `VITE_CORE_URL` 指向 Core，默认是 `http://localhost:8080`。根目录 `pnpm browser-test` 会验证 Web -> Core -> Admin 的联调流程。
 
 生产发布使用 Vite 的 `dist` 静态产物，不使用 `vite preview`。根目录 `pnpm package:release -- --env .env.production` 将 `VITE_CORE_URL` 与 `VITE_WEB_URL` 固化到 Admin bundle；独立域名反向代理通过 `ADMIN_PUBLIC_URL` 记录 Admin 的公开 origin。管理员密码 hash 为空时，打包脚本生成随机初始密码、写回 hash，并在当前终端显示一次。包内 supervisor 通过无第三方运行时依赖的 Node 静态服务器在 `:5173` 提供 dist、PWA 和 vditor 资源。

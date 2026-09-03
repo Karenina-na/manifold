@@ -3,11 +3,11 @@
   "private": true,
   "packageManager": "pnpm@11.19.0",
   "scripts": {
-    "dev": "pnpm --parallel --filter @manifold/web --filter @manifold/admin dev",
+    "dev": "node scripts/dev.mjs",
     "build": "pnpm -r build",
     "check": "pnpm -r typecheck",
     "test": "pnpm test:release && pnpm -r test",
-    "test:release": "node --test scripts/package-release.test.mjs scripts/release/*.test.mjs",
+    "test:release": "node --test scripts/package-release.test.mjs scripts/release/*.test.mjs scripts/dev.test.mjs",
     "package:release": "node scripts/package-release.mjs",
     "browser-install": "playwright install chromium",
     "browser-test": "node scripts/browser-check.cjs"
