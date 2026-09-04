@@ -1,6 +1,6 @@
 import { Alert, Button, TextInput } from '@mantine/core'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Copy, Search, Trash2, UploadCloud } from 'lucide-react'
+import { Copy, FileText, Search, Trash2, UploadCloud } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Media } from '@manifold/contracts'
 import { formatDate } from '@manifold/render'
@@ -9,16 +9,16 @@ import { createAdminClient } from '../api'
 import { ConfirmButton } from '../components/ConfirmButton'
 import { Pager } from '../components/Pager'
 
-const UPLOAD_ACCEPT = 'image/png,image/jpeg,image/webp,image/gif,image/avif'
+const UPLOAD_ACCEPT = 'image/png,image/jpeg,image/webp,image/gif,image/avif,application/pdf'
 
 function describeMediaError(error: unknown): string {
   if (error instanceof ApiError && error.code === 'MEDIA_IN_USE') {
-    return 'This image is used in published or draft content. Remove those references first.'
+    return 'This file is used in published or draft content. Remove those references first.'
   }
   if (error instanceof ApiError) return `${error.message} (${error.code})`
   return 'Media could not be deleted.'
 }
-const allowedImageTypes = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/avif'])
+const allowedMediaTypes = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/avif', 'application/pdf'])
 
 export function MediaWorkspace({ token }: { token: string }) {
   const client = useMemo(() => createAdminClient(token), [token])
@@ -69,15 +69,16 @@ export function MediaWorkspace({ token }: { token: string }) {
   })
 
   const startUpload = (files: File[]) => {
-    const images = files.filter((file) => allowedImageTypes.has(file.type))
+    const images = files.filter((file) => allowedMediaTypes.has(file.type))
     if (!images.length) {
-      setUploadError('Only PNG, JPEG, WebP, GIF and AVIF images are accepted.')
+      setUploadError('Only PNG, JPEG, WebP, GIF, AVIF images and PDF files are accepted.')
       return
     }
     upload.mutate(images)
   }
   const copyMarkdown = (media: Media) => {
-    navigator.clipboard?.writeText(`![${media.filename}](${media.url})`).catch(() => {})
+    const isPdf = media.mime === 'application/pdf'
+    navigator.clipboard?.writeText(isPdf ? `[${media.filename}](${media.url})` : `![${media.filename}](${media.url})`).catch(() => {})
     setCopiedID(media.id)
     if (copyTimer.current) window.clearTimeout(copyTimer.current)
     copyTimer.current = window.setTimeout(() => setCopiedID(null), 1600)
@@ -88,7 +89,7 @@ export function MediaWorkspace({ token }: { token: string }) {
   }
 
   return <section className="workspace">
-    <div className="page-heading"><div><p className="kicker">Media</p><h1>Images stored beside the words.</h1><p className="subheading">Uploads live in Core and render inline on the public site.</p></div></div>
+    <div className="page-heading"><div><p className="kicker">Media</p><h1>Files stored beside the words.</h1><p className="subheading">Uploads live in Core — images render inline, PDFs link from the profile.</p></div></div>
     <div className="content-toolbar">
       <TextInput
         leftSection={<Search size={14} />}
@@ -97,7 +98,7 @@ export function MediaWorkspace({ token }: { token: string }) {
         value={search}
         onChange={(event) => setSearch(event.currentTarget.value)}
       />
-      <span className="content-toolbar-count">{list.data?.pagination.totalItems ?? items.length} images</span>
+      <span className="content-toolbar-count">{list.data?.pagination.totalItems ?? items.length} files</span>
     </div>
     <div
       className={dragOver ? 'media-dropzone drag' : 'media-dropzone'}
@@ -107,11 +108,11 @@ export function MediaWorkspace({ token }: { token: string }) {
       onDrop={(event) => { event.preventDefault(); setDragOver(false); startUpload(Array.from(event.dataTransfer.files)) }}
       role="button"
       tabIndex={0}
-      aria-label="Upload images"
+      aria-label="Upload images or PDFs"
       onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); inputRef.current?.click() } }}
     >
       <UploadCloud size={20} aria-hidden="true" />
-      <span>Drop images here or click to upload — paste and drag also work inside the editor.</span>
+      <span>Drop images or PDFs here or click to upload — paste and drag also work inside the editor.</span>
       {upload.isPending && <span className="muted">Uploading…</span>}
     </div>
     <input
@@ -133,19 +134,21 @@ export function MediaWorkspace({ token }: { token: string }) {
     {items.length > 0 && <div className="media-grid">
       {items.map((media) => <figure className="media-card" key={media.id}>
         <a href={media.url} target="_blank" rel="noreferrer" aria-label={`Open ${media.filename}`}>
-          <img src={media.url} alt={media.filename} loading="lazy" decoding="async" />
+          {media.mime === 'application/pdf'
+            ? <span className="media-pdf-card"><FileText size={22} aria-hidden="true" /><span>PDF</span></span>
+            : <img src={media.url} alt={media.filename} loading="lazy" decoding="async" />}
         </a>
         <figcaption>
           <span className="media-name" title={media.filename}>{media.filename}</span>
-          <span className="media-meta">{media.mime.replace('image/', '')} · {Math.max(1, Math.round(media.size / 1024))} KB · {formatDate(media.createdAt)}</span>
+          <span className="media-meta">{media.mime.replace('image/', '').replace('application/', '')} · {Math.max(1, Math.round(media.size / 1024))} KB · {formatDate(media.createdAt)}</span>
           <div className="media-actions">
             <Button size="compact-xs" variant="default" leftSection={<Copy size={12} />} onClick={() => copyMarkdown(media)}>{copiedID === media.id ? 'Copied' : 'Copy markdown'}</Button>
-            <ConfirmButton label={`Delete ${media.filename}`} confirmLabel="Delete" confirmBody="Delete this image? Markdown that references it will show a broken image." danger icon={<Trash2 size={13} />} onConfirm={() => remove.mutate(media.id)} />
+            <ConfirmButton label={`Delete ${media.filename}`} confirmLabel="Delete" confirmBody="Delete this file? Anything referencing it will show as broken." danger icon={<Trash2 size={13} />} onConfirm={() => remove.mutate(media.id)} />
           </div>
         </figcaption>
       </figure>)}
     </div>}
-    {!list.isError && !list.isPending && !items.length && <p className="content-list-hint">{q ? 'No images match the current filters.' : 'No images uploaded yet — drop files above or paste into the editor.'}</p>}
+    {!list.isError && !list.isPending && !items.length && <p className="content-list-hint">{q ? 'No files match the current filters.' : 'No files uploaded yet — drop images or PDFs above or paste into the editor.'}</p>}
     <Pager page={page} totalPages={totalPages} onChange={changePage} />
   </section>
 }

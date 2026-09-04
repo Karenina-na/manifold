@@ -1240,6 +1240,9 @@ func TestMediaLifecycle(t *testing.T) {
 	if rejected := adminRequest(t, router, token, http.MethodPost, "/api/v1/admin/media?filename=x.txt", "plain text not an image"); rejected.Code != http.StatusUnsupportedMediaType {
 		t.Fatalf("expected non-image upload 415, got %d", rejected.Code)
 	}
+	if rejectedSVG := adminRequest(t, router, token, http.MethodPost, "/api/v1/admin/media?filename=x.svg", "<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>"); rejectedSVG.Code != http.StatusUnsupportedMediaType {
+		t.Fatalf("expected SVG upload 415, got %d", rejectedSVG.Code)
+	}
 	deleted := adminRequest(t, router, token, http.MethodDelete, "/api/v1/admin/media/"+media.ID, "")
 	if deleted.Code != http.StatusNoContent {
 		t.Fatalf("expected media deletion 204, got %d", deleted.Code)
@@ -1255,6 +1258,36 @@ func TestMediaUploadSizeLimit(t *testing.T) {
 	oversize := adminRequest(t, router, token, http.MethodPost, "/api/v1/admin/media?filename=big.png", strings.Repeat("a", 64))
 	if oversize.Code != http.StatusRequestEntityTooLarge {
 		t.Fatalf("expected oversize upload 413, got %d", oversize.Code)
+	}
+}
+
+func TestMediaPdfUpload(t *testing.T) {
+	router := newTestRouter(t)
+	token := adminToken(t, router)
+
+	pdf := []byte("%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF")
+	uploaded := adminRequest(t, router, token, http.MethodPost, "/api/v1/admin/media?filename=resume.pdf", string(pdf))
+	if uploaded.Code != http.StatusCreated {
+		t.Fatalf("expected PDF upload created, got %d %s", uploaded.Code, uploaded.Body.String())
+	}
+	var media struct {
+		ID   string `json:"id"`
+		URL  string `json:"url"`
+		Mime string `json:"mime"`
+		Size int    `json:"size"`
+	}
+	if err := json.Unmarshal(uploaded.Body.Bytes(), &media); err != nil {
+		t.Fatal(err)
+	}
+	if media.Mime != "application/pdf" || media.Size != len(pdf) {
+		t.Fatalf("unexpected PDF payload: %+v", media)
+	}
+	retrieved := request(t, router, http.MethodGet, "/api/v1/media/"+media.ID, nil)
+	if retrieved.Code != http.StatusOK || retrieved.Header().Get("Content-Type") != "application/pdf" || !strings.Contains(retrieved.Header().Get("Cache-Control"), "immutable") {
+		t.Fatalf("expected served PDF with cache headers, got %d %v", retrieved.Code, retrieved.Header())
+	}
+	if garbage := adminRequest(t, router, token, http.MethodPost, "/api/v1/admin/media?filename=fake.pdf", "plain text pretending to be a pdf"); garbage.Code != http.StatusUnsupportedMediaType {
+		t.Fatalf("expected fake PDF upload 415, got %d", garbage.Code)
 	}
 }
 

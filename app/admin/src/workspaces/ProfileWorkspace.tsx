@@ -1,11 +1,21 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Alert, Button, Textarea, TextInput } from '@mantine/core'
-import { AtSign, Check, ChevronDown, ChevronUp, Flame, GitBranch, Globe2, Mail, MessageCircle, Plus, Podcast, Radio, Rss, Save, Send, Trash2, Tv, X } from 'lucide-react'
+import { MonthPickerInput } from '@mantine/dates'
+import { Check, ChevronDown, ChevronUp, Eye, Plus, Save, Trash2, UploadCloud } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useFieldArray, useForm, type UseFormReturn } from 'react-hook-form'
 import { z } from 'zod'
 import type { Profile } from '@manifold/contracts'
+import {
+  CONTACT_ICONS,
+  contactIconLabel,
+  contactIconNode,
+  formatPeriod,
+  parsePeriod,
+  resolveContactKey,
+} from '@manifold/render'
+import { ApiError } from '@manifold/sdk'
 import { createAdminClient } from '../api'
 import { ChipsInput } from '../components/ChipsInput'
 
@@ -59,67 +69,18 @@ const NAV_ITEMS = [
   { id: 'profile-contact', label: 'Contact' },
 ]
 
-const CONTACT_ICON_OPTIONS = [
-  { key: 'github', label: 'GitHub' },
-  { key: 'x', label: 'X / Twitter' },
-  { key: 'mail', label: 'Email' },
-  { key: 'rss', label: 'RSS' },
-  { key: 'telegram', label: 'Telegram' },
-  { key: 'podcast', label: 'Podcast' },
-  { key: 'tv', label: 'YouTube / TV' },
-  { key: 'flame', label: 'Bilibili' },
-  { key: 'message', label: 'Messaging' },
-  { key: 'at', label: 'Handle' },
-  { key: 'radio', label: 'Radio' },
-  { key: '', label: 'Globe (fallback)' },
-]
+// Contact icons, resolveContactKey, and the picker vocabulary now live in
+// @manifold/render (contact-icon.ts / contact-icon-ui.tsx) and are shared with
+// the public renderer — keep the two surfaces in sync via that single source.
 
-const CONTACT_ICON_LABELS: Record<string, string> = {
-  github: 'GitHub', x: 'X', mail: 'Email', rss: 'RSS', telegram: 'Telegram', podcast: 'Podcast',
-  tv: 'YouTube', flame: 'Bilibili', message: 'Message', at: 'Handle', radio: 'Radio',
-}
-
-function contactIconNode(key: string) {
-  switch (key) {
-    case 'github': return <GitBranch size={16} />
-    case 'x': return <X size={16} />
-    case 'mail': return <Mail size={16} />
-    case 'rss': return <Rss size={16} />
-    case 'telegram': return <Send size={16} />
-    case 'podcast': return <Podcast size={16} />
-    case 'tv': return <Tv size={16} />
-    case 'flame': return <Flame size={16} />
-    case 'message': return <MessageCircle size={16} />
-    case 'at': return <AtSign size={16} />
-    case 'radio': return <Radio size={16} />
-    default: return <Globe2 size={16} />
-  }
-}
-
-// Mirrors the public renderer in app/web/components/profile-surfaces.tsx —
-// keep both heuristics in sync (see docs/admin.md).
-function resolveContactKey(contact: { icon?: string; label: string; url: string }): string {
-  const icon = contact.icon?.toLowerCase().trim() ?? ''
-  const label = contact.label.toLowerCase()
-  const url = contact.url.toLowerCase()
-  if (icon === 'x' || icon === 'twitter' || label === 'x' || label.includes('twitter')) return 'x'
-  if (icon === 'rss' || label.includes('rss') || url.endsWith('/feed.xml')) return 'rss'
-  if (icon === 'mail' || label.includes('mail') || label.includes('email')) return 'mail'
-  if (icon === 'github' || label.includes('github') || url.includes('github')) return 'github'
-  if (icon === 'flame' || label.includes('flame') || label.includes('bilibili')) return 'flame'
-  if (icon === 'tv' || label.includes('youtube') || label.includes('tv')) return 'tv'
-  if (icon === 'telegram' || label.includes('telegram')) return 'telegram'
-  if (icon === 'podcast' || label.includes('podcast')) return 'podcast'
-  if (icon === 'message' || label.includes('whats') || label.includes('message')) return 'message'
-  if (icon === 'at' || label.includes('handle')) return 'at'
-  if (icon === 'radio') return 'radio'
-  return 'globe'
-}
+const IMAGE_ACCEPT = 'image/png,image/jpeg,image/webp,image/gif,image/avif'
+const IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/avif'])
+const PDF_ACCEPT = 'application/pdf'
 
 function contactHint(contact: { icon?: string; label: string; url: string }) {
   const key = resolveContactKey(contact)
   if (key === 'globe') return 'Falls back to the globe icon — pick an icon or adjust the label.'
-  return `Renders as ${CONTACT_ICON_LABELS[key]} on the homepage.`
+  return `Renders as ${contactIconLabel(key)} on the homepage.`
 }
 
 function emptyProfileForm(): ProfileForm {
@@ -172,7 +133,7 @@ function ContactsEditor({ form }: { form: UseFormReturn<ProfileForm> }) {
           <ListRowActions index={index} count={fields.length} move={move} remove={remove} />
         </div>
         {pickerFor === field.id && <div className="icon-picker">
-          {CONTACT_ICON_OPTIONS.map((option) => <button
+          {CONTACT_ICONS.map((option) => <button
             key={option.key || 'globe'}
             type="button"
             className={contact.icon === option.key ? 'icon-option active' : 'icon-option'}
@@ -207,6 +168,82 @@ function SeriesEditor({ form }: { form: UseFormReturn<ProfileForm> }) {
   </div>
 }
 
+type PeriodPath = `education.${number}.period` | `experience.${number}.period`
+
+// MonthPickerInput needs Date values; our stored period is a "YYYY-MM / YYYY /
+// Now" text range. monthDate turns a month string into the first of that month
+// for the picker value, and toMonth extracts "YYYY-MM" from the "YYYY-MM-DD"
+// string the picker emits. "Now" end is represented by an empty string.
+
+function monthDate(value: string): Date | null {
+  if (!value) return null
+  const [year, month] = value.split('-')
+  if (!year) return null
+  return new Date(Number(year), (month ? Number(month) : 1) - 1, 1)
+}
+
+function toMonth(value: string | null): string {
+  if (!value) return ''
+  return value.slice(0, 7)
+}
+
+function PeriodEditor({ form, path }: { form: UseFormReturn<ProfileForm>; path: PeriodPath }) {
+  const raw = (form.watch(path) ?? '') as string
+  const parsed = parsePeriod(raw)
+  const [manual, setManual] = useState(false)
+  const error = form.getFieldState(path).error?.message
+  const now = new Date()
+  const startDate = monthDate(parsed.start)
+  const endDate = parsed.end ? monthDate(parsed.end) : null
+  // Empty end while a start is set means an open-ended "… - Now" period.
+  const isNow = Boolean(parsed.start) && !parsed.end
+  const setFrom = (value: string | null) => {
+    if (!value) { form.setValue(path, '', { shouldDirty: true, shouldValidate: true }); return }
+    form.setValue(path, formatPeriod(toMonth(value), parsed.end), { shouldDirty: true, shouldValidate: true })
+  }
+  const setTo = (value: string | null) => {
+    form.setValue(path, formatPeriod(parsed.start, toMonth(value)), { shouldDirty: true, shouldValidate: true })
+  }
+  if (parsed.legacy && !manual) {
+    return <div className="period-editor" data-period-editor>
+      <div className="period-static">
+        <span className="period-static-text">{raw || 'Period'}</span>
+        <button type="button" className="mini-button" aria-label="Edit period" onClick={() => { setManual(true); form.setValue(path, '', { shouldDirty: true }) }}>Edit</button>
+      </div>
+      <p className="icon-hint">Stored as free text — use the pickers to replace it.</p>
+    </div>
+  }
+  return <div className="period-editor" data-period-editor>
+    <div className="period-inputs">
+      <MonthPickerInput
+        aria-label="From"
+        placeholder="Start month"
+        value={startDate}
+        onChange={setFrom}
+        maxDate={now}
+        valueFormat="YYYY-MM"
+        clearable
+        popoverProps={{ withinPortal: true, position: 'bottom-start' }}
+      />
+      <span className="period-sep">–</span>
+      <MonthPickerInput
+        aria-label="To"
+        placeholder={isNow ? 'Now' : 'End month'}
+        value={endDate}
+        onChange={setTo}
+        maxDate={now}
+        valueFormat="YYYY-MM"
+        clearable
+        disabled={isNow}
+        popoverProps={{ withinPortal: true, position: 'bottom-start' }}
+      />
+    </div>
+    <p className="icon-hint">{isNow ? 'Open-ended — pick an end month to close it.' : 'Leave To empty to mark it as “Now”.'}</p>
+    {parsed.legacy && <button type="button" className="mini-button period-clear" aria-label="Clear period" onClick={() => { setManual(false); form.setValue(path, '', { shouldDirty: true }) }}>Clear</button>}
+    {error && <p className="icon-hint">{error}</p>}
+  </div>
+}
+
 function EducationEditor({ form }: { form: UseFormReturn<ProfileForm> }) {
   const { fields, append, remove, move } = useFieldArray({ control: form.control, name: 'education' })
   return <div className="list-stack">
@@ -215,7 +252,7 @@ function EducationEditor({ form }: { form: UseFormReturn<ProfileForm> }) {
         <div className="list-row-fields">
           <TextInput placeholder="Institution" {...form.register(`education.${index}.institution`)} error={form.formState.errors.education?.[index]?.institution?.message} />
           <TextInput placeholder="Program" {...form.register(`education.${index}.program`)} error={form.formState.errors.education?.[index]?.program?.message} />
-          <TextInput placeholder="Period" {...form.register(`education.${index}.period`)} error={form.formState.errors.education?.[index]?.period?.message} />
+          <PeriodEditor form={form} path={`education.${index}.period`} />
         </div>
         <ListRowActions index={index} count={fields.length} move={move} remove={remove} />
       </div>
@@ -232,7 +269,7 @@ function ExperienceEditor({ form }: { form: UseFormReturn<ProfileForm> }) {
         <div className="list-row-fields">
           <TextInput placeholder="Organization" {...form.register(`experience.${index}.organization`)} error={form.formState.errors.experience?.[index]?.organization?.message} />
           <TextInput placeholder="Role" {...form.register(`experience.${index}.role`)} error={form.formState.errors.experience?.[index]?.role?.message} />
-          <TextInput placeholder="Period" {...form.register(`experience.${index}.period`)} error={form.formState.errors.experience?.[index]?.period?.message} />
+          <PeriodEditor form={form} path={`experience.${index}.period`} />
         </div>
         <ListRowActions index={index} count={fields.length} move={move} remove={remove} />
       </div>
@@ -241,16 +278,83 @@ function ExperienceEditor({ form }: { form: UseFormReturn<ProfileForm> }) {
   </div>
 }
 
-function ProfilePreview({ values }: { values: ProfileForm }) {
+function AvatarField({ form, client }: { form: UseFormReturn<ProfileForm>; client: ReturnType<typeof createAdminClient> }) {
+  const value = form.watch('avatarUrl') ?? ''
+  const inputRef = useRef<HTMLInputElement>(null)
+  const [uploading, setUploading] = useState(false)
+  const [uploaded, setUploaded] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+  const uploadTimer = useRef<number | null>(null)
+  useEffect(() => () => { if (uploadTimer.current) window.clearTimeout(uploadTimer.current) }, [])
+  const upload = async (file: File) => {
+    const media = await client.uploadMedia(file, `avatar.${file.name.split('.').pop() ?? 'png'}`)
+    form.setValue('avatarUrl', media.url, { shouldDirty: true, shouldValidate: true })
+    setUploaded(true)
+    if (uploadTimer.current) window.clearTimeout(uploadTimer.current)
+    uploadTimer.current = window.setTimeout(() => setUploaded(false), 2400)
+  }
+  return <div className="avatar-field">
+    <div className="avatar-field-input">
+      <TextInput label="Avatar URL" value={value} onChange={(event) => form.setValue('avatarUrl', event.currentTarget.value, { shouldDirty: true })} error={form.formState.errors.avatarUrl?.message ?? uploadError ?? undefined} />
+      <div className="upload-actions">
+        <Button variant="default" size="compact-sm" loading={uploading} disabled={uploading} leftSection={<UploadCloud size={14} />} onClick={() => inputRef.current?.click()}>Upload</Button>
+        {value && <Button variant="subtle" size="compact-sm" aria-label="Preview avatar" onClick={() => window.open(value, '_blank', 'noopener')} leftSection={<Eye size={14} />}>Preview</Button>}
+        {uploaded && <span className="upload-hint ok">Uploaded</span>}
+      </div>
+      <input ref={inputRef} type="file" accept={IMAGE_ACCEPT} hidden onChange={(event) => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ''; if (!file) return; if (!IMAGE_TYPES.has(file.type)) { setUploadError('Only PNG, JPEG, WebP, GIF and AVIF images are accepted.'); return } setUploading(true); setUploadError(null); upload(file).catch((err) => setUploadError(err instanceof ApiError ? err.message : 'Avatar upload failed.')).finally(() => setUploading(false)) }} />
+    </div>
+    {value
+      ? <img key={value} className="avatar-thumb" src={value} alt="Avatar preview" onError={(event) => { event.currentTarget.style.visibility = 'hidden' }} />
+      : <span className="avatar-thumb avatar-thumb-empty">{(form.watch('displayName') || 'M').slice(0, 1).toUpperCase()}</span>}
+  </div>
+}
+
+function ResumeField({ form, client }: { form: UseFormReturn<ProfileForm>; client: ReturnType<typeof createAdminClient> }) {
+  const value = form.watch('resumeUrl') ?? ''
+  const inputRef = useRef<HTMLInputElement>(null)
+  const [uploading, setUploading] = useState(false)
+  const [uploaded, setUploaded] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+  const uploadTimer = useRef<number | null>(null)
+  useEffect(() => () => { if (uploadTimer.current) window.clearTimeout(uploadTimer.current) }, [])
+  const upload = async (file: File) => {
+    const media = await client.uploadMedia(file, `resume.${file.name.split('.').pop() ?? 'pdf'}`)
+    form.setValue('resumeUrl', media.url, { shouldDirty: true, shouldValidate: true })
+    setUploaded(true)
+    if (uploadTimer.current) window.clearTimeout(uploadTimer.current)
+    uploadTimer.current = window.setTimeout(() => setUploaded(false), 2400)
+  }
+  return <div>
+    <TextInput label="Resume PDF URL" description="CV badge next to the portrait." value={value} onChange={(event) => form.setValue('resumeUrl', event.currentTarget.value, { shouldDirty: true })} error={form.formState.errors.resumeUrl?.message ?? uploadError ?? undefined} />
+    <div className="upload-actions">
+      <Button variant="default" size="compact-sm" loading={uploading} disabled={uploading} leftSection={<UploadCloud size={14} />} onClick={() => inputRef.current?.click()}>Upload</Button>
+      {value && <Button variant="subtle" size="compact-sm" aria-label="Preview resume" onClick={() => window.open(value, '_blank', 'noopener')} leftSection={<Eye size={14} />}>Preview</Button>}
+      {uploaded && <span className="upload-hint ok">Uploaded</span>}
+    </div>
+    <input ref={inputRef} type="file" accept={PDF_ACCEPT} hidden onChange={(event) => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ''; if (!file) return; if (file.type !== 'application/pdf') { setUploadError('Only PDF files are accepted.'); return } setUploading(true); setUploadError(null); upload(file).catch((err) => setUploadError(err instanceof ApiError ? err.message : 'Resume upload failed.')).finally(() => setUploading(false)) }} />
+  </div>
+}
+
+type PreviewSectionId = 'profile-identity' | 'profile-links' | 'profile-interests' | 'profile-cv' | 'profile-series' | 'profile-contact'
+
+const PREVIEW_TITLES: Record<PreviewSectionId, string> = {
+  'profile-identity': 'Introduction',
+  'profile-links': 'Website and resume',
+  'profile-interests': 'Interests',
+  'profile-cv': 'Background',
+  'profile-series': 'My Series',
+  'profile-contact': 'Contact',
+}
+
+function PreviewBlock({ section, values }: { section: PreviewSectionId; values: ProfileForm }) {
   const initials = (values.displayName || 'M').slice(0, 1).toUpperCase()
   const contactLinks = [
     ...(values.websiteUrl ? [{ label: 'Website', url: values.websiteUrl, icon: 'globe' }] : []),
     ...values.contacts,
   ]
-  return <aside className="profile-preview">
-    <div className="panel">
-      <div className="panel-heading"><div><p className="kicker">Preview</p><h2>Public home</h2></div></div>
-      <div className="preview-card">
+  switch (section) {
+    case 'profile-identity':
+      return <div className="preview-block first">
         <div className="preview-id">
           {values.avatarUrl
             ? <img key={values.avatarUrl} className="preview-avatar" src={values.avatarUrl} alt="Avatar preview" onError={(event) => { event.currentTarget.style.visibility = 'hidden' }} />
@@ -260,23 +364,56 @@ function ProfilePreview({ values }: { values: ProfileForm }) {
         {values.organization && <p className="preview-org">{values.organization}</p>}
         {values.bio && <p className="preview-bio">{values.bio}</p>}
         {!!values.interests.length && <div className="preview-interests">{values.interests.map((interest) => <span key={interest}>#{interest}</span>)}</div>}
-        {(values.education.length > 0 || values.experience.length > 0) && <div className="preview-block">
-          <p className="preview-block-title">Background</p>
-          {values.education.map((item, index) => <p className="preview-line" key={`education-${index}`}><span>{item.period}</span><strong>{item.program}</strong><em>{item.institution}</em></p>)}
-          {values.experience.map((item, index) => <p className="preview-line" key={`experience-${index}`}><span>{item.period}</span><strong>{item.role}</strong><em>{item.organization}</em></p>)}
-        </div>}
-        <div className="preview-block">
-          <p className="preview-block-title">Contact</p>
-          <div className="preview-icons">
-            {contactLinks.map((contact, index) => <span key={`${contact.url}-${index}`} title={contact.label}>{contactIconNode(resolveContactKey(contact))}</span>)}
+      </div>
+    case 'profile-links':
+      return <div className="preview-block first">
+        {values.websiteUrl
+          ? <p className="preview-line"><span>WEB</span><strong>Website</strong><em>{values.websiteUrl.replace(/^https?:\/\//, '')}</em></p>
+          : <p className="preview-muted">No website URL yet.</p>}
+        {values.resumeUrl
+          ? <p className="preview-line"><span>CV</span><strong>Resume</strong><em>PDF download</em></p>
+          : <p className="preview-muted">No resume PDF yet.</p>}
+      </div>
+    case 'profile-interests':
+      return <div className="preview-block first">
+        {values.interests.length
+          ? <div className="preview-interests">{values.interests.map((interest) => <span key={interest}>#{interest}</span>)}</div>
+          : <p className="preview-muted">No interests yet.</p>}
+      </div>
+    case 'profile-cv':
+      return <div className="preview-block first">
+        {values.education.length > 0 || values.experience.length > 0
+          ? <div className="preview-block">
+            {values.education.map((item, index) => <p className="preview-line" key={`education-${index}`}><span>{item.period}</span><strong>{item.program}</strong><em>{item.institution}</em></p>)}
+            {values.experience.map((item, index) => <p className="preview-line" key={`experience-${index}`}><span>{item.period}</span><strong>{item.role}</strong><em>{item.organization}</em></p>)}
           </div>
-          {!contactLinks.length && <p className="preview-muted">No public links yet.</p>}
-          {values.location && <p className="preview-muted">Location shows as “{values.location.split(',')[0].trim()} · UTC+8”.</p>}
+          : <p className="preview-muted">No education or experience yet.</p>}
+      </div>
+    case 'profile-series':
+      return <div className="preview-block first">
+        {values.series.length
+          ? <div className="preview-block">
+            {values.series.map((item, index) => <p className="preview-line" key={`series-${index}`}><span>{String(index + 1).padStart(2, '0')}</span><strong>{item.name}</strong><em>{item.category}</em></p>)}
+          </div>
+          : <p className="preview-muted">No series yet.</p>}
+      </div>
+    case 'profile-contact':
+      return <div className="preview-block first">
+        <div className="preview-icons">
+          {contactLinks.map((contact, index) => <span key={`${contact.url}-${index}`} title={contact.label}>{contactIconNode(resolveContactKey(contact))}</span>)}
         </div>
-        {!!values.series.length && <div className="preview-block">
-          <p className="preview-block-title">My Series</p>
-          {values.series.map((item, index) => <p className="preview-line" key={`series-${index}`}><span>{String(index + 1).padStart(2, '0')}</span><strong>{item.name}</strong><em>{item.category}</em></p>)}
-        </div>}
+        {!contactLinks.length && <p className="preview-muted">No public links yet.</p>}
+        {values.location && <p className="preview-muted">Location shows as “{values.location.split(',')[0].trim()} · UTC+8”.</p>}
+      </div>
+  }
+}
+
+function ProfilePreview({ values, section }: { values: ProfileForm; section: PreviewSectionId }) {
+  return <aside className="profile-preview">
+    <div className="panel">
+      <div className="panel-heading"><div><p className="kicker">Preview</p><h2>{PREVIEW_TITLES[section]}</h2></div></div>
+      <div className="preview-card" data-preview-card data-preview-section={section}>
+        <PreviewBlock section={section} values={values} />
       </div>
     </div>
   </aside>
@@ -302,6 +439,27 @@ export function ProfileWorkspace({ token }: { token: string }) {
   })
   const watched = profileForm.watch()
   const discard = () => { if (profile.data) profileForm.reset(profileValues(profile.data)) }
+  // Track which form section is in view so the sticky preview shows only the
+  // matching slice (the full preview grows too tall once Background fills up).
+  const [activeSection, setActiveSection] = useState<PreviewSectionId>('profile-identity')
+  useEffect(() => {
+    const sections: PreviewSectionId[] = ['profile-identity', 'profile-links', 'profile-interests', 'profile-cv', 'profile-series', 'profile-contact']
+    const visible = new Set<PreviewSectionId>()
+    const observer = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.isIntersecting) visible.add(entry.target.id as PreviewSectionId)
+        else visible.delete(entry.target.id as PreviewSectionId)
+      }
+      // Prefer the first visible section from the top of the list so the
+      // preview tracks the current edit context as the page scrolls.
+      setActiveSection((previous) => sections.find((id) => visible.has(id)) ?? previous)
+    }, { rootMargin: '-10% 0px -55% 0px', threshold: 0 })
+    for (const id of sections) {
+      const el = document.getElementById(id)
+      if (el) observer.observe(el)
+    }
+    return () => observer.disconnect()
+  }, [])
   return <section className="workspace">
     <div className="page-heading"><div><p className="kicker">Identity</p><h1>Profile.</h1><p className="subheading">The identity, background, and links shown on the public homepage.</p></div></div>
     {profile.isError && <Alert color="red" variant="light">Profile could not be loaded.</Alert>}
@@ -318,27 +476,20 @@ export function ProfileWorkspace({ token }: { token: string }) {
               <TextInput label="Display name" {...profileForm.register('displayName')} error={profileForm.formState.errors.displayName?.message} />
               <div className="form-grid">
                 <TextInput label="Handle" {...profileForm.register('handle')} />
-                <TextInput label="Location" description="Telemetry shows the first comma segment." {...profileForm.register('location')} />
+                <TextInput label="Location" {...profileForm.register('location')} />
               </div>
               <TextInput label="Headline" description={`${watched.headline.length}/240`} {...profileForm.register('headline')} error={profileForm.formState.errors.headline?.message} />
               <Textarea label="Bio" description={`${watched.bio.length}/4000`} minRows={4} {...profileForm.register('bio')} error={profileForm.formState.errors.bio?.message} />
               <TextInput label="Organization" description="Shown above the bio on the homepage." {...profileForm.register('organization')} />
-              <div className="avatar-field">
-                <div className="avatar-field-input">
-                  <TextInput label="Avatar URL" {...profileForm.register('avatarUrl')} error={profileForm.formState.errors.avatarUrl?.message} />
-                </div>
-                {watched.avatarUrl
-                  ? <img key={watched.avatarUrl} className="avatar-thumb" src={watched.avatarUrl} alt="Avatar preview" onError={(event) => { event.currentTarget.style.visibility = 'hidden' }} />
-                  : <span className="avatar-thumb avatar-thumb-empty">{(watched.displayName || 'M').slice(0, 1).toUpperCase()}</span>}
-              </div>
+              <AvatarField form={profileForm} client={client} />
             </div>
           </section>
           <section className="panel" id="profile-links">
             <div className="panel-heading"><div><p className="kicker">Links</p><h2>Website and resume</h2></div></div>
             <div className="form-stack">
               <div className="form-grid">
-                <TextInput label="Website URL" description="Rendered as the first Contact entry." {...profileForm.register('websiteUrl')} error={profileForm.formState.errors.websiteUrl?.message} />
-                <TextInput label="Resume PDF URL" description="CV badge next to the portrait." {...profileForm.register('resumeUrl')} error={profileForm.formState.errors.resumeUrl?.message} />
+                <TextInput label="Website URL" {...profileForm.register('websiteUrl')} error={profileForm.formState.errors.websiteUrl?.message} />
+                <ResumeField form={profileForm} client={client} />
               </div>
             </div>
           </section>
@@ -366,7 +517,7 @@ export function ProfileWorkspace({ token }: { token: string }) {
           </section>
         </form>
       </div>
-      <ProfilePreview values={watched} />
+      <ProfilePreview values={watched} section={activeSection} />
     </div>
     {profileForm.formState.isDirty && <div className="save-bar">
       <span>Unsaved changes</span>

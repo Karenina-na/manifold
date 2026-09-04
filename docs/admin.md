@@ -66,11 +66,13 @@ Refresh 按钮同时 refetch 四个 query。
 
 - interests 使用 chip 输入（Enter/逗号添加、× 移除、Backspace 删除末项）；
 - education/experience/series/contacts 为可增删、上下排序的行编辑器，不再手写 JSON；
-- contacts 每行带图标网格 picker（`github`/`x`/`mail`/`rss`/`telegram`/`podcast`/`tv`/`flame`/`message`/`at`/`radio`/空 = globe 兜底），行内实时提示公开渲染结果；Admin 复刻 Web 端 `profile-surfaces.tsx` 的 icon/label/url 启发式映射（`resolveContactKey`），两处必须保持同步；
+- education/experience 的 period 用两个日历月选择器（`@mantine/dates` `MonthPickerInput`，月份粒度、`valueFormat="YYYY-MM"`、上限今天）分别选 From/To；To 留空 = `Now`（开始已填时为开放区间 `… - Now`，此时 To 禁用，提示可补结束月），产物为 `2020 - 2024` / `2020 - Now` 文本；旧自由文本（如 `Ongoing`）只读展示并提供 Edit/Clear 切换（解析/格式化见 `@manifold/render` 的 `period.ts`）；
+- contacts 每行带图标网格 picker（品牌图标用 react-icons 的 si/fa6，如 GitHub/QQ/微信/WhatsApp/Telegram/YouTube/Bilibili/LinkedIn/掘金/知乎/小红书…；通用图标仍用 lucide；空 = globe 兜底），行内实时提示公开渲染结果；图标词汇表与 `resolveContactKey` 启发式统一收在 `@manifold/render` 的 `contact-icon.ts`/`contact-icon-ui.tsx`，Admin 与 Web 渲染端共用同一份，不再各自维护；
 - URL 校验：avatar/website/resume 允许空或 http(s)，contacts/series URL 必填且为 http(s) 或 mailto；headline/bio 显示字符计数；
+- Avatar URL 与 Resume PDF URL 支持直接上传：Avatar 接受图片（png/jpeg/webp/gif/avif），Resume 接受 PDF，上传后把 Core 返回的 `media.url` 写回表单并短暂提示“已上传”；有值时可点眼睛在新标签页预览；
 - 表单脏状态（isDirty）出现底部 sticky 保存条（Unsaved changes · Save/Discard），保存成功后按钮短暂显示 Saved。
 
-预览面板还原：头像/姓名/headline、organization 行、bio、`#interests`、Background（education/experience）、Contact 图标带（含 websiteUrl 合成条目与 location 遥测显示规则）、series 序号卡。query key 维持 `['admin-profile']`，保存成功后失效。
+预览面板按滚动位置切分：`IntersectionObserver` 跟踪六个表单区块，右侧 sticky 面板只渲染当前聚焦节的预览块（Introduction / Website and resume / Interests / Background / My Series / Contact），标题同步切换，避免 Background 内容多时整条预览过长。query key 维持 `['admin-profile']`，保存成功后失效。
 
 ### Writings
 
@@ -105,7 +107,7 @@ Meta tab 字段：正文在 Context tab（vditor IR）必填；title、slug 可�
 
 ### Media
 
-侧栏 Media 项路由 `#/media`（`MediaWorkspace.tsx`）。列表来自 `listMedia({ q?, page? })`，query key `['admin-media', { q, page }]`（失效统一 `['admin-media']` 前缀）：搜索防抖 300ms，`page`/`pageSize` 分页，按 `createdAt` 降序。上传入口三个——拖放区、点击区（隐藏 file input）、编辑器（见 Context tab）；经 `uploadMedia(file, file.name)` 逐个上传，白名单 png/jpeg/webp/gif/avif，失败（超限 413、类型 415 等）在 dropzone 下方的 Alert 呈现 `error.message (code)`。卡片网格（缩略图懒加载、mime/体积/日期），每张卡提供 **Copy markdown**（剪贴板写入 `![filename](url)`，2.4s 内回显 Copied）和 ConfirmButton Popover 删除（`deleteMedia` → 204 后失效列表）。删除失败时在 dropzone 下方 Alert 展示原因：Core 返回 409 `MEDIA_IN_USE` 时提示 "This image is used in published or draft content. Remove those references first."（Core 已做引用校验，被引用的媒体拒绝删除并附 `details.references`）。发布正文里的图片由 `@manifold/render` 直接渲染。
+侧栏 Media 项路由 `#/media`（`MediaWorkspace.tsx`）。列表来自 `listMedia({ q?, page? })`，query key `['admin-media', { q, page }]`（失效统一 `['admin-media']` 前缀）：搜索防抖 300ms，`page`/`pageSize` 分页，按 `createdAt` 降序。上传入口三个——拖放区、点击区（隐藏 file input）、编辑器（见 Context tab）；经 `uploadMedia(file, file.name)` 逐个上传，白名单 png/jpeg/webp/gif/avif 图片与 PDF，失败（超限 413、类型 415 等）在 dropzone 下方的 Alert 呈现 `error.message (code)`。卡片网格（图片缩略图 / PDF 占位卡、mime/体积/日期），每张卡提供 **Copy markdown**（图片写入 `![filename](url)`，PDF 写入 `[filename](url)`，2.4s 内回显 Copied）和 ConfirmButton Popover 删除（`deleteMedia` → 204 后失效列表）。删除失败时在 dropzone 下方 Alert 展示原因：Core 返回 409 `MEDIA_IN_USE` 时提示 "This image is used in published or draft content. Remove those references first."（Core 已做引用校验，被引用的媒体拒绝删除并附 `details.references`）。发布正文里的图片由 `@manifold/render` 直接渲染。
 
 ### Comments
 

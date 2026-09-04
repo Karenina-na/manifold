@@ -17,13 +17,17 @@ import (
 )
 
 // Browsers must never render server-stored SVG: it can carry script payloads
-// that execute on the public site even after Markdown sanitization.
+// that execute on the public site even after Markdown sanitization. PDFs are
+// allowed so the profile resume upload can reuse the media store; the serving
+// path emits no Content-Disposition header, so PDFs open inline in the
+// browser's PDF viewer rather than a script context.
 var allowedMediaMimes = map[string]bool{
-	"image/png":  true,
-	"image/jpeg": true,
-	"image/webp": true,
-	"image/gif":  true,
-	"image/avif": true,
+	"image/png":       true,
+	"image/jpeg":      true,
+	"image/webp":      true,
+	"image/gif":       true,
+	"image/avif":      true,
+	"application/pdf": true,
 }
 
 func (h *apiHandler) adminUploadMedia(w http.ResponseWriter, r *http.Request) {
@@ -62,7 +66,7 @@ func (h *apiHandler) adminUploadMedia(w http.ResponseWriter, r *http.Request) {
 	}
 	mime := http.DetectContentType(data)
 	if !allowedMediaMimes[mime] {
-		WriteError(w, http.StatusUnsupportedMediaType, "MEDIA_TYPE_UNSUPPORTED", "Only PNG, JPEG, WebP, GIF and AVIF images are accepted.")
+		WriteError(w, http.StatusUnsupportedMediaType, "MEDIA_TYPE_UNSUPPORTED", "Only PNG, JPEG, WebP, GIF, AVIF images and PDF files are accepted.")
 		return
 	}
 	digest := sha256.Sum256(data)

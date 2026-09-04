@@ -752,18 +752,18 @@ async function main() {
     // The published media-render-probe writing embeds this image, so deletion
     // is blocked with 409 MEDIA_IN_USE and the Alert surfaces the reason.
     await mediaCard.getByRole('button', { name: 'Delete probe.png' }).click();
-    await admin.getByText('Delete this image? Markdown that references it will show a broken image.').waitFor({ state: 'visible', timeout: 5000 });
+    await admin.getByText('Delete this file? Anything referencing it will show as broken.').waitFor({ state: 'visible', timeout: 5000 });
     await admin.getByRole('button', { name: 'Delete', exact: true }).last().click();
-    await admin.getByText('This image is used in published or draft content. Remove those references first.').waitFor({ state: 'visible', timeout: 5000 });
+    await admin.getByText('This file is used in published or draft content. Remove those references first.').waitFor({ state: 'visible', timeout: 5000 });
     // Remove the reference by deleting the probe writing, then retry deletion.
     const mediaWritingDelete = await fetch(`${coreUrl}/api/v1/admin/content/${mediaWriting.id}`, { method: 'DELETE', headers: { authorization: `Bearer ${archiveToken}` } });
     if (!mediaWritingDelete.ok) throw new Error(`Probe writing delete failed: ${mediaWritingDelete.status}`);
     await mediaCard.getByRole('button', { name: 'Delete probe.png' }).click();
-    await admin.getByText('Delete this image? Markdown that references it will show a broken image.').waitFor({ state: 'visible', timeout: 5000 });
+    await admin.getByText('Delete this file? Anything referencing it will show as broken.').waitFor({ state: 'visible', timeout: 5000 });
     const mediaDeleteResponse = admin.waitForResponse((response) => /\/api\/v1\/admin\/media\/[^/]+$/.test(new URL(response.url()).pathname) && response.request().method() === 'DELETE' && response.status() === 204);
     await admin.getByRole('button', { name: 'Delete', exact: true }).last().click();
     await mediaDeleteResponse;
-    await admin.getByText('No images uploaded yet — drop files above or paste into the editor.').waitFor({ state: 'visible', timeout: 5000 });
+    await admin.getByText('No files uploaded yet — drop images or PDFs above or paste into the editor.').waitFor({ state: 'visible', timeout: 5000 });
 
     // Security: logout-all revokes the browser's other sessions server-side.
     // The browser session and archiveToken are separate logins, so logging out

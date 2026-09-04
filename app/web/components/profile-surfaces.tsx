@@ -1,27 +1,14 @@
 "use client";
 
-import { AtSign, Flame, Globe2, Mail, MessageCircle, Podcast, Radio, Rss, Send, Tv, X, GitBranch, ExternalLink } from "lucide-react";
+import { ExternalLink, Globe2 } from "lucide-react";
 import type { ProfileContact, ProfileSeriesItem } from "@manifold/contracts";
+import { contactIconNode, resolveContactKey } from "@manifold/render";
 import { useId, useRef, useState } from "react";
 import { FloatingTooltip } from "./floating-tooltip";
 import styles from "../app/site.module.css";
 
 function contactIcon(contact: ProfileContact) {
-  const icon = contact.icon?.toLowerCase().trim() ?? "";
-  const label = contact.label.toLowerCase();
-  const url = contact.url.toLowerCase();
-  if (icon === "x" || icon === "twitter" || label === "x" || label.includes("twitter")) return <X size={22} strokeWidth={1.7} />;
-  if (icon === "rss" || label.includes("rss") || url.endsWith("/feed.xml")) return <Rss size={22} strokeWidth={1.7} />;
-  if (icon === "mail" || label.includes("mail") || label.includes("email")) return <Mail size={22} strokeWidth={1.7} />;
-  if (icon === "github" || label.includes("github") || url.includes("github")) return <GitBranch size={22} strokeWidth={1.7} />;
-  if (icon === "flame" || label.includes("flame") || label.includes("bilibili")) return <Flame size={22} strokeWidth={1.7} />;
-  if (icon === "tv" || label.includes("youtube") || label.includes("tv")) return <Tv size={22} strokeWidth={1.7} />;
-  if (icon === "telegram" || label.includes("telegram")) return <Send size={22} strokeWidth={1.7} />;
-  if (icon === "podcast" || label.includes("podcast")) return <Podcast size={22} strokeWidth={1.7} />;
-  if (icon === "message" || label.includes("whats") || label.includes("message")) return <MessageCircle size={22} strokeWidth={1.7} />;
-  if (icon === "at" || label.includes("handle")) return <AtSign size={22} strokeWidth={1.7} />;
-  if (icon === "radio") return <Radio size={22} strokeWidth={1.7} />;
-  return <Globe2 size={22} strokeWidth={1.7} />;
+  return contactIconNode(resolveContactKey(contact), 22, 1.7);
 }
 
 function TooltipLink({ href, label, description, children, external = false }: { href: string; label: string; description: string; children: React.ReactNode; external?: boolean }) {

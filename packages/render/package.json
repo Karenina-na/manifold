@@ -3,10 +3,16 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "exports": { ".": "./src/index.ts" },
-  "scripts": { "typecheck": "tsc --noEmit", "test": "tsc --noEmit" },
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test test/*.test.ts && tsc --noEmit"
+  },
   "dependencies": {
     "lucide-react": "^1.33.0",
+    "react-icons": "^5.7.0",
     "react-markdown": "^10.1.0",
     "rehype-highlight": "^7.0.2",
     "rehype-katex": "^7.0.1",
@@ -14,6 +20,13 @@
     "remark-gfm": "^4.0.1",
     "remark-math": "^6.0.0"
   },
-  "peerDependencies": { "react": ">=18" },
-  "devDependencies": { "@types/react": "^19.2.17", "typescript": "^5.9.3" }
+  "peerDependencies": {
+    "react": ">=18"
+  },
+  "devDependencies": {
+    "@types/node": "^26.4.1",
+    "@types/react": "^19.2.17",
+    "tsx": "^4.23.13",
+    "typescript": "^5.9.3"
+  }
 }
