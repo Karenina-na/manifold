@@ -15,6 +15,7 @@ coverage/
 .playwright-cli/
 output/
 tmp/
+docs/superpowers
 
 # Go local artifacts
 apps/core/data/
