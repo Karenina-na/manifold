@@ -23,7 +23,7 @@ type CommentListResult struct {
 	TotalPages int
 }
 
-const commentColumns = `id, content_id, author_name, author_url, body, created_at, reply_to_id, avatar_seed, deleted_at`
+const commentColumns = `id, content_id, author_name, author_url, body, created_at, reply_to_id, avatar_seed, deleted_at, hidden_at`
 
 // matchedCommentThreads returns a CTE of top-level comments whose own
 // author/body matches the needle or that own any matching reply, so a hit
@@ -34,15 +34,15 @@ func matchedCommentThreads() string {
 	return `WITH matched AS (
 		SELECT id, created_at FROM comments
 		WHERE content_id = ? AND deleted_at IS NULL AND reply_to_id IS NULL
-		AND (? = '' OR INSTR(LOWER(author_name), ?) > 0 OR INSTR(LOWER(body), ?) > 0
-			OR EXISTS (SELECT 1 FROM comments reply WHERE reply.reply_to_id = comments.id AND reply.deleted_at IS NULL AND (INSTR(LOWER(reply.author_name), ?) > 0 OR INSTR(LOWER(reply.body), ?) > 0)))
+		AND (? = '' OR (hidden_at IS NULL AND (INSTR(LOWER(author_name), ?) > 0 OR INSTR(LOWER(body), ?) > 0))
+			OR EXISTS (SELECT 1 FROM comments reply WHERE reply.reply_to_id = comments.id AND reply.deleted_at IS NULL AND reply.hidden_at IS NULL AND (INSTR(LOWER(reply.author_name), ?) > 0 OR INSTR(LOWER(reply.body), ?) > 0)))
 	)`
 }
 
 func scanComment(scanner interface{ Scan(dest ...any) error }) (model.Comment, error) {
 	var c model.Comment
-	var authorURL, replyToID sql.NullString
-	if err := scanner.Scan(&c.ID, &c.ContentID, &c.AuthorName, &authorURL, &c.Body, &c.CreatedAt, &replyToID, &c.AvatarSeed, new(sql.NullString)); err != nil {
+	var authorURL, replyToID, deletedAt, hiddenAt sql.NullString
+	if err := scanner.Scan(&c.ID, &c.ContentID, &c.AuthorName, &authorURL, &c.Body, &c.CreatedAt, &replyToID, &c.AvatarSeed, &deletedAt, &hiddenAt); err != nil {
 		return model.Comment{}, err
 	}
 	if authorURL.Valid {
@@ -51,6 +51,7 @@ func scanComment(scanner interface{ Scan(dest ...any) error }) (model.Comment, e
 	if replyToID.Valid {
 		c.ReplyToID = &replyToID.String
 	}
+	c.Hidden = hiddenAt.Valid
 	return c, nil
 }
 
@@ -69,6 +70,19 @@ func (s *Store) scanComments(query string, args ...any) ([]model.Comment, error)
 		items = append(items, item)
 	}
 	return items, rows.Err()
+}
+
+// redactHiddenComment keeps a hidden row in the public thread so its replies
+// retain their position, while ensuring moderation never exposes its visitor
+// details or body through the public API.
+func redactHiddenComment(comment *model.Comment) {
+	if !comment.Hidden {
+		return
+	}
+	comment.AuthorName = ""
+	comment.AuthorURL = nil
+	comment.Body = ""
+	comment.AvatarSeed = ""
 }
 
 // ListComments paginates roots of undeleted threads and attaches every
@@ -110,6 +124,9 @@ func (s *Store) ListComments(contentID string, options CommentListOptions) (Comm
 		return CommentListResult{}, err
 	}
 	result.Comments = append(roots, replies...)
+	for index := range result.Comments {
+		redactHiddenComment(&result.Comments[index])
+	}
 	return result, nil
 }
 
@@ -140,7 +157,7 @@ func matchedAdminCommentThreads() string {
 	)`
 }
 
-const adminCommentColumns = `comments.id, comments.content_id, comments.author_name, comments.author_url, comments.body, comments.created_at, comments.reply_to_id, comments.avatar_seed, comments.deleted_at, COALESCE(content.title, ''), content.slug, COALESCE(content.kind, '')`
+const adminCommentColumns = `comments.id, comments.content_id, comments.author_name, comments.author_url, comments.body, comments.created_at, comments.reply_to_id, comments.avatar_seed, comments.deleted_at, comments.hidden_at, COALESCE(content.title, ''), content.slug, COALESCE(content.kind, '')`
 
 func (s *Store) scanAdminComments(query string, args ...any) ([]model.AdminComment, error) {
 	rows, err := s.DB.Query(query, args...)
@@ -151,8 +168,8 @@ func (s *Store) scanAdminComments(query string, args ...any) ([]model.AdminComme
 	items := []model.AdminComment{}
 	for rows.Next() {
 		var c model.AdminComment
-		var authorURL, replyToID, deletedAt sql.NullString
-		if err := rows.Scan(&c.ID, &c.ContentID, &c.AuthorName, &authorURL, &c.Body, &c.CreatedAt, &replyToID, &c.AvatarSeed, &deletedAt, &c.ContentTitle, &c.ContentSlug, &c.ContentKind); err != nil {
+		var authorURL, replyToID, deletedAt, hiddenAt sql.NullString
+		if err := rows.Scan(&c.ID, &c.ContentID, &c.AuthorName, &authorURL, &c.Body, &c.CreatedAt, &replyToID, &c.AvatarSeed, &deletedAt, &hiddenAt, &c.ContentTitle, &c.ContentSlug, &c.ContentKind); err != nil {
 			return nil, err
 		}
 		if authorURL.Valid {
@@ -164,6 +181,10 @@ func (s *Store) scanAdminComments(query string, args ...any) ([]model.AdminComme
 		if deletedAt.Valid {
 			c.DeletedAt = &deletedAt.String
 		}
+		if hiddenAt.Valid {
+			c.HiddenAt = &hiddenAt.String
+		}
+		c.Hidden = hiddenAt.Valid
 		items = append(items, c)
 	}
 	return items, rows.Err()
@@ -303,9 +324,97 @@ func (s *Store) RestoreComment(id string) (string, error) {
 	return contentID, tx.Commit()
 }
 
+type CommentAuthorUpdate struct {
+	AuthorName   *string
+	AuthorURL    *string
+	HasAuthorURL bool
+	AvatarSeed   *string
+}
+
+func (s *Store) HideComment(id string) (string, error) {
+	return s.setCommentHidden(id, true)
+}
+
+func (s *Store) UnhideComment(id string) (string, error) {
+	return s.setCommentHidden(id, false)
+}
+
+func (s *Store) setCommentHidden(id string, hidden bool) (string, error) {
+	tx, err := s.DB.Begin()
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = tx.Rollback() }()
+	var deletedAt sql.NullString
+	if err := tx.QueryRow(`SELECT deleted_at FROM comments WHERE id = ?`, id).Scan(&deletedAt); err != nil {
+		return "", err
+	}
+	if deletedAt.Valid {
+		return "", ErrCommentDeleted
+	}
+	var contentID string
+	value := any(nil)
+	if hidden {
+		value = nowRFC3339()
+	}
+	if err := tx.QueryRow(`UPDATE comments SET hidden_at = ? WHERE id = ? AND deleted_at IS NULL RETURNING content_id`, value, id).Scan(&contentID); err != nil {
+		return "", err
+	}
+	if err := refreshCommentCountTx(tx, contentID); err != nil {
+		return "", err
+	}
+	return contentID, tx.Commit()
+}
+
+func (s *Store) UpdateCommentAuthor(id string, update CommentAuthorUpdate) (string, error) {
+	tx, err := s.DB.Begin()
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = tx.Rollback() }()
+	var deletedAt sql.NullString
+	if err := tx.QueryRow(`SELECT deleted_at FROM comments WHERE id = ?`, id).Scan(&deletedAt); err != nil {
+		return "", err
+	}
+	if deletedAt.Valid {
+		return "", ErrCommentDeleted
+	}
+	assignments := []string{}
+	args := []any{}
+	if update.AuthorName != nil {
+		assignments = append(assignments, "author_name = ?")
+		args = append(args, *update.AuthorName)
+	}
+	if update.HasAuthorURL {
+		assignments = append(assignments, "author_url = ?")
+		if update.AuthorURL == nil {
+			args = append(args, nil)
+		} else {
+			args = append(args, *update.AuthorURL)
+		}
+	}
+	if update.AvatarSeed != nil {
+		assignments = append(assignments, "avatar_seed = ?")
+		args = append(args, *update.AvatarSeed)
+	}
+	var contentID string
+	if len(assignments) == 0 {
+		if err := tx.QueryRow(`SELECT content_id FROM comments WHERE id = ? AND deleted_at IS NULL`, id).Scan(&contentID); err != nil {
+			return "", err
+		}
+	} else {
+		args = append(args, id)
+		query := `UPDATE comments SET ` + strings.Join(assignments, ", ") + ` WHERE id = ? AND deleted_at IS NULL RETURNING content_id`
+		if err := tx.QueryRow(query, args...).Scan(&contentID); err != nil {
+			return "", err
+		}
+	}
+	return contentID, tx.Commit()
+}
+
 func refreshCommentCountTx(tx *sql.Tx, contentID string) error {
 	var count int
-	if err := tx.QueryRow(`SELECT COUNT(*) FROM comments WHERE content_id = ? AND deleted_at IS NULL AND (reply_to_id IS NULL OR reply_to_id IN (SELECT id FROM comments WHERE content_id = ? AND reply_to_id IS NULL AND deleted_at IS NULL))`, contentID, contentID).Scan(&count); err != nil {
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM comments WHERE content_id = ? AND deleted_at IS NULL AND hidden_at IS NULL AND (reply_to_id IS NULL OR reply_to_id IN (SELECT id FROM comments WHERE content_id = ? AND reply_to_id IS NULL AND deleted_at IS NULL))`, contentID, contentID).Scan(&count); err != nil {
 		return err
 	}
 	_, err := tx.Exec(`UPDATE content SET comment_count = ? WHERE id = ?`, count, contentID)

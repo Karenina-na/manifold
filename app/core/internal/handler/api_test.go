@@ -14,6 +14,7 @@ import (
 
 	"github.com/manifold-space/manifold/app/core/internal/config"
 	"github.com/manifold-space/manifold/app/core/internal/handler"
+	"github.com/manifold-space/manifold/app/core/internal/model"
 	"github.com/manifold-space/manifold/app/core/internal/store"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -327,10 +328,10 @@ func seedRows(t *testing.T, router http.Handler, token string, database *store.S
 	// deterministic ordering window. The dev set spans 2024-10 through 2025-10
 	// except these four, which are pinned before the test rows in 2026.
 	stamps := map[string]string{
-		"designing-boundaries":       "2025-01-02T09:00:00Z",
-		"github-flavored-markdown":   "2025-02-05T09:00:00Z",
-		"reading-the-edge":           "2025-11-20T09:00:00Z",
-		"a-small-signal":             "2025-03-01T09:00:00Z",
+		"designing-boundaries":     "2025-01-02T09:00:00Z",
+		"github-flavored-markdown": "2025-02-05T09:00:00Z",
+		"reading-the-edge":         "2025-11-20T09:00:00Z",
+		"a-small-signal":           "2025-03-01T09:00:00Z",
 	}
 	for slug, stamp := range stamps {
 		if _, err := database.DB.Exec(`UPDATE content SET published_at = ?, created_at = ?, updated_at = ? WHERE slug = ?`, stamp, stamp, stamp, slug); err != nil {
@@ -468,6 +469,116 @@ func TestPublicCommentsPaginationAndSearch(t *testing.T) {
 		if response.Code != http.StatusBadRequest {
 			t.Fatalf("expected 400 for %s, got %d", invalidQuery, response.Code)
 		}
+	}
+}
+
+func TestCommentModerationEndpointsAndPublicHiddenSearch(t *testing.T) {
+	router, database := newTestRouterWithConfig(t, func(cfg *config.Config) {})
+	title := "Moderation endpoints"
+	content, err := database.CreateContent(model.ContentInput{Kind: model.ContentKindArticle, Slug: "moderation-endpoints", Title: &title, Body: "Body"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.SetContentStatus(content.ID, model.StatusPublished); err != nil {
+		t.Fatal(err)
+	}
+	token := adminToken(t, router)
+
+	created := request(t, router, http.MethodPost, "/api/v1/content/moderation-endpoints/comments", strings.NewReader(`{"authorName":"Original","authorUrl":"https://original.example","body":"hidden keyword","avatarSeed":"original-seed"}`))
+	if created.Code != http.StatusCreated {
+		t.Fatalf("expected comment 201, got %d %s", created.Code, created.Body.String())
+	}
+	var root struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(created.Body.Bytes(), &root); err != nil {
+		t.Fatal(err)
+	}
+	reply := request(t, router, http.MethodPost, "/api/v1/content/moderation-endpoints/comments", strings.NewReader(fmt.Sprintf(`{"body":"visible reply","replyToId":%q}`, root.ID)))
+	if reply.Code != http.StatusCreated {
+		t.Fatalf("expected reply 201, got %d %s", reply.Code, reply.Body.String())
+	}
+
+	hide := adminRequest(t, router, token, http.MethodPost, "/api/v1/admin/comments/"+root.ID+"/hide", "")
+	if hide.Code != http.StatusNoContent {
+		t.Fatalf("expected hide 204, got %d %s", hide.Code, hide.Body.String())
+	}
+	detail := request(t, router, http.MethodGet, "/api/v1/content/moderation-endpoints?trackView=false", nil)
+	if detail.Code != http.StatusOK || !strings.Contains(detail.Body.String(), `"commentCount":1`) {
+		t.Fatalf("expected hidden root to leave visible reply counted, got %d %s", detail.Code, detail.Body.String())
+	}
+	var public struct {
+		Data []struct {
+			ID         string  `json:"id"`
+			Hidden     bool    `json:"hidden"`
+			AuthorName string  `json:"authorName"`
+			AuthorURL  *string `json:"authorUrl"`
+			Body       string  `json:"body"`
+			AvatarSeed string  `json:"avatarSeed"`
+		} `json:"data"`
+		Pagination struct {
+			TotalItems int `json:"totalItems"`
+		} `json:"pagination"`
+	}
+	loadPublic := func(query string) {
+		t.Helper()
+		response := request(t, router, http.MethodGet, "/api/v1/content/moderation-endpoints/comments"+query, nil)
+		if response.Code != http.StatusOK {
+			t.Fatalf("expected public comments 200 for %s, got %d %s", query, response.Code, response.Body.String())
+		}
+		if err := json.Unmarshal(response.Body.Bytes(), &public); err != nil {
+			t.Fatal(err)
+		}
+	}
+	loadPublic("")
+	if len(public.Data) != 2 || !public.Data[0].Hidden || public.Data[0].AuthorName != "" || public.Data[0].AuthorURL != nil || public.Data[0].Body != "" || public.Data[0].AvatarSeed != "" || public.Data[1].Hidden {
+		t.Fatalf("expected hidden comment details to be redacted in public response, got %+v", public.Data)
+	}
+	loadPublic("?q=hidden%20keyword")
+	if public.Pagination.TotalItems != 0 || len(public.Data) != 0 {
+		t.Fatalf("expected hidden author/body excluded from public search, got %+v", public)
+	}
+	loadPublic("?q=visible%20reply")
+	if public.Pagination.TotalItems != 2 || len(public.Data) != 2 || !public.Data[0].Hidden {
+		t.Fatalf("expected visible reply search to retain hidden root placeholder, got %+v", public)
+	}
+
+	adminList := adminRequest(t, router, token, http.MethodGet, "/api/v1/admin/comments?contentId="+content.ID, "")
+	if adminList.Code != http.StatusOK || !strings.Contains(adminList.Body.String(), `"hiddenAt":"20`) {
+		t.Fatalf("expected admin list to expose hiddenAt, got %d %s", adminList.Code, adminList.Body.String())
+	}
+	unhide := adminRequest(t, router, token, http.MethodPost, "/api/v1/admin/comments/"+root.ID+"/unhide", "")
+	if unhide.Code != http.StatusNoContent {
+		t.Fatalf("expected unhide 204, got %d %s", unhide.Code, unhide.Body.String())
+	}
+	updated := adminRequest(t, router, token, http.MethodPut, "/api/v1/admin/comments/"+root.ID, `{"authorName":"Edited","authorUrl":null,"avatarSeed":"edited-seed"}`)
+	if updated.Code != http.StatusNoContent {
+		t.Fatalf("expected author update 204, got %d %s", updated.Code, updated.Body.String())
+	}
+	for _, body := range []string{`{"authorName":null}`, `{"avatarSeed":null}`} {
+		if response := adminRequest(t, router, token, http.MethodPut, "/api/v1/admin/comments/"+root.ID, body); response.Code != http.StatusUnprocessableEntity {
+			t.Fatalf("expected null author field %s to return 422, got %d %s", body, response.Code, response.Body.String())
+		}
+	}
+	loadPublic("")
+	if public.Data[0].Hidden || public.Data[0].AuthorName != "Edited" || public.Data[0].Body != "hidden keyword" {
+		t.Fatalf("expected updated author to be public after unhide, got %+v", public.Data[0])
+	}
+
+	deleted := adminRequest(t, router, token, http.MethodDelete, "/api/v1/admin/comments/"+root.ID, "")
+	if deleted.Code != http.StatusNoContent {
+		t.Fatalf("expected delete 204, got %d %s", deleted.Code, deleted.Body.String())
+	}
+	for _, path := range []string{"/hide", "/unhide"} {
+		if response := adminRequest(t, router, token, http.MethodPost, "/api/v1/admin/comments/"+root.ID+path, ""); response.Code != http.StatusUnprocessableEntity {
+			t.Fatalf("expected deleted comment %s to return 422, got %d %s", path, response.Code, response.Body.String())
+		}
+	}
+	if response := adminRequest(t, router, token, http.MethodPut, "/api/v1/admin/comments/"+root.ID, `{"authorName":"Nope"}`); response.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected deleted comment update to return 422, got %d %s", response.Code, response.Body.String())
+	}
+	if response := adminRequest(t, router, token, http.MethodPost, "/api/v1/admin/comments/missing/hide", ""); response.Code != http.StatusNotFound {
+		t.Fatalf("expected missing comment hide to return 404, got %d", response.Code)
 	}
 }
 
@@ -1207,6 +1318,64 @@ func TestAdminLogoutAllSessionsKeepsCurrent(t *testing.T) {
 	}
 	if response := adminRequest(t, router, tokenB, http.MethodGet, "/api/v1/admin/content", ""); response.Code != http.StatusUnauthorized {
 		t.Fatalf("expected other session revoked, got %d", response.Code)
+	}
+}
+
+func TestAdminListSessions(t *testing.T) {
+	router := newTestRouter(t)
+	tokenA := adminToken(t, router)
+	_ = adminToken(t, router)
+	response := adminRequest(t, router, tokenA, http.MethodGet, "/api/v1/admin/session/list", "")
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected session list 200, got %d %s", response.Code, response.Body.String())
+	}
+	var body struct {
+		Sessions []struct {
+			ID      string `json:"id"`
+			Active  bool   `json:"active"`
+			Current bool   `json:"current"`
+		} `json:"sessions"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Sessions) != 2 {
+		t.Fatalf("expected 2 sessions, got %d", len(body.Sessions))
+	}
+	current := 0
+	for _, session := range body.Sessions {
+		if !session.Active {
+			t.Fatalf("expected all sessions active before logout-all, got %+v", session)
+		}
+		if session.Current {
+			current++
+		}
+	}
+	if current != 1 {
+		t.Fatalf("expected exactly one current session, got %d", current)
+	}
+	// After logout-all the other session shows as revoked but the current one stays active.
+	if response := adminRequest(t, router, tokenA, http.MethodPost, "/api/v1/admin/session/logout-all", ""); response.Code != http.StatusNoContent {
+		t.Fatalf("expected logout-all 204, got %d", response.Code)
+	}
+	response = adminRequest(t, router, tokenA, http.MethodGet, "/api/v1/admin/session/list", "")
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected session list 200 after logout-all, got %d", response.Code)
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	active := 0
+	for _, session := range body.Sessions {
+		if session.Active {
+			active++
+		}
+		if session.Current && !session.Active {
+			t.Fatalf("expected the current session to stay active, got %+v", session)
+		}
+	}
+	if active != 1 {
+		t.Fatalf("expected exactly one active session after logout-all, got %d", active)
 	}
 }
 

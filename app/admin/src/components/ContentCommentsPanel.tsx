@@ -1,8 +1,8 @@
-import { Alert, Button, Textarea, TextInput } from '@mantine/core'
+import { Alert, Button, Modal, Textarea, TextInput } from '@mantine/core'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CornerDownRight, MessageCircle, RotateCcw, Search, Trash2 } from 'lucide-react'
+import { CornerDownRight, Eye, EyeOff, MessageCircle, Pencil, RotateCcw, Search, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { AdminComment, CreateCommentInput } from '@manifold/contracts'
+import type { AdminComment, CreateCommentInput, UpdateCommentInput } from '@manifold/contracts'
 import type { ManifoldClient } from '@manifold/sdk'
 import { formatDate } from '@manifold/render'
 import { ConfirmButton } from './ConfirmButton'
@@ -30,6 +30,10 @@ export function ContentCommentsPanel({ client, contentId, page, q, focus, onPara
   const [authorTouched, setAuthorTouched] = useState(false)
   const [body, setBody] = useState('')
   const [replyTarget, setReplyTarget] = useState<AdminComment | null>(null)
+  const [editTarget, setEditTarget] = useState<AdminComment | null>(null)
+  const [editAuthorName, setEditAuthorName] = useState('')
+  const [editAuthorUrl, setEditAuthorUrl] = useState('')
+  const [editAvatarSeed, setEditAvatarSeed] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [highlight, setHighlight] = useState<string | null>(null)
   const paramsChangeRef = useRef(onParamsChange)
@@ -99,12 +103,46 @@ export function ContentCommentsPanel({ client, contentId, page, q, focus, onPara
     onError: () => setError('The comment could not be posted. Try again.'),
   })
   const moderate = useMutation({
-    mutationFn: ({ id, action }: { id: string; action: 'delete' | 'restore' }) => action === 'delete' ? client.deleteComment(id) : client.restoreComment(id),
+    mutationFn: ({ id, action }: { id: string; action: 'delete' | 'restore' | 'hide' | 'unhide' }) => {
+      if (action === 'delete') return client.deleteComment(id)
+      if (action === 'restore') return client.restoreComment(id)
+      if (action === 'hide') return client.hideComment(id)
+      return client.unhideComment(id)
+    },
     onSuccess: invalidate,
     onError: () => setError('The comment could not be updated. Try again.'),
   })
+  const updateAuthor = useMutation({
+    mutationFn: ({ id, input }: { id: string; input: UpdateCommentInput }) => client.updateCommentAuthor(id, input),
+    onSuccess: () => {
+      setEditTarget(null)
+      setError(null)
+      invalidate()
+    },
+    onError: () => setError('The author details could not be updated. Try again.'),
+  })
 
-  const moderateComment = (id: string, action: 'delete' | 'restore') => moderate.mutate({ id, action })
+  const moderateComment = (id: string, action: 'delete' | 'restore' | 'hide' | 'unhide') => moderate.mutate({ id, action })
+
+  const beginAuthorEdit = (comment: AdminComment) => {
+    setEditTarget(comment)
+    setEditAuthorName(comment.authorName)
+    setEditAuthorUrl(comment.authorUrl ?? '')
+    setEditAvatarSeed(comment.avatarSeed)
+    setError(null)
+  }
+
+  const submitAuthorEdit = () => {
+    if (!editTarget || updateAuthor.isPending) return
+    updateAuthor.mutate({
+      id: editTarget.id,
+      input: {
+        authorName: editAuthorName.trim(),
+        authorUrl: editAuthorUrl.trim() || null,
+        avatarSeed: editAvatarSeed.trim(),
+      },
+    })
+  }
 
   const submit = () => {
     if (!body.trim() || create.isPending) return
@@ -132,6 +170,7 @@ export function ContentCommentsPanel({ client, contentId, page, q, focus, onPara
         replies={repliesByRoot.get(root.id) ?? []}
         highlighted={highlight === root.id}
         onModerate={moderateComment}
+        onEdit={beginAuthorEdit}
         onReply={() => setReplyTarget(root)}
       />)}
     </div>
@@ -163,56 +202,86 @@ export function ContentCommentsPanel({ client, contentId, page, q, focus, onPara
         <Button className="button button-primary" leftSection={<MessageCircle size={15} />} disabled={!body.trim()} loading={create.isPending} onClick={submit}>{replyTarget ? 'Post reply' : 'Post comment'}</Button>
       </div>
     </div>
+    <Modal opened={Boolean(editTarget)} onClose={() => setEditTarget(null)} title="Edit author" centered>
+      <div className="comment-author-editor">
+        <TextInput label="Name" value={editAuthorName} onChange={(event) => setEditAuthorName(event.currentTarget.value)} disabled={updateAuthor.isPending} />
+        <TextInput label="Website" value={editAuthorUrl} onChange={(event) => setEditAuthorUrl(event.currentTarget.value)} disabled={updateAuthor.isPending} />
+        <TextInput label="Avatar seed" value={editAvatarSeed} onChange={(event) => setEditAvatarSeed(event.currentTarget.value)} disabled={updateAuthor.isPending} />
+        <div className="modal-actions">
+          <Button variant="default" onClick={() => setEditTarget(null)} disabled={updateAuthor.isPending}>Cancel</Button>
+          <Button color="teal" onClick={submitAuthorEdit} loading={updateAuthor.isPending}>Save author</Button>
+        </div>
+      </div>
+    </Modal>
   </section>
 }
 
-function CommentNode({ comment, replies, highlighted, onModerate, onReply }: {
+function CommentNode({ comment, replies, highlighted, onModerate, onEdit, onReply }: {
   comment: AdminComment
   replies: AdminComment[]
   highlighted: boolean
-  onModerate: (id: string, action: 'delete' | 'restore') => void
+  onModerate: (id: string, action: 'delete' | 'restore' | 'hide' | 'unhide') => void
+  onEdit: (comment: AdminComment) => void
   onReply: () => void
 }) {
   const deleted = Boolean(comment.deletedAt)
+  const hidden = comment.hidden
   const authorName = comment.authorName || 'Anonymous'
-  return <article id={`comment-row-${comment.id}`} className={highlighted ? 'comment-node comment-focus' : 'comment-node'}>
+  const className = ['comment-node', highlighted && 'comment-focus', hidden && 'comment-node-hidden'].filter(Boolean).join(' ')
+  return <article id={`comment-row-${comment.id}`} className={className}>
     <div className="comment-avatar" aria-hidden="true">{authorName.slice(0, 1).toUpperCase()}</div>
     <div className="comment-node-body">
       <div className="row-title">
         <strong>{authorName}</strong>
         <span>{formatDate(comment.createdAt)}</span>
+        {hidden && <span className="hidden-tag">hidden</span>}
         {deleted && <span className="deleted-tag">deleted</span>}
       </div>
       <p>{comment.body}</p>
       <div className="comment-node-actions">
         {!deleted && <Button size="compact-xs" variant="default" leftSection={<CornerDownRight size={12} />} onClick={onReply}>Reply</Button>}
+        {!deleted && <Button size="compact-xs" variant="default" leftSection={<Pencil size={12} />} onClick={() => onEdit(comment)}>Edit author</Button>}
         {deleted
           ? <ConfirmButton label="Restore" confirmLabel="Restore" confirmBody="Make this comment visible on the public site again." leftSection={<RotateCcw size={13} />} onConfirm={() => onModerate(comment.id, 'restore')} />
-          : <ConfirmButton label="Delete" confirmLabel="Delete" confirmBody="Delete this comment? It leaves the public site immediately." danger icon={<Trash2 size={13} />} onConfirm={() => onModerate(comment.id, 'delete')} />}
+          : <>
+            {hidden
+              ? <Button size="compact-xs" variant="light" color="teal" leftSection={<Eye size={13} />} onClick={() => onModerate(comment.id, 'unhide')}>Unhide</Button>
+              : <ConfirmButton label="Hide" confirmLabel="Hide" confirmBody="Hide this comment from the public site? Its replies remain visible." icon={<EyeOff size={13} />} onConfirm={() => onModerate(comment.id, 'hide')} />}
+            <ConfirmButton label="Delete" confirmLabel="Delete" confirmBody="Delete this comment? It leaves the public site immediately." danger icon={<Trash2 size={13} />} onConfirm={() => onModerate(comment.id, 'delete')} />
+          </>}
       </div>
-      {replies.length > 0 && <div className="comment-replies">
-        {replies.map((reply) => <CommentReply key={reply.id} reply={reply} onModerate={onModerate} />)}
+        {replies.length > 0 && <div className="comment-replies">
+        {replies.map((reply) => <CommentReply key={reply.id} reply={reply} onModerate={onModerate} onEdit={onEdit} />)}
       </div>}
     </div>
   </article>
 }
 
-function CommentReply({ reply, onModerate }: { reply: AdminComment; onModerate: (id: string, action: 'delete' | 'restore') => void }) {
+function CommentReply({ reply, onModerate, onEdit }: { reply: AdminComment; onModerate: (id: string, action: 'delete' | 'restore' | 'hide' | 'unhide') => void; onEdit: (comment: AdminComment) => void }) {
   const deleted = Boolean(reply.deletedAt)
+  const hidden = reply.hidden
   const authorName = reply.authorName || 'Anonymous'
-  return <div id={`comment-row-${reply.id}`} className={deleted ? 'comment-reply comment-reply-deleted' : 'comment-reply'}>
+  const className = ['comment-reply', deleted && 'comment-reply-deleted', hidden && 'comment-reply-hidden'].filter(Boolean).join(' ')
+  return <div id={`comment-row-${reply.id}`} className={className}>
     <div className="comment-avatar small" aria-hidden="true">{authorName.slice(0, 1).toUpperCase()}</div>
     <div className="comment-node-body">
       <div className="row-title">
         <strong>{authorName}</strong>
         <span>{formatDate(reply.createdAt)}</span>
+        {hidden && <span className="hidden-tag">hidden</span>}
         {deleted && <span className="deleted-tag">deleted</span>}
       </div>
       <p>{reply.body}</p>
       <div className="comment-node-actions">
+        {!deleted && <Button size="compact-xs" variant="default" leftSection={<Pencil size={12} />} onClick={() => onEdit(reply)}>Edit author</Button>}
         {deleted
           ? <ConfirmButton label="Restore" confirmLabel="Restore" confirmBody="Make this comment visible on the public site again." leftSection={<RotateCcw size={13} />} onConfirm={() => onModerate(reply.id, 'restore')} />
-          : <ConfirmButton label="Delete" confirmLabel="Delete" confirmBody="Delete this comment? It leaves the public site immediately." danger icon={<Trash2 size={13} />} onConfirm={() => onModerate(reply.id, 'delete')} />}
+          : <>
+            {hidden
+              ? <Button size="compact-xs" variant="light" color="teal" leftSection={<Eye size={13} />} onClick={() => onModerate(reply.id, 'unhide')}>Unhide</Button>
+              : <ConfirmButton label="Hide" confirmLabel="Hide" confirmBody="Hide this comment from the public site? Its replies remain visible." icon={<EyeOff size={13} />} onConfirm={() => onModerate(reply.id, 'hide')} />}
+            <ConfirmButton label="Delete" confirmLabel="Delete" confirmBody="Delete this comment? It leaves the public site immediately." danger icon={<Trash2 size={13} />} onConfirm={() => onModerate(reply.id, 'delete')} />
+          </>}
       </div>
     </div>
   </div>

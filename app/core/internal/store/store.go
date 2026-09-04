@@ -20,13 +20,14 @@ import (
 	"github.com/manifold-space/manifold/app/core/internal/seed"
 )
 
-const schemaVersion = 2
+const schemaVersion = 3
 
 var (
 	ErrContentNotFound     = errors.New("content not found")
 	ErrVersionConflict     = errors.New("content version conflict")
 	ErrSlugTaken           = errors.New("content slug already taken")
 	ErrCommentReplyInvalid = errors.New("comment reply target is invalid")
+	ErrCommentDeleted      = errors.New("comment is deleted")
 	ErrSchemaTooNew        = errors.New("database schema is newer than this binary")
 	ErrSchemaMismatch      = errors.New("database schema does not match this binary")
 )

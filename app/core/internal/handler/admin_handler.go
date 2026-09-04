@@ -144,6 +144,45 @@ func (h *apiHandler) adminLogoutSessions(w http.ResponseWriter, r *http.Request)
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (h *apiHandler) adminListSessions(w http.ResponseWriter, r *http.Request) {
+	claims := auth.ClaimsFromContext(r.Context())
+	if claims == nil || claims.Subject == "" {
+		WriteError(w, http.StatusUnauthorized, "UNAUTHORIZED", "A valid session is required.")
+		return
+	}
+	rows, err := h.store.AdminSessions(claims.Subject)
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, "SESSIONS_UNAVAILABLE", "Sessions could not be listed.")
+		return
+	}
+	type sessionView struct {
+		ID        string  `json:"id"`
+		CreatedAt string  `json:"createdAt"`
+		ExpiresAt string  `json:"expiresAt"`
+		RevokedAt *string `json:"revokedAt"`
+		Active    bool    `json:"active"`
+		Current   bool    `json:"current"`
+	}
+	now := time.Now().UTC()
+	views := make([]sessionView, 0, len(rows))
+	for _, row := range rows {
+		var revokedAt *string
+		if row.RevokedAt != nil {
+			value := row.RevokedAt.Format(time.RFC3339)
+			revokedAt = &value
+		}
+		views = append(views, sessionView{
+			ID:        row.ID,
+			CreatedAt: row.CreatedAt.Format(time.RFC3339),
+			ExpiresAt: row.ExpiresAt.Format(time.RFC3339),
+			RevokedAt: revokedAt,
+			Active:    row.RevokedAt == nil && now.Before(row.ExpiresAt),
+			Current:   row.ID == claims.ID,
+		})
+	}
+	WriteJSON(w, http.StatusOK, map[string]any{"sessions": views})
+}
+
 type changePasswordInput struct {
 	CurrentPassword string `json:"currentPassword" validate:"required,min=1,max=200"`
 	NewPassword     string `json:"newPassword" validate:"required,min=8,max=200"`
@@ -505,6 +544,133 @@ func (h *apiHandler) adminRestoreComment(w http.ResponseWriter, r *http.Request)
 	h.setCommentDeleted(w, r, false)
 }
 
+func (h *apiHandler) adminHideComment(w http.ResponseWriter, r *http.Request) {
+	h.setCommentHidden(w, r, true)
+}
+
+func (h *apiHandler) adminUnhideComment(w http.ResponseWriter, r *http.Request) {
+	h.setCommentHidden(w, r, false)
+}
+
+func (h *apiHandler) setCommentHidden(w http.ResponseWriter, r *http.Request, hidden bool) {
+	var (
+		contentID string
+		err       error
+	)
+	if hidden {
+		contentID, err = h.store.HideComment(chi.URLParam(r, "id"))
+	} else {
+		contentID, err = h.store.UnhideComment(chi.URLParam(r, "id"))
+	}
+	if errors.Is(err, sql.ErrNoRows) {
+		WriteError(w, http.StatusNotFound, "COMMENT_NOT_FOUND", "Comment was not found.")
+		return
+	}
+	if errors.Is(err, store.ErrCommentDeleted) {
+		WriteError(w, http.StatusUnprocessableEntity, "COMMENT_DELETED", "Deleted comments cannot be moderated.")
+		return
+	}
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, "COMMENT_UPDATE_FAILED", "Comment could not be updated.")
+		return
+	}
+	event := "comment.hidden"
+	if !hidden {
+		event = "comment.unhidden"
+	}
+	h.audit(r, event, "comment", chi.URLParam(r, "id"), nil)
+	h.invalidateCommentContent(contentID)
+	h.overviewCache.Purge()
+	w.WriteHeader(http.StatusNoContent)
+}
+
+type updateCommentAuthorInput struct {
+	AuthorName json.RawMessage `json:"authorName"`
+	AuthorURL  json.RawMessage `json:"authorUrl"`
+	AvatarSeed json.RawMessage `json:"avatarSeed"`
+}
+
+func (h *apiHandler) adminUpdateCommentAuthor(w http.ResponseWriter, r *http.Request) {
+	var input updateCommentAuthorInput
+	if err := decodeJSON(r, &input); err != nil {
+		WriteError(w, http.StatusUnprocessableEntity, "VALIDATION_ERROR", "Invalid comment author input.")
+		return
+	}
+	update, err := parseCommentAuthorUpdate(input)
+	if err != nil {
+		WriteError(w, http.StatusUnprocessableEntity, "VALIDATION_ERROR", err.Error())
+		return
+	}
+	contentID, err := h.store.UpdateCommentAuthor(chi.URLParam(r, "id"), update)
+	if errors.Is(err, sql.ErrNoRows) {
+		WriteError(w, http.StatusNotFound, "COMMENT_NOT_FOUND", "Comment was not found.")
+		return
+	}
+	if errors.Is(err, store.ErrCommentDeleted) {
+		WriteError(w, http.StatusUnprocessableEntity, "COMMENT_DELETED", "Deleted comments cannot be edited.")
+		return
+	}
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, "COMMENT_UPDATE_FAILED", "Comment could not be updated.")
+		return
+	}
+	h.audit(r, "comment.updated", "comment", chi.URLParam(r, "id"), nil)
+	h.invalidateCommentContent(contentID)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func parseCommentAuthorUpdate(input updateCommentAuthorInput) (store.CommentAuthorUpdate, error) {
+	update := store.CommentAuthorUpdate{}
+	if len(input.AuthorURL) > 0 {
+		update.HasAuthorURL = true
+		if strings.TrimSpace(string(input.AuthorURL)) != "null" {
+			var value string
+			if err := json.Unmarshal(input.AuthorURL, &value); err != nil {
+				return update, errors.New("authorUrl must be a string or null.")
+			}
+			value = strings.TrimSpace(value)
+			if len(value) > 200 {
+				return update, errors.New("authorUrl is too long.")
+			}
+			if value != "" {
+				update.AuthorURL = &value
+			}
+		}
+	}
+	if len(input.AuthorName) > 0 {
+		if strings.TrimSpace(string(input.AuthorName)) == "null" {
+			return update, errors.New("authorName must be a string.")
+		}
+		var value string
+		if err := json.Unmarshal(input.AuthorName, &value); err != nil {
+			return update, errors.New("authorName must be a string.")
+		}
+		value = strings.TrimSpace(value)
+		if value == "" {
+			value = "Anonymous"
+		}
+		if len([]rune(value)) > 80 {
+			return update, errors.New("authorName is too long.")
+		}
+		update.AuthorName = &value
+	}
+	if len(input.AvatarSeed) > 0 {
+		if strings.TrimSpace(string(input.AvatarSeed)) == "null" {
+			return update, errors.New("avatarSeed must be a string.")
+		}
+		var value string
+		if err := json.Unmarshal(input.AvatarSeed, &value); err != nil {
+			return update, errors.New("avatarSeed must be a string.")
+		}
+		value = strings.TrimSpace(value)
+		if len([]rune(value)) > 64 {
+			return update, errors.New("avatarSeed is too long.")
+		}
+		update.AvatarSeed = &value
+	}
+	return update, nil
+}
+
 func (h *apiHandler) setCommentDeleted(w http.ResponseWriter, r *http.Request, deleted bool) {
 	var (
 		contentID string
@@ -524,11 +690,16 @@ func (h *apiHandler) setCommentDeleted(w http.ResponseWriter, r *http.Request, d
 		event = "comment.restored"
 	}
 	h.audit(r, event, "comment", chi.URLParam(r, "id"), nil)
+	h.invalidateCommentContent(contentID)
+	h.overviewCache.Purge()
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *apiHandler) invalidateCommentContent(contentID string) {
 	if content, err := h.store.GetContentByID(contentID, true); err == nil {
 		h.invalidateContentBySlug(content.Slug)
 		h.contentCache.Remove(content.Slug)
 	}
-	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *apiHandler) adminStats(w http.ResponseWriter, _ *http.Request) {

@@ -819,3 +819,5 @@ html { scroll-behavior: smooth; }
 
 /* Unified home paper mask: translucent paper + blur, no border (c.f. Updates). */
 .backgroundSurface, .contentSurface, .seriesCard, .updateRail { border: 0; border-radius: 10px; background: color-mix(in srgb, var(--surface-paper) 82%, transparent); backdrop-filter: blur(8px); }
+/* Moderated comments keep their thread slot while hiding visitor details. */
+.commentHiddenBubble { border-style: dashed; background: color-mix(in srgb, var(--color-line) 24%, transparent); }

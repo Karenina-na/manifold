@@ -18,37 +18,21 @@ Admin 端目前对评论只有「删除 / 恢复」两种控制。需要新增�
 - 被隐藏的评论**渲染占位符**，而非彻底剔除；占位符不展示作者/正文/关键词匹配。
 - 隐藏**不计入** `comment_count`（导致卡片/统计/总览里的计数下降，等同删除；恢复则回升）。
 
-## 1. 数据库（0002 增量迁移）
+## 1. 数据库（0003 增量迁移）
 
-新增 `app/core/db/migrations/0002_init.sql`（文件名必须严格为 `0002_init.sql`，因为 `store.go:224` 用 `migrations/%04d_init.sql` 拼出迁移路径，后缀 `_init` 是硬编码的）：
+新增 `app/core/db/migrations/0003_init.sql`（文件名必须严格为 `0003_init.sql`，因为 `store.go:224` 用 `migrations/%04d_init.sql` 拼出迁移路径，后缀 `_init` 是硬编码的）：
 
 ```sql
 ALTER TABLE comments ADD COLUMN hidden_at TEXT;
 ```
 
 - `hidden_at` 与 `deleted_at` 并存，都是可空时间戳软状态。一行可同时处于：正常 / 已隐藏 / 已删除 / 两者兼有。
-- `schemaVersion` 从 `1` 升到 `2`（`store.go:23`）。
+- `schemaVersion` 从 `2` 升到 `3`（T0 安全迁移已占 `0002`，见 `docs/superpowers/specs/2026-09-03-admin-security-t0-design.md`）。
 - 不加新索引：没有任何查询按 `hidden_at` 过滤（公开列表仍按 `deleted_at IS NULL`，隐藏项以 `hidden: true` 一并返回占位；管理列表不过滤隐藏），公开列表已由 `idx_comments_content_visibility`（`content_id, created_at WHERE deleted_at IS NULL`）覆盖。遵循最小迁移原则。
 
-### 必需：放宽迁移门禁（本次改动的一部分）
+### 迁移门禁（已由 T0 安全迁移完成）
 
-`store.go:migrate()` 当前的守卫：
-
-```go
-if existingTables > 0 && userVersion != schemaVersion {
-	return ErrSchemaMismatch // "delete the local database and recreate it"
-}
-```
-
-它会把任何 `userVersion != schemaVersion` 的已有库都当成不匹配而拒绝，导致「增量升级已有库」无法发生。改为仅当库**比 binary 新**时拒绝：
-
-```go
-if existingTables > 0 && userVersion > schemaVersion {
-	return ErrSchemaMismatch // binary too old for this database
-}
-```
-
-早期库（`userVersion < schemaVersion`）放行，交由下方已有的 `current+1..schemaVersion` 循环做增量升级。`schema_migrations` 与 `PRAGMA user_version` 原本就同步写入，二者不会漂移。
+`store.go:migrate()` 的门禁已在 T0（`docs/superpowers/specs/2026-09-03-admin-security-t0-design.md`）放宽为仅当库**比 binary 新**时拒绝，早期库交由 `current+1..schemaVersion` 循环做增量升级。本 spec 的 `0003` 迁移直接受益，无需再改门禁。`schema_migrations` 与 `PRAGMA user_version` 原本就同步写入，二者不会漂移。
 
 ## 2. 契约（`packages/contracts/src/index.ts`）
 
@@ -90,7 +74,7 @@ if existingTables > 0 && userVersion > schemaVersion {
 ## 错误处理与测试
 
 - 隐藏/恢复/编辑对不存在或已删除的评论返回 404 / 422；编辑作者的 `authorUrl` 校验沿用公开创建时的长度限制。
-- 新增 store 层测试：隐藏→计数归零→恢复→计数回升；隐藏与删除正交（可同时为真）；作者资料覆盖后公开端读到新值；增量迁移 `0002` 在 `userVersion=1` 的旧库上正确升级。
+- 新增 store 层测试：隐藏→计数归零→恢复→计数回升；隐藏与删除正交（可同时为真）；作者资料覆盖后公开端读到新值；增量迁移 `0003` 在 `userVersion=2` 的旧库上正确升级。
 - 更新 fixtures、SDK 方法（新增 `hideComment`/`unhideComment`/`updateCommentAuthor`）与对应测试。
 
 ## 已确定细节

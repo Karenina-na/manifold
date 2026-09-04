@@ -30,6 +30,12 @@ Thoughts 页面需要一个独立可选的置顶项，以及排除置顶后的�
 
 内容状态为 `DRAFT`、`PUBLISHED`、`DELETED`。删除采用软删除；更新必须携带 `expectedVersion`，避免两个 Admin 标签页静默覆盖彼此的修改。评论创建即公开，使用 `deleted_at` 表达软删除；早期审核状态（`PENDING`、`APPROVED`、`REJECTED`）仅为历史规划，不属于当前 schema。
 
+## 决策：评论隐藏与软删除正交
+
+状态：Accepted。
+
+评论使用 `hidden_at` 表达可恢复的内容隐藏，和 `deleted_at` 独立存在。一行可以同时隐藏和软删除；隐藏只作用于选中的评论，不级联回复。公开评论列表保留未软删隐藏行以稳定线程分页，但 Core 清空其作者名、网站、正文和头像种子，仅保留 `hidden=true`、结构字段和时间；隐藏评论不参与公开搜索，也不计入 `content.comment_count`。Admin 通过 hide/unhide 端点恢复状态，作者资料覆盖通过独立 PUT 端点完成，并写入审计和清理对应内容缓存。
+
 ## 决策：非关键审计异步化
 
 状态：Accepted。

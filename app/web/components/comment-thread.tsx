@@ -92,19 +92,27 @@ function CommentItem({ node, depth = 0 }: { node: CommentNode; depth?: number })
   const { startReply } = useReply();
   const { comment, children } = node;
   return <motion.article id={comment.id} className={styles.commentThreadItem} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
-    <div className={styles.commentRow}>
-      <CommentAvatar seed={comment.avatarSeed || comment.id} />
-      <div className={styles.commentBubbleWrap}>
-        <div className={styles.commentMetaRow}>
-          <strong>{comment.authorName}</strong>
-          <time className={styles.commentTime} dateTime={comment.createdAt}>{formatRelativeTime(comment.createdAt)}</time>
+    {comment.hidden
+      ? <div className={styles.commentRow}>
+          <div className={styles.commentBubbleWrap}>
+            <div className={`${styles.commentBubble} ${styles.commentHiddenBubble}`}>
+              <p>This comment was hidden by moderation.</p>
+            </div>
+          </div>
         </div>
-        <div className={styles.commentBubble}>
-          <p>{comment.body}</p>
-          <button type="button" className={styles.commentReplyButton} onClick={() => startReply(comment)}><Reply size={12} /> Reply</button>
-        </div>
-      </div>
-    </div>
+      : <div className={styles.commentRow}>
+          <CommentAvatar seed={comment.avatarSeed || comment.id} />
+          <div className={styles.commentBubbleWrap}>
+            <div className={styles.commentMetaRow}>
+              <strong>{comment.authorName}</strong>
+              <time className={styles.commentTime} dateTime={comment.createdAt}>{formatRelativeTime(comment.createdAt)}</time>
+            </div>
+            <div className={styles.commentBubble}>
+              <p>{comment.body}</p>
+              <button type="button" className={styles.commentReplyButton} onClick={() => startReply(comment)}><Reply size={12} /> Reply</button>
+            </div>
+          </div>
+        </div>}
     {children.length > 0 && <div className={depth < MAX_INDENT ? styles.commentNest : styles.commentThreadList}>
       {children.map((child) => <CommentItem key={child.comment.id} node={child} depth={depth + 1} />)}
     </div>}

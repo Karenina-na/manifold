@@ -97,3 +97,44 @@ func TestRevokeSessionsExceptCurrent(t *testing.T) {
 		}
 	}
 }
+
+func TestAdminSessionsListsRowsNewestFirst(t *testing.T) {
+	database, err := Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	now := time.Now().UTC()
+	if err := database.CreateSession("ses_a", "admin", now.Add(-2*time.Hour), now.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.CreateSession("ses_b", "admin", now.Add(-time.Hour), now.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.RevokeSession("ses_a", now); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := database.AdminSessions("admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("expected 2 rows, got %d", len(rows))
+	}
+	if rows[0].ID != "ses_b" {
+		t.Fatalf("expected newest session first, got %q", rows[0].ID)
+	}
+	if rows[0].RevokedAt != nil {
+		t.Fatalf("expected ses_b unreviewed, got %v", rows[0].RevokedAt)
+	}
+	if rows[1].RevokedAt == nil {
+		t.Fatalf("expected ses_a revoked")
+	}
+	none, err := database.AdminSessions("other")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(none) != 0 {
+		t.Fatalf("expected no rows for other subject, got %d", len(none))
+	}
+}

@@ -60,9 +60,10 @@ app/core JSON <--> packages/contracts <--> packages/sdk <--> Web / Admin
 - `SystemStatus`：Core 运行状态。
 - `AuditEvent` / `AuditEventCollection` / `AuditQuery`：审计事件（含 `requestId`/`traceId: string | null` 关联键），`page`/`pageSize` 分页。
 - `PresenceStatus`：匿名在线心跳。
-- `Comment`：公开评论。`authorUrl`/`replyToId` 可空值用 `null`；`avatarSeed` 必有；软删时间 `deletedAt` 仅出现在管理端视图。
-- `AdminComment extends Comment`：管理端评论视图，追加 `deletedAt: string | null` 与所属内容 `contentTitle`/`contentSlug`/`contentKind`；内容外键和 slug 均为数据库非空约束。
+- `Comment`：公开评论。`authorUrl`/`replyToId` 可空值用 `null`；`avatarSeed` 必有；`hidden` 标记被隐藏的评论。隐藏行仍保留线程位置，但公开响应会清空作者名、网站、正文和头像种子；软删时间 `deletedAt` 仅出现在管理端视图。
+- `AdminComment extends Comment`：管理端评论视图，追加 `deletedAt: string | null`、`hiddenAt: string | null` 与所属内容 `contentTitle`/`contentSlug`/`contentKind`；内容外键和 slug 均为数据库非空约束。
 - `CreateCommentInput`：评论创建输入。
+- `UpdateCommentInput`：管理员覆盖评论作者资料的部分更新输入；`authorUrl: null` 显式清空网站。
 - `CommentQuery`：公开评论参数 `page`/`pageSize`/`q`；分页只作用于顶层评论，回复永远随其顶层同页。
 - `AdminCommentQuery`：管理评论参数 `contentId`/`q`/`page`/`pageSize`/`focus`。
 - `LikeSummary`：点赞统计和当前访客状态。

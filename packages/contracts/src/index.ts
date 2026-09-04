@@ -95,14 +95,17 @@ export interface Comment {
   createdAt: string;
   replyToId: string | null;
   avatarSeed: string;
+  hidden: boolean;
 }
 export interface AdminComment extends Comment {
   deletedAt: string | null;
+  hiddenAt: string | null;
   contentTitle: string;
   contentSlug: string;
   contentKind: ContentKind;
 }
 export interface CreateCommentInput { authorName?: string; authorUrl?: string; body: string; replyToId?: string; avatarSeed?: string }
+export interface UpdateCommentInput { authorName?: string; authorUrl?: string | null; avatarSeed?: string }
 export interface CommentQuery { page?: number; pageSize?: number; q?: string }
 export interface AdminCommentQuery { contentId?: string; q?: string; page?: number; pageSize?: number; focus?: string }
 
@@ -163,6 +166,8 @@ export interface LoginInput { username: string; password: string }
 export interface LoginResponse { accessToken: string; tokenType: "Bearer"; expiresIn: number; user: { username: string; role: "admin" } }
 export interface ChangePasswordInput { currentPassword: string; newPassword: string }
 export interface MediaReference { contentId: string; kind: ContentKind; title: string | null; slug: string }
+export interface AdminSession { id: string; createdAt: string; expiresAt: string; revokedAt: string | null; active: boolean; current: boolean }
+export interface AdminSessionList { sessions: AdminSession[] }
 
 interface BaseContentInput { slug: string; title: string | null; summary: string; body: string; tags: string[] }
 export interface ThoughtMetadataInput { mood: string | null; question: string | null; context: string | null; source: string | null }

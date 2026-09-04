@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ActionIcon, Badge, TextInput } from '@mantine/core'
-import { MessageCircle, RotateCcw, Search, Trash2 } from 'lucide-react'
+import { Eye, EyeOff, MessageCircle, RotateCcw, Search, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import type { AdminComment } from '@manifold/contracts'
 import { formatDate } from '@manifold/render'
@@ -9,7 +9,7 @@ import { requestNavigate } from '../lib/useHashRoute'
 import { ConfirmButton } from '../components/ConfirmButton'
 import { Pager } from '../components/Pager'
 
-type CommentAction = { id: string; action: 'delete' | 'restore' }
+type CommentAction = { id: string; action: 'delete' | 'restore' | 'hide' | 'unhide' }
 
 export function CommentsWorkspace({ token }: { token: string }) {
   const client = useMemo(() => createAdminClient(token), [token])
@@ -30,7 +30,12 @@ export function CommentsWorkspace({ token }: { token: string }) {
     queryFn: () => client.adminComments({ q: q || undefined, page }),
   })
   const mutation = useMutation({
-    mutationFn: ({ id, action }: CommentAction) => action === 'delete' ? client.deleteComment(id) : client.restoreComment(id),
+    mutationFn: ({ id, action }: CommentAction) => {
+      if (action === 'delete') return client.deleteComment(id)
+      if (action === 'restore') return client.restoreComment(id)
+      if (action === 'hide') return client.hideComment(id)
+      return client.unhideComment(id)
+    },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['admin-comments'] })
       void queryClient.invalidateQueries({ queryKey: ['admin-overview'] })
@@ -69,10 +74,12 @@ function openEditor(comment: AdminComment) {
   requestNavigate(`#/${section}/${comment.contentId}/comments?focus=${comment.id}`)
 }
 
-function CommentRow({ comment, pending, onOpen, onAction }: { comment: AdminComment; pending: boolean; onOpen: () => void; onAction: (action: 'delete' | 'restore') => void }) {
+function CommentRow({ comment, pending, onOpen, onAction }: { comment: AdminComment; pending: boolean; onOpen: () => void; onAction: (action: 'delete' | 'restore' | 'hide' | 'unhide') => void }) {
   const authorName = comment.authorName || 'Anonymous'
   const deleted = Boolean(comment.deletedAt)
-  return <article className={deleted ? 'moderation-row moderation-row-deleted comment-row' : 'moderation-row comment-row'} onClick={onOpen} onKeyDown={(event) => { if (event.key === 'Enter') onOpen() }} tabIndex={0} role="button" aria-label={`Open the ${comment.contentKind === 'ARTICLE' ? 'writing' : 'thought'} thread for a comment by ${authorName}`}>
+  const hidden = comment.hidden
+  const rowClass = ['moderation-row', 'comment-row', deleted && 'moderation-row-deleted', hidden && 'moderation-row-hidden'].filter(Boolean).join(' ')
+  return <article className={rowClass} onClick={onOpen} onKeyDown={(event) => { if (event.key === 'Enter') onOpen() }} tabIndex={0} role="button" aria-label={`Open the ${comment.contentKind === 'ARTICLE' ? 'writing' : 'thought'} thread for a comment by ${authorName}`}>
     <div className="comment-avatar">{authorName.slice(0, 1).toUpperCase()}</div>
     <div className="moderation-body">
       <div className="row-title">
@@ -80,6 +87,7 @@ function CommentRow({ comment, pending, onOpen, onAction }: { comment: AdminComm
         {comment.replyToId && <span className="reply-tag">reply</span>}
         <span className="kind-badge">{comment.contentKind === 'ARTICLE' ? 'Writing' : 'Thought'}</span>
         <span>{formatDate(comment.createdAt)}</span>
+        {hidden && <span className="hidden-tag">hidden</span>}
         {deleted && comment.deletedAt && <span>deleted {formatDate(comment.deletedAt)}</span>}
       </div>
       <p>{comment.body}</p>
@@ -88,7 +96,12 @@ function CommentRow({ comment, pending, onOpen, onAction }: { comment: AdminComm
     <div className="row-actions" onClick={(event) => event.stopPropagation()} role="presentation">
       {deleted
         ? <ActionIcon color="teal" variant="light" type="button" title="Restore" aria-label={`Restore comment from ${authorName}`} onClick={() => onAction('restore')} disabled={pending}><RotateCcw size={15} /></ActionIcon>
-        : <ConfirmButton label={`Delete comment from ${authorName}`} confirmLabel="Delete" confirmBody="Soft-delete this comment? It leaves the public site immediately." danger icon={<Trash2 size={15} />} onConfirm={() => onAction('delete')} />}
+        : <>
+          {hidden
+            ? <ActionIcon color="teal" variant="light" type="button" title="Unhide" aria-label={`Unhide comment from ${authorName}`} onClick={() => onAction('unhide')} disabled={pending}><Eye size={15} /></ActionIcon>
+            : <ConfirmButton label={`Hide comment from ${authorName}`} confirmLabel="Hide" confirmBody="Hide this comment from the public site? Its replies remain visible." icon={<EyeOff size={15} />} onConfirm={() => onAction('hide')} />}
+          <ConfirmButton label={`Delete comment from ${authorName}`} confirmLabel="Delete" confirmBody="Soft-delete this comment? It leaves the public site immediately." danger icon={<Trash2 size={15} />} onConfirm={() => onAction('delete')} />
+        </>}
     </div>
   </article>
 }

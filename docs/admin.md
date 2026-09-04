@@ -4,7 +4,7 @@
 
 ## 1. 背景与边界
 
-`app/admin` 是单一 owner 使用的私有管理端，负责登录、统计、Profile、Writings/Thoughts 发布、评论管理（软删除/恢复）、媒体和首页 composition。它是独立的 Vite/React 应用，不复用 Web 页面组件、不访问 Core SQLite、不复制 Core 业务规则。
+`app/admin` 是单一 owner 使用的私有管理端，负责登录、统计、Profile、Writings/Thoughts 发布、评论管理（隐藏/取消隐藏、软删除/恢复和作者资料覆盖）、媒体和首页 composition。它是独立的 Vite/React 应用，不复用 Web 页面组件、不访问 Core SQLite、不复制 Core 业务规则。
 
 Core 负责最终鉴权和状态转换；Admin 只持有 session token，组织表单、查询缓存和用户反馈。
 
@@ -109,11 +109,11 @@ Meta tab 字段：正文在 Context tab（vditor IR）必填；title、slug 可�
 
 ### Comments
 
-`adminComments({ q, page })` 读取线程分页的管理评论（含已软删，顶层评论降序，行内附 `contentTitle`/`contentKind`）；顶部搜索 300ms 防抖后走服务端 `q`。每行展示作者、回复标记、内容类型徽标、正文、日期和软删态；删除走 `ConfirmButton` 二次确认（`DELETE /api/v1/admin/comments/{id}`，204），恢复为直接操作（`POST .../restore`，204）。点击行跳转到所属内容编辑页的 Comments tab 并带 `?focus={commentId}`，由 Core 把该评论定位到其线程所在分页；跳转遵守 dirty 离开确认。操作后失效 `admin-comments`、`admin-overview` 和 `admin-content`。
+`adminComments({ q, page })` 读取线程分页的管理评论（含已软删和隐藏行，顶层评论降序，行内附 `contentTitle`/`contentKind`、`deletedAt`/`hiddenAt`）；顶部搜索 300ms 防抖后走服务端 `q`。每行展示作者、回复标记、内容类型徽标、正文、日期和 moderation 状态；隐藏/取消隐藏分别调用 `POST .../hide` 与 `POST .../unhide`，删除走 `ConfirmButton` 二次确认（`DELETE /api/v1/admin/comments/{id}`，204），恢复为直接操作（`POST .../restore`，204）。点击行跳转到所属内容编辑页的 Comments tab 并带 `?focus={commentId}`，由 Core 把该评论定位到其线程所在分页；跳转遵守 dirty 离开确认。操作后失效 `admin-comments`、`admin-overview` 和 `admin-content`。
 
 ### 编辑器 Comments tab
 
-Writings/Thoughts 编辑页在 Meta/Context/Render 之外提供 Comments tab（新建内容不显示）。`ContentCommentsPanel` 按线程展示当前内容的评论：顶层评论行内可 Reply（composer 以 Profile displayName 预填作者名，作为站点作者发出；清空则 Core 归一化为 `Anonymous`）、Delete、Restore。tab 的 `page/q/focus` 状态镜像到 hash（`#/writings/{id}/comments?page=2&q=…`），focus 命中后滚动高亮该行并从 URL 摘除。评论 tab 与内容编辑状态无关（锁定只影响 Meta/Context 的表单）。创建/删除/恢复后失效 `admin-comments`、`admin-overview`、`admin-content`。
+Writings/Thoughts 编辑页在 Meta/Context/Render 之外提供 Comments tab（新建内容不显示）。`ContentCommentsPanel` 按线程展示当前内容的评论：顶层评论行内可 Reply、Hide/Unhide、Delete/Restore，并可通过小弹窗编辑 `authorName`/`authorUrl`/`avatarSeed`；composer 以 Profile displayName 预填作者名，作为站点作者发出，清空则 Core 归一化为 `Anonymous`。tab 的 `page/q/focus` 状态镜像到 hash（`#/writings/{id}/comments?page=2&q=…`），focus 命中后滚动高亮该行并从 URL 摘除。评论 tab 与内容编辑状态无关（锁定只影响 Meta/Context 的表单）。创建、隐藏/取消隐藏、作者资料更新、删除/恢复后失效 `admin-comments`、`admin-overview`、`admin-content`。
 
 ### Settings
 
@@ -140,7 +140,7 @@ Settings 底部的独立 panel（`components/SecuritySection.tsx`），不属于
 | `admin-overview` | `adminOverview()` | Dashboard 手动刷新 |
 | `admin-analytics` + days | `adminAnalyticsViews({ days: 30 })` | Dashboard 手动刷新 |
 | `admin-system` | `adminSystem()` | Dashboard 手动刷新 |
-| `admin-comments` | `adminComments({ q, page })`（Comments 工作区）、`adminComments({ contentId, q, page, focus })`（编辑器 Comments tab）、`adminComments({ pageSize: 50 })`（Dashboard 最近评论） | 软删除/恢复评论、发布评论、Dashboard 手动刷新 |
+| `admin-comments` | `adminComments({ q, page })`（Comments 工作区）、`adminComments({ contentId, q, page, focus })`（编辑器 Comments tab）、`adminComments({ pageSize: 50 })`（Dashboard 最近评论） | 隐藏/取消隐藏、作者资料更新、软删除/恢复评论、发布评论、Dashboard 手动刷新 |
 | `admin-writings-config` | `adminWritingConfig()`（Writings 列表与编辑器共享） | 置顶/取消置顶 Writing |
 | `admin-thought-config` | `adminThoughtConfig()`（Thoughts 列表与编辑器共享） | 置顶/取消置顶 Thought |
 | `admin-audit` + page + q | `adminAudit({ page, pageSize: 10, q })` | Dashboard 手动刷新 |

@@ -73,7 +73,8 @@
     "body": "Nice",
     "createdAt": "2026-08-24T11:00:00Z",
     "replyToId": null,
-    "avatarSeed": "seed-1"
+    "avatarSeed": "seed-1",
+    "hidden": false
   },
   "adminComment": {
     "id": "comment_1750000000000000001",
@@ -84,7 +85,9 @@
     "createdAt": "2026-08-24T12:00:00Z",
     "replyToId": "comment_1750000000000000000",
     "avatarSeed": "seed-2",
+    "hidden": false,
     "deletedAt": null,
+    "hiddenAt": null,
     "contentTitle": "A thought",
     "contentSlug": "a-quiet-thought",
     "contentKind": "THOUGHT"
@@ -129,5 +132,11 @@
     "metadataJson": "{\"ok\":true}",
     "createdAt": "2026-08-24T10:00:00Z"
   },
-  "error": { "error": { "code": "VALIDATION_FAILED", "message": "invalid input", "requestId": "req_abc123", "traceId": "trace_def456" } }
+  "error": { "error": { "code": "VALIDATION_FAILED", "message": "invalid input", "requestId": "req_abc123", "traceId": "trace_def456" } },
+  "sessionList": {
+    "sessions": [
+      { "id": "ses_1750000000000000000", "createdAt": "2026-08-24T09:00:00Z", "expiresAt": "2026-08-24T21:00:00Z", "revokedAt": null, "active": true, "current": true },
+      { "id": "ses_1750000000000000001", "createdAt": "2026-08-24T10:00:00Z", "expiresAt": "2026-08-24T22:00:00Z", "revokedAt": "2026-08-24T11:00:00Z", "active": false, "current": false }
+    ]
+  }
 }

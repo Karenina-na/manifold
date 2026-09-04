@@ -1,11 +1,16 @@
 package store
 
 import (
+	"database/sql"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"io/fs"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	coredb "github.com/manifold-space/manifold/app/core/db"
 	"github.com/manifold-space/manifold/app/core/internal/model"
 )
 
@@ -284,6 +289,170 @@ func TestLikeAndCommentCountersArePersisted(t *testing.T) {
 	if after.LikeCount != 0 || after.CommentCount != 1 {
 		t.Fatalf("expected counters back to 0/1 after mutations, got %d/%d", after.LikeCount, after.CommentCount)
 	}
+}
+
+func TestCommentModerationLifecycleKeepsHiddenAndDeletedOrthogonal(t *testing.T) {
+	database, err := Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+
+	created, err := database.CreateContent(model.ContentInput{Kind: model.ContentKindArticle, Slug: "moderated-comments", Title: stringPtr("Moderated comments"), Body: "Body"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	root, err := database.CreateComment(created.ID, "Reader", nil, "Root", nil, "root-seed")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.CreateComment(created.ID, "Reply", nil, "Reply", &root.ID, "reply-seed"); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := database.HideComment(root.ID); err != nil {
+		t.Fatal(err)
+	}
+	content, err := database.GetContentByID(created.ID, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if content.CommentCount != 1 {
+		t.Fatalf("expected hidden root to leave visible reply counted, got %d", content.CommentCount)
+	}
+	public, err := database.ListComments(created.ID, CommentListOptions{Page: 1, PageSize: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(public.Comments) != 2 || !public.Comments[0].Hidden || public.Comments[1].Hidden {
+		t.Fatalf("expected only root hidden in public thread, got %+v", public.Comments)
+	}
+
+	if _, err := database.SoftDeleteComment(root.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.HideComment(root.ID); !errors.Is(err, ErrCommentDeleted) {
+		t.Fatalf("expected deleted comment to reject hiding, got %v", err)
+	}
+	if _, err := database.RestoreComment(root.ID); err != nil {
+		t.Fatal(err)
+	}
+	content, err = database.GetContentByID(created.ID, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if content.CommentCount != 1 {
+		t.Fatalf("expected restore to retain hidden state and count reply, got %d", content.CommentCount)
+	}
+	if _, err := database.UnhideComment(root.ID); err != nil {
+		t.Fatal(err)
+	}
+	content, err = database.GetContentByID(created.ID, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if content.CommentCount != 2 {
+		t.Fatalf("expected unhide to restore the count, got %d", content.CommentCount)
+	}
+}
+
+func TestUpdateCommentAuthorDistinguishesOmittedAndExplicitNullURL(t *testing.T) {
+	database, err := Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	created, err := database.CreateContent(model.ContentInput{Kind: model.ContentKindThought, Slug: "edited-comment", Body: "Body"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	comment, err := database.CreateComment(created.ID, "Original", stringPtr("https://original.example"), "Body", nil, "original-seed")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	name, url, seed := "Edited", "https://edited.example", "edited-seed"
+	if _, err := database.UpdateCommentAuthor(comment.ID, CommentAuthorUpdate{AuthorName: &name, AuthorURL: &url, HasAuthorURL: true, AvatarSeed: &seed}); err != nil {
+		t.Fatal(err)
+	}
+	listed, err := database.ListComments(created.ID, CommentListOptions{Page: 1, PageSize: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(listed.Comments) != 1 || listed.Comments[0].AuthorName != name || listed.Comments[0].AuthorURL == nil || *listed.Comments[0].AuthorURL != url || listed.Comments[0].AvatarSeed != seed {
+		t.Fatalf("expected updated public author fields, got %+v", listed.Comments)
+	}
+
+	if _, err := database.UpdateCommentAuthor(comment.ID, CommentAuthorUpdate{}); err != nil {
+		t.Fatal(err)
+	}
+	listed, err = database.ListComments(created.ID, CommentListOptions{Page: 1, PageSize: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if listed.Comments[0].AuthorURL == nil {
+		t.Fatal("expected omitted authorUrl to preserve the existing URL")
+	}
+	if _, err := database.UpdateCommentAuthor(comment.ID, CommentAuthorUpdate{AuthorURL: nil, HasAuthorURL: true}); err != nil {
+		t.Fatal(err)
+	}
+	listed, err = database.ListComments(created.ID, CommentListOptions{Page: 1, PageSize: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if listed.Comments[0].AuthorURL != nil {
+		t.Fatalf("expected explicit null to clear authorUrl, got %v", *listed.Comments[0].AuthorURL)
+	}
+}
+
+func TestIncrementalCommentMigrationFromSchemaV2(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "schema-v2.db")
+	legacy, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, version := range []int{1, 2} {
+		script, err := fs.ReadFile(coredb.MigrationsFS, filepath.Join("migrations", formatMigration(version)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := legacy.Exec(string(script)); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := legacy.Exec(`INSERT INTO schema_migrations (version) VALUES (?)`, version); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := legacy.Exec(`PRAGMA user_version = 2`); err != nil {
+		t.Fatal(err)
+	}
+	if err := legacy.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	database, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	var version int
+	if err := database.DB.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
+		t.Fatal(err)
+	}
+	if version != 3 {
+		t.Fatalf("expected user_version 3, got %d", version)
+	}
+	var hiddenColumn int
+	if err := database.DB.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('comments') WHERE name = 'hidden_at'`).Scan(&hiddenColumn); err != nil {
+		t.Fatal(err)
+	}
+	if hiddenColumn != 1 {
+		t.Fatal("expected incremental migration to add comments.hidden_at")
+	}
+}
+
+func formatMigration(version int) string {
+	return fmt.Sprintf("%04d_init.sql", version)
 }
 
 func TestListCommentsPaginatesRootsAndKeepsThreadsAttached(t *testing.T) {

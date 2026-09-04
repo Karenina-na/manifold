@@ -115,6 +115,29 @@ test("URL-encodes path segments for admin mutations", async () => {
 	assert.equal(requests[4]?.url, "http://core.test/api/v1/admin/content/content%201%2Fx");
 });
 
+test("supports comment moderation and author updates", async () => {
+	const requests: Request[] = [];
+	const client = new ManifoldClient({
+		baseUrl: "http://core.test",
+		token: "token-1",
+		fetch: async (input, init) => {
+			requests.push(new Request(input, init));
+			return new Response(null, { status: 204 });
+		},
+	});
+
+	await client.hideComment("comment 1/x");
+	await client.unhideComment("comment 1/x");
+	await client.updateCommentAuthor("comment 1/x", { authorName: "Edited", authorUrl: null, avatarSeed: "seed-edited" });
+	assert.equal(requests[0]?.url, "http://core.test/api/v1/admin/comments/comment%201%2Fx/hide");
+	assert.equal(requests[0]?.method, "POST");
+	assert.equal(requests[1]?.url, "http://core.test/api/v1/admin/comments/comment%201%2Fx/unhide");
+	assert.equal(requests[1]?.method, "POST");
+	assert.equal(requests[2]?.url, "http://core.test/api/v1/admin/comments/comment%201%2Fx");
+	assert.equal(requests[2]?.method, "PUT");
+	assert.deepEqual(await requests[2]?.json(), { authorName: "Edited", authorUrl: null, avatarSeed: "seed-edited" });
+});
+
 test("encodes typed content metadata for admin creation", async () => {
 	let captured: Request | undefined;
 	const client = new ManifoldClient({
@@ -231,4 +254,21 @@ test("posts logout endpoints", async () => {
 	await client.logoutSession();
 	await client.logoutAllSessions();
 	assert.deepEqual(urls, ["http://core.test/api/v1/admin/session/logout", "http://core.test/api/v1/admin/session/logout-all"]);
+});
+
+test("gets the admin session list", async () => {
+	const payload = { sessions: [{ id: "ses_1", createdAt: "c", expiresAt: "e", revokedAt: null, active: true, current: true }] };
+	let captured: Request | undefined;
+	const client = new ManifoldClient({
+		baseUrl: "http://core.test",
+		token: "token-1",
+		fetch: async (input, init) => {
+			captured = new Request(input, init);
+			return new Response(JSON.stringify(payload), { status: 200 });
+		},
+	});
+	const result = await client.adminSessions();
+	assert.equal(captured?.url, "http://core.test/api/v1/admin/session/list");
+	assert.equal(captured?.method, "GET");
+	assert.deepEqual(result, payload);
 });

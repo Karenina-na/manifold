@@ -86,3 +86,46 @@ func (s *Store) RevokeSessions(subject string, exceptCurrentID string, now time.
 	_, err := s.DB.Exec(`UPDATE admin_sessions SET revoked_at = ? WHERE subject = ? AND id != ? AND revoked_at IS NULL`, now.UTC().Format(time.RFC3339), subject, exceptCurrentID)
 	return err
 }
+
+// AdminSessionRow is one stored session row.
+type AdminSessionRow struct {
+	ID        string
+	Subject   string
+	CreatedAt time.Time
+	ExpiresAt time.Time
+	RevokedAt *time.Time
+}
+
+// AdminSessions lists every session row for a subject, newest first. Revoked
+// sessions are included so the UI can show what logout-all actually invalidated.
+func (s *Store) AdminSessions(subject string) ([]AdminSessionRow, error) {
+	rows, err := s.DB.Query(`SELECT id, created_at, expires_at, revoked_at FROM admin_sessions WHERE subject = ? ORDER BY created_at DESC`, subject)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	sessions := []AdminSessionRow{}
+	for rows.Next() {
+		var session AdminSessionRow
+		var createdAt, expiresAt string
+		var revokedAt sql.NullString
+		if err := rows.Scan(&session.ID, &createdAt, &expiresAt, &revokedAt); err != nil {
+			return nil, err
+		}
+		if session.CreatedAt, err = time.Parse(time.RFC3339, createdAt); err != nil {
+			return nil, err
+		}
+		if session.ExpiresAt, err = time.Parse(time.RFC3339, expiresAt); err != nil {
+			return nil, err
+		}
+		if revokedAt.Valid {
+			if parsed, err := time.Parse(time.RFC3339, revokedAt.String); err != nil {
+				return nil, err
+			} else {
+				session.RevokedAt = &parsed
+			}
+		}
+		sessions = append(sessions, session)
+	}
+	return sessions, rows.Err()
+}

@@ -57,6 +57,7 @@ app/core/
 ├── internal/events/                # 审计发布器和 worker
 ├── db/migrations/0001_init.sql     # baseline schema
 ├── db/migrations/0002_init.sql     # admin security (credentials + sessions)
+├── db/migrations/0003_init.sql     # comment moderation hide state
 └── Dockerfile
 ```
 
@@ -144,7 +145,7 @@ Core 使用 `caarlos0/env` 读取 `CORE_` 前缀变量；启动时自动从工�
 | `GET` | `/api/v1/tags` | 已发布内容的标签聚合 `Collection<TagSummary>`（`{ name, count }`，按 count 降序、name 升序），可用 `kind=THOUGHT|ARTICLE` 过滤 |
 | `GET` | `/api/v1/content/{slug}` | 通过 slug 或 ID 返回已发布详情和 Markdown body；默认记录一次 `content.viewed` 审计事件并写入浏览事件（识别访客按 `(content, visitor, UTC 日)` 去重，匿名浏览每次都记录），内部 metadata 请求可传 `trackView=false` 跳过计数；来源归一为 origin 供分析——优先读 `referrer` 查询参数（SDK 为服务端 fetch 转发浏览器原始 Referer），为空时回退 HTTP `Referer` 头 |
 | `GET` | `/api/v1/media/{id}` | 公开提供上传的媒体字节；`Content-Type` 为上传嗅探的 MIME，附 `Cache-Control: public, max-age=31536000, immutable` 与 `ETag: "<sha256>"`，`If-None-Match` 命中返回 304 |
-| `GET` | `/api/v1/content/{slug}/comments` | 返回可见评论线程，支持 `page`/`pageSize`/`q`；平铺返回当前页顶层评论及其全部回复 |
+| `GET` | `/api/v1/content/{slug}/comments` | 返回未软删评论线程，支持 `page`/`pageSize`/`q`；隐藏评论保留线程位置并只返回 `hidden=true` 与结构字段，作者名、网站、正文和头像种子清空；平铺返回当前页顶层评论及其全部回复 |
 | `POST` | `/api/v1/content/{slug}/comments` | 创建评论并立即公开，201；站点设置 `commentsEnabled=false` 时返回 403 `COMMENT_DISABLED`（管理端评论接口不受此开关限制） |
 | `GET` | `/api/v1/content/{slug}/likes` | 点赞统计和当前访客状态 |
 | `PUT` | `/api/v1/content/{slug}/likes` | 添加点赞，200 |
@@ -170,11 +171,11 @@ Thoughts 归档参数为 `page`（默认 1）、`pageSize`（默认 8，范围 1
 
 公开列表的 `excerpt` 是 Core 从 `body` 派生的最多 360 个 Unicode 字符的纯文本：移除 Markdown 标题、列表、链接目标、强调、行内代码、HTML 标签与代码围栏，并压缩空白。`summary` 仍是独立的编辑字段；列表响应不暴露完整 Markdown `body`，详情接口继续返回完整正文。
 
-评论输入：`body` 必填且最多 4000 字符；`authorName` 最多 80 字符，可空时归一化为 `Anonymous`；`authorUrl`、`replyToId` 和 `avatarSeed`（最多 64 字符）可选。`replyToId` 必须指向同一内容下未软删的评论，否则返回 422 `REPLY_TARGET_INVALID`。评论不再有审核状态：创建即公开，admin 只能软删除或恢复。
+评论输入：`body` 必填且最多 4000 字符；`authorName` 最多 80 字符，可空时归一化为 `Anonymous`；`authorUrl`、`replyToId` 和 `avatarSeed`（最多 64 字符）可选。`replyToId` 必须指向同一内容下未软删的评论，否则返回 422 `REPLY_TARGET_INVALID`。评论创建即公开；admin 可独立隐藏/恢复或软删除/恢复，隐藏不会级联到回复。
 
-公开评论列表参数：`page`（默认 1，1 起）、`pageSize`（每页顶层评论数，默认 10，范围 1..50）和 `q`（最长 200，按作者名或正文做大小写不敏感子串搜索）。分页只作用于顶层评论：响应平铺当前页的顶层评论（`createdAt` 升序）加它们各自的全部回复（回复升序），线程永不跨页拆散；被软删父级的回复随父级一起隐藏。`q` 是线程级搜索——顶层或其任一回复命中即返回整条线程。带 `page` 时 `pagination` 返回 `page/pageSize/totalItems/totalPages`：`totalItems` 为匹配集内全部公开评论（含回复），`totalPages` 按匹配的顶层评论计，超出范围的页码夹紧到最后一页；非法 `page`/`pageSize`/`q` 返回 400 `INVALID_QUERY`。
+公开评论列表参数：`page`（默认 1，1 起）、`pageSize`（每页顶层评论数，默认 10，范围 1..100）和 `q`（最长 200，按作者名或正文做大小写不敏感子串搜索）。分页只作用于顶层评论：响应平铺当前页的顶层评论（`createdAt` 升序）加它们各自的全部回复（回复升序），线程永不跨页拆散；被软删父级的回复随父级一起隐藏，隐藏行保留并以 `hidden=true` 标记，但不返回作者名、网站、正文或头像种子。`q` 是线程级搜索——隐藏评论的作者/正文不参与匹配，顶层或其任一可见回复命中即返回整条线程。带 `page` 时 `pagination` 返回 `page/pageSize/totalItems/totalPages`：`totalItems` 为匹配集内全部未软删评论（含隐藏行和回复），`totalPages` 按匹配的顶层评论计，超出范围的页码夹紧到最后一页；非法 `page`/`pageSize`/`q` 返回 400 `INVALID_QUERY`。
 
-管理评论列表参数：`contentId`（可选，缺省跨全部内容）、`q`（线程级搜索，最长 200）、`page`（默认 1）、`pageSize`（默认 20，范围 1..100）和 `focus`（评论 id，最长 64）。与公开列表语义一致但有两点差异：含已软删评论（软删回复仍把其线程带入结果集），顶层评论按 `createdAt` 降序（回复仍升序）。`focus` 指向某条评论（顶层或回复）时返回该线程所在页（含线程自己的顶层评论页码），线程不匹配过滤条件或 id 不存在时回落到请求页；未知 `contentId` 返回 404 `CONTENT_NOT_FOUND`，非法参数返回 400 `INVALID_QUERY`。每行评论都 JOIN 内容附 `contentTitle`/`contentSlug`/`contentKind`。
+管理评论列表参数：`contentId`（可选，缺省跨全部内容）、`q`（线程级搜索，最长 200）、`page`（默认 1）、`pageSize`（默认 20，范围 1..100）和 `focus`（评论 id，最长 64）。与公开列表语义一致但含已软删评论（软删回复仍把其线程带入结果集），管理行附 `deletedAt` 与 `hiddenAt`，顶层评论按 `createdAt` 降序（回复仍升序）。`focus` 指向某条评论（顶层或回复）时返回该线程所在页（含线程自己的顶层评论页码），线程不匹配过滤条件或 id 不存在时回落到请求页；未知 `contentId` 返回 404 `CONTENT_NOT_FOUND`，非法参数返回 400 `INVALID_QUERY`。每行评论都 JOIN 内容附 `contentTitle`/`contentSlug`/`contentKind`。
 
 反应请求必须使用 `X-Visitor-ID`，长度 8 到 128，只允许字母、数字、`_`、`-`。PUT/DELETE 对 `(content, visitor)` 幂等。
 
@@ -196,9 +197,12 @@ Thoughts 归档参数为 `page`（默认 1）、`pageSize`（默认 8，范围 1
 | `POST` | `/api/v1/admin/content/{id}/publish` | DRAFT -> PUBLISHED；目标不存在或已软删时返回 404 `CONTENT_NOT_FOUND`（软删内容不可通过状态迁移复活） |
 | `POST` | `/api/v1/admin/content/{id}/unpublish` | PUBLISHED -> DRAFT，保留原始 `published_at`；目标不存在或已软删时返回 404 `CONTENT_NOT_FOUND` |
 | `DELETE` | `/api/v1/admin/content/{id}` | 软删除，204；目标不存在或已软删时返回 404 `CONTENT_NOT_FOUND` |
-| `GET` | `/api/v1/admin/comments` | 线程分页的管理评论列表（含已软删，附 `deletedAt`），支持 `contentId`/`q`/`page`/`pageSize`/`focus`；每行额外返回 `contentTitle`/`contentSlug`/`contentKind` |
+| `GET` | `/api/v1/admin/comments` | 线程分页的管理评论列表（含已软删和隐藏，附 `deletedAt`/`hiddenAt`），支持 `contentId`/`q`/`page`/`pageSize`/`focus`；每行额外返回 `contentTitle`/`contentSlug`/`contentKind` |
 | `DELETE` | `/api/v1/admin/comments/{id}` | 软删除评论，204 |
 | `POST` | `/api/v1/admin/comments/{id}/restore` | 恢复软删评论，204 |
+| `POST` | `/api/v1/admin/comments/{id}/hide` | 隐藏未删除评论，204；刷新可见评论计数并审计 `comment.hidden` |
+| `POST` | `/api/v1/admin/comments/{id}/unhide` | 恢复隐藏评论，204；刷新可见评论计数并审计 `comment.unhidden` |
+| `PUT` | `/api/v1/admin/comments/{id}` | 部分覆盖 `authorName`/`authorUrl`/`avatarSeed`，204；已删除评论返回 422 `COMMENT_DELETED`，审计 `comment.updated` |
 | `GET` | `/api/v1/admin/stats` | `AdminStats`，包含 `content` |
 | `GET` | `/api/v1/admin/overview` | `AdminOverview` 聚合：内容计数（含 `draftCount`）、`totalViews`/`totalLikes`/`totalComments`（均只统计未软删内容；`totalViews` 用累计 `view_count`，与分析页的去重事件口径设计上不等）/`activeVisitors`、近 12 个月 `created`/`published` 趋势（`published` 按不可变的首发 `published_at` 归月）、浏览量 Top 5 已发布内容和 Top 10 标签；TTL 快照缓存 |
 | `GET` | `/api/v1/admin/analytics/views` | `AnalyticsViews`：`days`（默认 30，上限 90）范围内去重浏览事件总数、独立访客、逐日 `{date, views, uniqueVisitors}`（缺失日补零）和 Top 10 referrer（空记 `direct`） |
@@ -232,7 +236,7 @@ Thoughts 归档参数为 `page`（默认 1）、`pageSize`（默认 8，范围 1
 
 Metadata：Thought 使用 `mood/question/context/source`；Article 使用 Core 派生的 `readingMinutes/toc` 与可编辑的 `language/aiAssisted`。`excerpt` 在保存时由 Core 从正文生成并持久化。客户端不得提交派生字段，未知 metadata 字段和错误 null/type 直接拒绝。
 
-其他表：`profile`、`site_config`、`thoughts_config`、`writings_config`、`comments`、`likes`、`presence`、`audit_events`、`content_view_events`、`media`、`admin_credentials`、`admin_sessions`。`media`（`id`、`mime`、`size`、`sha256 UNIQUE`、`filename`、`data BLOB`、`created_at`）保存上传的图片字节，按 SHA256 去重（相同字节复用同一行）；`mime` 只允许 png/jpeg/webp/gif/avif（上传时嗅探，SVG 永不入库）；公开访问 `GET /api/v1/media/{id}` 依赖该表，缓存语义见路由表。`admin_credentials`（`id`、`username`、`password_hash`、`updated_at`）保存管理员 bcrypt 凭据：首次启动用 `CORE_ADMIN_PASSWORD_HASH` 播种一行，之后以 DB 行为权威，`CORE_ADMIN_PASSWORD_HASH` 不再覆盖（改密码写入此行、重启保留）。`admin_sessions`（`id`（= JWT `jti`）、`subject`、`created_at`、`expires_at`、`revoked_at`）支持可撤销会话：登录时插入一行，`RequireAdmin` 每次校验 `revoked_at IS NULL AND expires_at > now`，`logout`/`logout-all`/改密码都会写 `revoked_at`。`content_view_events` 是浏览事件表（`content_id`、`visitor_id`、`referrer`（origin 或空）、`day`（UTC 日期）、`created_at`）：识别访客通过部分唯一索引 `(content_id, visitor_id, day) WHERE visitor_id != ''` 按"同人同内容同 UTC 日"去重，匿名浏览每次插入一条；该表驱动 `GET /admin/analytics/views`，与累计 `view_count` 并存——`view_count` 保持无条件递增，分析口径只统计去重事件，Admin 侧两处浏览量（Overview 的 `totalViews` 与 Analytics 的 `totalViews`）设计上不相等，差异即匿名与重复访问。`thoughts_config` 是 `thoughts_1` 单例，`featured_thought_id` 是可空的 `content(id)` 外键；`writings_config` 是 `writings_1` 单例，`featured_writing_id` 同构，分别承载 Thoughts/Writings 归档置顶。Core 为归档查询维护 `(kind,status,published_at DESC)` 索引。`content.view_count` 在公开详情读取时同步原子递增，列表响应直接返回该持久化计数；`likeCount` 从 `likes` 聚合，`commentCount` 只统计可见线程中的可见评论，评论创建、软删除或恢复时 Core 会失效对应内容详情缓存。详情读取同时写入 `audit_events(event_name = 'content.viewed', resource_type = 'content')` 供观测使用，审计队列丢弃不会影响浏览量统计。Profile 包含 `resume_url`、`interests_json`、`education_json`、`experience_json`、`series_json`、`contacts_json`；Series 项为 `{name,url,description,category}`（category 可为 null），联系方式为 `{label,url,handle,icon}`（handle/icon 可为 null）；`site_config` 是 `site_1` 单例，包含站点身份列（`title`、`description`、`footer_text`、`social_json`、`comments_enabled`）与首页组合列（`navigation_json`、`sections_json`）。评论创建即公开（无审核状态，`deleted_at` 软删标记，`avatar_seed` 保存访客头像种子），可见性索引为 `idx_comments_content_visibility (content_id, deleted_at, created_at)`；点赞有 `(content_id, visitor_id)` 唯一约束；Presence 只保存匿名 visitor ID 的最近心跳时间，过期窗口为 5 分钟。
+其他表：`profile`、`site_config`、`thoughts_config`、`writings_config`、`comments`、`likes`、`presence`、`audit_events`、`content_view_events`、`media`、`admin_credentials`、`admin_sessions`。`media`（`id`、`mime`、`size`、`sha256 UNIQUE`、`filename`、`data BLOB`、`created_at`）保存上传的图片字节，按 SHA256 去重（相同字节复用同一行）；`mime` 只允许 png/jpeg/webp/gif/avif（上传时嗅探，SVG 永不入库）；公开访问 `GET /api/v1/media/{id}` 依赖该表，缓存语义见路由表。`admin_credentials`（`id`、`username`、`password_hash`、`updated_at`）保存管理员 bcrypt 凭据：首次启动用 `CORE_ADMIN_PASSWORD_HASH` 播种一行，之后以 DB 行为权威，`CORE_ADMIN_PASSWORD_HASH` 不再覆盖（改密码写入此行、重启保留）。`admin_sessions`（`id`（= JWT `jti`）、`subject`、`created_at`、`expires_at`、`revoked_at`）支持可撤销会话：登录时插入一行，`RequireAdmin` 每次校验 `revoked_at IS NULL AND expires_at > now`，`logout`/`logout-all`/改密码都会写 `revoked_at`。`content_view_events` 是浏览事件表（`content_id`、`visitor_id`、`referrer`（origin 或空）、`day`（UTC 日期）、`created_at`）：识别访客通过部分唯一索引 `(content_id, visitor_id, day) WHERE visitor_id != ''` 按"同人同内容同 UTC 日"去重，匿名浏览每次插入一条；该表驱动 `GET /admin/analytics/views`，与累计 `view_count` 并存——`view_count` 保持无条件递增，分析口径只统计去重事件，Admin 侧两处浏览量（Overview 的 `totalViews` 与 Analytics 的 `totalViews`）设计上不相等，差异即匿名与重复访问。`thoughts_config` 是 `thoughts_1` 单例，`featured_thought_id` 是可空的 `content(id)` 外键；`writings_config` 是 `writings_1` 单例，`featured_writing_id` 同构，分别承载 Thoughts/Writings 归档置顶。Core 为归档查询维护 `(kind,status,published_at DESC)` 索引。`content.view_count` 在公开详情读取时同步原子递增，列表响应直接返回该持久化计数；`likeCount` 从 `likes` 聚合，`commentCount` 只统计未删除且未隐藏评论（隐藏只影响被选中的行，回复不级联），评论创建、隐藏/取消隐藏、软删除或恢复时 Core 会失效对应内容详情缓存并刷新 Admin Overview。详情读取同时写入 `audit_events(event_name = 'content.viewed', resource_type = 'content')` 供观测使用，审计队列丢弃不会影响浏览量统计。Profile 包含 `resume_url`、`interests_json`、`education_json`、`experience_json`、`series_json`、`contacts_json`；Series 项为 `{name,url,description,category}`（category 可为 null），联系方式为 `{label,url,handle,icon}`（handle/icon 可为 null）；`site_config` 是 `site_1` 单例，包含站点身份列（`title`、`description`、`footer_text`、`social_json`、`comments_enabled`）与首页组合列（`navigation_json`、`sections_json`）。评论创建即公开（无审核状态，`deleted_at` 软删标记，`hidden_at` 隐藏标记，二者正交，公开列表保留隐藏行但脱敏），可见性索引为 `idx_comments_content_visibility (content_id, created_at) WHERE deleted_at IS NULL`；点赞有 `(content_id, visitor_id)` 唯一约束；Presence 只保存匿名 visitor ID 的最近心跳时间，过期窗口为 5 分钟。
 
 > **不兼容历史 schema**：程序按版本顺序应用迁移，旧库（版本低于 binary）原地升级；只有版本高于 binary 的库才拒绝启动，提示升级 Core binary。
 
@@ -240,7 +244,7 @@ Metadata：Thought 使用 `mood/question/context/source`；Article 使用 Core �
 
 - Core 启动时先解析种子计划（可能读取 `CORE_SEED_FILE`），再绑定 `CORE_ADDR`；成功后才打开 SQLite、执行 schema 初始化与空库种子应用；端口冲突会直接退出且不修改数据库。
 - 内容详情使用最多 256 项的 TTL LRU；Core 启动时预热归档置顶的 Writing 与 Thought（Thought 以公开 URL 的内容 ID 为 key，Writing 以 slug 为 key，无 slug 时跳过）。
-- 缓存失效按内容可能被服务的全部 key 进行：内容 ID（Thought 详情 URL）与 slug（Writing 详情 URL 及 Thought 的可选 slug），不再整表清空；内容创建、更新、发布、撤回、删除、点赞变化与评论软删/恢复都会清理相关缓存。
+- 缓存失效按内容可能被服务的全部 key 进行：内容 ID（Thought 详情 URL）与 slug（Writing 详情 URL 及 Thought 的可选 slug），不再整表清空；内容创建、更新、发布、撤回、删除、点赞变化与评论创建、隐藏/取消隐藏、软删/恢复和作者资料更新都会清理相关缓存。
 - Stats 与 Admin Overview 各使用单条 TTL 快照（共用 `CORE_STATS_CACHE_TTL`）。
 - 审计事件通过有界异步队列写入 `audit_events`；队列满会记录丢弃但不让业务请求失败。
 - `RouterWithLifecycle` 用于生产入口；监听失败会结束进程，正常关闭时最多等待 5 秒排空已接受事件；`Router` 仅用于同步内部调用/测试。公共 HTTP 契约不受启动生命周期影响。

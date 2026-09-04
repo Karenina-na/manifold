@@ -86,11 +86,11 @@ Article 的 `metadata.toc` 和 `readingMinutes` 由 Core 在保存时从 Markdow
 
 `ArticleDiscussion`、`CommentList`/`CommentItem` 与 `CommentComposer` 使用 React Hook Form、Zod 和 TanStack Query；Thought 详情页通过 `CommentsSection` 在同一 `ReplyContext` 下组合讨论面与独立的添加评论面，Writing 详情由 `ArticleReadingShell` 提供同一 Provider：
 
-1. `comments(slug, { page, pageSize, q })` 分页读取 Core 返回的公开评论（创建即公开；已软删评论不会出现）。分页只作用于顶层评论，每页 10 条，回复随其顶层同页返回；Web 按平铺的 `createdAt` 升序列表以 `replyToId` 组装线程。回复缩进封顶两级，更深的回复保持同级，由 `.commentNest` 提供竖线缩进。
+1. `comments(slug, { page, pageSize, q })` 分页读取 Core 返回的公开评论（创建即公开；已软删评论不会出现）。隐藏评论保留线程节点，但 Core 已清除作者名、网站、正文和头像种子，Web 只渲染 `This comment was hidden by moderation.` 占位符；隐藏不级联回复。分页只作用于顶层评论，每页 10 条，回复随其顶层同页返回；Web 按平铺的 `createdAt` 升序列表以 `replyToId` 组装线程。回复缩进封顶两级，更深的回复保持同级，由 `.commentNest` 提供竖线缩进。
 2. 评论渲染为点阵头像（`CommentAvatar`，按 `avatarSeed` 或评论 ID 确定性生成）+ 微信式气泡（圆角矩形、左下角尖角）；名字旁以 `formatRelativeTime` 显示英文相对时间。hover 或键盘聚焦气泡时右上淡入 Reply 按钮。
 3. Reply 点击写入 `ReplyContext`，平滑滚动到 `#comment-composer` 并聚焦正文输入；composer 顶部显示 `Replying to @name` 引用条（灰色引用原文）可取消，提交携带 `replyToId`。
 4. 表单要求正文 3 到 4000 字符，作者名/网站可选，附轻量验证码；Name 字段预填 `lib/identity.ts` 生成的组合词默认名（来自 `manifold.visitorId` 种子，持久化于 `localStorage` 的 `manifold.identity`），头像选择器 `AvatarPicker` 提供 6 个确定性候选可点选，身份随评论提交（`avatarSeed`）并在发送成功后回写本地。
-5. 搜索走 Core 的 `q` 参数（300ms 防抖，按作者名或正文匹配，线程级命中——任一回复命中即整条线程返回），搜索变更时回到第 1 页；评论计数徽标使用 `pagination.totalItems`（匹配集内全部评论含回复）。筛选下拉（With website/Recent）仍为客户端过滤，只作用于当前页。翻页使用共享 `Pagination` 组件（`aria-label="Comment pages"`，`keepPreviousData` 平滑换页，翻页后滚动到讨论面顶部），单页时隐藏。
+5. 搜索走 Core 的 `q` 参数（300ms 防抖，按未隐藏评论的作者名或正文匹配，线程级命中——任一可见回复命中即整条线程返回），搜索变更时回到第 1 页；评论计数徽标使用 `pagination.totalItems`（匹配集内全部未软删评论含隐藏行和回复）。筛选下拉（With website/Recent）仍为客户端过滤，只作用于当前页；隐藏行不满足 With website，但 Recent 仍按其创建时间保留占位符。翻页使用共享 `Pagination` 组件（`aria-label="Comment pages"`，`keepPreviousData` 平滑换页，翻页后滚动到讨论面顶部），单页时隐藏。
 6. 提交是一个显式状态机（`ComposerPhase`：`editing → submitting → success`，composer 私有状态；Writing 详情仅底部 composer 通过 `onPhaseChange` 上报，用于"提交中/成功期间钉住添加评论面"）：点击发送后表单内容渐进淡出并显示遮罩转圈（`commentVeil`/`commentSpinner`，响应返回后至少停留 350ms 防闪烁）；成功后失效 `comments + slug` query 并显示对勾描画动画、"Your comment has been posted." 与两个动作——`View your comment` 用 mutation 返回的评论 ID 平滑滚动到新评论（重试等待 refetch 渲染，重试耗尽则显示刷新提示兜底），`Comment again` 渐进恢复原表单并聚焦正文；失败时回到编辑态并保留输入显示错误。面板会一直停留，直到点击按钮、开始新的回复或刷新页面。发布成功后 composer 通过 `CommentsPagingRefContext`（`CommentsSection` 与 `ArticleReadingShell` 各自提供稳定 ref）通知讨论面：顶层评论会清空搜索并跳到最后一页（旧→新排序下新顶层评论所在页），回复则留在当前页。
 7. 浏览器端 SDK 一律 `cache: "no-store"`（与服务端客户端一致）：Core 响应不携带缓存指令，新鲜度由 TanStack Query 管辖，避免 HTTP 缓存返回陈旧评论列表。
 8. Query key 为 `comments + slug + page + q`，不要把 Admin 的软删状态复制到 Web。

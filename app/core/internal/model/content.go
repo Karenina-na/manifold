@@ -130,8 +130,8 @@ type TagSummary struct {
 	Count int    `json:"count"`
 }
 
-// Comment is the public comment shape; soft-deletion timestamps exist only in
-// the admin view.
+// Comment is the public comment shape; moderation timestamps exist only in the
+// admin view.
 type Comment struct {
 	ID         string  `json:"id"`
 	ContentID  string  `json:"contentId"`
@@ -141,11 +141,13 @@ type Comment struct {
 	CreatedAt  string  `json:"createdAt"`
 	ReplyToID  *string `json:"replyToId"`
 	AvatarSeed string  `json:"avatarSeed"`
+	Hidden     bool    `json:"hidden"`
 }
 
 type AdminComment struct {
 	Comment
 	DeletedAt    *string     `json:"deletedAt"`
+	HiddenAt     *string     `json:"hiddenAt"`
 	ContentTitle string      `json:"contentTitle"`
 	ContentSlug  string      `json:"contentSlug"`
 	ContentKind  ContentKind `json:"contentKind"`

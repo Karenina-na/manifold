@@ -80,10 +80,12 @@ const page = await client.content({ kind: "ARTICLE", pageSize: 20 })
 | `publishContent(id)` / `unpublishContent(id)` | POST | `/publish` `/unpublish` | `AdminContent` |
 | `deleteContent(id)` | DELETE | `/api/v1/admin/content/:id` | `void`，204，软删除 |
 | `restoreContent(id)` | POST | `/api/v1/admin/content/:id/restore` | `AdminContent`，从软删除恢复为草稿 |
-| `adminComments(query?)` | GET | `/api/v1/admin/comments` | `Collection<AdminComment>`，线程分页（`AdminCommentQuery`：`contentId`/`q`/`page`/`pageSize`/`focus`），含已软删（`deletedAt`），行内附内容字段 |
+| `adminComments(query?)` | GET | `/api/v1/admin/comments` | `Collection<AdminComment>`，线程分页（`AdminCommentQuery`：`contentId`/`q`/`page`/`pageSize`/`focus`），含已软删（`deletedAt`）和隐藏时间（`hiddenAt`），行内附内容字段 |
 | `adminCreateComment(contentId, input)` | POST | `/api/v1/admin/content/:id/comments` | `Comment`，201；可在草稿上创建，作者为空归一化为 `Anonymous` |
 | `deleteComment(id)` | DELETE | `/api/v1/admin/comments/:id` | `void`，204，软删除 |
 | `restoreComment(id)` | POST | `/api/v1/admin/comments/:id/restore` | `void`，204 |
+| `hideComment(id)` / `unhideComment(id)` | POST | `/api/v1/admin/comments/{id}/hide` `/unhide` | `void`，204；隐藏与软删除正交，已删除评论返回 `COMMENT_DELETED` |
+| `updateCommentAuthor(id, input)` | PUT | `/api/v1/admin/comments/{id}` | `void`，204；部分覆盖 `UpdateCommentInput`，`authorUrl: null` 清空网站 |
 
 SDK 当前没有自动提供重试、轮询、分页迭代器或 token refresh；这些职责由调用方的 React Query、Server Component 或 session 层承担。
 

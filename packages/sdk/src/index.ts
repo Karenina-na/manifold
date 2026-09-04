@@ -1,4 +1,4 @@
-import type { AdminComment, AdminCommentQuery, AdminContent, AdminContentQuery, AdminOverview, AdminStats, AnalyticsViews, AnalyticsViewsQuery, AuditEventCollection, AuditQuery, ChangePasswordInput, Collection, Comment, CommentQuery, Content, ContentDetail, ContentDetailQuery, ContentInput, ContentQuery, CreateCommentInput, HealthStatus, LikeSummary, LoginInput, LoginResponse, Media, MediaQuery, PresenceStatus, Profile, ProfileInput, SiteComposition, SiteConfig, SiteConfigInput, Stats, SystemStatus, TagQuery, TagSummary, ThoughtConfig, ThoughtConfigInput, UpdateContentInput, WritingConfig, WritingConfigInput } from "@manifold/contracts";
+import type { AdminComment, AdminCommentQuery, AdminContent, AdminContentQuery, AdminOverview, AdminSessionList, AdminStats, AnalyticsViews, AnalyticsViewsQuery, AuditEventCollection, AuditQuery, ChangePasswordInput, Collection, Comment, CommentQuery, Content, ContentDetail, ContentDetailQuery, ContentInput, ContentQuery, CreateCommentInput, HealthStatus, LikeSummary, LoginInput, LoginResponse, Media, MediaQuery, PresenceStatus, Profile, ProfileInput, SiteComposition, SiteConfig, SiteConfigInput, Stats, SystemStatus, TagQuery, TagSummary, ThoughtConfig, ThoughtConfigInput, UpdateCommentInput, UpdateContentInput, WritingConfig, WritingConfigInput } from "@manifold/contracts";
 
 export class ApiError extends Error {
 	readonly status: number;
@@ -52,6 +52,7 @@ export class ManifoldClient {
 	logoutSession() { return this.request<void>("/api/v1/admin/session/logout", { method: "POST" }); }
 	logoutAllSessions() { return this.request<void>("/api/v1/admin/session/logout-all", { method: "POST" }); }
 	changePassword(input: ChangePasswordInput) { return this.request<void>("/api/v1/admin/password", { method: "POST", body: input }); }
+	adminSessions() { return this.request<AdminSessionList>("/api/v1/admin/session/list"); }
 	adminStats() { return this.request<AdminStats>("/api/v1/admin/stats"); }
 	adminProfile() { return this.request<Profile>("/api/v1/admin/profile"); }
 	updateProfile(input: ProfileInput) { return this.request<Profile>("/api/v1/admin/profile", { method: "PUT", body: input }); }
@@ -73,6 +74,9 @@ export class ManifoldClient {
 	adminCreateComment(contentId: string, input: CreateCommentInput) { return this.request<Comment>(`/api/v1/admin/content/${this.path(contentId)}/comments`, { method: "POST", body: input }); }
 	deleteComment(id: string) { return this.request<void>(`/api/v1/admin/comments/${this.path(id)}`, { method: "DELETE" }); }
 	restoreComment(id: string) { return this.request<void>(`/api/v1/admin/comments/${this.path(id)}/restore`, { method: "POST" }); }
+	hideComment(id: string) { return this.request<void>(`/api/v1/admin/comments/${this.path(id)}/hide`, { method: "POST" }); }
+	unhideComment(id: string) { return this.request<void>(`/api/v1/admin/comments/${this.path(id)}/unhide`, { method: "POST" }); }
+	updateCommentAuthor(id: string, input: UpdateCommentInput) { return this.request<void>(`/api/v1/admin/comments/${this.path(id)}`, { method: "PUT", body: input }); }
 	adminOverview() { return this.request<AdminOverview>("/api/v1/admin/overview"); }
 	adminAnalyticsViews(query?: AnalyticsViewsQuery) { return this.request<AnalyticsViews>(this.withQuery("/api/v1/admin/analytics/views", query, ["days"])); }
 	adminSystem() { return this.request<SystemStatus>("/api/v1/admin/system"); }
