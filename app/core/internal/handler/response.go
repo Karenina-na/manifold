@@ -151,6 +151,7 @@ func newRouter(cfg config.Config, database *store.Store, auditEvents events.Audi
 			admin.Get("/media", h.adminListMedia)
 			admin.Post("/media", h.adminUploadMedia)
 			admin.Delete("/media/{id}", h.adminDeleteMedia)
+			admin.Get("/media/{id}/references", h.adminListMediaReferences)
 		})
 	})
 	return router

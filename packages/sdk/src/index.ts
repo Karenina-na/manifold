@@ -1,4 +1,4 @@
-import type { AdminComment, AdminCommentQuery, AdminContent, AdminContentQuery, AdminOverview, AdminSessionList, AdminStats, AnalyticsViews, AnalyticsViewsQuery, AuditEventCollection, AuditQuery, ChangePasswordInput, Collection, Comment, CommentQuery, Content, ContentDetail, ContentDetailQuery, ContentInput, ContentQuery, CreateCommentInput, HealthStatus, LikeSummary, LoginInput, LoginResponse, Media, MediaQuery, PresenceStatus, Profile, ProfileInput, SiteComposition, SiteConfig, SiteConfigInput, Stats, SystemStatus, TagQuery, TagSummary, ThoughtConfig, ThoughtConfigInput, UpdateCommentInput, UpdateContentInput, WritingConfig, WritingConfigInput } from "@manifold/contracts";
+import type { AdminComment, AdminCommentQuery, AdminContent, AdminContentQuery, AdminOverview, AdminSessionList, AdminStats, AnalyticsViews, AnalyticsViewsQuery, AuditEventCollection, AuditQuery, ChangePasswordInput, Collection, Comment, CommentQuery, Content, ContentDetail, ContentDetailQuery, ContentInput, ContentQuery, CreateCommentInput, HealthStatus, LikeSummary, LoginInput, LoginResponse, Media, MediaQuery, MediaReferenceList, PresenceStatus, Profile, ProfileInput, SiteComposition, SiteConfig, SiteConfigInput, Stats, SystemStatus, TagQuery, TagSummary, ThoughtConfig, ThoughtConfigInput, UpdateCommentInput, UpdateContentInput, WritingConfig, WritingConfigInput } from "@manifold/contracts";
 
 export class ApiError extends Error {
 	readonly status: number;
@@ -84,6 +84,7 @@ export class ManifoldClient {
 	listMedia(query?: MediaQuery) { return this.request<Collection<Media>>(this.withQuery("/api/v1/admin/media", query, ["page", "pageSize", "q"])); }
 	uploadMedia(blob: Blob, filename: string) { return this.request<Media>(this.withQuery("/api/v1/admin/media", { filename }, ["filename"]), { method: "POST", body: blob }); }
 	deleteMedia(id: string) { return this.request<void>(`/api/v1/admin/media/${this.path(id)}`, { method: "DELETE" }); }
+	mediaReferences(id: string) { return this.request<MediaReferenceList>(`/api/v1/admin/media/${this.path(id)}/references`); }
 
 	private path(segment: string) { return encodeURIComponent(segment); }
 

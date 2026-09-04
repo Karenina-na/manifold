@@ -107,7 +107,9 @@ Meta tab 字段：正文在 Context tab（vditor IR）必填；title、slug 可�
 
 ### Media
 
-侧栏 Media 项路由 `#/media`（`MediaWorkspace.tsx`）。列表来自 `listMedia({ q?, page? })`，query key `['admin-media', { q, page }]`（失效统一 `['admin-media']` 前缀）：搜索防抖 300ms，`page`/`pageSize` 分页，按 `createdAt` 降序。上传入口三个——拖放区、点击区（隐藏 file input）、编辑器（见 Context tab）；经 `uploadMedia(file, file.name)` 逐个上传，白名单 png/jpeg/webp/gif/avif 图片与 PDF，失败（超限 413、类型 415 等）在 dropzone 下方的 Alert 呈现 `error.message (code)`。卡片网格（图片缩略图 / PDF 占位卡、mime/体积/日期），每张卡提供 **Copy markdown**（图片写入 `![filename](url)`，PDF 写入 `[filename](url)`，2.4s 内回显 Copied）和 ConfirmButton Popover 删除（`deleteMedia` → 204 后失效列表）。删除失败时在 dropzone 下方 Alert 展示原因：Core 返回 409 `MEDIA_IN_USE` 时提示 "This image is used in published or draft content. Remove those references first."（Core 已做引用校验，被引用的媒体拒绝删除并附 `details.references`）。发布正文里的图片由 `@manifold/render` 直接渲染。
+侧栏 Media 项路由 `#/media`（`MediaWorkspace.tsx`）。列表来自 `listMedia({ q?, page? })`，query key `['admin-media', { q, page }]`（失效统一 `['admin-media']` 前缀）：搜索防抖 300ms，`page`/`pageSize` 分页，按 `createdAt` 降序。上传入口三个——拖放区、点击区（隐藏 file input）、编辑器（见 Context tab）；经 `uploadMedia(file, file.name)` 逐个上传，白名单 png/jpeg/webp/gif/avif 图片与 PDF，失败（超限 413、类型 415 等）在 dropzone 下方的 Alert 呈现 `error.message (code)`。卡片网格（图片缩略图 / PDF 占位卡、mime/体积/日期），每张卡提供 **Details**（进入二级详情页）、**Copy markdown**（图片写入 `![filename](url)`，PDF 写入 `[filename](url)`，2.4s 内回显 Copied）和 ConfirmButton Popover 删除（`deleteMedia` → 204 后失效列表）。删除失败时在 dropzone 下方 Alert 展示原因：Core 返回 409 `MEDIA_IN_USE` 时提示 "This image is used in published or draft content. Remove those references first."（Core 已做引用校验，被引用的媒体拒绝删除并附 `details.references`）。发布正文里的图片由 `@manifold/render` 直接渲染。
+
+二级详情页路由 `#/media/{mediaId}`：基本信息来自 `listMedia({ q: mediaId, pageSize: 50 })` 按精确 id 取项（query key `['admin-media-item', mediaId]`，不失效——不可变）；引用列表来自 `mediaReferences(mediaId)`（query key `['admin-media-references', mediaId]`）。布局为顶部大预览（图片/PDF 占位）→ 基本信息卡（mime/体积/上传时间/ID + Open preview + Copy markdown + Delete）→ **Used by** 引用列表：每行显示状态点（Draft/Published）、标题（无标题显示 Untitled writing/thought）、类型与 slug，点击跳转对应编辑页（`#/writings/{contentId}` 或 `#/thoughts/{contentId}`）；空状态提示 "No published or draft content references this file."。返回用 `requestNavigate('#/media')`，受未保存离开守卫保护。
 
 ### Comments
 
@@ -153,6 +155,8 @@ Settings 底部的独立 panel（`components/SecuritySection.tsx`），不属于
 | `admin-site` | `adminSite()` | 保存 Site（全量 PUT，含身份/social/评论开关/首页组合） |
 | `admin-thought-config` | `adminThoughtConfig()` | 保存 Thoughts 置顶配置 |
 | `admin-media` + `{ q, page }` | Media 库 `listMedia({ q?, page? })` | 上传、删除（统一失效 `['admin-media']` 前缀） |
+| `admin-media-item` + mediaId | 详情页基本信息 `listMedia({ q: mediaId, pageSize: 50 })` 精确 id 取项 | 不失效（媒体不可变） |
+| `admin-media-references` + mediaId | 详情页引用列表 `mediaReferences(mediaId)` | 不失效（引用只随内容增删，离开详情页重建） |
 
 只失效受影响的资源 key，不使用全局清缓存替代资源级更新。
 

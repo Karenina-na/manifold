@@ -26,6 +26,9 @@ func TestMediaReferences(t *testing.T) {
 	if refs[0].Title != nil {
 		t.Fatalf("expected null title, got %q", *refs[0].Title)
 	}
+	if refs[0].Status != model.StatusDraft {
+		t.Fatalf("expected draft reference, got %q", refs[0].Status)
+	}
 	none, err := database.MediaReferences("media_missing")
 	if err != nil {
 		t.Fatal(err)

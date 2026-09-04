@@ -95,9 +95,10 @@ func (s *Store) ListMedia(page, pageSize int, needle string) ([]model.Media, int
 }
 
 // MediaReferences lists non-deleted content whose body embeds this media URL.
+// The query excludes DELETED rows, so status is always DRAFT or PUBLISHED.
 func (s *Store) MediaReferences(id string) ([]model.MediaReference, error) {
 	needle := "/api/v1/media/" + id
-	rows, err := s.DB.Query(`SELECT id, kind, slug, title FROM content WHERE status != 'DELETED' AND body LIKE '%' || ? || '%'`, needle)
+	rows, err := s.DB.Query(`SELECT id, kind, slug, title, status FROM content WHERE status != 'DELETED' AND body LIKE '%' || ? || '%'`, needle)
 	if err != nil {
 		return nil, err
 	}
@@ -106,7 +107,7 @@ func (s *Store) MediaReferences(id string) ([]model.MediaReference, error) {
 	for rows.Next() {
 		var ref model.MediaReference
 		var title sql.NullString
-		if err := rows.Scan(&ref.ContentID, &ref.Kind, &ref.Slug, &title); err != nil {
+		if err := rows.Scan(&ref.ContentID, &ref.Kind, &ref.Slug, &title, &ref.Status); err != nil {
 			return nil, err
 		}
 		if title.Valid {

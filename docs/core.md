@@ -214,6 +214,7 @@ Thoughts 归档参数为 `page`（默认 1）、`pageSize`（默认 8，范围 1
 | `GET` | `/api/v1/admin/media` | `Collection<Media>`：媒体库服务端分页，`page`（默认 1）、`pageSize`（默认 20，上限 50）、`q`（按文件名/ID 过滤，≤200 字符）；`url` 为绝对地址，按 `createdAt` 降序 |
 | `POST` | `/api/v1/admin/media` | 上传媒体：raw bytes（非 multipart）+ `?filename=`；`http.DetectContentType` 嗅探并仅接受 png/jpeg/webp/gif/avif 图片与 `application/pdf`（拒绝 SVG 与其他类型，415）；超过 `CORE_MEDIA_MAX_BYTES` 返回 413；按 SHA256 去重幂等（重复上传返回已有记录）；响应 201 `Media`（含绝对 `url`，图片写进 Markdown 正文使用，PDF 用于 Profile resume 链接）；审计 `media.uploaded` |
 | `DELETE` | `/api/v1/admin/media/{id}` | 物理删除媒体，204；删除前检查非删除内容正文是否引用该媒体，被引用则返回 409 `MEDIA_IN_USE`（`details.references` 列出引用内容），否则删除；审计 `media.deleted` |
+| `GET` | `/api/v1/admin/media/{id}/references` | `{ references: [...] }`：非删除内容（DRAFT/PUBLISHED）正文中引用该媒体的列表，每项为 `MediaReference{ contentId, kind, title, slug, status }`；`status` 只可能是 `DRAFT`/`PUBLISHED`；未知 id 返回空列表 |
 
 内容创建和更新的 Article 必须有非空 `title` 和 `slug`；Thought 两者可为空。更新使用 PUT，必须提交完整内容和 `expectedVersion`，版本不匹配返回 `409 VERSION_CONFLICT`。类型转换为 Article 时，最终 title/slug 也必须满足 Article 规则。
 

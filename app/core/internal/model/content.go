@@ -102,10 +102,11 @@ type SiteNavigationItem struct {
 
 // MediaReference is one content row that embeds a media URL in its body.
 type MediaReference struct {
-	ContentID string      `json:"contentId"`
-	Kind      ContentKind `json:"kind"`
-	Title     *string     `json:"title"`
-	Slug      string      `json:"slug"`
+	ContentID string        `json:"contentId"`
+	Kind      ContentKind   `json:"kind"`
+	Title     *string       `json:"title"`
+	Slug      string        `json:"slug"`
+	Status    ContentStatus `json:"status"`
 }
 
 type ThoughtConfig struct {

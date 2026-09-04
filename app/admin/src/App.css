@@ -410,3 +410,20 @@ button { cursor: pointer; }
 .media-name { color: var(--ink); font-size: 12px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .media-meta { color: var(--muted); font-size: 11px; }
 .media-actions { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
+
+/* Media detail page: large preview, basic-info card and reference rows. */
+.media-detail { max-width: 860px; }
+.media-detail .media-ref-count { display: inline-flex; align-items: center; padding: 3px 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--muted); font-size: 11px; font-weight: 700; }
+.media-detail-preview { margin-top: 18px; aspect-ratio: 16 / 9; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 4px; background: color-mix(in srgb, var(--paper) 82%, var(--accent-soft)); overflow: hidden; }
+.media-detail-preview img { display: block; max-width: 100%; max-height: 100%; object-fit: contain; }
+.media-detail-preview .media-pdf-card { font-size: 13px; }
+.media-detail-info { margin-top: 16px; padding: 14px 18px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); }
+.media-detail-info dl { margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 2px 18px; }
+.media-detail-info dt { margin: 0; color: var(--muted); font-size: 10px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }
+.media-detail-info dd { margin: 2px 0 0; color: var(--ink); font-size: 13px; word-break: break-word; }
+.media-detail-info .media-id { font-family: ui-monospace, monospace; font-size: 12px; color: var(--muted); }
+.media-detail-info .media-actions { margin-top: 12px; }
+.media-refs { margin-top: 26px; }
+.media-refs h2 { margin: 0 0 4px; font-size: 15px; }
+.media-refs .content-row { border: 1px solid var(--line); border-radius: 4px; margin-bottom: 8px; padding: 14px 18px; }
+.media-refs .ref-open-hint { color: var(--accent); font-weight: 700; }

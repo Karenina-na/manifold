@@ -133,6 +133,18 @@ func (h *apiHandler) adminDeleteMedia(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// adminListMediaReferences returns the published or draft content that embeds
+// this media URL. The store query already excludes deleted content, so unknown
+// ids resolve to an empty list rather than an error.
+func (h *apiHandler) adminListMediaReferences(w http.ResponseWriter, r *http.Request) {
+	refs, err := h.store.MediaReferences(chi.URLParam(r, "id"))
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, "MEDIA_UNAVAILABLE", "Media references could not be checked.")
+		return
+	}
+	WriteJSON(w, http.StatusOK, map[string]any{"references": refs})
+}
+
 func (h *apiHandler) getMedia(w http.ResponseWriter, r *http.Request) {
 	media, data, err := h.store.GetMedia(chi.URLParam(r, "id"))
 	if err != nil {

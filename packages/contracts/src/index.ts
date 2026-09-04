@@ -165,7 +165,8 @@ export interface MediaQuery { page?: number; pageSize?: number; q?: string }
 export interface LoginInput { username: string; password: string }
 export interface LoginResponse { accessToken: string; tokenType: "Bearer"; expiresIn: number; user: { username: string; role: "admin" } }
 export interface ChangePasswordInput { currentPassword: string; newPassword: string }
-export interface MediaReference { contentId: string; kind: ContentKind; title: string | null; slug: string }
+export interface MediaReference { contentId: string; kind: ContentKind; title: string | null; slug: string; status: ContentStatus }
+export interface MediaReferenceList { references: MediaReference[] }
 export interface AdminSession { id: string; createdAt: string; expiresAt: string; revokedAt: string | null; active: boolean; current: boolean }
 export interface AdminSessionList { sessions: AdminSession[] }
 

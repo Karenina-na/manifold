@@ -749,6 +749,26 @@ async function main() {
     await mediaCard.waitFor({ state: 'visible', timeout: 8000 });
     await mediaCard.getByRole('button', { name: 'Copy markdown' }).click();
     await admin.getByRole('button', { name: 'Copied' }).waitFor({ state: 'visible', timeout: 3000 });
+    // Media detail page: enter #/media/{id}, verify the basic-info card and
+    // the published reference row, then follow the reference into the editor.
+    await mediaCard.getByRole('button', { name: 'Details' }).click();
+    await admin.waitForFunction((id) => window.location.hash === `#/media/${id}`, media.id, { timeout: 5000 });
+    await admin.getByRole('heading', { name: 'probe.png', level: 1 }).waitFor({ state: 'visible', timeout: 5000 });
+    await admin.locator('.media-detail-info').waitFor({ state: 'visible', timeout: 5000 });
+    const mediaRefRow = admin.locator('.media-ref-row').filter({ hasText: 'Media render probe' });
+    await mediaRefRow.waitFor({ state: 'visible', timeout: 5000 });
+    if (await mediaRefRow.locator('.status-dot.published').count() !== 1) throw new Error('Reference row should show a published status dot');
+    await mediaRefRow.click();
+    await admin.waitForFunction((id) => window.location.hash === `#/writings/${id}`, mediaWriting.id, { timeout: 5000 });
+    await admin.getByRole('button', { name: 'Back to writings' }).waitFor({ state: 'visible', timeout: 5000 });
+    await admin.getByRole('button', { name: 'Media' }).click();
+    await admin.waitForFunction(() => window.location.hash === '#/media', undefined, { timeout: 5000 });
+    await mediaCard.waitFor({ state: 'visible', timeout: 8000 });
+    await mediaCard.getByRole('button', { name: 'Details' }).click();
+    await admin.waitForFunction((id) => window.location.hash === `#/media/${id}`, media.id, { timeout: 5000 });
+    await admin.getByRole('button', { name: 'Back to media' }).click();
+    await admin.waitForFunction(() => window.location.hash === '#/media', undefined, { timeout: 5000 });
+    await mediaCard.waitFor({ state: 'visible', timeout: 8000 });
     // The published media-render-probe writing embeds this image, so deletion
     // is blocked with 409 MEDIA_IN_USE and the Alert surfaces the reason.
     await mediaCard.getByRole('button', { name: 'Delete probe.png' }).click();

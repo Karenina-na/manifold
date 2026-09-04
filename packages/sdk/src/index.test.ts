@@ -156,6 +156,24 @@ test("handles empty success responses", async () => {
 	assert.equal(await client.deleteContent("content-1"), undefined);
 });
 
+test("lists media references with content status", async () => {
+	const payload = { references: [{ contentId: "content-1", kind: "ARTICLE", title: "Used here", slug: "used-here", status: "PUBLISHED" }] };
+	let captured: Request | undefined;
+	const client = new ManifoldClient({
+		baseUrl: "http://core.test",
+		token: "token-1",
+		fetch: async (input, init) => {
+			captured = new Request(input, init);
+			return new Response(JSON.stringify(payload), { status: 200 });
+		},
+	});
+	const result = await client.mediaReferences("media 1/x");
+	assert.equal(captured?.url, "http://core.test/api/v1/admin/media/media%201%2Fx/references");
+	assert.equal(captured?.method, "GET");
+	assert.equal(captured?.headers.get("Authorization"), "Bearer token-1");
+	assert.deepEqual(result, payload);
+});
+
 test("sends visitor-scoped like requests", async () => {
 	const requests: Request[] = [];
 	const client = new ManifoldClient({

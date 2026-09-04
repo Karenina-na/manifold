@@ -1252,6 +1252,73 @@ func TestMediaLifecycle(t *testing.T) {
 	}
 }
 
+func TestMediaReferencesEndpoint(t *testing.T) {
+	router := newTestRouter(t)
+	token := adminToken(t, router)
+
+	png, err := base64.StdEncoding.DecodeString("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==")
+	if err != nil {
+		t.Fatal(err)
+	}
+	uploaded := adminRequest(t, router, token, http.MethodPost, "/api/v1/admin/media?filename=refs.png", string(png))
+	if uploaded.Code != http.StatusCreated {
+		t.Fatalf("expected media upload created, got %d %s", uploaded.Code, uploaded.Body.String())
+	}
+	var media struct {
+		ID  string `json:"id"`
+		URL string `json:"url"`
+	}
+	if err := json.Unmarshal(uploaded.Body.Bytes(), &media); err != nil {
+		t.Fatal(err)
+	}
+	if unauthorized := request(t, router, http.MethodGet, "/api/v1/admin/media/"+media.ID+"/references", nil); unauthorized.Code != http.StatusUnauthorized {
+		t.Fatalf("expected unauthorized references read, got %d", unauthorized.Code)
+	}
+	empty := adminRequest(t, router, token, http.MethodGet, "/api/v1/admin/media/"+media.ID+"/references", "")
+	if empty.Code != http.StatusOK {
+		t.Fatalf("expected empty references 200, got %d %s", empty.Code, empty.Body.String())
+	}
+	var before struct {
+		References []model.MediaReference `json:"references"`
+	}
+	if err := json.Unmarshal(empty.Body.Bytes(), &before); err != nil {
+		t.Fatal(err)
+	}
+	if len(before.References) != 0 {
+		t.Fatalf("expected no references before content links the media, got %+v", before.References)
+	}
+	created := adminRequest(t, router, token, http.MethodPost, "/api/v1/admin/content", `{"kind":"ARTICLE","slug":"media-refs-probe","title":"Uses media","summary":"Summary.","body":"See ![probe](`+media.URL+`)","tags":[],"metadata":{"language":null,"aiAssisted":false}}`)
+	if created.Code != http.StatusCreated {
+		t.Fatalf("expected content created, got %d %s", created.Code, created.Body.String())
+	}
+	var content struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(created.Body.Bytes(), &content); err != nil {
+		t.Fatal(err)
+	}
+	list := adminRequest(t, router, token, http.MethodGet, "/api/v1/admin/media/"+media.ID+"/references", "")
+	if list.Code != http.StatusOK {
+		t.Fatalf("expected references 200, got %d %s", list.Code, list.Body.String())
+	}
+	var after struct {
+		References []model.MediaReference `json:"references"`
+	}
+	if err := json.Unmarshal(list.Body.Bytes(), &after); err != nil {
+		t.Fatal(err)
+	}
+	if len(after.References) != 1 {
+		t.Fatalf("expected one reference, got %+v", after.References)
+	}
+	ref := after.References[0]
+	if ref.ContentID != content.ID || ref.Kind != model.ContentKindArticle || ref.Slug != "media-refs-probe" || ref.Status != model.StatusDraft {
+		t.Fatalf("unexpected reference payload: %+v", ref)
+	}
+	if ref.Title == nil || *ref.Title != "Uses media" {
+		t.Fatalf("expected reference title, got %+v", ref.Title)
+	}
+}
+
 func TestMediaUploadSizeLimit(t *testing.T) {
 	router, _ := newTestRouterWithConfig(t, func(cfg *config.Config) { cfg.MediaMaxBytes = 8 })
 	token := adminToken(t, router)

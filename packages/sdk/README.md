@@ -69,6 +69,7 @@ const page = await client.content({ kind: "ARTICLE", pageSize: 20 })
 | `listMedia(query?)` | GET | `/api/v1/admin/media` | `Collection<Media>`（服务端分页：`page`/`pageSize`/`q`） |
 | `uploadMedia(blob, filename)` | POST | `/api/v1/admin/media?filename=…` | `Media`（二进制 body，Core 按 201 返回含绝对 `url`） |
 | `deleteMedia(id)` | DELETE | `/api/v1/admin/media/{id}` | `void`，204；媒体被内容引用时抛 `ApiError` 409 `MEDIA_IN_USE`（`details.references` 列出引用内容） |
+| `mediaReferences(id)` | GET | `/api/v1/admin/media/{id}/references` | `MediaReferenceList`（`{ references: [...] }`，每项含 `contentId`/`kind`/`title`/`slug`/`status`） |
 | `adminProfile()` / `updateProfile(input)` | GET/PUT | `/api/v1/admin/profile` | `Profile` |
 | `adminSite()` / `updateSite(input)` | GET/PUT | `/api/v1/admin/site` | `SiteConfig`；`updateSite` 全量提交站点设置 |
 | `adminThoughtConfig()` / `updateThoughtConfig(input)` | GET/PUT | `/api/v1/admin/thoughts/config` | `ThoughtConfig` |
