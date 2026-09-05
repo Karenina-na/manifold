@@ -118,8 +118,8 @@
     "commentsEnabled": true,
     "navigation": [{ "label": "Thoughts", "href": "/thoughts", "external": false }],
     "sections": ["PROFILE", "RECENT_CONTENT", "CONTACT"],
-    "featuredThought": null,
-    "featuredWriting": null
+    "pinnedThoughts": [],
+    "pinnedWritings": []
   },
   "auditEvent": {
     "id": "audit_1750000000000000000",

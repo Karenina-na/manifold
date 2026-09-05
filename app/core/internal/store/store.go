@@ -20,7 +20,7 @@ import (
 	"github.com/manifold-space/manifold/app/core/internal/seed"
 )
 
-const schemaVersion = 3
+const schemaVersion = 4
 
 var (
 	ErrContentNotFound     = errors.New("content not found")
@@ -98,14 +98,15 @@ func contentExcerpt(body string) string {
 type Store struct{ DB *sql.DB }
 
 type ContentListOptions struct {
-	Kinds      []model.ContentKind
-	Status     model.ContentStatus
-	Tags       []string
-	Query      string
-	AiAssisted *bool
-	Sort       string
-	Page       int
-	PageSize   int
+	Kinds         []model.ContentKind
+	Status        model.ContentStatus
+	Tags          []string
+	Query         string
+	AiAssisted    *bool
+	PinnedIDsOnly bool
+	Sort          string
+	Page          int
+	PageSize      int
 }
 
 type ContentListResult struct {
@@ -294,10 +295,10 @@ func (s *Store) applySeed(plan seed.Plan) error {
 			return err
 		}
 	}
-	if _, err := s.DB.Exec(`INSERT OR IGNORE INTO thoughts_config (id, featured_thought_id, updated_at) VALUES ('thoughts_1', NULL, ?)`, now); err != nil {
+	if _, err := s.DB.Exec(`INSERT OR IGNORE INTO thoughts_config (id, updated_at) VALUES ('thoughts_1', ?)`, now); err != nil {
 		return err
 	}
-	if _, err := s.DB.Exec(`INSERT OR IGNORE INTO writings_config (id, featured_writing_id, updated_at) VALUES ('writings_1', NULL, ?)`, now); err != nil {
+	if _, err := s.DB.Exec(`INSERT OR IGNORE INTO writings_config (id, updated_at) VALUES ('writings_1', ?)`, now); err != nil {
 		return err
 	}
 	return nil

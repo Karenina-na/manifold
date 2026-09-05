@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { createAdminClient } from '../api'
+import { ConfirmButton } from './ConfirmButton'
 
 const securitySchema = z.object({
   currentPassword: z.string().min(1, 'Current password is required.'),
@@ -32,7 +33,10 @@ export function SecuritySection({ token, onLoggedOut }: { token: string; onLogge
   const timer = useRef<number | null>(null)
   useEffect(() => () => { if (timer.current) window.clearTimeout(timer.current) }, [])
   const form = useForm<SecurityForm>({ resolver: zodResolver(securitySchema), defaultValues: { currentPassword: '', newPassword: '', confirmPassword: '' } })
-  const sessions = useQuery({ queryKey: ['admin-sessions'], queryFn: () => client.adminSessions() })
+  // Sessions are security-sensitive state: the list must reflect what Core
+  // knows right now, so it refetches whenever the section mounts instead of
+  // serving the 30s query cache.
+  const sessions = useQuery({ queryKey: ['admin-sessions'], queryFn: () => client.adminSessions(), staleTime: 0 })
   const activeCount = sessions.data?.sessions.filter((session) => session.active).length ?? 0
   const changePassword = useMutation({
     mutationFn: (input: SecurityForm) => client.changePassword({ currentPassword: input.currentPassword, newPassword: input.newPassword }),
@@ -45,6 +49,10 @@ export function SecuritySection({ token, onLoggedOut }: { token: string; onLogge
     },
   })
   const logoutAll = useMutation({ mutationFn: () => client.logoutAllSessions(), onSuccess: () => { setRevokedFlash(true); onLoggedOut() } })
+  const revokeSession = useMutation({
+    mutationFn: (id: string) => client.logoutSessionById(id),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['admin-sessions'] }),
+  })
   return <section className="panel security-panel" id="site-security" aria-labelledby="site-security-title">
     <div className="panel-heading">
       <div>
@@ -77,6 +85,7 @@ export function SecuritySection({ token, onLoggedOut }: { token: string; onLogge
         {sessions.data && <em className="security-session-count">{activeCount} active</em>}
       </div>
       {sessions.isError && <Alert color="red" variant="light">Sessions could not be loaded.</Alert>}
+      {revokeSession.isError && <Alert color="red" variant="light">That session could not be signed out.</Alert>}
       <ul className="security-sessions">
         {sessions.data?.sessions.map((session) => (
           <li className={`security-session-row ${session.active ? '' : 'revoked'}`} key={session.id}>
@@ -89,6 +98,14 @@ export function SecuritySection({ token, onLoggedOut }: { token: string; onLogge
               {session.current && <span className="security-badge current">Current</span>}
               {session.active ? <span className="security-badge active">Active</span> : <span className="security-badge revoked">Revoked</span>}
               <small>expires {formatSessionTime(session.expiresAt)}</small>
+              {!session.current && session.active && <ConfirmButton
+                label={`Sign out session ${session.id}`}
+                confirmLabel="Sign out"
+                confirmBody="Sign out this session? Its token stops working immediately."
+                danger
+                icon={<LogOut size={14} />}
+                onConfirm={() => revokeSession.mutate(session.id)}
+              />}
             </span>
           </li>
         ))}

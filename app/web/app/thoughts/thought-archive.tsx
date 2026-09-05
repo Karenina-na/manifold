@@ -35,13 +35,13 @@ function ThoughtPreview({ item, featured = false }: { item: Thought; featured?: 
 
 type ThoughtArchiveProps = {
   initialArchive: Collection<Thought> | null;
-  featured: Thought | null;
+  pinned: Thought[];
   tags: TagSummary[] | null;
   initialQuery?: string;
   initialTags?: string[];
 };
 
-export default function ThoughtArchive({ initialArchive, featured, tags, initialQuery = "", initialTags = [] }: ThoughtArchiveProps) {
+export default function ThoughtArchive({ initialArchive, pinned, tags, initialQuery = "", initialTags = [] }: ThoughtArchiveProps) {
   const timelineRef = useRef<HTMLElement>(null);
   const { input, query, tags: selectedTags, data, isPending, error, onSearchInput, toggleTag, goToPage } = useArchiveFilters({
     basePath: "/thoughts",
@@ -69,19 +69,21 @@ export default function ThoughtArchive({ initialArchive, featured, tags, initial
         </header>
       </Reveal>
 
-      {!filtersActive && featured && <Reveal className={styles.writingReveal}>
-        <article className={styles.featuredThought}>
-          <div className={styles.featuredThoughtTop}>
-            <span className={styles.featuredBadge}>Featured</span>
-            <div className={styles.featuredThoughtMeta}><span>{tagLabel(featured.tags)}</span><time dateTime={featured.publishedAt}>{formatThoughtDate(featured.publishedAt)}</time></div>
-          </div>
-          <h2><Link href={buildHref(featured)}>{featured.title || "A thought"}</Link></h2>
-          <ThoughtPreview item={featured} featured />
-          <footer className={styles.featuredThoughtFooter}>
-            <ThoughtActions item={featured} />
-            <Link className={styles.thoughtReadLink} href={buildHref(featured)}>Full thought <ArrowRight size={15} aria-hidden="true" /></Link>
-          </footer>
-        </article>
+      {!filtersActive && pinned.length > 0 && <Reveal className={styles.writingReveal}>
+        <div className={styles.pinnedRow}>
+          {pinned.map((item) => <article className={styles.featuredThought} key={item.id}>
+            <div className={styles.featuredThoughtTop}>
+              <span className={styles.featuredBadge}>Pinned</span>
+              <div className={styles.featuredThoughtMeta}><span>{tagLabel(item.tags)}</span><time dateTime={item.publishedAt}>{formatThoughtDate(item.publishedAt)}</time></div>
+            </div>
+            <h2><Link href={buildHref(item)}>{item.title || "A thought"}</Link></h2>
+            <ThoughtPreview item={item} featured />
+            <footer className={styles.featuredThoughtFooter}>
+              <ThoughtActions item={item} />
+              <Link className={styles.thoughtReadLink} href={buildHref(item)}>Full thought <ArrowRight size={15} aria-hidden="true" /></Link>
+            </footer>
+          </article>)}
+        </div>
       </Reveal>}
 
       {data === null ? <p className={styles.errorBanner}>The thoughts could not be loaded.</p> : <Reveal className={styles.writingReveal} manual={!filtersActive}>

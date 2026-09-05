@@ -77,6 +77,30 @@ func adminToken(t *testing.T, router http.Handler) string {
 	return session.AccessToken
 }
 
+// decodeSessionID extracts the JWT jti (the admin_sessions row id) from a
+// token so a test can target that session by id.
+func decodeSessionID(t *testing.T, token string) string {
+	t.Helper()
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		t.Fatalf("expected a JWT, got %q", token)
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var claims struct {
+		ID string `json:"jti"`
+	}
+	if err := json.Unmarshal(payload, &claims); err != nil {
+		t.Fatal(err)
+	}
+	if claims.ID == "" {
+		t.Fatal("token carries no jti")
+	}
+	return claims.ID
+}
+
 func adminRequest(t *testing.T, router http.Handler, token string, method, path, body string) *httptest.ResponseRecorder {
 	t.Helper()
 	recorder := httptest.NewRecorder()
@@ -187,7 +211,7 @@ func TestContentDetailContract(t *testing.T) {
 	if err := json.Unmarshal(response.Body.Bytes(), &detail); err != nil {
 		t.Fatal(err)
 	}
-	if detail.Body == "" || detail.PublishedAt == "" || detail.Metadata.ReadingMinutes == 0 || len(detail.Metadata.Toc) != 1 || detail.Metadata.Language != "Go" {
+	if detail.Body == "" || detail.PublishedAt == "" || detail.Metadata.ReadingMinutes == 0 || len(detail.Metadata.Toc) != 1 || detail.Metadata.Language != "English" {
 		t.Fatalf("unexpected detail contract: %s", response.Body.String())
 	}
 }
@@ -1014,32 +1038,36 @@ func TestFeaturedContentLivesOnSiteComposition(t *testing.T) {
 		t.Fatalf("expected site 200, got %d", site.Code)
 	}
 	var composition struct {
-		Title           string                 `json:"title"`
-		FeaturedThought *struct{ Slug string } `json:"featuredThought"`
-		FeaturedWriting *struct{ Slug string } `json:"featuredWriting"`
+		Title          string                   `json:"title"`
+		PinnedThoughts []struct{ Slug string } `json:"pinnedThoughts"`
+		PinnedWritings []struct{ Slug string } `json:"pinnedWritings"`
 	}
 	if err := json.Unmarshal(site.Body.Bytes(), &composition); err != nil {
 		t.Fatal(err)
 	}
-	if composition.FeaturedWriting == nil || composition.FeaturedWriting.Slug != "reading-the-edge" {
-		t.Fatalf("expected newest published writing as fallback featured, got %s", site.Body.String())
+	// Pins are explicit: with none configured the site carries empty arrays.
+	if len(composition.PinnedWritings) != 0 {
+		t.Fatalf("expected no pinned writings by default, got %s", site.Body.String())
 	}
-	if composition.FeaturedThought == nil || composition.FeaturedThought.Slug != "a-small-signal" {
-		t.Fatalf("expected newest published thought as fallback featured, got %s", site.Body.String())
+	if len(composition.PinnedThoughts) != 0 {
+		t.Fatalf("expected no pinned thoughts by default, got %s", site.Body.String())
 	}
 
-	pin := adminRequest(t, router, token, http.MethodPut, "/api/v1/admin/writings/config", `{"featuredWritingId":"content_1"}`)
-	if pin.Code != http.StatusOK || !strings.Contains(pin.Body.String(), `"featuredWritingId":"content_1"`) {
+	pin := adminRequest(t, router, token, http.MethodPut, "/api/v1/admin/writings/config", `{"pinnedIds":["content_1"]}`)
+	if pin.Code != http.StatusOK || !strings.Contains(pin.Body.String(), `"pinnedIds":["content_1"]`) {
 		t.Fatalf("expected writing pin update 200, got %d %s", pin.Code, pin.Body.String())
 	}
 	updated := request(t, router, http.MethodGet, "/api/v1/site", nil)
-	if updated.Code != http.StatusOK || !strings.Contains(updated.Body.String(), `"featuredWriting":{"id":"content_1"`) {
+	if updated.Code != http.StatusOK || !strings.Contains(updated.Body.String(), `"pinnedWritings":[{"id":"content_1"`) {
 		t.Fatalf("expected site to reflect the pinned writing, got %s", updated.Body.String())
 	}
-	if invalidPin := adminRequest(t, router, token, http.MethodPut, "/api/v1/admin/writings/config", `{"featuredWritingId":"content_2"}`); invalidPin.Code != http.StatusUnprocessableEntity {
+	if invalidPin := adminRequest(t, router, token, http.MethodPut, "/api/v1/admin/writings/config", `{"pinnedIds":["content_2"]}`); invalidPin.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("expected a THOUGHT id to be rejected as writing pin, got %d", invalidPin.Code)
 	}
-	if clear := adminRequest(t, router, token, http.MethodPut, "/api/v1/admin/writings/config", `{"featuredWritingId":null}`); clear.Code != http.StatusOK || !strings.Contains(clear.Body.String(), `"featuredWritingId":null`) {
+	if duplicatePin := adminRequest(t, router, token, http.MethodPut, "/api/v1/admin/writings/config", `{"pinnedIds":["content_1","content_1"]}`); duplicatePin.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected duplicate pin ids to be rejected, got %d", duplicatePin.Code)
+	}
+	if clear := adminRequest(t, router, token, http.MethodPut, "/api/v1/admin/writings/config", `{"pinnedIds":[]}`); clear.Code != http.StatusOK || !strings.Contains(clear.Body.String(), `"pinnedIds":[]`) {
 		t.Fatalf("expected pin clear 200, got %d %s", clear.Code, clear.Body.String())
 	}
 }
@@ -1454,7 +1482,8 @@ func TestAdminListSessions(t *testing.T) {
 	if current != 1 {
 		t.Fatalf("expected exactly one current session, got %d", current)
 	}
-	// After logout-all the other session shows as revoked but the current one stays active.
+	// After logout-all the revoked session is soft-deleted: the list only
+	// shows the current session.
 	if response := adminRequest(t, router, tokenA, http.MethodPost, "/api/v1/admin/session/logout-all", ""); response.Code != http.StatusNoContent {
 		t.Fatalf("expected logout-all 204, got %d", response.Code)
 	}
@@ -1465,17 +1494,47 @@ func TestAdminListSessions(t *testing.T) {
 	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
 		t.Fatal(err)
 	}
-	active := 0
-	for _, session := range body.Sessions {
-		if session.Active {
-			active++
-		}
-		if session.Current && !session.Active {
-			t.Fatalf("expected the current session to stay active, got %+v", session)
-		}
+	if len(body.Sessions) != 1 || !body.Sessions[0].Current || !body.Sessions[0].Active {
+		t.Fatalf("expected only the current active session to remain, got %+v", body.Sessions)
 	}
-	if active != 1 {
-		t.Fatalf("expected exactly one active session after logout-all, got %d", active)
+}
+
+func TestAdminLogoutSessionByIDRevokesOneSession(t *testing.T) {
+	router := newTestRouter(t)
+	tokenA := adminToken(t, router)
+	tokenB := adminToken(t, router)
+	claimsB := decodeSessionID(t, tokenB)
+
+	response := adminRequest(t, router, tokenA, http.MethodPost, "/api/v1/admin/session/"+claimsB+"/logout", "")
+	if response.Code != http.StatusNoContent {
+		t.Fatalf("expected targeted logout 204, got %d %s", response.Code, response.Body.String())
+	}
+	// Only the targeted session died; the caller's stays valid.
+	if response := adminRequest(t, router, tokenB, http.MethodGet, "/api/v1/admin/content", ""); response.Code != http.StatusUnauthorized {
+		t.Fatalf("expected targeted session revoked, got %d", response.Code)
+	}
+	if response := adminRequest(t, router, tokenA, http.MethodGet, "/api/v1/admin/content", ""); response.Code != http.StatusOK {
+		t.Fatalf("expected caller session to stay valid, got %d", response.Code)
+	}
+	// Revoking is idempotent; the soft-deleted session is gone from the list.
+	if response := adminRequest(t, router, tokenA, http.MethodPost, "/api/v1/admin/session/"+claimsB+"/logout", ""); response.Code != http.StatusNoContent {
+		t.Fatalf("expected repeat logout 204, got %d", response.Code)
+	}
+	list := adminRequest(t, router, tokenA, http.MethodGet, "/api/v1/admin/session/list", "")
+	var body struct {
+		Sessions []struct {
+			ID string `json:"id"`
+		} `json:"sessions"`
+	}
+	if err := json.Unmarshal(list.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Sessions) != 1 {
+		t.Fatalf("expected soft-deleted session to leave the list, got %+v", body.Sessions)
+	}
+	// An unknown id is 404.
+	if response := adminRequest(t, router, tokenA, http.MethodPost, "/api/v1/admin/session/sess_missing/logout", ""); response.Code != http.StatusNotFound {
+		t.Fatalf("expected unknown session 404, got %d", response.Code)
 	}
 }
 

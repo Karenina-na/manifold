@@ -110,13 +110,13 @@ type MediaReference struct {
 }
 
 type ThoughtConfig struct {
-	FeaturedThoughtID *string `json:"featuredThoughtId"`
-	UpdatedAt         string  `json:"updatedAt"`
+	PinnedIds []string `json:"pinnedIds"`
+	UpdatedAt string   `json:"updatedAt"`
 }
 
 type WritingConfig struct {
-	FeaturedWritingID *string `json:"featuredWritingId"`
-	UpdatedAt         string  `json:"updatedAt"`
+	PinnedIds []string `json:"pinnedIds"`
+	UpdatedAt string   `json:"updatedAt"`
 }
 
 type Pagination struct {

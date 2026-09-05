@@ -63,15 +63,15 @@ test("reads and updates the admin thought configuration", async () => {
 		token: "token-1",
 		fetch: async (input, init) => {
 			requests.push(new Request(input, init));
-			return new Response(JSON.stringify({ featuredThoughtId: "thought-1", updatedAt: "2026-08-27T00:00:00Z" }), { status: 200 });
+			return new Response(JSON.stringify({ pinnedIds: ["thought-1"], updatedAt: "2026-08-27T00:00:00Z" }), { status: 200 });
 		},
 	});
 
 	await client.adminThoughtConfig();
-	await client.updateThoughtConfig({ featuredThoughtId: "thought-1" });
+	await client.updateThoughtConfig({ pinnedIds: ["thought-1"] });
 	assert.equal(requests[0]?.url, "http://core.test/api/v1/admin/thoughts/config");
 	assert.equal(requests[1]?.method, "PUT");
-	assert.deepEqual(await requests[1]?.json(), { featuredThoughtId: "thought-1" });
+	assert.deepEqual(await requests[1]?.json(), { pinnedIds: ["thought-1"] });
 });
 
 test("encodes admin status and full replacement update inputs", async () => {
@@ -270,8 +270,13 @@ test("posts logout endpoints", async () => {
 		},
 	});
 	await client.logoutSession();
+	await client.logoutSessionById("ses_1");
 	await client.logoutAllSessions();
-	assert.deepEqual(urls, ["http://core.test/api/v1/admin/session/logout", "http://core.test/api/v1/admin/session/logout-all"]);
+	assert.deepEqual(urls, [
+		"http://core.test/api/v1/admin/session/logout",
+		"http://core.test/api/v1/admin/session/ses_1/logout",
+		"http://core.test/api/v1/admin/session/logout-all",
+	]);
 });
 
 test("gets the admin session list", async () => {

@@ -77,32 +77,77 @@ func (s *Store) UpdateSiteConfig(config model.SiteConfig) error {
 
 func (s *Store) GetThoughtConfig() (model.ThoughtConfig, error) {
 	var config model.ThoughtConfig
-	var featuredThoughtID sql.NullString
-	err := s.DB.QueryRow(`SELECT featured_thought_id, updated_at FROM thoughts_config WHERE id = 'thoughts_1'`).Scan(&featuredThoughtID, &config.UpdatedAt)
-	if featuredThoughtID.Valid {
-		config.FeaturedThoughtID = &featuredThoughtID.String
+	err := s.DB.QueryRow(`SELECT updated_at FROM thoughts_config WHERE id = 'thoughts_1'`).Scan(&config.UpdatedAt)
+	if err != nil {
+		return model.ThoughtConfig{}, err
 	}
-	return config, err
-}
-
-func (s *Store) UpdateThoughtConfig(featuredThoughtID *string) error {
-	_, err := s.DB.Exec(`UPDATE thoughts_config SET featured_thought_id = ?, updated_at = ? WHERE id = 'thoughts_1'`, featuredThoughtID, nowRFC3339())
-	return err
+	pinned, err := s.GetPinnedIds(model.ContentKindThought)
+	if err != nil {
+		return model.ThoughtConfig{}, err
+	}
+	config.PinnedIds = pinned
+	return config, nil
 }
 
 func (s *Store) GetWritingConfig() (model.WritingConfig, error) {
 	var config model.WritingConfig
-	var featuredWritingID sql.NullString
-	err := s.DB.QueryRow(`SELECT featured_writing_id, updated_at FROM writings_config WHERE id = 'writings_1'`).Scan(&featuredWritingID, &config.UpdatedAt)
-	if featuredWritingID.Valid {
-		config.FeaturedWritingID = &featuredWritingID.String
+	err := s.DB.QueryRow(`SELECT updated_at FROM writings_config WHERE id = 'writings_1'`).Scan(&config.UpdatedAt)
+	if err != nil {
+		return model.WritingConfig{}, err
 	}
-	return config, err
+	pinned, err := s.GetPinnedIds(model.ContentKindArticle)
+	if err != nil {
+		return model.WritingConfig{}, err
+	}
+	config.PinnedIds = pinned
+	return config, nil
 }
 
-func (s *Store) UpdateWritingConfig(featuredWritingID *string) error {
-	_, err := s.DB.Exec(`UPDATE writings_config SET featured_writing_id = ?, updated_at = ? WHERE id = 'writings_1'`, featuredWritingID, nowRFC3339())
-	return err
+func (s *Store) GetPinnedIds(kind model.ContentKind) ([]string, error) {
+	rows, err := s.DB.Query(`SELECT content_id FROM pins WHERE kind = ? ORDER BY position ASC, created_at ASC`, kind)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	ids := []string{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
+// SetPinnedIds replaces the whole pin set for a kind. Order in pins is the
+// position index: callers pass the intended display order. The config
+// singleton's updated_at advances so admin reads reflect the last mutation.
+func (s *Store) SetPinnedIds(kind model.ContentKind, ids []string) error {
+	tx, err := s.DB.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.Exec(`DELETE FROM pins WHERE kind = ?`, kind); err != nil {
+		return err
+	}
+	now := nowRFC3339()
+	for index, id := range ids {
+		if _, err := tx.Exec(`INSERT INTO pins (content_id, kind, position, created_at) VALUES (?, ?, ?, ?)`, id, kind, index, now); err != nil {
+			return err
+		}
+	}
+	configTable := "thoughts_config"
+	configID := "thoughts_1"
+	if kind == model.ContentKindArticle {
+		configTable = "writings_config"
+		configID = "writings_1"
+	}
+	if _, err := tx.Exec(`UPDATE `+configTable+` SET updated_at = ? WHERE id = ?`, now, configID); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *Store) TouchPresence(visitorID string) (int, error) {

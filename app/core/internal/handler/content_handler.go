@@ -159,7 +159,7 @@ func parseContentListOptions(r *http.Request, includeDrafts bool) (store.Content
 	query := r.URL.Query()
 	allowed := []string{"kind", "tag", "q", "page", "pageSize", "sort", "aiAssisted"}
 	if includeDrafts {
-		allowed = append(allowed, "status")
+		allowed = append(allowed, "status", "pinned")
 	}
 	if err := rejectUnknownQuery(query, allowed...); err != nil {
 		return store.ContentListOptions{}, err
@@ -225,6 +225,16 @@ func parseContentListOptions(r *http.Request, includeDrafts bool) (store.Content
 			return options, fmt.Errorf("status is invalid")
 		}
 		options.Status = model.ContentStatus(rawStatus)
+	}
+	if rawPinned := strings.TrimSpace(query.Get("pinned")); rawPinned != "" {
+		if !includeDrafts {
+			return options, fmt.Errorf("pinned is invalid")
+		}
+		value, err := strconv.ParseBool(rawPinned)
+		if err != nil {
+			return options, fmt.Errorf("pinned must be a boolean")
+		}
+		options.PinnedIDsOnly = value
 	}
 	return options, nil
 }

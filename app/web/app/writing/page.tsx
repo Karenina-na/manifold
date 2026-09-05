@@ -42,7 +42,7 @@ export default async function WritingPage({ searchParams }: { searchParams: Sear
       totalPages: archive.pagination.totalPages,
       page: archive.pagination.page,
     } : null}
-    featured={filtersActive || sort !== "newest" || site?.featuredWriting?.kind !== "ARTICLE" ? null : site.featuredWriting}
+    pinned={filtersActive || sort !== "newest" ? [] : (site?.pinnedWritings ?? [])}
     tags={tagPage?.data ?? null}
     query={query}
     activeTags={tags}

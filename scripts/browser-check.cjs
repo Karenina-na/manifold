@@ -550,6 +550,27 @@ async function main() {
     await overviewResponse;
     await dashboardCommentsResponse;
     await admin.getByRole('heading', { name: 'Dashboard' }).waitFor({ state: 'visible', timeout: 5000 });
+
+    // Dashboard panels: paging between pages of different length must not
+    // clamp the window scroll to the bottom of the page.
+    {
+      // The 12 filler comments plus seeded ones give the comments panel a
+      // second page; scroll its pager into view like a user would.
+      const activityNext = admin.locator('section[aria-label="Recent activity"]').getByRole('button', { name: 'Next page' });
+      if (await activityNext.isEnabled()) {
+        await activityNext.scrollIntoViewIfNeeded();
+        const scrollBefore = await admin.evaluate(() => window.scrollY);
+        const auditPage2 = admin.waitForResponse((response) => new URL(response.url()).pathname === '/api/v1/admin/audit' && new URL(response.url()).searchParams.get('page') === '2' && response.status() === 200);
+        await activityNext.click();
+        await auditPage2;
+        await admin.waitForTimeout(300);
+        const scrollAfter = await admin.evaluate(() => window.scrollY);
+        if (scrollAfter > scrollBefore + 80) {
+          throw new Error(`Dashboard paging jumps the page to the bottom: ${scrollBefore} -> ${scrollAfter}`);
+        }
+      }
+    }
+
     await admin.getByRole('button', { name: 'Comments' }).click();
     await admin.getByText('Manage comments.').waitFor({ state: 'visible', timeout: 5000 });
     const targetRow = admin.locator('.moderation-row').filter({ hasText: replyBody });
@@ -853,6 +874,35 @@ async function main() {
 
     await admin.getByRole('button', { name: 'Unpin A Small Signal' }).click();
     await admin.waitForResponse((response) => coreResponse(response, '/api/v1/admin/thoughts/config', 'PUT', 200));
+
+    // Active sessions: signing out one session from the list revokes it
+    // server-side and soft-deletes the row (the list does not linger).
+    {
+      const extraLogin = await fetch(`${coreUrl}/api/v1/admin/session`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username, password }) });
+      if (extraLogin.status !== 200) throw new Error(`Extra session creation failed: ${extraLogin.status}`);
+      const { accessToken: extraToken } = await extraLogin.json();
+      await admin.setViewportSize({ width: 1440, height: 1000 });
+      await admin.getByRole('button', { name: 'Settings' }).click();
+      await admin.getByRole('heading', { name: 'Site settings.' }).waitFor({ state: 'visible', timeout: 5000 });
+      const sessionRows = admin.locator('.security-session-row');
+      await sessionRows.filter({ hasText: 'Active' }).first().waitFor({ state: 'visible', timeout: 5000 });
+      const rowsBefore = await sessionRows.count();
+      if (rowsBefore < 2) throw new Error(`Expected the current plus the extra session in the list, got ${rowsBefore}`);
+      // The extra session row carries the Sign out button; the current one shows "This device".
+      const extraRow = sessionRows.filter({ hasNotText: 'This device' }).first();
+      const revokeResponse = admin.waitForResponse((response) => /\/api\/v1\/admin\/session\/[^/]+\/logout$/.test(new URL(response.url()).pathname) && response.request().method() === 'POST' && response.status() === 204);
+      await extraRow.getByRole('button', { name: /^Sign out session / }).click();
+      const confirmBody = admin.getByText('Sign out this session? Its token stops working immediately.');
+      await confirmBody.waitFor({ state: 'visible', timeout: 5000 });
+      // The popover portals to document.body; scope to the body's dropdown.
+      await confirmBody.locator('..').getByRole('button', { name: 'Sign out', exact: true }).click();
+      await revokeResponse;
+      await admin.waitForFunction((expected) => document.querySelectorAll('.security-session-row').length === expected, rowsBefore - 1, { timeout: 5000 });
+      const extraTokenGone = await fetch(`${coreUrl}/api/v1/admin/stats`, { headers: { authorization: `Bearer ${extraToken}` } });
+      if (extraTokenGone.status !== 401) throw new Error(`Expected the targeted session revoked, got ${extraTokenGone.status}`);
+      const browserTokenAlive = await fetch(`${coreUrl}/api/v1/admin/stats`, { headers: { authorization: `Bearer ${browserToken}` } });
+      if (browserTokenAlive.status !== 200) throw new Error(`Expected the current session to stay valid, got ${browserTokenAlive.status}`);
+    }
 
     // Security section: change password revokes other sessions; sign-out
     // revokes the current session server-side.

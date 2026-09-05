@@ -1,6 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Alert, Button, Select, Switch, Textarea, TextInput } from '@mantine/core'
+import { Alert, Autocomplete, Button, Switch, Textarea, TextInput } from '@mantine/core'
 import { CalendarDays, Clock3, Eye, Heart, Languages, Plus } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
@@ -28,7 +28,11 @@ const schema = z.object({
 })
 type Form = z.infer<typeof schema>
 const empty: Form = { slug: '', title: '', summary: '', body: '', tags: [], language: '', aiAssisted: false }
-const languageOptions = ['Go', 'TypeScript', 'JavaScript', 'Python', 'Rust', 'C', 'C++', 'Java', 'Kotlin', 'Swift', 'SQL', 'Bash', 'Markdown', 'Other'].map((value) => ({ value, label: value }))
+
+// The language field records the language the piece is written in, not a
+// programming language. Presets cover common garden languages; the searchable
+// select lets any free-text value be stored instead.
+const languagePresets = ['English', '简体中文', '繁體中文', '日本語', '한국어', 'Français', 'Deutsch', 'Español', 'Português', 'Italiano', 'Русский', 'Nederlands', 'Other']
 
 function metadataFrom(form: Form): ArticleMetadataInput {
   return {
@@ -65,15 +69,17 @@ function useWritingPin(client: ReturnType<typeof createAdminClient>) {
   const queryClient = useQueryClient()
   const config = useQuery({ queryKey: ['admin-writings-config'], queryFn: () => client.adminWritingConfig() })
   const setPin = useMutation({
-    mutationFn: (id: string | null) => client.updateWritingConfig({ featuredWritingId: id }),
+    mutationFn: (ids: string[]) => client.updateWritingConfig({ pinnedIds: ids }),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['admin-writings-config'] }),
   })
+  const pinnedIds = config.data?.pinnedIds ?? []
+  const onToggle = (content: AdminContent) => setPin.mutate(pinnedIds.includes(content.id) ? pinnedIds.filter((id) => id !== content.id) : [...pinnedIds, content.id])
   return {
     config,
     setPin,
     control: {
-      pinnedId: config.data?.featuredWritingId ?? null,
-      onToggle: (content: AdminContent) => setPin.mutate(config.data?.featuredWritingId === content.id ? null : content.id),
+      pinnedIds,
+      onToggle,
       pending: setPin.isPending,
     },
   }
@@ -176,10 +182,14 @@ function WritingEditorPage({ client, editingId, commentsRequested, routeQuery }:
   const pinSection = isNew ? null : <div className="pin-section">
     <Switch
       label="Pin to the writings archive"
-      description="Pins this piece as the Featured card on the public Writings page; clearing it falls back to the newest published writing."
-      checked={pin.config.data?.featuredWritingId === editingId}
+      description="Pins this piece in the Featured row at the top of the public Writings page. Multiple pieces can be pinned."
+      checked={pin.config.data?.pinnedIds.includes(editingId) ?? false}
       disabled={pin.setPin.isPending}
-      onChange={(event) => pin.setPin.mutate(event.currentTarget.checked ? editingId : null)}
+      onChange={(event) => pin.setPin.mutate(
+        event.currentTarget.checked
+          ? [...(pin.config.data?.pinnedIds ?? []), editingId]
+          : (pin.config.data?.pinnedIds ?? []).filter((id) => id !== editingId)
+      )}
     />
     {pin.setPin.isError && <Alert color="red" variant="light">The pin could not be updated.</Alert>}
   </div>
@@ -190,7 +200,15 @@ function WritingEditorPage({ client, editingId, commentsRequested, routeQuery }:
     <Textarea label="Summary" description={`✦ ${watched.summary.trim().length}/4000 — shown on archive cards`} {...form.register('summary')} minRows={2} error={form.formState.errors.summary?.message} />
     <div><label>Tags</label><ChipsInput value={watched.tags} onChange={(next) => form.setValue('tags', next, { shouldDirty: true })} placeholder="Add tag and press Enter" /></div>
     <div className="form-grid">
-      <Select label="Language" description="Shown in the article meta line" value={watched.language || null} onChange={(value) => form.setValue('language', value ?? '', { shouldDirty: true })} data={languageOptions} clearable />
+      <Autocomplete
+        label="Language"
+        description="The language the piece is written in, shown in the article meta line"
+        value={watched.language}
+        onChange={(value) => form.setValue('language', value, { shouldDirty: true })}
+        data={languagePresets}
+        placeholder="e.g. English"
+        clearable
+      />
       <TextInput label="Estimated reading time" value={`${minutes} min`} readOnly description="Core recalculates this on save" />
     </div>
     <Switch label="AI-assisted writing" description="Lets readers filter this piece out with “No AI writing”" checked={watched.aiAssisted} onChange={(event) => form.setValue('aiAssisted', event.currentTarget.checked, { shouldDirty: true })} />

@@ -12,7 +12,7 @@ export type StatusFilter = 'ALL' | 'DRAFT' | 'PUBLISHED' | 'DELETED'
 
 export type TransitionAction = 'publish' | 'unpublish' | 'delete' | 'restore'
 
-export type PinControl = { pinnedId: string | null; onToggle: (content: AdminContent) => void; pending: boolean }
+export type PinControl = { pinnedIds: string[]; onToggle: (content: AdminContent) => void; pending: boolean }
 
 type ContentListPanelProps = {
   client: ManifoldClient
@@ -26,6 +26,7 @@ type ContentListPanelProps = {
 
 export function ContentListPanel({ client, kind, singular, onEdit, onTransition, hrefFor, pin }: ContentListPanelProps) {
   const [status, setStatus] = useState<StatusFilter>('ALL')
+  const [pinnedOnly, setPinnedOnly] = useState(false)
   const [search, setSearch] = useState('')
   const [q, setQ] = useState('')
   const [sort, setSort] = useState<ContentSort>('newest')
@@ -38,8 +39,8 @@ export function ContentListPanel({ client, kind, singular, onEdit, onTransition,
     return () => window.clearTimeout(timer)
   }, [search])
   const list = useQuery({
-    queryKey: ['admin-content', kind, { status, q, sort, page }],
-    queryFn: () => client.adminContent({ kind, status: status === 'ALL' ? undefined : status, q: q || undefined, sort: sort === 'newest' ? undefined : sort, page }),
+    queryKey: ['admin-content', kind, { status, q, sort, page, pinned: pinnedOnly || undefined }],
+    queryFn: () => client.adminContent({ kind, status: status === 'ALL' ? undefined : status, q: q || undefined, sort: sort === 'newest' ? undefined : sort, page, pinned: pinnedOnly || undefined }),
   })
   const items = list.data?.data ?? []
   const totalPages = list.data?.pagination.totalPages ?? 1
@@ -63,6 +64,12 @@ export function ContentListPanel({ client, kind, singular, onEdit, onTransition,
           className={status === option ? 'filter-chip active' : 'filter-chip'}
           onClick={() => { setStatus(option); setPage(1) }}
         >{option === 'ALL' ? 'All' : option === 'DRAFT' ? 'Drafts' : option === 'PUBLISHED' ? 'Published' : 'Deleted'}</button>)}
+        {pin && <button
+          type="button"
+          className={pinnedOnly ? 'filter-chip active' : 'filter-chip'}
+          aria-pressed={pinnedOnly}
+          onClick={() => { setPinnedOnly((value) => !value); setPage(1) }}
+        ><Pin size={12} /> Pinned</button>}
       </div>
       <select className="filter-sort" value={sort} onChange={(event) => { setSort(event.currentTarget.value as ContentSort); setPage(1) }} aria-label="Sort">
         <option value="newest">Newest</option>
@@ -91,7 +98,7 @@ function ContentRow({ content, singular, onEdit, onTransition, hrefFor, pin }: {
   const preview = content.summary?.trim()
     ? `✦ ${content.summary.trim()}`
     : content.excerpt
-  const pinned = pin?.pinnedId === content.id
+  const pinned = pin?.pinnedIds.includes(content.id) ?? false
   return <article className="content-row" onClick={() => onEdit(content)}>
     <div>
       <div className="row-title"><span className={`status-dot ${content.status.toLowerCase()}`} />{content.title || `Untitled ${singular}`}{pinned && <span className="pinned-badge"><Pin size={11} /> Pinned</span>}</div>

@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Badge } from '@mantine/core'
 import { ChevronLeft, ChevronRight, Eye, FileText, MessageCircle, PenLine, RefreshCw, ThumbsUp, Users } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
@@ -73,7 +73,10 @@ export function DashboardWorkspace({ token }: { token: string }) {
   const [auditSearch, setAuditSearch] = useState('')
   const [auditPage, setAuditPage] = useState(1)
   const debouncedAuditSearch = useDebouncedValue(auditSearch, AUDIT_DEBOUNCE_MS)
-  const audit = useQuery({ queryKey: ['admin-audit', auditPage, debouncedAuditSearch], queryFn: () => client.adminAudit({ page: auditPage, pageSize: PANEL_PAGE_SIZE, q: debouncedAuditSearch }) })
+  // placeholderData keeps the previous page's rows while the next page loads:
+  // without it the list briefly renders empty, the document collapses, and the
+  // browser clamps the scroll position to the bottom.
+  const audit = useQuery({ queryKey: ['admin-audit', auditPage, debouncedAuditSearch], queryFn: () => client.adminAudit({ page: auditPage, pageSize: PANEL_PAGE_SIZE, q: debouncedAuditSearch }), placeholderData: keepPreviousData })
 
   const content = overview.data?.content
   const trendData = overview.data?.trend.monthly.map((point) => ({ ...point, label: point.month.slice(2) })) ?? []

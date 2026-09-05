@@ -42,7 +42,7 @@ const page = await client.content({ kind: "ARTICLE", pageSize: 20 })
 | --- | --- | --- | --- |
 | `health()` | GET | `/healthz` | `HealthStatus` |
 | `profile()` | GET | `/api/v1/profile` | `Profile` |
-| `site()` | GET | `/api/v1/site` | `SiteComposition`（站点设置 + `featuredThought`/`featuredWriting` 置顶内容） |
+| `site()` | GET | `/api/v1/site` | `SiteComposition`（站点设置 + `pinnedThoughts`/`pinnedWritings` 置顶内容数组） |
 | `content(query?)` | GET | `/api/v1/content` | `Collection<Content>`，唯一公共列表面；`query` 支持 `kind`（单值或多值 `string[]`，数组序列化为逗号分隔，多值按 OR 命中任一标签）、`tag`（同上）、`q`、`page`/`pageSize`（页码分页）、`sort`、`aiAssisted` |
 | `tags(query?)` | GET | `/api/v1/tags` | `Collection<TagSummary>` 标签聚合，`query` 支持 `kind = "THOUGHT" \| "ARTICLE"` |
 | `contentBySlug(slug, query?, visitorId?)` | GET | `/api/v1/content/:slug` | `ContentDetail`；`query: { trackView: false }` 关闭浏览计数（默认计入），`referrer` 传 origin 形式的来源供浏览事件分析；`visitorId` 附带 `X-Visitor-ID` 供 Core 按"同人同内容同 UTC 日"去重浏览事件 |
@@ -59,6 +59,7 @@ const page = await client.content({ kind: "ARTICLE", pageSize: 20 })
 | --- | --- | --- | --- |
 | `login(input)` | POST | `/api/v1/admin/session` | `LoginResponse` |
 | `logoutSession()` | POST | `/api/v1/admin/session/logout` | `void`，204；吊销当前会话（token 立即失效） |
+| `logoutSessionById(id)` | POST | `/api/v1/admin/session/{id}/logout` | `void`，204；按 id 吊销当前用户的指定会话（来自 `adminSessions()` 列表），吊销后该行从列表软删除 |
 | `logoutAllSessions()` | POST | `/api/v1/admin/session/logout-all` | `void`，204；吊销该用户除当前外所有会话 |
 | `changePassword(input)` | POST | `/api/v1/admin/password` | `void`，204；body `ChangePasswordInput{currentPassword,newPassword}`，成功后吊销其他会话；旧密码错误抛 `ApiError` 401 |
 | `adminStats()` | GET | `/api/v1/admin/stats` | `AdminStats` |
@@ -72,9 +73,9 @@ const page = await client.content({ kind: "ARTICLE", pageSize: 20 })
 | `mediaReferences(id)` | GET | `/api/v1/admin/media/{id}/references` | `MediaReferenceList`（`{ references: [...] }`，每项含 `contentId`/`kind`/`title`/`slug`/`status`） |
 | `adminProfile()` / `updateProfile(input)` | GET/PUT | `/api/v1/admin/profile` | `Profile` |
 | `adminSite()` / `updateSite(input)` | GET/PUT | `/api/v1/admin/site` | `SiteConfig`；`updateSite` 全量提交站点设置 |
-| `adminThoughtConfig()` / `updateThoughtConfig(input)` | GET/PUT | `/api/v1/admin/thoughts/config` | `ThoughtConfig` |
-| `adminWritingConfig()` / `updateWritingConfig(input)` | GET/PUT | `/api/v1/admin/writings/config` | `WritingConfig`，非空 `featuredWritingId` 必须引用已发布 ARTICLE |
-| `adminContent(query?)` | GET | `/api/v1/admin/content` | `Collection<AdminContent>`，`query` 在公共过滤之上追加 `status` |
+| `adminThoughtConfig()` / `updateThoughtConfig(input)` | GET/PUT | `/api/v1/admin/thoughts/config` | `ThoughtConfig`，`pinnedIds: string[]` 整体替换置顶 |
+| `adminWritingConfig()` / `updateWritingConfig(input)` | GET/PUT | `/api/v1/admin/writings/config` | `WritingConfig`，`pinnedIds` 每个 ID 必须引用已发布 ARTICLE |
+| `adminContent(query?)` | GET | `/api/v1/admin/content` | `Collection<AdminContent>`，`query` 在公共过滤之上追加 `status` 与 `pinned`（布尔，仅过滤已置顶） |
 | `adminContentItem(id)` | GET | `/api/v1/admin/content/{id}` | `AdminContent`，单条管理内容 |
 | `createContent(input)` | POST | `/api/v1/admin/content` | `AdminContent` |
 | `updateContent(id, input)` | PUT | `/api/v1/admin/content/:id` | `AdminContent`；完整替换并携带 `expectedVersion` |

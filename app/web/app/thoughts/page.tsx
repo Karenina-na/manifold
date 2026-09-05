@@ -20,6 +20,6 @@ export default async function ThoughtsPage({ searchParams }: { searchParams: Sea
     client.tags({ kind: "THOUGHT" }).catch(() => null),
     client.site().catch(() => null),
   ]);
-  const featured = site?.featuredThought?.kind === "THOUGHT" ? site.featuredThought : null;
-  return <ThoughtArchive key={`${query}|${tags.join(",")}|${page}`} initialArchive={archive} featured={featured} tags={tagsPage?.data ?? null} initialQuery={query} initialTags={tags} />;
+  const pinned = site?.pinnedThoughts ?? [];
+  return <ThoughtArchive key={`${query}|${tags.join(",")}|${page}`} initialArchive={archive} pinned={pinned} tags={tagsPage?.data ?? null} initialQuery={query} initialTags={tags} />;
 }

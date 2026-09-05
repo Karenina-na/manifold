@@ -137,6 +137,9 @@ func contentListWhere(includeDrafts bool, options ContentListOptions) (string, [
 		query += ` AND COALESCE(json_extract(metadata_json, '$.aiAssisted'), 0) IN (1, 'true') = ?`
 		args = append(args, *options.AiAssisted)
 	}
+	if options.PinnedIDsOnly {
+		query += ` AND EXISTS (SELECT 1 FROM pins WHERE pins.content_id = content.id AND pins.kind = content.kind)`
+	}
 	return query, args
 }
 
@@ -251,42 +254,29 @@ func (s *Store) GetContentByID(id string, includeDrafts bool) (model.Content, er
 	return content, err
 }
 
-// FeaturedContent resolves the configured pin for a kind. A missing pin falls
-// back to the newest published item of that kind so the home page never loses
-// its hero.
-func (s *Store) FeaturedContent(kind model.ContentKind) (*model.Content, error) {
-	var featuredID *string
-	if kind == model.ContentKindThought {
-		config, err := s.GetThoughtConfig()
-		if err != nil {
-			return nil, err
-		}
-		featuredID = config.FeaturedThoughtID
-	} else {
-		config, err := s.GetWritingConfig()
-		if err != nil {
-			return nil, err
-		}
-		featuredID = config.FeaturedWritingID
-	}
-	if featuredID != nil {
-		item, err := s.GetContentByID(*featuredID, false)
-		if err == nil && item.Kind == kind {
-			item.Body = ""
-			return &item, nil
-		}
-		if err != nil && !errors.Is(err, ErrContentNotFound) {
-			return nil, err
-		}
-	}
-	list, err := s.ListContent(false, ContentListOptions{Kinds: []model.ContentKind{kind}, PageSize: 1})
+// PinnedContent resolves the configured pins for a kind in display order
+// (position, then pin time). Pins are explicit: an empty pin set returns nil.
+func (s *Store) PinnedContent(kind model.ContentKind) ([]model.Content, error) {
+	ids, err := s.GetPinnedIds(kind)
 	if err != nil {
 		return nil, err
 	}
-	if len(list.Items) > 0 {
-		return &list.Items[0], nil
+	items := make([]model.Content, 0, len(ids))
+	for _, id := range ids {
+		item, err := s.GetContentByID(id, false)
+		if err != nil {
+			if errors.Is(err, ErrContentNotFound) {
+				continue
+			}
+			return nil, err
+		}
+		if item.Kind != kind {
+			continue
+		}
+		item.Body = ""
+		items = append(items, item)
 	}
-	return nil, nil
+	return items, nil
 }
 
 // CreateContent persists a new draft row in one transaction, deriving the

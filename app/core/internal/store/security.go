@@ -7,6 +7,7 @@ import (
 )
 
 var ErrCredentialNotFound = errors.New("admin credential not found")
+var ErrSessionNotFound = errors.New("admin session not found")
 
 // ensureAdminCredential seeds the bootstrap credential into an empty table.
 // It is a no-op when the table already has a row or either value is empty, so
@@ -81,6 +82,35 @@ func (s *Store) RevokeSession(id string, now time.Time) error {
 	return err
 }
 
+// GetSession loads one session row regardless of state; ownership checks and
+// revocation happen in the handler layer.
+func (s *Store) GetSession(id string) (AdminSessionRow, error) {
+	var row AdminSessionRow
+	var createdAt, expiresAt string
+	var revokedAt sql.NullString
+	err := s.DB.QueryRow(`SELECT id, subject, created_at, expires_at, revoked_at FROM admin_sessions WHERE id = ?`, id).Scan(&row.ID, &row.Subject, &createdAt, &expiresAt, &revokedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return AdminSessionRow{}, ErrSessionNotFound
+	}
+	if err != nil {
+		return AdminSessionRow{}, err
+	}
+	if row.CreatedAt, err = time.Parse(time.RFC3339, createdAt); err != nil {
+		return AdminSessionRow{}, err
+	}
+	if row.ExpiresAt, err = time.Parse(time.RFC3339, expiresAt); err != nil {
+		return AdminSessionRow{}, err
+	}
+	if revokedAt.Valid {
+		parsed, err := time.Parse(time.RFC3339, revokedAt.String)
+		if err != nil {
+			return AdminSessionRow{}, err
+		}
+		row.RevokedAt = &parsed
+	}
+	return row, nil
+}
+
 // RevokeSessions redacts every active session for a subject except one id.
 func (s *Store) RevokeSessions(subject string, exceptCurrentID string, now time.Time) error {
 	_, err := s.DB.Exec(`UPDATE admin_sessions SET revoked_at = ? WHERE subject = ? AND id != ? AND revoked_at IS NULL`, now.UTC().Format(time.RFC3339), subject, exceptCurrentID)
@@ -96,10 +126,11 @@ type AdminSessionRow struct {
 	RevokedAt *time.Time
 }
 
-// AdminSessions lists every session row for a subject, newest first. Revoked
-// sessions are included so the UI can show what logout-all actually invalidated.
+// AdminSessions lists the live (not revoked, not expired) session rows for a
+// subject, newest first. Revoked sessions are soft-deleted history: they stay
+// in the table for audit but leave the admin list.
 func (s *Store) AdminSessions(subject string) ([]AdminSessionRow, error) {
-	rows, err := s.DB.Query(`SELECT id, created_at, expires_at, revoked_at FROM admin_sessions WHERE subject = ? ORDER BY created_at DESC`, subject)
+	rows, err := s.DB.Query(`SELECT id, created_at, expires_at, revoked_at FROM admin_sessions WHERE subject = ? AND revoked_at IS NULL AND expires_at > ? ORDER BY created_at DESC`, subject, nowRFC3339())
 	if err != nil {
 		return nil, err
 	}

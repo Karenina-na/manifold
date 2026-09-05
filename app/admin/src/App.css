@@ -241,7 +241,10 @@ button { cursor: pointer; }
 .dash-list .dash-meta { color: var(--muted); font-size: 11px; line-height: 1.5; }
 .dash-list .dash-value { flex: 0 0 auto; color: var(--muted); font-size: 12px; }
 .panel-stack { display: flex; flex-direction: column; }
-.panel-stack .dash-list { flex: 1; }
+/* Both panel lists page at 10 rows; the min-height keeps short pages from
+   collapsing the document, which would clamp the window scroll to the bottom
+   when paging from a full page to a partial one. */
+.panel-stack .dash-list { flex: 1; min-height: 460px; }
 .panel-search { width: 100%; margin-bottom: 6px; padding: 9px 11px; border: 1px solid var(--line); border-radius: 2px; color: var(--ink); background: #fff; outline: none; font-size: 13px; transition: border-color 160ms ease, box-shadow 160ms ease; }
 .panel-search:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .panel-pager { display: flex; align-items: center; justify-content: space-between; margin-top: auto; padding-top: 12px; }

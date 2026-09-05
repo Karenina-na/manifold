@@ -439,8 +439,8 @@ func TestIncrementalCommentMigrationFromSchemaV2(t *testing.T) {
 	if err := database.DB.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
 		t.Fatal(err)
 	}
-	if version != 3 {
-		t.Fatalf("expected user_version 3, got %d", version)
+	if version != 4 {
+		t.Fatalf("expected user_version 4, got %d", version)
 	}
 	var hiddenColumn int
 	if err := database.DB.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('comments') WHERE name = 'hidden_at'`).Scan(&hiddenColumn); err != nil {
@@ -448,6 +448,13 @@ func TestIncrementalCommentMigrationFromSchemaV2(t *testing.T) {
 	}
 	if hiddenColumn != 1 {
 		t.Fatal("expected incremental migration to add comments.hidden_at")
+	}
+	var pinsColumn int
+	if err := database.DB.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('thoughts_config') WHERE name = 'featured_thought_id'`).Scan(&pinsColumn); err != nil {
+		t.Fatal(err)
+	}
+	if pinsColumn != 0 {
+		t.Fatal("expected incremental migration to drop thoughts_config.featured_thought_id")
 	}
 }
 

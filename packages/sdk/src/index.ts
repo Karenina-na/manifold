@@ -50,6 +50,7 @@ export class ManifoldClient {
 	setLike(slug: string, visitorId: string, enabled: boolean) { return this.request<LikeSummary>(`/api/v1/content/${encodeURIComponent(slug)}/likes`, { method: enabled ? "PUT" : "DELETE", headers: { "X-Visitor-ID": visitorId } }); }
 	login(input: LoginInput) { return this.request<LoginResponse>("/api/v1/admin/session", { method: "POST", body: input }); }
 	logoutSession() { return this.request<void>("/api/v1/admin/session/logout", { method: "POST" }); }
+	logoutSessionById(id: string) { return this.request<void>(`/api/v1/admin/session/${this.path(id)}/logout`, { method: "POST" }); }
 	logoutAllSessions() { return this.request<void>("/api/v1/admin/session/logout-all", { method: "POST" }); }
 	changePassword(input: ChangePasswordInput) { return this.request<void>("/api/v1/admin/password", { method: "POST", body: input }); }
 	adminSessions() { return this.request<AdminSessionList>("/api/v1/admin/session/list"); }
@@ -62,7 +63,7 @@ export class ManifoldClient {
 	updateThoughtConfig(input: ThoughtConfigInput) { return this.request<ThoughtConfig>("/api/v1/admin/thoughts/config", { method: "PUT", body: input }); }
 	adminWritingConfig() { return this.request<WritingConfig>("/api/v1/admin/writings/config"); }
 	updateWritingConfig(input: WritingConfigInput) { return this.request<WritingConfig>("/api/v1/admin/writings/config", { method: "PUT", body: input }); }
-	adminContent(query?: AdminContentQuery) { return this.request<Collection<AdminContent>>(this.withQuery("/api/v1/admin/content", query, ["kind", "tag", "q", "page", "pageSize", "sort", "aiAssisted", "status"])); }
+	adminContent(query?: AdminContentQuery) { return this.request<Collection<AdminContent>>(this.withQuery("/api/v1/admin/content", query, ["kind", "tag", "q", "page", "pageSize", "sort", "aiAssisted", "status", "pinned"])); }
 	adminContentItem(id: string) { return this.request<AdminContent>(`/api/v1/admin/content/${this.path(id)}`); }
 	createContent(input: ContentInput) { return this.request<AdminContent>("/api/v1/admin/content", { method: "POST", body: input }); }
 	updateContent(id: string, input: UpdateContentInput) { return this.request<AdminContent>(`/api/v1/admin/content/${this.path(id)}`, { method: "PUT", body: input }); }

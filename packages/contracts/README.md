@@ -35,8 +35,8 @@ app/core JSON <--> packages/contracts <--> packages/sdk <--> Web / Admin
 - `ContentQuery`：`kind`（单值或多值 `string[]`，多值 OR）、`tag`（同上）、`q`、`page`/`pageSize`、`sort = "newest" | "oldest" | "updated"`、`aiAssisted`。
 - `AdminContentQuery extends ContentQuery`：追加 `status`。
 - `ContentDetailQuery`：公开详情参数 `trackView`（默认 true，传 `false` 关闭浏览计数）、`referrer`。
-- `ThoughtConfig` / `ThoughtConfigInput`：可空 `featuredThoughtId` 的 Admin 配置读写契约。
-- `WritingConfig` / `WritingConfigInput`：可空 `featuredWritingId` 的 Admin 配置读写契约。
+- `ThoughtConfig` / `ThoughtConfigInput`：`pinnedIds: string[]` 的 Admin 配置读写契约（整体替换置顶集合）。
+- `WritingConfig` / `WritingConfigInput`：`pinnedIds: string[]` 的 Admin 配置读写契约（整体替换置顶集合）。
 - `TagQuery` / `TagSummary`：`/api/v1/tags` 的可选 `kind` 参数和 `{ name, count }` 聚合项。
 - `Media` / `MediaQuery`：管理端媒体对象（`url` 为绝对地址，写入 Markdown 正文使用）与媒体库列表参数。
 - `MediaReference`：媒体被内容引用时的引用条目 `{ contentId, kind, title, slug, status }`，出现在 `DELETE /admin/media/{id}` 的 409 `MEDIA_IN_USE` 错误 `details.references` 中，也作为 `GET /admin/media/{id}/references` 的 `{ references: [...] }` 返回项；`status` 只可能是 `DRAFT`/`PUBLISHED`（引用查询已排除已删除内容）。
@@ -53,7 +53,7 @@ app/core JSON <--> packages/contracts <--> packages/sdk <--> Web / Admin
 
 - `Profile` / `ProfileInput`：身份、简介、网站、简历、兴趣、教育（`ProfileEducationItem`）、经历（`ProfileExperienceItem`）、个人 Series（`ProfileSeriesItem`）和联系方式（`ProfileContact`）。数组字段全部必填键（可为空数组），`resumeUrl: string | null`。
 - `SiteConfig` / `SiteConfigInput`：站点设置（Admin 读写），含 `title`（必填 ≤80）/`description`（≤200）/`footer`（≤200）/`social`（≤6 项）/`commentsEnabled`/`navigation`（1..10 项）/`sections`（1..10 项，`HomepageSection` 枚举）。
-- `SiteComposition extends SiteConfig`：公开 `GET /api/v1/site` 响应，追加按 kind 限定的 `featuredThought` 与 `featuredWriting`（置顶内容随站点组合下发）。
+- `SiteComposition extends SiteConfig`：公开 `GET /api/v1/site` 响应，追加按 kind 限定的 `pinnedThoughts` 与 `pinnedWritings`（置顶内容数组，按置顶顺序下发）。
 - `Stats` / `AdminStats`：公开统计和 Admin 统计包装。
 - `AdminOverview` 及其子类型：Admin 总览聚合。
 - `AnalyticsViews` / `AnalyticsViewsQuery`：去重浏览事件分析（`days` 默认 30 上限 90）。

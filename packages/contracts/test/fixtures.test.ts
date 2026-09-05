@@ -41,7 +41,7 @@ test("wire fixtures conform to contracts", () => {
   if (wire.comment.hidden !== false) throw new Error("comment hidden");
   if (wire.adminComment.deletedAt !== null) throw new Error("admin deletedAt");
   if (wire.adminComment.hiddenAt !== null) throw new Error("admin hiddenAt");
-  if (wire.site.featuredThought !== null || wire.site.featuredWriting !== null) throw new Error("site featured");
+  if (wire.site.pinnedThoughts.length !== 0 || wire.site.pinnedWritings.length !== 0) throw new Error("site featured");
   if (wire.auditEvent.requestId !== "req_abc123") throw new Error("audit requestId");
   if (wire.error.error.code !== "VALIDATION_FAILED") throw new Error("error code");
   if (wire.sessionList.sessions.length !== 2) throw new Error("session list length");

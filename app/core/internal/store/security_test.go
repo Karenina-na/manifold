@@ -118,17 +118,26 @@ func TestAdminSessionsListsRowsNewestFirst(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rows) != 2 {
-		t.Fatalf("expected 2 rows, got %d", len(rows))
+	// Revoked rows are soft-deleted: only the live session is listed.
+	if len(rows) != 1 {
+		t.Fatalf("expected 1 live row, got %d", len(rows))
 	}
 	if rows[0].ID != "ses_b" {
 		t.Fatalf("expected newest session first, got %q", rows[0].ID)
 	}
 	if rows[0].RevokedAt != nil {
-		t.Fatalf("expected ses_b unreviewed, got %v", rows[0].RevokedAt)
+		t.Fatalf("expected ses_b live, got %v", rows[0].RevokedAt)
 	}
-	if rows[1].RevokedAt == nil {
-		t.Fatalf("expected ses_a revoked")
+	// An expired session also leaves the list even when not revoked.
+	if err := database.CreateSession("ses_c", "admin", now.Add(-3*time.Hour), now.Add(-time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	rows, err = database.AdminSessions("admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || rows[0].ID != "ses_b" {
+		t.Fatalf("expected only the live unexpired session, got %+v", rows)
 	}
 	none, err := database.AdminSessions("other")
 	if err != nil {

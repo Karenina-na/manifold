@@ -66,15 +66,17 @@ function useThoughtPin(client: ReturnType<typeof createAdminClient>) {
   const queryClient = useQueryClient()
   const config = useQuery({ queryKey: ['admin-thought-config'], queryFn: () => client.adminThoughtConfig() })
   const setPin = useMutation({
-    mutationFn: (id: string | null) => client.updateThoughtConfig({ featuredThoughtId: id }),
+    mutationFn: (ids: string[]) => client.updateThoughtConfig({ pinnedIds: ids }),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['admin-thought-config'] }),
   })
+  const pinnedIds = config.data?.pinnedIds ?? []
+  const onToggle = (content: AdminContent) => setPin.mutate(pinnedIds.includes(content.id) ? pinnedIds.filter((id) => id !== content.id) : [...pinnedIds, content.id])
   return {
     config,
     setPin,
     control: {
-      pinnedId: config.data?.featuredThoughtId ?? null,
-      onToggle: (content: AdminContent) => setPin.mutate(config.data?.featuredThoughtId === content.id ? null : content.id),
+      pinnedIds,
+      onToggle,
       pending: setPin.isPending,
     },
   }
@@ -177,19 +179,21 @@ function ThoughtEditorPage({ client, editingId, commentsRequested, routeQuery }:
   const pinSection = isNew ? null : <div className="pin-section">
     <Switch
       label="Pin to the thoughts archive"
-      description="Pins this thought at the top of the public Thoughts page; clearing it falls back to the newest published thought."
-      checked={pin.config.data?.featuredThoughtId === editingId}
+      description="Pins this thought in the Featured row at the top of the public Thoughts page. Multiple thoughts can be pinned."
+      checked={pin.config.data?.pinnedIds.includes(editingId) ?? false}
       disabled={pin.setPin.isPending}
-      onChange={(event) => pin.setPin.mutate(event.currentTarget.checked ? editingId : null)}
+      onChange={(event) => pin.setPin.mutate(
+        event.currentTarget.checked
+          ? [...(pin.config.data?.pinnedIds ?? []), editingId]
+          : (pin.config.data?.pinnedIds ?? []).filter((id) => id !== editingId)
+      )}
     />
     {pin.setPin.isError && <Alert color="red" variant="light">The pin could not be updated.</Alert>}
   </div>
   const metaTab = <form className="form-stack" id="thought-form" noValidate onSubmit={submitForm}>
     {!isNew && item.isError && <Alert color="red" variant="light">This thought could not be loaded. Go back and try again.</Alert>}
-    <div className="form-grid">
-      <TextInput label="Title" {...form.register('title')} placeholder="Optional" />
-      <TextInput label="Slug" description={`${webBaseUrl}/thoughts/${watched.slug || '…'}`} {...form.register('slug')} placeholder="a-readable-url" error={form.formState.errors.slug?.message} />
-    </div>
+    <TextInput label="Title" {...form.register('title')} placeholder="Optional" />
+    <TextInput label="Slug" description={`${webBaseUrl}/thoughts/${watched.slug || '…'}`} {...form.register('slug')} placeholder="a-readable-url" error={form.formState.errors.slug?.message} />
     <Textarea label="Summary" description={`✦ ${watched.summary.trim().length}/4000 — shown with the ✦ mark on cards`} {...form.register('summary')} minRows={2} error={form.formState.errors.summary?.message} />
     <div><label>Tags</label><ChipsInput value={watched.tags} onChange={(next) => form.setValue('tags', next, { shouldDirty: true })} placeholder="Add tag and press Enter" /></div>
     <div className="form-stack provenance-stack">

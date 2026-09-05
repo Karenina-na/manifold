@@ -48,11 +48,11 @@ func (h *apiHandler) profile(w http.ResponseWriter, _ *http.Request) {
 }
 
 // SiteCompositionResponse is the typed public site payload: the persisted
-// settings plus the featured content for each kind.
+// settings plus the pinned content for each kind in pin order.
 type SiteCompositionResponse struct {
 	model.SiteConfig
-	FeaturedThought *model.PublicContent `json:"featuredThought"`
-	FeaturedWriting *model.PublicContent `json:"featuredWriting"`
+	PinnedThoughts []model.PublicContent `json:"pinnedThoughts"`
+	PinnedWritings []model.PublicContent `json:"pinnedWritings"`
 }
 
 func (h *apiHandler) site(w http.ResponseWriter, _ *http.Request) {
@@ -61,14 +61,16 @@ func (h *apiHandler) site(w http.ResponseWriter, _ *http.Request) {
 		WriteError(w, http.StatusInternalServerError, "SITE_UNAVAILABLE", "Site configuration is unavailable.")
 		return
 	}
-	response := SiteCompositionResponse{SiteConfig: config, FeaturedThought: nil, FeaturedWriting: nil}
-	if featured, err := h.store.FeaturedContent(model.ContentKindThought); err == nil && featured != nil {
-		public := model.ToPublicContent(*featured)
-		response.FeaturedThought = &public
+	response := SiteCompositionResponse{SiteConfig: config, PinnedThoughts: []model.PublicContent{}, PinnedWritings: []model.PublicContent{}}
+	if pinned, err := h.store.PinnedContent(model.ContentKindThought); err == nil {
+		for _, item := range pinned {
+			response.PinnedThoughts = append(response.PinnedThoughts, model.ToPublicContent(item))
+		}
 	}
-	if featured, err := h.store.FeaturedContent(model.ContentKindArticle); err == nil && featured != nil {
-		public := model.ToPublicContent(*featured)
-		response.FeaturedWriting = &public
+	if pinned, err := h.store.PinnedContent(model.ContentKindArticle); err == nil {
+		for _, item := range pinned {
+			response.PinnedWritings = append(response.PinnedWritings, model.ToPublicContent(item))
+		}
 	}
 	WriteJSON(w, http.StatusOK, response)
 }
@@ -127,6 +129,39 @@ func (h *apiHandler) adminLogoutSession(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	h.audit(r, "admin.session.revoked", "session", claims.ID, nil)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// adminLogoutSessionByID revokes one specific session of the signed-in admin,
+// addressed by id from the Active sessions list. Revoking the current session
+// behaves like the plain logout: the caller's token dies immediately.
+func (h *apiHandler) adminLogoutSessionByID(w http.ResponseWriter, r *http.Request) {
+	claims := auth.ClaimsFromContext(r.Context())
+	if claims == nil || claims.Subject == "" {
+		WriteError(w, http.StatusUnauthorized, "UNAUTHORIZED", "A valid session is required.")
+		return
+	}
+	targetID := chi.URLParam(r, "id")
+	target, err := h.store.GetSession(targetID)
+	if errors.Is(err, store.ErrSessionNotFound) {
+		WriteError(w, http.StatusNotFound, "SESSION_NOT_FOUND", "Session was not found.")
+		return
+	}
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, "SESSIONS_UNAVAILABLE", "Sessions are unavailable.")
+		return
+	}
+	// Sessions are scoped to the signed-in admin; a foreign session id is
+	// indistinguishable from a missing one.
+	if target.Subject != claims.Subject {
+		WriteError(w, http.StatusNotFound, "SESSION_NOT_FOUND", "Session was not found.")
+		return
+	}
+	if err := h.store.RevokeSession(targetID, time.Now().UTC()); err != nil {
+		WriteError(w, http.StatusInternalServerError, "SESSION_REVOKE_FAILED", "Session could not be revoked.")
+		return
+	}
+	h.audit(r, "admin.session.revoked", "session", targetID, nil)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -258,18 +293,17 @@ func (h *apiHandler) adminThoughtConfig(w http.ResponseWriter, _ *http.Request) 
 
 func (h *apiHandler) adminUpdateThoughtConfig(w http.ResponseWriter, r *http.Request) {
 	var input struct {
-		FeaturedThoughtID json.RawMessage `json:"featuredThoughtId"`
+		PinnedIds *[]string `json:"pinnedIds"`
 	}
-	if err := decodeJSON(r, &input); err != nil || len(input.FeaturedThoughtID) == 0 {
-		WriteError(w, http.StatusUnprocessableEntity, "VALIDATION_ERROR", "featuredThoughtId is required and may be null.")
+	if err := decodeJSON(r, &input); err != nil || input.PinnedIds == nil {
+		WriteError(w, http.StatusUnprocessableEntity, "VALIDATION_ERROR", "pinnedIds is required.")
 		return
 	}
-	featuredThoughtID, err := h.decodePinnedContentID(input.FeaturedThoughtID, model.ContentKindThought)
-	if err != nil {
+	if err := h.validatePinnedIds(*input.PinnedIds, model.ContentKindThought); err != nil {
 		WriteError(w, http.StatusUnprocessableEntity, "VALIDATION_ERROR", err.Error())
 		return
 	}
-	if err := h.store.UpdateThoughtConfig(featuredThoughtID); err != nil {
+	if err := h.store.SetPinnedIds(model.ContentKindThought, *input.PinnedIds); err != nil {
 		WriteError(w, http.StatusInternalServerError, "THOUGHT_CONFIG_UPDATE_FAILED", "Thought configuration could not be updated.")
 		return
 	}
@@ -288,18 +322,17 @@ func (h *apiHandler) adminWritingConfig(w http.ResponseWriter, _ *http.Request) 
 
 func (h *apiHandler) adminUpdateWritingConfig(w http.ResponseWriter, r *http.Request) {
 	var input struct {
-		FeaturedWritingID json.RawMessage `json:"featuredWritingId"`
+		PinnedIds *[]string `json:"pinnedIds"`
 	}
-	if err := decodeJSON(r, &input); err != nil || len(input.FeaturedWritingID) == 0 {
-		WriteError(w, http.StatusUnprocessableEntity, "VALIDATION_ERROR", "featuredWritingId is required and may be null.")
+	if err := decodeJSON(r, &input); err != nil || input.PinnedIds == nil {
+		WriteError(w, http.StatusUnprocessableEntity, "VALIDATION_ERROR", "pinnedIds is required.")
 		return
 	}
-	featuredWritingID, err := h.decodePinnedContentID(input.FeaturedWritingID, model.ContentKindArticle)
-	if err != nil {
+	if err := h.validatePinnedIds(*input.PinnedIds, model.ContentKindArticle); err != nil {
 		WriteError(w, http.StatusUnprocessableEntity, "VALIDATION_ERROR", err.Error())
 		return
 	}
-	if err := h.store.UpdateWritingConfig(featuredWritingID); err != nil {
+	if err := h.store.SetPinnedIds(model.ContentKindArticle, *input.PinnedIds); err != nil {
 		WriteError(w, http.StatusInternalServerError, "WRITING_CONFIG_UPDATE_FAILED", "Writing configuration could not be updated.")
 		return
 	}
@@ -307,26 +340,33 @@ func (h *apiHandler) adminUpdateWritingConfig(w http.ResponseWriter, r *http.Req
 	h.adminWritingConfig(w, r)
 }
 
-// decodePinnedContentID validates a pin reference: null clears the pin and a
-// non-empty value must point at published content of the expected kind.
-func (h *apiHandler) decodePinnedContentID(raw json.RawMessage, kind model.ContentKind) (*string, error) {
-	if string(raw) == "null" {
-		return nil, nil
+// validatePinnedIds enforces the admin pin contract: every id must reference
+// currently-published content of the expected kind, with no duplicates.
+// The pins table is a whole-set replacement, so the empty slice clears pins.
+func (h *apiHandler) validatePinnedIds(ids []string, kind model.ContentKind) error {
+	label := "Thought"
+	if kind == model.ContentKindArticle {
+		label = "Writing"
 	}
-	var value string
-	if err := json.Unmarshal(raw, &value); err != nil || strings.TrimSpace(value) == "" || len(value) > 160 {
-		return nil, errors.New("featured id must be a content ID or null")
-	}
-	value = strings.TrimSpace(value)
-	content, err := h.store.GetContentByID(value, false)
-	if err != nil || content.Kind != kind {
-		label := "Thought"
-		if kind == model.ContentKindArticle {
-			label = "Writing"
+	seen := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			return errors.New("pinnedIds must contain content IDs, not empty strings")
 		}
-		return nil, errors.New("Featured " + label + " must reference published " + strings.ToLower(label) + " content.")
+		if len(id) > 160 {
+			return errors.New("pinnedIds entries are too long")
+		}
+		if _, exists := seen[id]; exists {
+			return errors.New("pinnedIds contains duplicates")
+		}
+		seen[id] = struct{}{}
+		content, err := h.store.GetContentByID(id, false)
+		if err != nil || content.Kind != kind {
+			return errors.New("Featured " + label + " must reference published " + strings.ToLower(label) + " content.")
+		}
 	}
-	return &value, nil
+	return nil
 }
 
 func (h *apiHandler) adminListContent(w http.ResponseWriter, r *http.Request) {

@@ -24,7 +24,7 @@ type WritingListData = { items: Article[]; totalItems: number; totalPages: numbe
 
 type WritingArchiveProps = {
   initialList: WritingListData | null;
-  featured: Article | null;
+  pinned: Article[];
   tags: TagSummary[] | null;
   query: string;
   activeTags: string[];
@@ -45,7 +45,7 @@ async function fetchWritingPage(state: { query: string; tags: string[]; page: nu
   return { items: page.data.filter((item): item is Article => item.kind === "ARTICLE"), totalItems: page.pagination.totalItems, totalPages: page.pagination.totalPages, page: page.pagination.page };
 }
 
-export default function WritingArchive({ initialList, featured, tags, query, activeTags, sort, noAi }: WritingArchiveProps) {
+export default function WritingArchive({ initialList, pinned, tags, query, activeTags, sort, noAi }: WritingArchiveProps) {
   const asideSlotRef = useRef<HTMLDivElement>(null);
   const asideRef = useRef<HTMLElement>(null);
   const listRef = useRef<HTMLElement>(null);
@@ -60,7 +60,7 @@ export default function WritingArchive({ initialList, featured, tags, query, act
   });
   const activeSort = (extra.sort as ContentSort) ?? "newest";
   const noAiActive = extra.noAi === "1";
-  const showFeatured = !activeQuery && selectedTags.length === 0 && !noAiActive && activeSort === "newest";
+  const showPinned = !activeQuery && selectedTags.length === 0 && !noAiActive && activeSort === "newest";
   const articles = data?.items ?? [];
 
   const changePage = (next: number) => {
@@ -72,16 +72,18 @@ export default function WritingArchive({ initialList, featured, tags, query, act
     <Reveal className={styles.writingReveal}>
       <header className={styles.writingHero}><span className={styles.eyebrow}>Writings</span><h1>Writing</h1></header>
     </Reveal>
-    {showFeatured && featured && <Reveal className={styles.writingReveal}>
-      <Link href={buildHref(featured)} className={styles.featuredCard}>
-        <div className={styles.featuredTop}><span className={styles.featuredBadge}>Featured</span><span>{formatDate(featured.publishedAt ?? featured.createdAt)}</span></div>
-        <h2>{featured.title}</h2>
-        <WritingPreview item={featured} featured />
-         <div className={styles.featuredFooter}><span>{formatDate(featured.publishedAt)} · {featured.tags.map((value) => `#${value}`).join(" ")} · {featured.metadata.readingMinutes ? `${featured.metadata.readingMinutes} min read` : "Article"}</span><span><Eye size={14} /> Views {featured.viewCount} · <Heart size={14} /> Likes {featured.likeCount}</span></div>
-        <span className={styles.featuredArrow} aria-hidden="true">→</span>
-      </Link>
+    {showPinned && pinned.length > 0 && <Reveal className={styles.writingReveal}>
+      <div className={styles.pinnedRow}>
+        {pinned.map((item) => <Link key={item.id} href={buildHref(item)} className={styles.featuredCard}>
+          <div className={styles.featuredTop}><span className={styles.featuredBadge}>Pinned</span><span>{formatDate(item.publishedAt ?? item.createdAt)}</span></div>
+          <h2>{item.title}</h2>
+          <WritingPreview item={item} featured />
+          <div className={styles.featuredFooter}><span>{formatDate(item.publishedAt)} · {item.tags.map((value) => `#${value}`).join(" ")} · {item.metadata.readingMinutes ? `${item.metadata.readingMinutes} min read` : "Article"}</span><span><Eye size={14} /> Views {item.viewCount} · <Heart size={14} /> Likes {item.likeCount}</span></div>
+          <span className={styles.featuredArrow} aria-hidden="true">→</span>
+        </Link>)}
+      </div>
     </Reveal>}
-    {data === null ? <p className={styles.errorBanner}>The writings could not be loaded.</p> : <Reveal className={styles.writingReveal} manual={showFeatured}>
+    {data === null ? <p className={styles.errorBanner}>The writings could not be loaded.</p> : <Reveal className={styles.writingReveal} manual={showPinned}>
       <section className={styles.writingCollection} ref={listRef}>
         <div className={styles.writingToolbarSurface}>
           <div className={styles.writingToolbar}>
@@ -131,7 +133,7 @@ export default function WritingArchive({ initialList, featured, tags, query, act
     </aside>
   </div>
 </div>
-<ScrollHint manual={showFeatured} targetRef={listRef} />
+<ScrollHint manual={showPinned} targetRef={listRef} />
 </main>;
 }
 

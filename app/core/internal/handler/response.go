@@ -146,6 +146,7 @@ func newRouter(cfg config.Config, database *store.Store, auditEvents events.Audi
 			admin.Get("/audit", h.adminAudit)
 			admin.Post("/session/logout", h.adminLogoutSession)
 			admin.Post("/session/logout-all", h.adminLogoutSessions)
+			admin.Post("/session/{id}/logout", h.adminLogoutSessionByID)
 			admin.Get("/session/list", h.adminListSessions)
 			admin.Post("/password", h.adminChangePassword)
 			admin.Get("/media", h.adminListMedia)

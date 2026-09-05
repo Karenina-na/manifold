@@ -141,20 +141,20 @@ export interface SiteConfig {
 }
 export type SiteConfigInput = SiteConfig
 export interface SiteComposition extends SiteConfig {
-  featuredThought: Extract<Content, { kind: "THOUGHT" }> | null;
-  featuredWriting: Extract<Content, { kind: "ARTICLE" }> | null;
+  pinnedThoughts: Extract<Content, { kind: "THOUGHT" }>[];
+  pinnedWritings: Extract<Content, { kind: "ARTICLE" }>[];
 }
 
-export interface ThoughtConfig { featuredThoughtId: string | null; updatedAt: string }
-export interface ThoughtConfigInput { featuredThoughtId: string | null }
-export interface WritingConfig { featuredWritingId: string | null; updatedAt: string }
-export interface WritingConfigInput { featuredWritingId: string | null }
+export interface ThoughtConfig { pinnedIds: string[]; updatedAt: string }
+export interface ThoughtConfigInput { pinnedIds: string[] }
+export interface WritingConfig { pinnedIds: string[]; updatedAt: string }
+export interface WritingConfigInput { pinnedIds: string[] }
 
 export interface Pagination { page: number; pageSize: number; totalItems: number; totalPages: number }
 export interface Collection<T> { data: T[]; pagination: Pagination }
 
 export interface ContentQuery { kind?: ContentKind | ContentKind[]; tag?: string | string[]; q?: string; page?: number; pageSize?: number; sort?: ContentSort; aiAssisted?: boolean }
-export interface AdminContentQuery extends ContentQuery { status?: ContentStatus }
+export interface AdminContentQuery extends ContentQuery { status?: ContentStatus; pinned?: boolean }
 export interface ContentDetailQuery { trackView?: boolean; referrer?: string }
 
 export interface TagQuery { kind?: ContentKind }
