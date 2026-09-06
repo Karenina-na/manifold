@@ -10,6 +10,7 @@ Manifold 是一个 API-first 的个人 digital garden：同一套内容和个人
 - 匿名评论提交与 Admin 审核、`LIKE` 访客反应。
 - Admin 登录、可撤销会话（logout/logout-all）、在线改密码、内容发布生命周期、评论管理、Profile、Site 和首页 composition 管理。
 - Go Core、SQLite、JWT + Casbin 鉴权（DB 会话校验、可撤销）、请求/追踪 ID、审计事件和 TTL 缓存。
+- **锚定链（设计定稿，尚未实现）**：Core 内嵌一条单写者 PoW 锚定链——每次业务数据变更自动锚定为可验证承诺（只存哈希、站点密钥签名），公开访客也可提交任意 payload 求锚定；sim/proof 双挖矿模式 + 缓冲成块。设计契约见 [`docs/chain.md`](docs/chain.md)。
 
 ## 架构
 
@@ -40,6 +41,7 @@ Core 是唯一拥有业务持久化的服务。Web/Admin 不导入 Go 代码、�
 
 - [`AGENTS.md`](AGENTS.md)：项目背景、架构边界、文档同步准则和验证门槛。
 - [`docs/core.md`](docs/core.md)：Core 当前 API、数据模型和架构。
+- [`docs/chain.md`](docs/chain.md)：锚定链设计契约——证书/区块结构、哈希与签名、变更锚定清单、挖矿与验证（尚未实现）。
 - [`docs/admin.md`](docs/admin.md)：Admin 工作区、API 调用和状态流。
 - [`docs/decisions/web.md`](docs/decisions/web.md)：Web 当前路由、数据流和阅读器架构。
 - [`packages/contracts/README.md`](packages/contracts/README.md)：共享 TypeScript 契约。
@@ -100,6 +102,13 @@ Admin 的 `VITE_CORE_URL` 必须指向 Core（默认 `http://localhost:8080`）�
 | `CORE_STATS_CACHE_TTL` | `30s` | 统计缓存 TTL |
 | `CORE_AUDIT_EVENT_BUFFER` | `256` | 审计队列容量 |
 | `CORE_SEED_FILE` | 空 | 自定义种子 JSON；留空时开发环境用内置演示数据，生产环境只初始化骨架、内容库为空（详见 `docs/core.md` 种子数据章节） |
+| `CORE_CHAIN_PROOF_MODE` | `sim` | 锚定链挖矿模式：`sim` 固定延迟出块，`proof` 真跑 SHA-256 碰撞（设计阶段，详见 `docs/chain.md`） |
+| `CORE_CHAIN_DIFFICULTY` | `8` | proof 模式前导 0 十六进制位数；sim 下忽略 |
+| `CORE_CHAIN_SIM_DELAY` | `1s` | sim 模式模拟挖矿延迟 |
+| `CORE_CHAIN_BATCH_SIZE` | `32` | 缓冲满阈值：pending 证书达到该数量立即打包 |
+| `CORE_CHAIN_MAX_BLOCK_ANCHORS` | `500` | 单块证书上限 |
+| `CORE_CHAIN_FLUSH_TIMEOUT` | `30s` | 防饿死阀门：最老 pending 等待上限 |
+| `CORE_CHAIN_ANCHOR_MAX_BYTES` | `65536` | 公开/Admin 锚定提交 payload 上限，超限 413 |
 | `NEXT_PUBLIC_CORE_URL` | `http://localhost:8080` | Web 请求 Core 的地址 |
 | `NEXT_PUBLIC_SITE_URL` | `http://localhost:3000` | canonical/metadata 基准地址 |
 | `VITE_CORE_URL` | `http://localhost:8080` | Admin 请求 Core 的地址 |
@@ -166,6 +175,7 @@ OpenResty 使用独立域名时，将 Web、Admin、Core 分别代理到 `http:/
 - `/`：Profile、统计和最近内容。
 - `/writing`：公开内容归档。
 - `/writing/:slug`：Markdown 详情、标签、评论和反应。
+- `/chain`：锚定链浏览器与验证页（设计阶段，见 [`docs/chain.md`](docs/chain.md)）——浏览区块/证书、贴原文或按哈希查证、查看站点公钥。
 
 正文使用 `react-markdown` + `remark-gfm` + `rehype-sanitize`；评论无需注册，反应通过浏览器持久化的 `X-Visitor-ID` 区分访客。
 
@@ -189,6 +199,15 @@ OpenResty 使用独立域名时，将 Web、Admin、Core 分别代理到 `http:/
 | `GET/PUT/DELETE` | `/api/v1/content/:slug/likes` | 点赞统计、添加和移除 |
 | `GET` | `/api/v1/stats` | 统计 |
 
+公开接口（锚定链，设计阶段，见 [`docs/chain.md`](docs/chain.md)）：
+
+| 方法 | 路径 | 作用 |
+| --- | --- | --- |
+| `GET` | `/api/v1/chain` | 链概览：高度、证书数、pending、模式、站点公钥 |
+| `POST` | `/api/v1/chain/anchors` | 公开提交任意 payload 求锚定（限流 + 64KB 上限，只存哈希） |
+| `GET` | `/api/v1/chain/anchors`、`/api/v1/chain/blocks` | 证书/区块列表与详情 |
+| `GET/POST` | `/api/v1/chain/verify` | 按哈希或贴原文查证（含全链完整性重放） |
+
 管理接口位于 `/api/v1/admin`，除 `POST /session` 外都需要 `Authorization: Bearer <token>`，覆盖 Profile、Site、Content、Comments、Media 和 Stats 的读写。
 
 错误统一为 `{ error: { code, message, details?, requestId?, traceId? } }`；Core 会返回 `X-Request-ID` 和 `X-Trace-ID`。具体实现说明见 [`app/core/README.md`](app/core/README.md)、[`app/web/README.md`](app/web/README.md) 和 [`app/admin/README.md`](app/admin/README.md)。
@@ -203,6 +222,7 @@ OpenResty 使用独立域名时，将 Web、Admin、Core 分别代理到 `http:/
 - 反应按 `(content, visitor, kind)` 唯一，`PUT` / `DELETE` 幂等。
 - 内容详情和已发布统计使用 TTL 缓存；状态变化会失效对应缓存。
 - 审计事件通过有界异步队列写入 SQLite；队列满不会让原始请求失败。
+- 锚定链（设计阶段）：每次业务数据变更（内容、评论、点赞、Profile、Site、媒体、认证）自动提交承诺证书，缓冲成块后由后台矿工挖块确认；心跳、浏览事件和审计事件是登记在案的例外。链表只增不改，验证走全链重放。详见 [`docs/chain.md`](docs/chain.md)。
 
 ## 当前边界
 

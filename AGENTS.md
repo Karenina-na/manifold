@@ -34,6 +34,7 @@ Web / Admin
 | 文档 | 权威范围 | 何时必须同步 |
 | --- | --- | --- |
 | [`docs/core.md`](docs/core.md) | Core 架构、路由、请求/响应、数据模型、错误和运行配置 | Core 的 API、schema、校验、鉴权、缓存、审计、配置或生命周期变化 |
+| [`docs/chain.md`](docs/chain.md) | 锚定链：证书/区块结构、哈希与签名、锚定清单、挖矿、验证和 `CORE_CHAIN_*` 配置 | 锚定链行为、source 枚举、payload 格式、区块/哈希公式、挖矿触发、验证语义或链配置变化；**新增任何数据库写路径时必须在同一变更中登记锚定清单或说明例外** |
 | [`docs/admin.md`](docs/admin.md) | Admin 工作区、API 调用、query key、表单和状态流 | Admin 工作区、表单、Core API 调用、缓存失效、登录或构建边界变化 |
 | [`docs/decisions/web.md`](docs/decisions/web.md) | Web 当前页面、数据流、渲染器、交互和 SEO | Web 路由、页面数据、Markdown、评论/反应、SEO、设计或浏览器行为变化 |
 | [`docs/web.md`](docs/web.md) | Web 契约摘要和阅读能力 | Web 公共行为或渲染能力变化；内容与决策文档保持一致 |
@@ -69,8 +70,9 @@ Web/Admin 只改变视觉细节时，仍需检查 `docs/design-system/`；只有
 - 文档必须描述当前实现，不得把规划 API 写成已实现。
 - 删除或废弃 API 时，先在文档标记迁移方式和状态，再删除代码。
 - 新增第三方库时，在对应项目文档记录用途、替代方案、包体/运行时权衡和安全边界。
-- 修改 Core API 时，检查 `docs/core.md`、`docs/admin.md`、`docs/decisions/web.md`、`packages/sdk/README.md`、`packages/contracts/README.md` 是否仍一致。
-- 修改共享类型或 SDK 时，至少检查所有调用方和上述五份契约文档。
+- 修改 Core API 时，检查 `docs/core.md`、`docs/chain.md`、`docs/admin.md`、`docs/decisions/web.md`、`packages/sdk/README.md`、`packages/contracts/README.md` 是否仍一致。
+- 修改共享类型或 SDK 时，至少检查所有调用方和上述五份契约文档（chain 相关类型另查 `docs/chain.md`）。
+- 新增会写入数据库的路径（handler/store 写操作）时，按 `docs/chain.md` 第 4 节锚定清单登记新 source 的 payload 形态，或说明归入第 4.2 节例外；不允许静默绕过锚定清单。
 
 ## 注释规范
 

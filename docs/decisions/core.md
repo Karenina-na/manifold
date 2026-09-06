@@ -50,6 +50,16 @@ Thoughts 页面需要一个独立可选的置顶项，以及排除置顶后的�
 
 原因：默认内置数据是站点所有者最常定制的事实，应与 schema 一样有单一文件来源；生产部署必须以干净内容库启动，演示数据只属于开发与测试。当前格式与加载语义的权威描述见 [`docs/core.md`](../core.md) 运行配置章节。
 
+## 决策：内嵌通用锚定链
+
+状态：Accepted（设计定稿 2026-09-06，实现待启动）。
+
+Core 内嵌一条单写者 PoW 锚定链：每次业务数据变更自动提交 SHA-256 承诺证书（站点 ed25519 密钥签名），公开访客与管理员也可提交任意 payload 求锚定。区块以 `prevHash` 串接、Merkle root 聚合证书，sim/proof 双挖矿模式（sim 固定延迟、proof 真跑 SHA-256 前导 0 碰撞），持久化 pending 缓冲凑满或超时才组块。验证走全链重放 + 逐证书验签。
+
+原因：这是 Web3 理念在个人数字花园上的刻意映射——承诺（只存哈希、原文即弃，OpenTimestamps 同款）、可验证签名、无许可写入、mempool→block 批量打包——同时不引入外部链、钱包或 gas。单写者是诚实的取舍：本链防事后篡改、不防写入者作恶，没有多节点共识。业务写路径与证书提交刻意解耦为两步（链故障不阻塞业务），心跳/浏览/审计事件作为登记例外不上链。
+
+当前权威契约（证书/区块结构、哈希公式、锚定清单、配置和验证语义）见 [`docs/chain.md`](../chain.md)。
+
 ## 变更规则
 
 涉及上述决策、Core API 或 schema 的改动必须先更新 [`docs/core.md`](../core.md)，再同步 [`docs/admin.md`](../admin.md)、[`docs/decisions/web.md`](web.md)、[`packages/contracts/README.md`](../../packages/contracts/README.md) 和 [`packages/sdk/README.md`](../../packages/sdk/README.md)。根目录 [`AGENTS.md`](../../AGENTS.md) 定义完整同步和验证门槛。
