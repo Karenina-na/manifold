@@ -6,6 +6,7 @@ import { ArrowLeft } from "lucide-react";
 import { ArticleMeta } from "../../../components/article-meta";
 import { ArticleReadingShell } from "../../../components/article-reading-shell";
 import { ArticleDiscussion } from "../../../components/comment-thread";
+import { AnchorBadge } from "../../../components/anchor-badge";
 import { MarkdownContent } from "@manifold/render";
 import { createServerClient, loadSiteData } from "../../../lib/api";
 import styles from "../../site.module.css";
@@ -32,5 +33,5 @@ export default async function WritingDetailPage({ params }: Props) {
   const toc = metadata.toc;
   const site = await loadSiteData();
   const discussion = site?.commentsEnabled === false ? null : <ArticleDiscussion slug={contentSlug} viewCount={content.viewCount} likeCount={content.likeCount} />;
-  return <main className={styles.page}><article className="articleSurface"><div className="articleSurfaceInner"><div className="articleBack"><Link href="/writing"><ArrowLeft size={15} /> Back to writing</Link></div><section className="articleTitleBlock"><header className="articleHeader"><span className="eyebrow">Writing</span><h1>{content.title || "A writing"}</h1><p>{content.summary}</p><ArticleMeta date={content.publishedAt ?? content.createdAt} metadata={metadata} viewCount={content.viewCount} likeCount={content.likeCount} tags={content.tags} slug={contentSlug} /></header></section><ArticleReadingShell slug={contentSlug} toc={toc} discussion={discussion}><div className="articleBodyBlock"><div className="markdown"><MarkdownContent content={content.body} headingIds={toc.map((item) => item.id)} hideFirstH1 /></div></div></ArticleReadingShell></div></article></main>;
+  return <main className={styles.page}><article className="articleSurface"><div className="articleSurfaceInner"><div className="articleBack"><Link href="/writing"><ArrowLeft size={15} /> Back to writing</Link><AnchorBadge latestAnchor={content.latestAnchor} /></div><section className="articleTitleBlock"><header className="articleHeader"><span className="eyebrow">Writing</span><h1>{content.title || "A writing"}</h1><p>{content.summary}</p><ArticleMeta date={content.publishedAt ?? content.createdAt} metadata={metadata} viewCount={content.viewCount} likeCount={content.likeCount} tags={content.tags} slug={contentSlug} /></header></section><ArticleReadingShell slug={contentSlug} toc={toc} discussion={discussion}><div className="articleBodyBlock"><div className="markdown"><MarkdownContent content={content.body} headingIds={toc.map((item) => item.id)} hideFirstH1 /></div></div></ArticleReadingShell></div></article></main>;
 }

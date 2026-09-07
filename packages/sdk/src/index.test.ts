@@ -295,3 +295,55 @@ test("gets the admin session list", async () => {
 	assert.equal(captured?.method, "GET");
 	assert.deepEqual(result, payload);
 });
+
+test("calls the anchoring chain endpoints", async () => {
+	const requests: Request[] = [];
+	const client = new ManifoldClient({
+		baseUrl: "http://core.test",
+		token: "token-1",
+		fetch: async (input, init) => {
+			requests.push(new Request(input, init));
+			const url = new Request(input, init).url;
+			if (url.endsWith("/api/v1/chain")) return new Response(JSON.stringify({ height: 1, totalAnchors: 0, pendingAnchors: 0, proofMode: "sim", difficulty: 0, genesisHash: "0".repeat(64), tipHash: "0".repeat(64), sitePublicKey: "a".repeat(64) }), { status: 200 });
+			if (url.endsWith("/api/v1/chain/anchors")) return new Response(JSON.stringify({ anchorId: "cert_1", subjectHash: "b".repeat(64), status: "pending" }), { status: 202 });
+			if (url.includes("/api/v1/chain/verify")) return new Response(JSON.stringify({ found: true, anchor: null, block: null, signatureValid: true, chainIntegrity: true }), { status: 200 });
+			return new Response(JSON.stringify({ data: [], pagination: { page: 1, pageSize: 20, totalItems: 0, totalPages: 0 } }), { status: 200 });
+		},
+	});
+
+	await client.chain();
+	assert.equal(requests[0]?.url, "http://core.test/api/v1/chain");
+	assert.equal(requests[0]?.method, "GET");
+
+	await client.submitAnchor({ payload: "hello", label: "demo" });
+	assert.equal(requests[1]?.url, "http://core.test/api/v1/chain/anchors");
+	assert.equal(requests[1]?.method, "POST");
+	assert.equal(requests[1]?.headers.get("Content-Type"), "application/json");
+
+	await client.chainAnchors({ source: "content", ref: "content_1", page: 2, pageSize: 50 });
+	assert.equal(requests[2]?.url, "http://core.test/api/v1/chain/anchors?source=content&ref=content_1&page=2&pageSize=50");
+
+	await client.verifyByHash("ab".repeat(32));
+	assert.equal(requests[3]?.url, `http://core.test/api/v1/chain/verify?hash=${"ab".repeat(32)}`);
+
+	await client.verifyPayload("hello");
+	assert.equal(requests[4]?.url, "http://core.test/api/v1/chain/verify");
+	assert.equal(requests[4]?.method, "POST");
+
+	await client.verifyContent("a-small-signal");
+	assert.equal(requests[5]?.url, "http://core.test/api/v1/chain/verify/content/a-small-signal");
+
+	await client.verifyComment("comment_1");
+	assert.equal(requests[6]?.url, "http://core.test/api/v1/chain/verify/comment/comment_1");
+
+	await client.chainBlock("block_1");
+	assert.equal(requests[7]?.url, "http://core.test/api/v1/chain/blocks/block_1");
+
+	await client.chainKeys();
+	assert.equal(requests[8]?.url, "http://core.test/api/v1/chain/keys");
+
+	await client.adminSubmitAnchor({ payload: "admin-notes" });
+	assert.equal(requests[9]?.url, "http://core.test/api/v1/admin/chain/anchors");
+	assert.equal(requests[9]?.method, "POST");
+	assert.equal(requests[9]?.headers.get("Authorization"), "Bearer token-1");
+});

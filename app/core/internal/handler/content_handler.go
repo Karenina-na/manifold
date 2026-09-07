@@ -92,7 +92,31 @@ func (h *apiHandler) getContent(w http.ResponseWriter, r *http.Request) {
 	}
 	h.contentCache.Set(slug, content)
 	h.audit(r, "content.viewed", "content", content.ID, nil)
-	WriteJSON(w, http.StatusOK, model.ToPublicDetail(content))
+	detail := model.ToPublicDetail(content)
+	// ContentDetail carries the anchoring summary: latest content-source
+	// certificate for this row, null before any write is anchored.
+	detail.LatestAnchor = h.latestAnchorFor(content.ID)
+	WriteJSON(w, http.StatusOK, detail)
+}
+
+// latestAnchorFor projects the newest content certificate into the public
+// detail shape; nil ledger or no certificate → nil (omitted as null in JSON).
+func (h *apiHandler) latestAnchorFor(contentID string) *model.AnchorSummary {
+	if h.ledger == nil {
+		return nil
+	}
+	anchor, err := h.ledger.LatestContentAnchor(contentID)
+	if err != nil {
+		return nil
+	}
+	summary := &model.AnchorSummary{AnchorID: anchor.ID, SubjectHash: anchor.SubjectHash}
+	if anchor.BlockID == "" {
+		summary.Status = "pending"
+	} else {
+		summary.Status = "anchored"
+		summary.BlockID = &anchor.BlockID
+	}
+	return summary
 }
 
 // referrerOrigin reduces a Referer header to scheme://host so analytics

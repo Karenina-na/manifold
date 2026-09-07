@@ -497,3 +497,16 @@ func (s *Store) RecordContentView(contentID, visitorID, referrer string) error {
 	}
 	return tx.Commit()
 }
+
+// GetCommentByID loads one comment with its moderation state and content
+// join for the anchoring verify endpoint; ErrNoRows for unknown ids.
+func (s *Store) GetCommentByID(id string) (model.AdminComment, error) {
+	comments, err := s.scanAdminComments(`SELECT `+adminCommentColumns+` FROM comments JOIN content ON content.id = comments.content_id WHERE comments.id = ?`, id)
+	if err != nil {
+		return model.AdminComment{}, err
+	}
+	if len(comments) == 0 {
+		return model.AdminComment{}, sql.ErrNoRows
+	}
+	return comments[0], nil
+}

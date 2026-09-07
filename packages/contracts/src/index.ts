@@ -62,7 +62,9 @@ interface BaseContent {
 export type Content =
   | (BaseContent & { kind: "THOUGHT"; metadata: ThoughtMetadata })
   | (BaseContent & { kind: "ARTICLE"; metadata: ArticleMetadata })
-export type ContentDetail = Content & { body: string }
+// latestAnchor 为锚定链摘要（docs/chain.md §11）：按 contentId 的最新 content 源证书，
+// 无证书时为 null；Core 一律输出该键。
+export type ContentDetail = Content & { body: string; latestAnchor: AnchorSummary | null }
 
 // 管理端内容形状：全状态视图 + 乐观锁版本 + 完整正文。
 interface BaseAdminContent {
@@ -179,3 +181,20 @@ export type ContentInput =
 export type UpdateContentInput =
   | (BaseContentInput & { kind: "THOUGHT"; metadata: ThoughtMetadataInput; expectedVersion: number })
   | (BaseContentInput & { kind: "ARTICLE"; metadata: ArticleMetadataInput; expectedVersion: number })
+
+// 锚定链契约（docs/chain.md）：证书只承诺 payload 的 SHA-256，不携带原文。
+export type ChainProofMode = "sim" | "proof";
+export type AnchorStatus = "pending" | "anchored";
+export type AnchorSource = "content" | "comment" | "reaction" | "profile" | "site" | "media" | "auth" | "visitor" | "admin";
+export type AnchorMetadata = Record<string, string | number | boolean | null>;
+
+export interface ChainPublicKey { keyId: string; publicKey: string; createdAt: string }
+export interface ChainAnchor { id: string; subjectHash: string; source: AnchorSource; subjectRef: string; label: string; metadata: AnchorMetadata; siteKeyId: string; sitePublicKey: string; siteSignature: string; createdAt: string; status: AnchorStatus; blockId: string | null }
+export interface SubmitAnchorInput { payload: string; label?: string }
+export interface SubmitAnchorResponse { anchorId: string; subjectHash: string; status: "pending" }
+export interface ChainBlockSummary { id: string; index: number; prevHash: string; timestamp: string; certRoot: string; nonce: number; proofMode: ChainProofMode; difficulty: number; hash: string; anchorCount: number }
+export interface ChainBlockDetail extends ChainBlockSummary { certIds: string[]; anchors: ChainAnchor[] }
+export interface ChainInfo { height: number; totalAnchors: number; pendingAnchors: number; proofMode: ChainProofMode; difficulty: number; genesisHash: string; tipHash: string; sitePublicKey: string }
+export interface VerifyResponse { found: boolean; anchor: ChainAnchor | null; block: ChainBlockSummary | null; signatureValid: boolean; chainIntegrity: boolean }
+export interface AnchorQuery { source?: AnchorSource; ref?: string; page?: number; pageSize?: number }
+export interface AnchorSummary { anchorId: string; subjectHash: string; status: AnchorStatus; blockId: string | null }

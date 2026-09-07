@@ -8,8 +8,16 @@
         "title": null,
         "summary": "Summary text",
         "excerpt": "Derived excerpt",
-        "tags": ["note", "meta"],
-        "metadata": { "mood": "calm", "question": null, "context": "reading", "source": null },
+        "tags": [
+          "note",
+          "meta"
+        ],
+        "metadata": {
+          "mood": "calm",
+          "question": null,
+          "context": "reading",
+          "source": null
+        },
         "publishedAt": "2026-08-24T10:00:00Z",
         "createdAt": "2026-08-24T10:00:00Z",
         "updatedAt": "2026-08-24T10:00:00Z",
@@ -27,7 +35,13 @@
         "tags": [],
         "metadata": {
           "readingMinutes": 6,
-          "toc": [{ "id": "section", "label": "Section", "level": 2 }],
+          "toc": [
+            {
+              "id": "section",
+              "label": "Section",
+              "level": 2
+            }
+          ],
           "language": "zh",
           "aiAssisted": false
         },
@@ -39,7 +53,12 @@
         "commentCount": 0
       }
     ],
-    "pagination": { "page": 1, "pageSize": 20, "totalItems": 2, "totalPages": 1 }
+    "pagination": {
+      "page": 1,
+      "pageSize": 20,
+      "totalItems": 2,
+      "totalPages": 1
+    }
   },
   "adminContent": {
     "id": "content_1750000000000000002",
@@ -49,7 +68,9 @@
     "title": "Draft Article",
     "summary": "Draft summary",
     "excerpt": "",
-    "tags": ["draft"],
+    "tags": [
+      "draft"
+    ],
     "metadata": {
       "readingMinutes": 0,
       "toc": [],
@@ -103,21 +124,65 @@
     "organization": "Acme",
     "websiteUrl": "https://jane.example",
     "resumeUrl": null,
-    "interests": ["go"],
-    "education": [{ "institution": "MIT", "program": "CS", "period": "2010-2014" }],
-    "experience": [{ "organization": "Acme", "role": "Dev", "period": "2014-" }],
-    "series": [{ "name": "S", "url": "https://example.com", "description": "d", "category": null }],
-    "contacts": [{ "label": "Email", "url": "mailto:j@example.com", "handle": null, "icon": null }],
+    "interests": [
+      "go"
+    ],
+    "education": [
+      {
+        "institution": "MIT",
+        "program": "CS",
+        "period": "2010-2014"
+      }
+    ],
+    "experience": [
+      {
+        "organization": "Acme",
+        "role": "Dev",
+        "period": "2014-"
+      }
+    ],
+    "series": [
+      {
+        "name": "S",
+        "url": "https://example.com",
+        "description": "d",
+        "category": null
+      }
+    ],
+    "contacts": [
+      {
+        "label": "Email",
+        "url": "mailto:j@example.com",
+        "handle": null,
+        "icon": null
+      }
+    ],
     "updatedAt": "2026-08-24T10:00:00Z"
   },
   "site": {
     "title": "Manifold",
     "description": "Desc",
     "footer": "Footer",
-    "social": [{ "label": "GitHub", "href": "https://github.com", "external": true }],
+    "social": [
+      {
+        "label": "GitHub",
+        "href": "https://github.com",
+        "external": true
+      }
+    ],
     "commentsEnabled": true,
-    "navigation": [{ "label": "Thoughts", "href": "/thoughts", "external": false }],
-    "sections": ["PROFILE", "RECENT_CONTENT", "CONTACT"],
+    "navigation": [
+      {
+        "label": "Thoughts",
+        "href": "/thoughts",
+        "external": false
+      }
+    ],
+    "sections": [
+      "PROFILE",
+      "RECENT_CONTENT",
+      "CONTACT"
+    ],
     "pinnedThoughts": [],
     "pinnedWritings": []
   },
@@ -132,11 +197,111 @@
     "metadataJson": "{\"ok\":true}",
     "createdAt": "2026-08-24T10:00:00Z"
   },
-  "error": { "error": { "code": "VALIDATION_FAILED", "message": "invalid input", "requestId": "req_abc123", "traceId": "trace_def456" } },
+  "error": {
+    "error": {
+      "code": "VALIDATION_FAILED",
+      "message": "invalid input",
+      "requestId": "req_abc123",
+      "traceId": "trace_def456"
+    }
+  },
   "sessionList": {
     "sessions": [
-      { "id": "ses_1750000000000000000", "createdAt": "2026-08-24T09:00:00Z", "expiresAt": "2026-08-24T21:00:00Z", "revokedAt": null, "active": true, "current": true },
-      { "id": "ses_1750000000000000001", "createdAt": "2026-08-24T10:00:00Z", "expiresAt": "2026-08-24T22:00:00Z", "revokedAt": "2026-08-24T11:00:00Z", "active": false, "current": false }
+      {
+        "id": "ses_1750000000000000000",
+        "createdAt": "2026-08-24T09:00:00Z",
+        "expiresAt": "2026-08-24T21:00:00Z",
+        "revokedAt": null,
+        "active": true,
+        "current": true
+      },
+      {
+        "id": "ses_1750000000000000001",
+        "createdAt": "2026-08-24T10:00:00Z",
+        "expiresAt": "2026-08-24T22:00:00Z",
+        "revokedAt": "2026-08-24T11:00:00Z",
+        "active": false,
+        "current": false
+      }
     ]
+  },
+  "chainInfo": {
+    "height": 3,
+    "totalAnchors": 7,
+    "pendingAnchors": 1,
+    "proofMode": "sim",
+    "difficulty": 0,
+    "genesisHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "tipHash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "sitePublicKey": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+  },
+  "chainAnchor": {
+    "id": "cert_eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "subjectHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "source": "content",
+    "subjectRef": "content_1",
+    "label": "",
+    "metadata": {
+      "contentId": "content_1",
+      "kind": "ARTICLE",
+      "status": "PUBLISHED",
+      "version": 1,
+      "slug": "a-small-signal"
+    },
+    "siteKeyId": "site_key_1",
+    "sitePublicKey": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "siteSignature": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "createdAt": "2026-09-06T00:00:00Z",
+    "status": "anchored",
+    "blockId": "block_2"
+  },
+  "chainBlock": {
+    "id": "block_2",
+    "index": 2,
+    "prevHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "timestamp": "2026-09-06T00:00:01Z",
+    "certRoot": "1111111111111111111111111111111111111111111111111111111111111111",
+    "nonce": 0,
+    "proofMode": "sim",
+    "difficulty": 0,
+    "hash": "2222222222222222222222222222222222222222222222222222222222222222",
+    "anchorCount": 1
+  },
+  "chainVerify": {
+    "found": true,
+    "anchor": {
+      "id": "cert_eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "subjectHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "source": "content",
+      "subjectRef": "content_1",
+      "label": "",
+      "metadata": {
+        "contentId": "content_1",
+        "kind": "ARTICLE",
+        "status": "PUBLISHED",
+        "version": 1,
+        "slug": "a-small-signal"
+      },
+      "siteKeyId": "site_key_1",
+      "sitePublicKey": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "siteSignature": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "createdAt": "2026-09-06T00:00:00Z",
+      "status": "anchored",
+      "blockId": "block_2"
+    },
+    "block": {
+      "id": "block_2",
+      "index": 2,
+      "prevHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "timestamp": "2026-09-06T00:00:01Z",
+      "certRoot": "1111111111111111111111111111111111111111111111111111111111111111",
+      "nonce": 0,
+      "proofMode": "sim",
+      "difficulty": 0,
+      "hash": "2222222222222222222222222222222222222222222222222222222222222222",
+      "anchorCount": 1
+    },
+    "signatureValid": true,
+    "chainIntegrity": true
   }
 }

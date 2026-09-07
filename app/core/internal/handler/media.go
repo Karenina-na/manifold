@@ -12,6 +12,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/manifold-space/manifold/app/core/internal/chain"
 	"github.com/manifold-space/manifold/app/core/internal/model"
 	"github.com/manifold-space/manifold/app/core/internal/store"
 )
@@ -79,6 +80,10 @@ func (h *apiHandler) adminUploadMedia(w http.ResponseWriter, r *http.Request) {
 	media.URL = h.mediaURL(r, media.ID)
 	if created {
 		h.audit(r, "media.uploaded", "media", media.ID, map[string]string{"mime": media.Mime, "size": strconv.FormatInt(media.Size, 10), "sha256": shaHex})
+		// sha256 dedup hits reuse an existing row: no new write, no certificate.
+		if payload, label, subjectRef, metadata, anchorErr := MediaUploadPayload(media.ID, media.Mime, media.Size, shaHex, media.Filename); anchorErr == nil {
+			h.anchorBusinessChange(r, chain.SourceMedia, payload, label, subjectRef, metadata)
+		}
 	}
 	WriteJSON(w, http.StatusCreated, media)
 }
@@ -130,6 +135,9 @@ func (h *apiHandler) adminDeleteMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.audit(r, "media.deleted", "media", id, nil)
+	if payload, label, subjectRef, metadata, anchorErr := MediaDeletePayload(id); anchorErr == nil {
+		h.anchorBusinessChange(r, chain.SourceMedia, payload, label, subjectRef, metadata)
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 

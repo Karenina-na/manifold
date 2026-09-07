@@ -16,12 +16,16 @@ const REQUIRED_KEYS = [
   'VITE_CORE_URL',
   'VITE_WEB_URL',
 ]
-const DURATION_KEYS = ['CORE_CONTENT_CACHE_TTL', 'CORE_STATS_CACHE_TTL']
+const DURATION_KEYS = ['CORE_CONTENT_CACHE_TTL', 'CORE_STATS_CACHE_TTL', 'CORE_CHAIN_SIM_DELAY', 'CORE_CHAIN_FLUSH_TIMEOUT']
 const INTEGER_KEYS = [
   'CORE_AUDIT_EVENT_BUFFER',
   'CORE_MEDIA_MAX_BYTES',
   'CORE_RATE_LIMIT_PER_MIN',
   'CORE_LOGIN_RATE_LIMIT_PER_MIN',
+  'CORE_CHAIN_DIFFICULTY',
+  'CORE_CHAIN_BATCH_SIZE',
+  'CORE_CHAIN_MAX_BLOCK_ANCHORS',
+  'CORE_CHAIN_ANCHOR_MAX_BYTES',
 ]
 const GO_DURATION = /^[+-]?(?:0|(?:\d+(?:\.\d+)?(?:ns|us|ms|s|m|h))+)$/
 
@@ -102,6 +106,13 @@ export function validateReleaseConfig(environment) {
   if (environment.CORE_SEED_FILE) throw new Error('CORE_SEED_FILE must be empty for this release package')
   if (environment.CORE_JWT_SECRET === DEV_JWT_SECRET || environment.CORE_JWT_SECRET.length < 16) {
     throw new Error('CORE_JWT_SECRET must be a non-default secret of at least 16 characters')
+  }
+  if (Object.hasOwn(environment, 'CORE_CHAIN_PROOF_MODE')
+    && !['sim', 'proof'].includes(environment.CORE_CHAIN_PROOF_MODE)) {
+    throw new Error('CORE_CHAIN_PROOF_MODE must be sim or proof')
+  }
+  if (environment.CORE_CHAIN_PROOF_MODE === 'proof' && Number(environment.CORE_CHAIN_DIFFICULTY) < 1) {
+    throw new Error('CORE_CHAIN_DIFFICULTY must be >= 1 in proof mode')
   }
   if (environment.CORE_ADMIN_PASSWORD_HASH === DEV_PASSWORD_HASH
     || !/^\$2[aby]\$(?:0[4-9]|[12]\d|3[01])\$[./A-Za-z0-9]{53}$/.test(environment.CORE_ADMIN_PASSWORD_HASH)) {

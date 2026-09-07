@@ -824,3 +824,64 @@ html { scroll-behavior: smooth; }
 .backgroundSurface, .contentSurface, .seriesCard, .updateRail { border: 0; border-radius: 10px; background: color-mix(in srgb, var(--surface-paper) 82%, transparent); backdrop-filter: blur(8px); }
 /* Moderated comments keep their thread slot while hiding visitor details. */
 .commentHiddenBubble { border-style: dashed; background: color-mix(in srgb, var(--color-line) 24%, transparent); }
+
+/* Anchoring chain explorer (/chain) and detail-page anchor badge. */
+.chainShell { width: min(960px, calc(100% - 48px)); margin: 0 auto; padding-bottom: 72px; }
+.chainHero { padding: 42px 0 26px; }
+.chainHero h1 { margin: 8px 0 10px; font-family: var(--app-font-serif); font-size: clamp(42px, 6vw, 64px); font-weight: 400; line-height: 1.12; }
+.chainHero p { max-width: 680px; color: var(--color-neutral-8, var(--color-muted)); font-size: 15px; line-height: 1.75; }
+.chainBody { display: grid; gap: 26px; }
+.chainOverview { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; padding: 18px 20px; border: 1px solid color-mix(in srgb, var(--color-line) 78%, transparent); border-radius: 8px; background: color-mix(in srgb, var(--surface-paper) 92%, white); box-shadow: 0 14px 36px rgba(24, 24, 20, .055); }
+.chainOverview > div { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; min-width: 0; }
+.chainOverview span { display: inline-flex; align-items: center; gap: 6px; color: var(--color-muted); font: 10px var(--font-mono); text-transform: uppercase; letter-spacing: .06em; }
+.chainOverview strong { color: var(--color-ink); font: 13px var(--font-mono); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chainSection { display: grid; gap: 10px; padding: 22px 24px; border: 1px solid color-mix(in srgb, var(--color-line) 78%, transparent); border-radius: 8px; background: color-mix(in srgb, var(--surface-paper) 82%, transparent); backdrop-filter: blur(8px); }
+.chainSection h2 { font-family: var(--app-font-serif); font-size: 26px; font-weight: 400; }
+.chainSection > p { max-width: 680px; margin: 0; color: var(--color-neutral-8, var(--color-muted)); font-size: 13px; line-height: 1.7; }
+.chainVerifyGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.chainVerifyGrid label { display: grid; gap: 8px; }
+.chainVerifyGrid label > span, .chainVerifyActions > span { color: var(--color-muted); font: 10px var(--font-mono); text-transform: uppercase; letter-spacing: .06em; }
+.chainVerifyActions { display: grid; gap: 8px; }
+.chainVerifyActions div { display: flex; gap: 8px; }
+.chainSection textarea, .chainVerifyActions input { width: 100%; padding: 9px 11px; border: 1px solid var(--color-line); border-radius: 5px; background: color-mix(in srgb, var(--surface-paper) 96%, white); color: var(--color-ink); font: 12px var(--font-mono); resize: vertical; }
+.chainSection textarea:focus-visible, .chainVerifyActions input:focus-visible { outline: none; border-color: var(--color-accent); }
+.chainSection button { padding: 8px 14px; border: 1px solid var(--color-line); border-radius: 5px; background: transparent; color: var(--color-ink); font: 11px var(--font-mono); cursor: pointer; transition: border-color var(--motion-base) var(--motion-ease), color var(--motion-base) var(--motion-ease), background var(--motion-base) var(--motion-ease); }
+.chainSection button:hover:not(:disabled), .chainSection button:focus-visible:not(:disabled) { border-color: var(--color-accent); color: var(--color-accent); }
+.chainSection button:disabled { opacity: .45; cursor: not-allowed; }
+.chainPrimary { border-color: var(--color-accent); color: var(--color-accent) !important; }
+.chainPrimary:hover:not(:disabled) { background: var(--color-accent-soft); }
+.chainMono { font-family: var(--font-mono); }
+.chainSubmitResult { margin: 0; color: var(--color-muted); font: 11px var(--font-mono); }
+.chainVerifyResult { margin: 0; padding: 14px 16px; border: 1px solid var(--color-line); border-radius: 6px; background: color-mix(in srgb, var(--surface-paper) 96%, white); display: grid; gap: 6px; }
+.chainVerifyResult[data-verdict="verified"] { border-color: color-mix(in srgb, var(--color-accent) 55%, var(--color-line)); background: color-mix(in srgb, var(--surface-paper) 94%, var(--color-accent-soft)); }
+.chainVerifyResult[data-verdict="error"], .chainVerifyResult[data-verdict="mismatch"] { border-color: color-mix(in srgb, #b3261e 45%, var(--color-line)); }
+.chainVerifyResult p { margin: 0; color: var(--color-ink); font: 11px var(--font-mono); line-height: 1.7; }
+.chainBlockList { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.chainBlockList > li { display: grid; }
+.chainBlockRow { display: grid; grid-template-columns: 64px minmax(0, 1fr) auto auto auto; align-items: center; gap: 14px; width: 100%; padding: 11px 14px; border: 1px solid color-mix(in srgb, var(--color-line) 78%, transparent); border-radius: 6px; background: color-mix(in srgb, var(--surface-paper) 91%, white); text-align: left; }
+.chainBlockRow:hover, .chainBlockRow:focus-visible { border-color: color-mix(in srgb, var(--color-accent) 42%, var(--color-line)); background: color-mix(in srgb, var(--surface-paper) 96%, var(--color-accent-soft)); }
+.chainBlockIndex { color: var(--color-accent); font: 11px var(--font-mono); font-weight: 600; }
+.chainBlockRow > span { color: var(--color-muted); font: 10px var(--font-mono); }
+.chainBlockRow > span.chainMono { color: var(--color-ink); }
+.chainBlockMode { color: var(--color-accent); }
+.chainBlockTime { white-space: nowrap; }
+.chainBlockDetail { display: grid; gap: 8px; padding: 12px 16px 14px; border: 1px dashed color-mix(in srgb, var(--color-accent) 30%, var(--color-line)); border-top: 0; border-radius: 0 0 6px 6px; background: color-mix(in srgb, var(--surface-paper) 88%, white); }
+.chainBlockDetail ul { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.chainBlockDetail li { display: grid; grid-template-columns: 84px minmax(0, 1fr) auto; gap: 12px; align-items: baseline; font: 10px var(--font-mono); color: var(--color-muted); }
+.chainBlockDetail li span:first-child { font-weight: 600; }
+.chainBlockDetail li code { color: var(--color-ink); }
+.chainBlockPrev, .chainFootnote { margin: 0; color: var(--color-muted); font: 10px var(--font-mono); }
+.chainEmpty { margin: 0; color: var(--color-muted); font: 11px var(--font-mono); }
+.chainPager { display: flex; align-items: center; gap: 14px; color: var(--color-muted); font: 10px var(--font-mono); }
+.chainFootnote { display: flex; align-items: center; gap: 7px; }
+.anchorBadge { display: inline-flex; align-items: center; gap: 7px; margin-left: auto; padding: 4px 10px; border: 1px solid var(--color-line); border-radius: 999px; color: var(--color-muted); font: 9px var(--font-mono); letter-spacing: .04em; text-decoration: none; transition: border-color var(--motion-base) var(--motion-ease), color var(--motion-base) var(--motion-ease), background var(--motion-base) var(--motion-ease); }
+.anchorBadge:hover, .anchorBadge:focus-visible { border-color: color-mix(in srgb, var(--color-accent) 45%, var(--color-line)); color: var(--color-accent); }
+.anchorBadge[data-anchored="true"] { border-color: color-mix(in srgb, var(--color-accent) 40%, var(--color-line)); color: var(--color-accent); }
+.anchorBadge[data-anchored="true"]:hover, .anchorBadge[data-anchored="true"]:focus-visible { background: var(--color-accent-soft); }
+.anchorBadgeHash { color: var(--color-ink); opacity: .75; }
+.anchorBadgeState { font-weight: 600; }
+@media (max-width: 760px) {
+  .chainVerifyGrid { grid-template-columns: 1fr; }
+  .chainBlockRow { grid-template-columns: 54px minmax(0, 1fr) auto; }
+  .chainBlockRow > :nth-child(n+4) { display: none; }
+}

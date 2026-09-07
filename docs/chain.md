@@ -1,6 +1,6 @@
 # Chain 锚定链契约
 
-> 状态：设计定稿（2026-09-06），尚未实现。实现合并后，本文转为锚定链当前实现的唯一权威契约，与 [`docs/core.md`](core.md) 同级；在那之前，本文描述的是已确认的目标契约。决策背景见 [`docs/decisions/core.md`](decisions/core.md) 的「内嵌通用锚定链」条目。
+> 本文是 Manifold 锚定链的权威契约（设计 2026-09-06 定稿，同日实现合并）。证书/区块结构、哈希与签名、锚定清单、挖矿、验证语义和 `CORE_CHAIN_*` 配置以本文为唯一事实来源。决策背景见 [`docs/decisions/core.md`](decisions/core.md) 的「内嵌通用锚定链」条目。
 
 ## 1. 背景与定位
 
@@ -113,7 +113,7 @@ POST /api/v1/chain/anchors ─┼──> handler 构造 payload ──> chain.Su
 - **行实质优先、描述符兜底**：存在持久化实体的动作用「变更后行实质投影」做 payload（live 行永远能对上最新证书）；实体不复存在的动作（auth、reaction、媒体硬删）用动作描述符。
 - **请求史而非行态史**：幂等重复请求（如对已点赞再次 PUT）同样成证。证书记录「该变更请求发生过」，不承诺行发生了物理变化。
 - **崩溃窗口**：业务写提交与证书插入是两个步骤，进程在两者之间崩溃会产生一条未锚定变更（审计可对照发现）。不合并事务是刻意解耦：链故障不阻塞业务。
-- **种子数据**：dev seed 的 3 篇演示内容在应用种子时同步补签 `PUBLISHED/v1` 证书（先确保 `chain_keys` 有站点密钥），新库启动数秒内即有可验证的链；生产骨架与 profile/site 单例初始化属于建库结构行为，不逐行锚定。seed 补签是 handler 之外唯一允许构造证书的路径（它模拟的是「种子内容的作者提交」），payload 构造函数与 handler 侧共用，不复制格式定义。
+- **种子数据**：dev seed 的 20 篇演示内容（全部 PUBLISHED）在应用种子时同步补签 `PUBLISHED/v1` 证书（先确保 `chain_keys` 有站点密钥），新库启动数秒内即有可验证的链；生产骨架与 profile/site 单例初始化属于建库结构行为，不逐行锚定。seed 补签是 handler 之外唯一允许构造证书的路径（它模拟的是「种子内容的作者提交」），payload 构造函数与 handler 侧共用，不复制格式定义。
 
 ### 4.2 例外（不锚定，需在改动时维持）
 
@@ -244,11 +244,12 @@ CREATE INDEX IF NOT EXISTS idx_chain_anchors_block ON chain_anchors(block_id);
 ```
 
 - **防饿死阀门是必须的**：只有「满才打包」会让个人站点的最后一次变更永远停在 pending。默认 30s 上限保证任何证书最迟约 30s + 挖矿时长内确认。
-- **超出单块上限**：剩余证书留在缓冲，下一轮 tick 缓冲仍满、立即连挖下一块。
+- **超出单块上限**：剩余证书留在缓冲，下一轮 tick 缓冲仍满、立即连挖下一块；低于批量阈值且未超时的剩余量等待下一次触发。
 - **优雅关闭**：context 取消后完成当前正在挖的块再退出；pending 留在库里。
 - **故障自愈**：矿工 panic → recover → 审计 `chain.miner.crashed` → 5s 后重启循环。SQLite 单连接（`SetMaxOpenConns(1)`）已消除写竞争。
 - **审计事件**：`chain.anchor.submitted`（含 source）、`chain.block.mined`（index、证书数、nonce、模式、耗时 ms）、`chain.anchor.failed`（提交失败、含 source 与原因）、`chain.miner.crashed`。审计事件本身不上链（4.2 例外）。
 - **证书提交失败不阻塞业务**：`Submit()` 报错只记 `chain.anchor.failed`，原业务请求照常成功返回。
+- **实现事实**：矿工 goroutine 由 `handler.RouterWithLifecycle` 启动（main 构造 `chain.NewLedger` 后传入），其 `OnMined` 钩子（仅在本轮真正产出区块时触发——空转 tick 不触发）发布 `chain.block.mined` 审计并对本块 content 源证书按 metadata.slug 失效内容缓存；close 顺序为先停矿工、后 drain 审计队列。`main.go` 在启动矿工前调用 `seedAnchorsForDevContents`：链为空（新库或首次启用链）时为全部 PUBLISHED 内容补签 PUBLISHED 证书（payload 经 `handler.ContentPayload` 构造，不复制格式）。PoW（sim 延迟与 proof 碰撞）在**事务外**执行：头部组装先对 tip 快照挖矿，随后短事务复查 tip 未变再落块，tip 已移动则由下一轮 tick 重新评估——SQLite 单连接下把挖矿放进事务会冻结全部请求。`subject_ref` 是 `Submit()` 的显式参数（调用方按 §4.1 语义传入），不从 metadata 推导。
 
 ## 10. 验证语义
 
@@ -259,7 +260,7 @@ CREATE INDEX IF NOT EXISTS idx_chain_anchors_block ON chain_anchors(block_id);
 ```
 
 - `signatureValid`：用证书自带的 `site_public_key` 对 `subject_hash` 验证 `site_signature`。
-- `chainIntegrity`：**全链重放**——从 genesis 到 tip 逐块重算 `hash`（含 `proofMode`/`difficulty`）、校验 `prev_hash` 串接、按 `cert_ids_json` 重算 `cert_root`；sim 块跳过前导 0 校验、proof 块强制校验。个人站点规模（数百块）下 O(n) 重放开销可忽略，且「每次验证都真验整条链」正是本探索的教学卖点。
+- `chainIntegrity`：**全链重放**——从 genesis 到 tip 逐块重算 `hash`（含 `proofMode`/`difficulty`）、校验 `prev_hash` 串接、按 `cert_ids_json` 重算 `cert_root`；sim 块跳过前导 0 校验、proof 块强制校验。整个重放在**单个只读事务**内执行：矿工可能在重放中途提交新块，不取快照会让孤儿扫描读到「属于新块的证书、而块查询没看到该块」，在并发下产生虚假篡改报告。个人站点规模（数百块）下 O(n) 重放开销可忽略，且「每次验证都真验整条链」正是本探索的教学卖点。
 - `found=false` 时其余字段为缺省（`signatureValid`/`chainIntegrity` 仍返回全链结果，允许验证不存在的哈希时顺带确认链完整性）。
 - **同哈希多证书**：同一正文多次提交（重发布、幂等请求）会产生相同 `subject_hash` 的多张证书。按哈希查证时返回**最新一张**（`createdAt` 降序、并列 `id` 降序的第一条），`found` 即表示「该哈希曾至少被承诺一次」。
 
@@ -328,7 +329,7 @@ export interface AnchorQuery { source?: AnchorSource; ref?: string; page?: numbe
 - chain 单测：canonical 确定性（key 乱序同哈希）、Merkle 与区块哈希公式、proof 低难度确定性碰撞、sim 1s 出块、genesis 结构、篡改任一历史块（hash/prev_hash/cert_root/证书行）→ 全链重放失败、验签对错公钥的行为。
 - API 测试：公开提交 202 → pending → 矿工确认 → anchored 全流程；413 超限；Admin 通道无 JWT 401；verify 四种入口的往返（提交文本 → 按哈希/贴原文查证）；内容发布 → `verify/content/{slug}` 命中。
 - 迁移测试：`0005` 在 `userVersion=4` 旧库上增量升级成功。
-- Store 测试：dev seed 在新库补签 3 张 content 证书。
+- Store 测试：dev seed 在新库补签 20 张 content 证书。
 
 ```bash
 cd app/core && go test -count=1 ./... && go vet ./...

@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/json"
 	"errors"
@@ -9,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -18,6 +20,7 @@ import (
 
 	"github.com/manifold-space/manifold/app/core/internal/auth"
 	"github.com/manifold-space/manifold/app/core/internal/cache"
+	"github.com/manifold-space/manifold/app/core/internal/chain"
 	"github.com/manifold-space/manifold/app/core/internal/config"
 	"github.com/manifold-space/manifold/app/core/internal/events"
 	"github.com/manifold-space/manifold/app/core/internal/model"
@@ -51,6 +54,8 @@ type apiHandler struct {
 	statsCache    *cache.StatsCache
 	overviewCache *cache.OverviewCache
 	auditEvents   events.AuditPublisher
+	ledger        *chain.Ledger
+	minerCancel   context.CancelFunc
 }
 
 // coreVersion is the build version reported by /healthz and the admin system endpoint.
@@ -59,13 +64,18 @@ const coreVersion = "0.2.0"
 var processStartedAt = time.Now().UTC()
 
 func Router(cfg config.Config, database *store.Store) http.Handler {
-	return newRouter(cfg, database, events.NewSynchronousAuditPublisher(recordAuditEvent(database)))
+	return newRouter(cfg, database, nil, events.NewSynchronousAuditPublisher(recordAuditEvent(database)))
 }
 
-func RouterWithLifecycle(cfg config.Config, database *store.Store) (http.Handler, func()) {
+// RouterWithLifecycle wires the production stack: the audit dispatcher and,
+// when a ledger is supplied, the anchoring-chain miner. The returned close
+// function stops the miner (finishing any in-flight block) before draining
+// audit events.
+func RouterWithLifecycle(cfg config.Config, database *store.Store, ledger *chain.Ledger) (http.Handler, func()) {
 	auditEvents := events.NewAuditDispatcher(cfg.AuditEventBuffer, recordAuditEvent(database))
-	router := newRouter(cfg, database, auditEvents)
+	router, closeRouter := newRouterWithMiner(cfg, database, ledger, auditEvents)
 	return router, func() {
+		closeRouter()
 		if !auditEvents.CloseWithTimeout(5 * time.Second) {
 			slog.Warn("audit_shutdown_timeout", "timeout", "5s")
 		}
@@ -80,12 +90,73 @@ func recordAuditEvent(database *store.Store) func(events.AuditEvent) {
 	}
 }
 
-func newRouter(cfg config.Config, database *store.Store, auditEvents events.AuditPublisher) http.Handler {
+func newRouter(cfg config.Config, database *store.Store, ledger *chain.Ledger, auditEvents events.AuditPublisher) http.Handler {
+	router, _ := newRouterWithMiner(cfg, database, ledger, auditEvents)
+	return router
+}
+
+// newRouterWithMiner builds the router and, for a non-nil ledger, starts the
+// miner goroutine whose OnMined hook invalidates content caches for every
+// content-source certificate that got anchored (docs/chain.md §9). The
+// returned close function cancels the miner and waits for it to finish the
+// in-flight block.
+func newRouterWithMiner(cfg config.Config, database *store.Store, ledger *chain.Ledger, auditEvents events.AuditPublisher) (http.Handler, func()) {
 	authService, err := auth.New(cfg, database)
 	if err != nil {
 		panic(err)
 	}
-	h := &apiHandler{cfg: cfg, store: database, auth: authService, validate: validator.New(), contentCache: cache.NewContentCache(cfg.ContentCacheTTL), statsCache: cache.NewStatsCache(cfg.StatsCacheTTL), overviewCache: cache.NewOverviewCache(cfg.StatsCacheTTL), auditEvents: auditEvents}
+	h := &apiHandler{cfg: cfg, store: database, auth: authService, validate: validator.New(), contentCache: cache.NewContentCache(cfg.ContentCacheTTL), statsCache: cache.NewStatsCache(cfg.StatsCacheTTL), overviewCache: cache.NewOverviewCache(cfg.StatsCacheTTL), auditEvents: auditEvents, ledger: ledger}
+	if ledger != nil {
+		minerCtx, minerCancel := context.WithCancel(context.Background())
+		h.minerCancel = minerCancel
+		go func() {
+			if err := ledger.Run(minerCtx, chain.RunOptions{
+				OnMined: func(block chain.Block, minedFor time.Duration) {
+					// Audit chain.block.mined per docs/chain.md §9 (index, cert
+					// count, nonce, mode, duration); the miner has no request
+					// context, so publish directly through the dispatcher.
+					if h.auditEvents != nil {
+						h.auditEvents.Publish(events.AuditEvent{
+							EventName: "chain.block.mined", ResourceType: "chain_block", ResourceID: block.ID,
+							Actor: "chain-miner",
+							Metadata: map[string]string{"index": strconv.Itoa(block.Index), "certCount": strconv.Itoa(len(block.CertIDs)),
+								"nonce": strconv.Itoa(block.Nonce), "proofMode": string(block.ProofMode), "durationMs": strconv.FormatInt(minedFor.Milliseconds(), 10)},
+						})
+					}
+					for _, certID := range block.CertIDs {
+						anchor, err := ledger.GetAnchor(certID)
+						if err != nil {
+							continue
+						}
+						if anchor.Source == chain.SourceContent {
+							if slug, ok := anchor.Metadata["slug"].(string); ok && slug != "" {
+								h.contentCache.Remove(slug)
+								if content, err := database.GetContentByID(anchor.SubjectRef, true); err == nil {
+									h.contentCache.Remove(content.Slug)
+								}
+							}
+						}
+					}
+				},
+				OnCrashed: func(err error) {
+					slog.Error("chain_miner_crashed", "error", err)
+					if h.auditEvents != nil {
+						h.auditEvents.Publish(events.AuditEvent{
+							EventName: "chain.miner.crashed", ResourceType: "chain_miner", ResourceID: "miner", Actor: "chain-miner",
+							Metadata: map[string]string{"error": err.Error()},
+						})
+					}
+				},
+			}); err != nil && !errors.Is(err, context.Canceled) {
+				slog.Error("chain_miner_stopped", "error", err)
+			}
+		}()
+	}
+	closeMiner := func() {
+		if h.minerCancel != nil {
+			h.minerCancel()
+		}
+	}
 	publicLimiter := newRateLimiter(cfg.RateLimitPerMin)
 	loginLimiter := newRateLimiter(cfg.LoginRatePerMin)
 	trustedProxies := trustedProxyNetworks(cfg.TrustedProxyCIDRs)
@@ -114,6 +185,19 @@ func newRouter(cfg config.Config, database *store.Store, auditEvents events.Audi
 		api.With(publicLimiter.middleware(trustedProxies)).Put("/content/{slug}/likes", h.putLike)
 		api.With(publicLimiter.middleware(trustedProxies)).Delete("/content/{slug}/likes", h.deleteLike)
 		api.With(loginLimiter.middleware(trustedProxies)).Post("/admin/session", h.login)
+		api.Route("/chain", func(ch chi.Router) {
+			ch.Get("/", h.chainInfo)
+			ch.Get("/anchors", h.listChainAnchors)
+			ch.With(publicLimiter.middleware(trustedProxies)).Post("/anchors", h.submitPublicAnchor)
+			ch.Get("/anchors/{id}", h.getChainAnchor)
+			ch.Get("/blocks", h.listChainBlocks)
+			ch.Get("/blocks/{id}", h.getChainBlock)
+			ch.Get("/verify", h.verifyAnchorByHash)
+			ch.Post("/verify", h.verifyAnchorPayload)
+			ch.Get("/verify/content/{slug}", h.verifyAnchorContent)
+			ch.Get("/verify/comment/{id}", h.verifyAnchorComment)
+			ch.Get("/keys", h.listChainKeys)
+		})
 		api.Route("/admin", func(admin chi.Router) {
 			admin.Use(h.auth.RequireAdmin)
 			admin.Get("/profile", h.adminProfile)
@@ -153,9 +237,10 @@ func newRouter(cfg config.Config, database *store.Store, auditEvents events.Audi
 			admin.Post("/media", h.adminUploadMedia)
 			admin.Delete("/media/{id}", h.adminDeleteMedia)
 			admin.Get("/media/{id}/references", h.adminListMediaReferences)
+			admin.Post("/chain/anchors", h.adminSubmitAnchor)
 		})
 	})
-	return router
+	return router, closeMiner
 }
 
 func WriteJSON(w http.ResponseWriter, status int, value any) {

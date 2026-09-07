@@ -1,4 +1,4 @@
-import type { AdminComment, AdminCommentQuery, AdminContent, AdminContentQuery, AdminOverview, AdminSessionList, AdminStats, AnalyticsViews, AnalyticsViewsQuery, AuditEventCollection, AuditQuery, ChangePasswordInput, Collection, Comment, CommentQuery, Content, ContentDetail, ContentDetailQuery, ContentInput, ContentQuery, CreateCommentInput, HealthStatus, LikeSummary, LoginInput, LoginResponse, Media, MediaQuery, MediaReferenceList, PresenceStatus, Profile, ProfileInput, SiteComposition, SiteConfig, SiteConfigInput, Stats, SystemStatus, TagQuery, TagSummary, ThoughtConfig, ThoughtConfigInput, UpdateCommentInput, UpdateContentInput, WritingConfig, WritingConfigInput } from "@manifold/contracts";
+import type { AdminComment, AdminCommentQuery, AdminContent, AdminContentQuery, AdminOverview, AdminSessionList, AdminStats, AnalyticsViews, AnalyticsViewsQuery, AnchorQuery, AuditEventCollection, AuditQuery, ChainAnchor, ChainBlockDetail, ChainBlockSummary, ChainInfo, ChainPublicKey, ChangePasswordInput, Collection, Comment, CommentQuery, Content, ContentDetail, ContentDetailQuery, ContentInput, ContentQuery, CreateCommentInput, HealthStatus, LikeSummary, LoginInput, LoginResponse, Media, MediaQuery, MediaReferenceList, PresenceStatus, Profile, ProfileInput, SiteComposition, SiteConfig, SiteConfigInput, Stats, SubmitAnchorInput, SubmitAnchorResponse, SystemStatus, TagQuery, TagSummary, ThoughtConfig, ThoughtConfigInput, UpdateCommentInput, UpdateContentInput, VerifyResponse, WritingConfig, WritingConfigInput } from "@manifold/contracts";
 
 export class ApiError extends Error {
 	readonly status: number;
@@ -86,6 +86,18 @@ export class ManifoldClient {
 	uploadMedia(blob: Blob, filename: string) { return this.request<Media>(this.withQuery("/api/v1/admin/media", { filename }, ["filename"]), { method: "POST", body: blob }); }
 	deleteMedia(id: string) { return this.request<void>(`/api/v1/admin/media/${this.path(id)}`, { method: "DELETE" }); }
 	mediaReferences(id: string) { return this.request<MediaReferenceList>(`/api/v1/admin/media/${this.path(id)}/references`); }
+	chain() { return this.request<ChainInfo>("/api/v1/chain"); }
+	chainAnchors(query?: AnchorQuery) { return this.request<Collection<ChainAnchor>>(this.withQuery("/api/v1/chain/anchors", query, ["source", "ref", "page", "pageSize"])); }
+	chainAnchor(id: string) { return this.request<ChainAnchor>(`/api/v1/chain/anchors/${this.path(id)}`); }
+	submitAnchor(input: SubmitAnchorInput) { return this.request<SubmitAnchorResponse>("/api/v1/chain/anchors", { method: "POST", body: input }); }
+	chainBlocks(query?: { page?: number; pageSize?: number }) { return this.request<Collection<ChainBlockSummary>>(this.withQuery("/api/v1/chain/blocks", query, ["page", "pageSize"])); }
+	chainBlock(id: string) { return this.request<ChainBlockDetail>(`/api/v1/chain/blocks/${this.path(id)}`); }
+	verifyByHash(hash: string) { return this.request<VerifyResponse>(this.withQuery("/api/v1/chain/verify", { hash }, ["hash"])); }
+	verifyPayload(payload: string) { return this.request<VerifyResponse>("/api/v1/chain/verify", { method: "POST", body: { payload } }); }
+	verifyContent(slug: string) { return this.request<VerifyResponse>(`/api/v1/chain/verify/content/${this.path(slug)}`); }
+	verifyComment(id: string) { return this.request<VerifyResponse>(`/api/v1/chain/verify/comment/${this.path(id)}`); }
+	chainKeys() { return this.request<{ keys: ChainPublicKey[] }>("/api/v1/chain/keys"); }
+	adminSubmitAnchor(input: SubmitAnchorInput) { return this.request<SubmitAnchorResponse>("/api/v1/admin/chain/anchors", { method: "POST", body: input }); }
 
 	private path(segment: string) { return encodeURIComponent(segment); }
 

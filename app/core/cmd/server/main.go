@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/manifold-space/manifold/app/core/internal/chain"
 	"github.com/manifold-space/manifold/app/core/internal/config"
 	"github.com/manifold-space/manifold/app/core/internal/handler"
 	"github.com/manifold-space/manifold/app/core/internal/seed"
@@ -52,7 +53,25 @@ func run(ctx context.Context, cfg config.Config) error {
 	}
 	defer database.Close()
 
-	router, closeRouter := handler.RouterWithLifecycle(cfg, database)
+	// The anchoring ledger shares the SQLite handle; its miner goroutine is
+	// started inside RouterWithLifecycle and stops before audit drain.
+	ledger := chain.NewLedger(database.DB, chain.LedgerConfig{
+		ProofMode:       chain.ProofMode(cfg.ChainProofMode),
+		Difficulty:      cfg.ChainDifficulty,
+		SimDelay:        cfg.ChainSimDelay,
+		BatchSize:       cfg.ChainBatchSize,
+		MaxBlockAnchors: cfg.ChainMaxBlockAnchors,
+		FlushTimeout:    cfg.ChainFlushTimeout,
+		AnchorMaxBytes:  cfg.ChainAnchorMaxBytes,
+	})
+	if _, err := ledger.EnsureSiteKey(); err != nil {
+		return fmt.Errorf("ensure chain site key: %w", err)
+	}
+	if err := seedAnchorsForDevContents(ledger, database); err != nil {
+		return fmt.Errorf("seed content anchors: %w", err)
+	}
+
+	router, closeRouter := handler.RouterWithLifecycle(cfg, database, ledger)
 	defer closeRouter()
 
 	server := &http.Server{Addr: cfg.Addr, Handler: router, ReadHeaderTimeout: 5 * time.Second}
@@ -78,6 +97,57 @@ func run(ctx context.Context, cfg config.Config) error {
 	}
 	if err := <-serverError; err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return fmt.Errorf("serve core: %w", err)
+	}
+	return nil
+}
+
+// seedAnchorsForDevContents commits PUBLISHED/v1 certificates for freshly
+// seeded demo contents so a brand-new database opens with a demonstrable
+// chain (docs/chain.md §4.1 seed rule). The trigger is an empty chain — a
+// fresh database or the first boot with chain enabled — so every currently
+// published row gets its opening certificate; rows written later carry
+// certificates from their own write paths. Production skeletons have no
+// content rows, making this a no-op there.
+func seedAnchorsForDevContents(ledger *chain.Ledger, database *store.Store) error {
+	var existing int
+	if err := database.DB.QueryRow(`SELECT COUNT(*) FROM chain_anchors`).Scan(&existing); err != nil {
+		return err
+	}
+	if existing > 0 {
+		return nil
+	}
+	rows, err := database.DB.Query(`SELECT id FROM content WHERE status = 'PUBLISHED'`)
+	if err != nil {
+		return err
+	}
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	rows.Close()
+	for _, id := range ids {
+		content, err := database.GetContentByID(id, true)
+		if err != nil {
+			return err
+		}
+		// The seed path shares handler.ContentPayload — the certificate
+		// format is defined once (docs/chain.md §4.1 seed rule).
+		payload, _, subjectRef, metadata, err := handler.ContentPayload(content)
+		if err != nil {
+			return err
+		}
+		if _, err := ledger.Submit(chain.SourceContent, payload, "", subjectRef, metadata); err != nil {
+			return err
+		}
 	}
 	return nil
 }

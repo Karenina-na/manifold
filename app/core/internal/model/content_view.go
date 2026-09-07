@@ -73,10 +73,21 @@ type PublicContent struct {
 	CommentCount int             `json:"commentCount"`
 }
 
-// PublicContentDetail adds the markdown body for detail views.
+// PublicContentDetail adds the markdown body for detail views. LatestAnchor is
+// the anchoring-chain summary (docs/chain.md §11): the newest content-source
+// certificate for the row, nil when nothing has been anchored yet.
 type PublicContentDetail struct {
 	PublicContent
-	Body string `json:"body"`
+	Body         string          `json:"body"`
+	LatestAnchor *AnchorSummary  `json:"latestAnchor"`
+}
+
+// AnchorSummary is the wire shape of ContentDetail.latestAnchor.
+type AnchorSummary struct {
+	AnchorID    string  `json:"anchorId"`
+	SubjectHash string  `json:"subjectHash"`
+	Status      string  `json:"status"`
+	BlockID     *string `json:"blockId"`
 }
 
 // AdminContent is the wire shape served to the admin surface: all statuses,

@@ -26,6 +26,14 @@ type Config struct {
 	LoginRatePerMin   int           `env:"LOGIN_RATE_LIMIT_PER_MIN" envDefault:"5"`
 	TrustedProxyCIDRs []string      `env:"TRUSTED_PROXY_CIDRS" envDefault:"" envSeparator:","`
 	SeedFile          string        `env:"SEED_FILE" envDefault:""`
+	// 锚定链配置（docs/chain.md §5）。proofMode 由 chain.NewLedger 校验枚举。
+	ChainProofMode       string        `env:"CHAIN_PROOF_MODE" envDefault:"sim"`
+	ChainDifficulty      int           `env:"CHAIN_DIFFICULTY" envDefault:"8"`
+	ChainSimDelay        time.Duration `env:"CHAIN_SIM_DELAY" envDefault:"1s"`
+	ChainBatchSize       int           `env:"CHAIN_BATCH_SIZE" envDefault:"32"`
+	ChainMaxBlockAnchors int           `env:"CHAIN_MAX_BLOCK_ANCHORS" envDefault:"500"`
+	ChainFlushTimeout    time.Duration `env:"CHAIN_FLUSH_TIMEOUT" envDefault:"30s"`
+	ChainAnchorMaxBytes  int64         `env:"CHAIN_ANCHOR_MAX_BYTES" envDefault:"65536"`
 }
 
 const devJWTSecret = "manifold-dev-secret-change-me"

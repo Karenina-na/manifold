@@ -53,6 +53,22 @@ const page = await client.content({ kind: "ARTICLE", pageSize: 20 })
 | `likes(slug, visitorId?)` | GET | `/api/v1/content/:slug/likes` | `LikeSummary` |
 | `setLike(slug, visitorId, enabled)` | PUT/DELETE | `/api/v1/content/:slug/likes` | `LikeSummary` |
 
+### 锚定链（公开，`docs/chain.md`）
+
+| 方法 | HTTP | Core 路径 | 返回 |
+| --- | --- | --- | --- |
+| `chain()` | GET | `/api/v1/chain` | `ChainInfo`（height/totalAnchors/pendingAnchors/proofMode/difficulty/genesisHash/tipHash/sitePublicKey） |
+| `chainAnchors(query?)` | GET | `/api/v1/chain/anchors` | `Collection<ChainAnchor>`，`query` 支持 `source`（九值枚举）/`ref`/`page`/`pageSize` |
+| `chainAnchor(id)` | GET | `/api/v1/chain/anchors/{id}` | `ChainAnchor` |
+| `submitAnchor(input)` | POST | `/api/v1/chain/anchors` | 202 `SubmitAnchorResponse`（`anchorId`/`subjectHash`/`status:"pending"`）；`payload` 为任意文本（≤`CORE_CHAIN_ANCHOR_MAX_BYTES`，超限 413 `PAYLOAD_TOO_LARGE`），只存哈希不存原文 |
+| `chainBlocks(query?)` | GET | `/api/v1/chain/blocks` | `Collection<ChainBlockSummary>`（block_index 降序） |
+| `chainBlock(id)` | GET | `/api/v1/chain/blocks/{id}` | `ChainBlockDetail`（`certIds` + 内含 `anchors`） |
+| `verifyByHash(hash)` | GET | `/api/v1/chain/verify?hash=…` | `VerifyResponse`（64 位 hex） |
+| `verifyPayload(payload)` | POST | `/api/v1/chain/verify` | `VerifyResponse`；Core 按原字节重算哈希后查证，客户端不做任何哈希 |
+| `verifyContent(slug)` | GET | `/api/v1/chain/verify/content/{slug}` | `VerifyResponse`；仅 PUBLISHED 内容，Core 从 live 行重建 canonical payload |
+| `verifyComment(id)` | GET | `/api/v1/chain/verify/comment/{id}` | `VerifyResponse`；隐藏/软删评论 404 |
+| `chainKeys()` | GET | `/api/v1/chain/keys` | `{ keys: ChainPublicKey[] }` 站点公钥列表 |
+
 ### Admin API
 
 | 方法 | HTTP | Core 路径 | 返回 |
@@ -88,6 +104,7 @@ const page = await client.content({ kind: "ARTICLE", pageSize: 20 })
 | `restoreComment(id)` | POST | `/api/v1/admin/comments/:id/restore` | `void`，204 |
 | `hideComment(id)` / `unhideComment(id)` | POST | `/api/v1/admin/comments/{id}/hide` `/unhide` | `void`，204；隐藏与软删除正交，已删除评论返回 `COMMENT_DELETED` |
 | `updateCommentAuthor(id, input)` | PUT | `/api/v1/admin/comments/{id}` | `void`，204；部分覆盖 `UpdateCommentInput`，`authorUrl: null` 清空网站 |
+| `adminSubmitAnchor(input)` | POST | `/api/v1/admin/chain/anchors` | 202 `SubmitAnchorResponse`；管理员通道提交任意 payload（source = `admin`），请求体同公开通道，需 Bearer JWT |
 
 SDK 当前没有自动提供重试、轮询、分页迭代器或 token refresh；这些职责由调用方的 React Query、Server Component 或 session 层承担。
 

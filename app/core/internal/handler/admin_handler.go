@@ -13,6 +13,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/manifold-space/manifold/app/core/internal/auth"
+	"github.com/manifold-space/manifold/app/core/internal/chain"
 	"github.com/manifold-space/manifold/app/core/internal/model"
 	"github.com/manifold-space/manifold/app/core/internal/store"
 )
@@ -35,6 +36,11 @@ func (h *apiHandler) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.audit(r, "admin.session.created", "session", input.Username, nil)
+	if claims, err := h.auth.Parse(token); err == nil {
+		if payload, label, subjectRef, metadata, anchorErr := AuthActionPayload(input.Username, "login", claims.ID); anchorErr == nil {
+			h.anchorBusinessChange(r, chain.SourceAuth, payload, label, subjectRef, metadata)
+		}
+	}
 	WriteJSON(w, http.StatusOK, map[string]any{"accessToken": token, "tokenType": "Bearer", "expiresIn": auth.SessionTTLSeconds, "user": map[string]string{"username": input.Username, "role": "admin"}})
 }
 
@@ -115,6 +121,9 @@ func (h *apiHandler) adminUpdateProfile(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	h.audit(r, "profile.updated", "profile", "profile_1", nil)
+	if payload, label, subjectRef, metadata, anchorErr := ProfilePayload(profile); anchorErr == nil {
+		h.anchorBusinessChange(r, chain.SourceProfile, payload, label, subjectRef, metadata)
+	}
 	h.profile(w, r)
 }
 
@@ -129,6 +138,9 @@ func (h *apiHandler) adminLogoutSession(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	h.audit(r, "admin.session.revoked", "session", claims.ID, nil)
+	if payload, label, subjectRef, metadata, anchorErr := AuthActionPayload(claims.Subject, "logout", claims.ID); anchorErr == nil {
+		h.anchorBusinessChange(r, chain.SourceAuth, payload, label, subjectRef, metadata)
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -162,6 +174,9 @@ func (h *apiHandler) adminLogoutSessionByID(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	h.audit(r, "admin.session.revoked", "session", targetID, nil)
+	if payload, label, subjectRef, metadata, anchorErr := AuthActionPayload(claims.Subject, "logout", targetID); anchorErr == nil {
+		h.anchorBusinessChange(r, chain.SourceAuth, payload, label, subjectRef, metadata)
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -176,6 +191,9 @@ func (h *apiHandler) adminLogoutSessions(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	h.audit(r, "admin.sessions.revoked_all", "session", claims.Subject, nil)
+	if payload, label, subjectRef, metadata, anchorErr := AuthActionPayload(claims.Subject, "logout-all", claims.ID); anchorErr == nil {
+		h.anchorBusinessChange(r, chain.SourceAuth, payload, label, subjectRef, metadata)
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -243,6 +261,9 @@ func (h *apiHandler) adminChangePassword(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	h.audit(r, "admin.password.changed", "password", claims.Subject, nil)
+	if payload, label, subjectRef, metadata, anchorErr := AuthActionPayload(claims.Subject, "password-changed", claims.ID); anchorErr == nil {
+		h.anchorBusinessChange(r, chain.SourceAuth, payload, label, subjectRef, metadata)
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -279,6 +300,9 @@ func (h *apiHandler) adminUpdateSite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.audit(r, "site.updated", "site", "site_1", nil)
+	if payload, label, subjectRef, metadata, anchorErr := SitePayload(input); anchorErr == nil {
+		h.anchorBusinessChange(r, chain.SourceSite, payload, label, subjectRef, metadata)
+	}
 	h.adminSite(w, r)
 }
 
@@ -308,6 +332,9 @@ func (h *apiHandler) adminUpdateThoughtConfig(w http.ResponseWriter, r *http.Req
 		return
 	}
 	h.audit(r, "thoughts.config.updated", "thoughts_config", "thoughts_1", nil)
+	if payload, label, subjectRef, metadata, anchorErr := PinsPayload(model.ContentKindThought, *input.PinnedIds); anchorErr == nil {
+		h.anchorBusinessChange(r, chain.SourceSite, payload, label, subjectRef, metadata)
+	}
 	h.adminThoughtConfig(w, r)
 }
 
@@ -337,6 +364,9 @@ func (h *apiHandler) adminUpdateWritingConfig(w http.ResponseWriter, r *http.Req
 		return
 	}
 	h.audit(r, "writings.config.updated", "writings_config", "writings_1", nil)
+	if payload, label, subjectRef, metadata, anchorErr := PinsPayload(model.ContentKindArticle, *input.PinnedIds); anchorErr == nil {
+		h.anchorBusinessChange(r, chain.SourceSite, payload, label, subjectRef, metadata)
+	}
 	h.adminWritingConfig(w, r)
 }
 
@@ -439,6 +469,9 @@ func (h *apiHandler) adminCreateContent(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	h.audit(r, "content.created", "content", created.ID, map[string]string{"kind": string(created.Kind)})
+	if payload, label, subjectRef, metadata, payloadErr := ContentPayload(created); payloadErr == nil {
+		h.anchorBusinessChange(r, chain.SourceContent, payload, label, subjectRef, metadata)
+	}
 	h.statsCache.Purge()
 	h.overviewCache.Purge()
 	WriteJSON(w, http.StatusCreated, model.ToAdminContent(created))
@@ -480,6 +513,11 @@ func (h *apiHandler) adminUpdateContent(w http.ResponseWriter, r *http.Request) 
 	if input.Slug != nil && *input.Slug != current.Slug {
 		h.contentCache.Remove(current.Slug)
 	}
+	if updated, err := h.store.GetContentByID(current.ID, true); err == nil {
+		if payload, label, subjectRef, metadata, payloadErr := ContentPayload(updated); payloadErr == nil {
+			h.anchorBusinessChange(r, chain.SourceContent, payload, label, subjectRef, metadata)
+		}
+	}
 	h.writeAdminContent(w, r)
 }
 
@@ -503,6 +541,13 @@ func (h *apiHandler) setContentStatus(w http.ResponseWriter, r *http.Request, st
 	h.audit(r, "content."+strings.ToLower(string(status)), "content", current.ID, nil)
 	h.invalidateContentBySlug(current.Slug)
 	h.contentCache.Remove(current.Slug)
+	// The substance is unchanged by lifecycle flips; the certificate records
+	// the new status/version in metadata (docs/chain.md §4.1).
+	if updated, err := h.store.GetContentByID(current.ID, true); err == nil {
+		if payload, label, subjectRef, metadata, payloadErr := ContentPayload(updated); payloadErr == nil {
+			h.anchorBusinessChange(r, chain.SourceContent, payload, label, subjectRef, metadata)
+		}
+	}
 	h.writeAdminContent(w, r)
 }
 
@@ -516,6 +561,11 @@ func (h *apiHandler) adminDeleteContent(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	h.audit(r, "content.deleted", "content", current.ID, nil)
+	if deleted, err := h.store.GetContentByID(current.ID, true); err == nil {
+		if payload, label, subjectRef, metadata, payloadErr := ContentPayload(deleted); payloadErr == nil {
+			h.anchorBusinessChange(r, chain.SourceContent, payload, label, subjectRef, metadata)
+		}
+	}
 	h.statsCache.Purge()
 	h.overviewCache.Purge()
 	h.contentCache.Remove(current.Slug)
@@ -533,6 +583,9 @@ func (h *apiHandler) adminRestoreContent(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	h.audit(r, "content.restored", "content", restored.ID, nil)
+	if payload, label, subjectRef, metadata, payloadErr := ContentPayload(restored); payloadErr == nil {
+		h.anchorBusinessChange(r, chain.SourceContent, payload, label, subjectRef, metadata)
+	}
 	h.statsCache.Purge()
 	h.overviewCache.Purge()
 	h.contentCache.Remove(restored.Slug)
@@ -619,6 +672,7 @@ func (h *apiHandler) setCommentHidden(w http.ResponseWriter, r *http.Request, hi
 		event = "comment.unhidden"
 	}
 	h.audit(r, event, "comment", chi.URLParam(r, "id"), nil)
+	h.anchorCommentRow(r, chi.URLParam(r, "id"), event)
 	h.invalidateCommentContent(contentID)
 	h.overviewCache.Purge()
 	w.WriteHeader(http.StatusNoContent)
@@ -655,6 +709,7 @@ func (h *apiHandler) adminUpdateCommentAuthor(w http.ResponseWriter, r *http.Req
 		return
 	}
 	h.audit(r, "comment.updated", "comment", chi.URLParam(r, "id"), nil)
+	h.anchorCommentRow(r, chi.URLParam(r, "id"), "comment.author-updated")
 	h.invalidateCommentContent(contentID)
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -730,9 +785,28 @@ func (h *apiHandler) setCommentDeleted(w http.ResponseWriter, r *http.Request, d
 		event = "comment.restored"
 	}
 	h.audit(r, event, "comment", chi.URLParam(r, "id"), nil)
+	h.anchorCommentRow(r, chi.URLParam(r, "id"), event)
 	h.invalidateCommentContent(contentID)
 	h.overviewCache.Purge()
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// anchorCommentRow commits a certificate from the post-write comment row;
+// moderation flips re-sign the unchanged substance with the action recorded
+// in metadata (docs/chain.md §4.1 comment source).
+func (h *apiHandler) anchorCommentRow(r *http.Request, commentID, action string) {
+	if h.ledger == nil {
+		return
+	}
+	comment, err := h.store.GetCommentByID(commentID)
+	if err != nil {
+		return
+	}
+	payload, label, subjectRef, metadata, err := CommentPayload(comment.Comment, action)
+	if err != nil {
+		return
+	}
+	h.anchorBusinessChange(r, chain.SourceComment, payload, label, subjectRef, metadata)
 }
 
 func (h *apiHandler) invalidateCommentContent(contentID string) {

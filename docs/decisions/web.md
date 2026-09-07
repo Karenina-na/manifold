@@ -27,9 +27,12 @@ Server Component 负责首屏数据、详情读取和 SEO；Client Component 负
 | `/writing` | Dynamic Server Component + client archive controls | `content({ kind: "ARTICLE", q, tag, sort, aiAssisted, page, pageSize })`、`tags({ kind: "ARTICLE" })` | 双栏长文归档、置顶首篇、搜索、多标签筛选（OR 语义）、最新/最早/最近更新排序与悬浮侧栏 |
 | `/writing/[slug]` | Dynamic Server Component + client reading controls | `contentBySlug(slug, { referrer, visitorId })` | 返回 Writing 入口作为标题阅读面的独立上方行；其下为四段同宽的不透明阅读面（标题、正文、讨论、添加评论）、同排日期/阅读时长/语言/统计、Markdown、右侧进度目录、评论和反应；讨论面展示统计、搜索和筛选，添加评论面在接近底部时由桌面/平板左侧紧凑动作卡通过共享布局动画展开；越过激活线后继续下滑保持展开，仅向上越回激活线才恢复左侧，手机端在讨论面之后堆叠；非 ARTICLE 内容、未发布或读取失败一律走标准 404（`not-found.tsx` 渲染 "That piece is not here." 安抚页） |
 | `/health` | Route Handler | 无 | Web 进程 liveness，Core 健康检查仍为 `/healthz` |
+| `/chain` | Dynamic Server Component + client explorer | `chain()`、`chainBlocks({pageSize:20})` | 锚定链浏览器与验证页（`docs/chain.md`）：概览（height/anchors/PoW/站点公钥）、区块列表与展开详情（certIds/anchors）、按 payload/哈希/slug 三种模式验证、公开锚定提交表单。`ChainExplorer`（Client Component）经 SDK 调 Core，客户端不做任何哈希/规范化；验证结果展示 `found/signatureValid/chainIntegrity` 与证书归属块。Core 失败时渲染空态，不报错 |
 | `/feed.xml` | Dynamic Route Handler | site、2 条 Article、3 条 Thought | 输出同源 RSS 2.0 feed，channel title/description 取站点设置（回退内置 "Manifold" 文案） |
 
 详情页根据 content kind 选择返回路径：Thought 用 `/thoughts/{slug}`，Article 用 `/writing/{slug}`。`buildHref()` 在 Web 边界生成链接，Core 不返回 `href`。
+
+两个详情页（Writing 与 Thought）的返回行右侧渲染 `AnchorBadge`（`components/anchor-badge.tsx`），由 `ContentDetail.latestAnchor` 驱动：无证书（`null`）不渲染；`pending` 显示指纹前缀 + "sealing…"，`anchored` 显示指纹前缀 + 块号（`block_3` → `block #3`），点击跳 `/chain`；徽标状态色与 hover 由站点既有 accent token 提供，不引入新设计语言。
 
 详情页的浏览事件归因：SSR 读取 `manifold-vid` cookie 并经 `contentBySlug` 的 `visitorId` 附带 `X-Visitor-ID`，Core 按"同人同内容同 UTC 日"去重统计独立访客。访客 ID 唯一来源是 localStorage `manifold.visitorId`（`getVisitorId()`），每次客户端挂载时镜像到 `manifold-vid` cookie（`path=/`、1 年 sliding、`samesite=lax`）；Server Component 无法读 localStorage，浏览器首次直接深链详情页时 cookie 尚未生成，该次浏览按匿名事件计入，完成任一页面的客户端挂载后开始去重。
 

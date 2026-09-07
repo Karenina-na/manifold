@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/manifold-space/manifold/app/core/internal/chain"
 	"github.com/manifold-space/manifold/app/core/internal/model"
 	"github.com/manifold-space/manifold/app/core/internal/store"
 )
@@ -100,6 +101,9 @@ func (h *apiHandler) createCommentOnContent(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	h.audit(r, "comment.created", "comment", comment.ID, map[string]string{"contentId": content.ID})
+	if payload, label, subjectRef, metadata, payloadErr := CommentPayload(comment, "created"); payloadErr == nil {
+		h.anchorBusinessChange(r, chain.SourceComment, payload, label, subjectRef, metadata)
+	}
 	h.invalidateContentBySlug(content.Slug)
 	h.contentCache.Remove(content.Slug)
 	WriteJSON(w, http.StatusCreated, comment)
@@ -155,6 +159,9 @@ func (h *apiHandler) mutateLike(w http.ResponseWriter, r *http.Request, enabled 
 		action = "added"
 	}
 	h.audit(r, "content.like."+action, "content", content.ID, nil)
+	if payload, label, subjectRef, metadata, payloadErr := ReactionActionPayload(content.ID, visitorID, action); payloadErr == nil {
+		h.anchorBusinessChange(r, chain.SourceReaction, payload, label, subjectRef, metadata)
+	}
 	h.overviewCache.Purge()
 	// The cached detail carries likeCount; drop it so readers never see a
 	// stale count for the TTL window.

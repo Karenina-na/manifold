@@ -7,10 +7,14 @@ import type {
   AdminSessionList,
   ApiErrorBody,
   AuditEvent,
+  ChainBlockSummary,
+  ChainInfo,
+  ChainAnchor,
   Collection,
   Comment,
   Profile,
   SiteComposition,
+  VerifyResponse,
 } from "../src/index.ts";
 
 const wire = JSON.parse(readFileSync(fileURLToPath(new URL("./fixtures/wire.json", import.meta.url)), "utf8")) as {
@@ -23,6 +27,10 @@ const wire = JSON.parse(readFileSync(fileURLToPath(new URL("./fixtures/wire.json
   auditEvent: AuditEvent;
   error: ApiErrorBody;
   sessionList: AdminSessionList;
+  chainInfo: ChainInfo;
+  chainAnchor: ChainAnchor;
+  chainBlock: ChainBlockSummary;
+  chainVerify: VerifyResponse;
 };
 
 type CollectionFixture = Extract<Collection<never>["data"][number], { kind: "THOUGHT" | "ARTICLE" }>;
@@ -49,4 +57,15 @@ test("wire fixtures conform to contracts", () => {
   if (current?.active !== true || current?.revokedAt !== null) throw new Error("session current active");
   const revoked = wire.sessionList.sessions.find((session) => !session.active);
   if (revoked?.revokedAt === null) throw new Error("session revoked at");
+});
+
+test("chain wire fixtures conform to contracts", () => {
+  if (wire.chainInfo.proofMode !== "sim" || wire.chainInfo.height !== 3) throw new Error("chain info");
+  if (typeof wire.chainInfo.sitePublicKey !== "string" || wire.chainInfo.sitePublicKey.length !== 64) throw new Error("chain site key");
+  if (wire.chainAnchor.source !== "content" || wire.chainAnchor.status !== "anchored") throw new Error("chain anchor");
+  if (wire.chainAnchor.blockId !== "block_2") throw new Error("chain anchor block");
+  if (wire.chainAnchor.metadata.version !== 1 || wire.chainAnchor.metadata.kind !== "ARTICLE") throw new Error("chain anchor metadata");
+  if (wire.chainBlock.anchorCount !== 1 || wire.chainBlock.proofMode !== "sim") throw new Error("chain block");
+  if (wire.chainVerify.found !== true || wire.chainVerify.signatureValid !== true || wire.chainVerify.chainIntegrity !== true) throw new Error("chain verify");
+  if (wire.chainVerify.anchor?.id !== wire.chainAnchor.id) throw new Error("chain verify anchor");
 });

@@ -439,8 +439,8 @@ func TestIncrementalCommentMigrationFromSchemaV2(t *testing.T) {
 	if err := database.DB.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
 		t.Fatal(err)
 	}
-	if version != 4 {
-		t.Fatalf("expected user_version 4, got %d", version)
+	if version != 5 {
+		t.Fatalf("expected user_version 5, got %d", version)
 	}
 	var hiddenColumn int
 	if err := database.DB.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('comments') WHERE name = 'hidden_at'`).Scan(&hiddenColumn); err != nil {
@@ -455,6 +455,54 @@ func TestIncrementalCommentMigrationFromSchemaV2(t *testing.T) {
 	}
 	if pinsColumn != 0 {
 		t.Fatal("expected incremental migration to drop thoughts_config.featured_thought_id")
+	}
+}
+
+func TestIncrementalChainMigrationFromSchemaV4(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "schema-v4.db")
+	legacy, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, version := range []int{1, 2, 3, 4} {
+		script, err := fs.ReadFile(coredb.MigrationsFS, filepath.Join("migrations", formatMigration(version)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := legacy.Exec(string(script)); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := legacy.Exec(`INSERT INTO schema_migrations (version) VALUES (?)`, version); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := legacy.Exec(`PRAGMA user_version = 4`); err != nil {
+		t.Fatal(err)
+	}
+	if err := legacy.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	database, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	var version int
+	if err := database.DB.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
+		t.Fatal(err)
+	}
+	if version != 5 {
+		t.Fatalf("expected user_version 5, got %d", version)
+	}
+	for _, table := range []string{"chain_anchors", "chain_blocks", "chain_keys"} {
+		var exists int
+		if err := database.DB.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?`, table).Scan(&exists); err != nil {
+			t.Fatal(err)
+		}
+		if exists != 1 {
+			t.Fatalf("expected incremental migration to create %s", table)
+		}
 	}
 }
 

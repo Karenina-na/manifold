@@ -129,3 +129,30 @@ test('validateReleaseConfig rejects invalid optional Core runtime values', () =>
   assert.throws(() => validateReleaseConfig({ ...validEnvironment, CORE_CONTENT_CACHE_TTL: '' }), /CORE_CONTENT_CACHE_TTL/)
   assert.throws(() => validateReleaseConfig({ ...validEnvironment, CORE_MEDIA_MAX_BYTES: '' }), /CORE_MEDIA_MAX_BYTES/)
 })
+
+test('validateReleaseConfig checks anchoring chain settings', () => {
+  // Default (no chain keys) and sim mode pass untouched.
+  validateReleaseConfig(validEnvironment)
+  validateReleaseConfig({ ...validEnvironment, CORE_CHAIN_PROOF_MODE: 'sim' })
+  // Unknown proof modes are refused.
+  assert.throws(
+    () => validateReleaseConfig({ ...validEnvironment, CORE_CHAIN_PROOF_MODE: 'ultra' }),
+    /CORE_CHAIN_PROOF_MODE must be sim or proof/,
+  )
+  // Proof mode demands at least difficulty 1.
+  assert.throws(
+    () => validateReleaseConfig({ ...validEnvironment, CORE_CHAIN_PROOF_MODE: 'proof', CORE_CHAIN_DIFFICULTY: '0' }),
+    /CORE_CHAIN_DIFFICULTY must be >= 1 in proof mode/,
+  )
+  // Valid proof configuration passes.
+  validateReleaseConfig({ ...validEnvironment, CORE_CHAIN_PROOF_MODE: 'proof', CORE_CHAIN_DIFFICULTY: '4' })
+  // Duration and integer keys are type-checked.
+  assert.throws(
+    () => validateReleaseConfig({ ...validEnvironment, CORE_CHAIN_SIM_DELAY: 'soon' }),
+    /CORE_CHAIN_SIM_DELAY/,
+  )
+  assert.throws(
+    () => validateReleaseConfig({ ...validEnvironment, CORE_CHAIN_BATCH_SIZE: 'many' }),
+    /CORE_CHAIN_BATCH_SIZE/,
+  )
+})

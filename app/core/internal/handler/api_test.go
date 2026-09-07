@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/manifold-space/manifold/app/core/internal/chain"
 	"github.com/manifold-space/manifold/app/core/internal/config"
 	"github.com/manifold-space/manifold/app/core/internal/handler"
 	"github.com/manifold-space/manifold/app/core/internal/model"
@@ -28,7 +29,7 @@ func newTestRouter(t *testing.T) http.Handler {
 	}
 	t.Cleanup(func() { _ = database.Close() })
 	cfg := config.Config{JWTSecret: "test-secret", AdminUsername: "admin", AdminPasswordHash: string(hash), AllowedOrigins: []string{"*"}, AuditEventBuffer: 256}
-	router, closeRouter := handler.RouterWithLifecycle(cfg, database)
+	router, closeRouter := handler.RouterWithLifecycle(cfg, database, nil)
 	t.Cleanup(closeRouter)
 	return router
 }
@@ -43,7 +44,35 @@ func newTestRouterWithConfig(t *testing.T, mutate func(*config.Config)) (http.Ha
 	t.Cleanup(func() { _ = database.Close() })
 	cfg := config.Config{JWTSecret: "test-secret", AdminUsername: "admin", AdminPasswordHash: string(hash), AllowedOrigins: []string{"*"}, AuditEventBuffer: 256}
 	mutate(&cfg)
-	router, closeRouter := handler.RouterWithLifecycle(cfg, database)
+	router, closeRouter := handler.RouterWithLifecycle(cfg, database, nil)
+	t.Cleanup(closeRouter)
+	return router, database
+}
+
+// newTestRouterWithChain wires a real ledger over the same test database with
+// instant-mining settings (SimDelay 0, FlushTimeout 0) so every submission
+// mines within the same MineOnce pass the miner loop runs each tick.
+func newTestRouterWithChain(t *testing.T, mutate func(*config.Config)) (http.Handler, *store.Store) {
+	t.Helper()
+	hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.MinCost)
+	database, err := store.Open(":memory:", store.WithAdminCredential("admin", string(hash)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	cfg := config.Config{JWTSecret: "test-secret", AdminUsername: "admin", AdminPasswordHash: string(hash), AllowedOrigins: []string{"*"}, AuditEventBuffer: 256,
+		ChainProofMode: "sim", ChainSimDelay: time.Millisecond, ChainBatchSize: 1, ChainFlushTimeout: time.Millisecond, ChainMaxBlockAnchors: 500, ChainAnchorMaxBytes: 1 << 16}
+	if mutate != nil {
+		mutate(&cfg)
+	}
+	ledger := chain.NewLedger(database.DB, chain.LedgerConfig{
+		ProofMode: chain.ProofModeSim, Difficulty: 0, SimDelay: time.Millisecond,
+		BatchSize: 1, MaxBlockAnchors: 500, FlushTimeout: time.Millisecond, AnchorMaxBytes: 1 << 16,
+	})
+	if _, err := ledger.EnsureSiteKey(); err != nil {
+		t.Fatal(err)
+	}
+	router, closeRouter := handler.RouterWithLifecycle(cfg, database, ledger)
 	t.Cleanup(closeRouter)
 	return router, database
 }
@@ -1567,5 +1596,233 @@ func TestMediaDeleteBlockedWhenReferenced(t *testing.T) {
 	_ = json.Unmarshal(blocked.Body.Bytes(), &body)
 	if body.Error.Code != "MEDIA_IN_USE" {
 		t.Fatalf("expected MEDIA_IN_USE, got %s", body.Error.Code)
+	}
+}
+
+// --- Anchoring chain: business write paths produce certificates ---
+
+// chainAnchorProbe reads one anchor row for assertions.
+func chainAnchorProbe(t *testing.T, database *store.Store, query string, args ...any) map[string]any {
+	t.Helper()
+	var id, source, subjectRef, metadataJSON string
+	var blockID *string
+	if err := database.DB.QueryRow(`SELECT id, source, subject_ref, metadata_json, block_id FROM chain_anchors `+query, args...).Scan(&id, &source, &subjectRef, &metadataJSON, &blockID); err != nil {
+		t.Fatalf("anchor probe %s: %v", query, err)
+	}
+	var metadata map[string]any
+	_ = json.Unmarshal([]byte(metadataJSON), &metadata)
+	return map[string]any{"id": id, "source": source, "subjectRef": subjectRef, "metadata": metadata, "blockID": blockID}
+}
+
+func TestChainAnchorsContentLifecycle(t *testing.T) {
+	router, database := newTestRouterWithChain(t, nil)
+	token := adminToken(t, router)
+
+	created := adminRequest(t, router, token, http.MethodPost, "/api/v1/admin/content", `{"kind":"ARTICLE","slug":"chain-piece","title":"Chain piece","summary":"s","body":"Body","tags":["go"],"metadata":{"language":null,"aiAssisted":false}}`)
+	if created.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d %s", created.Code, created.Body.String())
+	}
+	var item struct{ ID string `json:"id"` }
+	_ = json.Unmarshal(created.Body.Bytes(), &item)
+
+	// create → content-source anchor recording DRAFT/v1
+	anchor := chainAnchorProbe(t, database, `WHERE source = 'content' AND subject_ref = ? ORDER BY created_at ASC, id ASC LIMIT 1`, item.ID)
+	if anchor["source"] != "content" {
+		t.Fatalf("create must leave a content anchor: %v", anchor)
+	}
+	meta := anchor["metadata"].(map[string]any)
+	if meta["status"] != "DRAFT" || meta["version"] != float64(1) || meta["slug"] != "chain-piece" {
+		t.Fatalf("create anchor metadata mismatch: %v", meta)
+	}
+
+	// publish → second anchor carrying the same substance hash, PUBLISHED status
+	published := adminRequest(t, router, token, http.MethodPost, "/api/v1/admin/content/"+item.ID+"/publish", "")
+	if published.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d %s", published.Code, published.Body.String())
+	}
+	anchors, err := database.DB.Query(`SELECT metadata_json FROM chain_anchors WHERE source = 'content' AND subject_ref = ?`, item.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var statuses []string
+	for anchors.Next() {
+		var metadataJSON string
+		if err := anchors.Scan(&metadataJSON); err != nil {
+			t.Fatal(err)
+		}
+		var meta map[string]any
+		_ = json.Unmarshal([]byte(metadataJSON), &meta)
+		statuses = append(statuses, meta["status"].(string))
+	}
+	anchors.Close()
+	rows, err := database.DB.Query(`SELECT subject_hash FROM chain_anchors WHERE source = 'content' AND subject_ref = ?`, item.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var hashes []string
+	for rows.Next() {
+		var hash string
+		_ = rows.Scan(&hash)
+		hashes = append(hashes, hash)
+	}
+	if len(statuses) != 2 || statuses[0] != "DRAFT" || statuses[1] != "PUBLISHED" {
+		t.Fatalf("lifecycle anchors mismatch: %v", statuses)
+	}
+	// Same body, same substance: both lifecycle flips hash identically (docs/chain.md §4.1).
+	if hashes[0] != hashes[1] {
+		t.Fatalf("substance hash must be stable across lifecycle flips: %v", hashes)
+	}
+}
+
+func TestChainAnchorsReactionAndCommentAndAuth(t *testing.T) {
+	router, database := newTestRouterWithChain(t, nil)
+	token := adminToken(t, router)
+
+	// login already produced an auth anchor
+	var authCount int
+	if err := database.DB.QueryRow(`SELECT COUNT(*) FROM chain_anchors WHERE source = 'auth'`).Scan(&authCount); err != nil {
+		t.Fatal(err)
+	}
+	if authCount < 1 {
+		t.Fatal("login must anchor an auth event")
+	}
+
+	created := adminRequest(t, router, token, http.MethodPost, "/api/v1/admin/content", `{"kind":"THOUGHT","slug":"chain-thought","title":null,"summary":"s","body":"Thought body","tags":[],"metadata":{"mood":"calm","question":null,"context":null,"source":null}}`)
+	if created.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d %s", created.Code, created.Body.String())
+	}
+	_ = adminRequest(t, router, token, http.MethodPost, "/api/v1/admin/content/"+jsonStringField(t, created.Body.String(), "id")+"/publish", "")
+
+	comment := request(t, router, http.MethodPost, "/api/v1/content/chain-thought/comments", strings.NewReader(`{"authorName":"alice","body":"Anchored reply","avatarSeed":"seed1"}`))
+	if comment.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d %s", comment.Code, comment.Body.String())
+	}
+	anchor := chainAnchorProbe(t, database, `WHERE source = 'comment' ORDER BY created_at DESC, id DESC LIMIT 1`)
+	if meta := anchor["metadata"].(map[string]any); meta["action"] != "created" {
+		t.Fatalf("comment anchor action mismatch: %v", meta)
+	}
+
+	like := requestWithVisitor(t, router, http.MethodPut, "/api/v1/content/chain-thought/likes", "visitor_chain_1")
+	if like.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d %s", like.Code, like.Body.String())
+	}
+	anchor = chainAnchorProbe(t, database, `WHERE source = 'reaction' ORDER BY created_at DESC, id DESC LIMIT 1`)
+	if meta := anchor["metadata"].(map[string]any); meta["action"] != "added" {
+		t.Fatalf("reaction anchor action mismatch: %v", meta)
+	}
+}
+
+func jsonStringField(t *testing.T, raw, field string) string {
+	t.Helper()
+	var parsed map[string]any
+	if err := json.Unmarshal([]byte(raw), &parsed); err != nil {
+		t.Fatal(err)
+	}
+	value, _ := parsed[field].(string)
+	return value
+}
+
+func TestChainPublicSubmitVerifyAndLatestAnchor(t *testing.T) {
+	router, _ := newTestRouterWithChain(t, nil)
+	token := adminToken(t, router)
+
+	submit := request(t, router, http.MethodPost, "/api/v1/chain/anchors", strings.NewReader(`{"payload":"hello manifold","label":"demo"}`))
+	if submit.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d %s", submit.Code, submit.Body.String())
+	}
+	var submitted struct{ AnchorID, SubjectHash string `json:"-"` }
+	var raw map[string]any
+	if err := json.Unmarshal(submit.Body.Bytes(), &raw); err != nil {
+		t.Fatal(err)
+	}
+	submitted.AnchorID, _ = raw["anchorId"].(string)
+	submitted.SubjectHash, _ = raw["subjectHash"].(string)
+	if submitted.AnchorID == "" || raw["status"] != "pending" {
+		t.Fatalf("unexpected submit response: %s", submit.Body.String())
+	}
+
+	// Round-trip by hash and by pasted payload; the miner confirms within a tick.
+	deadline := time.Now().Add(3 * time.Second)
+	anchored := false
+	for time.Now().Before(deadline) {
+		verify := request(t, router, http.MethodGet, "/api/v1/chain/verify?hash="+submitted.SubjectHash, nil)
+		if verify.Code == http.StatusOK {
+			var result map[string]any
+			_ = json.Unmarshal(verify.Body.Bytes(), &result)
+			anchor, _ := result["anchor"].(map[string]any)
+			if blockID, _ := anchor["blockId"].(string); blockID != "" {
+				if result["found"] != true || result["signatureValid"] != true || result["chainIntegrity"] != true {
+					t.Fatalf("verify mismatch: %s", verify.Body.String())
+				}
+				anchored = true
+				break
+			}
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if !anchored {
+		t.Fatal("anchor never confirmed within deadline")
+	}
+
+	payloadVerify := request(t, router, http.MethodPost, "/api/v1/chain/verify", strings.NewReader(`{"payload":"hello manifold"}`))
+	if payloadVerify.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", payloadVerify.Code)
+	}
+	var result map[string]any
+	_ = json.Unmarshal(payloadVerify.Body.Bytes(), &result)
+	if result["found"] != true {
+		t.Fatalf("pasted payload must verify: %s", payloadVerify.Body.String())
+	}
+
+	// Admin channel requires JWT.
+	unauthorized := request(t, router, http.MethodPost, "/api/v1/admin/chain/anchors", strings.NewReader(`{"payload":"x"}`))
+	if unauthorized.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", unauthorized.Code)
+	}
+
+	// Oversized payload → 413.
+	bigPayload := strings.Repeat("x", 70000)
+	tooLarge := request(t, router, http.MethodPost, "/api/v1/chain/anchors", strings.NewReader(`{"payload":"`+bigPayload+`"}`))
+	if tooLarge.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("expected 413, got %d", tooLarge.Code)
+	}
+
+	// detail endpoint carries latestAnchor once content is anchored
+	created := adminRequest(t, router, token, http.MethodPost, "/api/v1/admin/content", `{"kind":"ARTICLE","slug":"badge-piece","title":"Badge","summary":"s","body":"B","tags":[],"metadata":{"language":null,"aiAssisted":false}}`)
+	id := jsonStringField(t, created.Body.String(), "id")
+	_ = adminRequest(t, router, token, http.MethodPost, "/api/v1/admin/content/"+id+"/publish", "")
+	detailDeadline := time.Now().Add(3 * time.Second)
+	var latestAnchor any
+	for time.Now().Before(detailDeadline) {
+		detail := request(t, router, http.MethodGet, "/api/v1/content/badge-piece", nil)
+		if detail.Code == http.StatusOK {
+			var parsed struct {
+				LatestAnchor *struct {
+					AnchorID string `json:"anchorId"`
+					Status  string `json:"status"`
+				} `json:"latestAnchor"`
+			}
+			_ = json.Unmarshal(detail.Body.Bytes(), &parsed)
+			if parsed.LatestAnchor != nil && parsed.LatestAnchor.Status == "anchored" {
+				latestAnchor = parsed.LatestAnchor
+				break
+			}
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if latestAnchor == nil {
+		t.Fatal("detail must expose an anchored latestAnchor")
+	}
+
+	// verify/content round trip for the same slug
+	contentVerify := request(t, router, http.MethodGet, "/api/v1/chain/verify/content/badge-piece", nil)
+	if contentVerify.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d %s", contentVerify.Code, contentVerify.Body.String())
+	}
+	var contentResult map[string]any
+	_ = json.Unmarshal(contentVerify.Body.Bytes(), &contentResult)
+	if contentResult["found"] != true {
+		t.Fatalf("content verify must hit: %s", contentVerify.Body.String())
 	}
 }

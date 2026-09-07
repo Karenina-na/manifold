@@ -82,8 +82,17 @@ Core 使用 `caarlos0/env` 读取 `CORE_` 前缀变量；启动时自动从工�
 | `CORE_MEDIA_MAX_BYTES` | `5242880` | 单次上传大小上限（5MB），超限返回 413 |
 | `CORE_PUBLIC_URL` | 空 | 构建媒体绝对 URL 的公开基地址；为空时用请求的 Host（`X-Forwarded-Proto` 场景仅取 `r.TLS`/http） |
 | `CORE_SEED_FILE` | 空 | 自定义种子文件路径，语义见“种子数据”章节 |
+| `CORE_CHAIN_PROOF_MODE` | `sim` | 锚定链挖矿模式：`sim` 固定延迟出块，`proof` 真跑 SHA-256 碰撞；语义见 [`docs/chain.md`](chain.md) |
+| `CORE_CHAIN_DIFFICULTY` | `8` | proof 模式前导 0 十六进制位数；sim 下存 0 |
+| `CORE_CHAIN_SIM_DELAY` | `1s` | sim 模式模拟挖矿延迟 |
+| `CORE_CHAIN_BATCH_SIZE` | `32` | 缓冲满阈值：pending 证书达到该数量立即打包 |
+| `CORE_CHAIN_MAX_BLOCK_ANCHORS` | `500` | 单块证书上限 |
+| `CORE_CHAIN_FLUSH_TIMEOUT` | `30s` | 防饿死阀门：最老 pending 等待上限 |
+| `CORE_CHAIN_ANCHOR_MAX_BYTES` | `65536` | 公开/Admin 锚定提交 payload 上限，超限 413 |
 
 默认开发账号为 `admin` / `password`，仅用于本地联调。
+
+> **锚定链**：Core 内嵌单写者 PoW 锚定链，所有业务 DB 写路径自动提交 SHA-256 承诺证书，并提供公开无许可锚定接口与全链重放验证。证书/区块结构、锚定清单、挖矿生命周期与验证语义的完整契约见 [`docs/chain.md`](chain.md)。
 
 ### 统一发布包
 
@@ -179,6 +188,26 @@ Thoughts 归档参数为 `page`（默认 1）、`pageSize`（默认 8，范围 1
 
 反应请求必须使用 `X-Visitor-ID`，长度 8 到 128，只允许字母、数字、`_`、`-`。PUT/DELETE 对 `(content, visitor)` 幂等。
 
+### 锚定链公开 API（`/api/v1/chain`，无认证，不走内容 TTL 缓存）
+
+链数据低频且要求即时可见 pending 状态，集合统一 `{ data, pagination }`。完整契约（证书/区块结构、验证语义、错误码）见 [`docs/chain.md`](chain.md)。
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `GET` | `/api/v1/chain` | `ChainInfo`：height、totalAnchors、pendingAnchors、proofMode、difficulty、genesisHash、tipHash、sitePublicKey |
+| `GET` | `/api/v1/chain/anchors` | 证书列表（`createdAt` 降序），`source`（九值枚举）/`ref` 过滤 + `page`/`pageSize`（默认 20，上限 100） |
+| `POST` | `/api/v1/chain/anchors` | 无许可锚定提交（`publicLimiter` 限流）：`{payload, label?}`，payload ≤ `CORE_CHAIN_ANCHOR_MAX_BYTES`；202 `{anchorId, subjectHash, status:"pending"}`，超限 413 `PAYLOAD_TOO_LARGE`；只存哈希不存原文 |
+| `GET` | `/api/v1/chain/anchors/{id}` | 单张证书 |
+| `GET` | `/api/v1/chain/blocks` | 区块摘要列表（`block_index` 降序），摘要含 `anchorCount` 不含 certIds |
+| `GET` | `/api/v1/chain/blocks/{id}` | 区块详情：`certIds` + 内含全部证书 |
+| `GET` | `/api/v1/chain/verify?hash=` | 按哈希查证（64 位 hex）；每请求全链重放验证 |
+| `POST` | `/api/v1/chain/verify` | 贴原文查证：`{payload}`，Core 按原字节重算哈希后查证 |
+| `GET` | `/api/v1/chain/verify/content/{slug}` | 按公开内容查证：live 行重建 canonical payload；仅 PUBLISHED，否则 404 |
+| `GET` | `/api/v1/chain/verify/comment/{id}` | 按评论查证：同上；隐藏/软删评论 404（历史承诺仍可按哈希验证） |
+| `GET` | `/api/v1/chain/keys` | `{keys: [{keyId, publicKey, createdAt}]}` 站点公钥列表 |
+
+`GET /api/v1/content/{slug}` 的响应在锚定链启用时额外携带 `latestAnchor: { anchorId, subjectHash, status, blockId } | null`（按 contentId 的最新 content 源证书；链未启用或无证书时为 `null`）。
+
 ## 6. Admin API
 
 `POST /api/v1/admin/session` 使用用户名和 bcrypt 密码登录，返回 12 小时 HS256 JWT（claims 携带 `jti`，对应 `admin_sessions` 一行）。除登录接口外，所有 Admin 请求都需要 `Authorization: Bearer <token>`，且服务端逐请求校验 session 未吊销、未过期。登录失败会写入 `admin.session.failed` 审计（含 username 与源 IP，**绝不记录明文密码**）。
@@ -217,6 +246,7 @@ Thoughts 归档参数为 `page`（默认 1）、`pageSize`（默认 8，范围 1
 | `POST` | `/api/v1/admin/media` | 上传媒体：raw bytes（非 multipart）+ `?filename=`；`http.DetectContentType` 嗅探并仅接受 png/jpeg/webp/gif/avif 图片与 `application/pdf`（拒绝 SVG 与其他类型，415）；超过 `CORE_MEDIA_MAX_BYTES` 返回 413；按 SHA256 去重幂等（重复上传返回已有记录）；响应 201 `Media`（含绝对 `url`，图片写进 Markdown 正文使用，PDF 用于 Profile resume 链接）；审计 `media.uploaded` |
 | `DELETE` | `/api/v1/admin/media/{id}` | 物理删除媒体，204；删除前检查非删除内容正文是否引用该媒体，被引用则返回 409 `MEDIA_IN_USE`（`details.references` 列出引用内容），否则删除；审计 `media.deleted` |
 | `GET` | `/api/v1/admin/media/{id}/references` | `{ references: [...] }`：非删除内容（DRAFT/PUBLISHED）正文中引用该媒体的列表，每项为 `MediaReference{ contentId, kind, title, slug, status }`；`status` 只可能是 `DRAFT`/`PUBLISHED`；未知 id 返回空列表 |
+| `POST` | `/api/v1/admin/chain/anchors` | 管理员锚定提交：请求体与响应同公开通道（source = `admin`），无独立限流；语义见 [`docs/chain.md`](chain.md) |
 
 内容创建和更新的 Article 必须有非空 `title` 和 `slug`；Thought 两者可为空。更新使用 PUT，必须提交完整内容和 `expectedVersion`，版本不匹配返回 `409 VERSION_CONFLICT`。类型转换为 Article 时，最终 title/slug 也必须满足 Article 规则。
 
@@ -239,7 +269,7 @@ Thoughts 归档参数为 `page`（默认 1）、`pageSize`（默认 8，范围 1
 
 Metadata：Thought 使用 `mood/question/context/source`；Article 使用 Core 派生的 `readingMinutes/toc` 与可编辑的 `language/aiAssisted`。`excerpt` 在保存时由 Core 从正文生成并持久化。客户端不得提交派生字段，未知 metadata 字段和错误 null/type 直接拒绝。
 
-其他表：`profile`、`site_config`、`thoughts_config`、`writings_config`、`comments`、`likes`、`presence`、`audit_events`、`content_view_events`、`media`、`admin_credentials`、`admin_sessions`。`media`（`id`、`mime`、`size`、`sha256 UNIQUE`、`filename`、`data BLOB`、`created_at`）保存上传的媒体字节（图片与 PDF），按 SHA256 去重（相同字节复用同一行）；`mime` 只允许 png/jpeg/webp/gif/avif 与 `application/pdf`（上传时嗅探，SVG 永不入库）；公开访问 `GET /api/v1/media/{id}` 依赖该表，缓存语义见路由表。`admin_credentials`（`id`、`username`、`password_hash`、`updated_at`）保存管理员 bcrypt 凭据：首次启动用 `CORE_ADMIN_PASSWORD_HASH` 播种一行，之后以 DB 行为权威，`CORE_ADMIN_PASSWORD_HASH` 不再覆盖（改密码写入此行、重启保留）。`admin_sessions`（`id`（= JWT `jti`）、`subject`、`created_at`、`expires_at`、`revoked_at`）支持可撤销会话：登录时插入一行，`RequireAdmin` 每次校验 `revoked_at IS NULL AND expires_at > now`，`logout`/`logout-all`/改密码都会写 `revoked_at`。`content_view_events` 是浏览事件表（`content_id`、`visitor_id`、`referrer`（origin 或空）、`day`（UTC 日期）、`created_at`）：识别访客通过部分唯一索引 `(content_id, visitor_id, day) WHERE visitor_id != ''` 按"同人同内容同 UTC 日"去重，匿名浏览每次插入一条；该表驱动 `GET /admin/analytics/views`，与累计 `view_count` 并存——`view_count` 保持无条件递增，分析口径只统计去重事件，Admin 侧两处浏览量（Overview 的 `totalViews` 与 Analytics 的 `totalViews`）设计上不相等，差异即匿名与重复访问。`thoughts_config` 是 `thoughts_1` 单例，仅保留 `updated_at`；`writings_config` 是 `writings_1` 单例，同构。置顶由 `pins` 表承载：`pins`（`content_id` 主键、`content(id)` 外键 `ON DELETE CASCADE`、`kind`、`position`、`created_at`），每个 kind 按 `(kind, position)` 排序，置顶顺序即插入/替换顺序。Core 为归档查询维护 `(kind,status,published_at DESC)` 索引。`content.view_count` 在公开详情读取时同步原子递增，列表响应直接返回该持久化计数；`likeCount` 从 `likes` 聚合，`commentCount` 只统计未删除且未隐藏评论（隐藏只影响被选中的行，回复不级联），评论创建、隐藏/取消隐藏、软删除或恢复时 Core 会失效对应内容详情缓存并刷新 Admin Overview。详情读取同时写入 `audit_events(event_name = 'content.viewed', resource_type = 'content')` 供观测使用，审计队列丢弃不会影响浏览量统计。Profile 包含 `resume_url`、`interests_json`、`education_json`、`experience_json`、`series_json`、`contacts_json`；Series 项为 `{name,url,description,category}`（category 可为 null），联系方式为 `{label,url,handle,icon}`（handle/icon 可为 null）；`site_config` 是 `site_1` 单例，包含站点身份列（`title`、`description`、`footer_text`、`social_json`、`comments_enabled`）与首页组合列（`navigation_json`、`sections_json`）。评论创建即公开（无审核状态，`deleted_at` 软删标记，`hidden_at` 隐藏标记，二者正交，公开列表保留隐藏行但脱敏），可见性索引为 `idx_comments_content_visibility (content_id, created_at) WHERE deleted_at IS NULL`；点赞有 `(content_id, visitor_id)` 唯一约束；Presence 只保存匿名 visitor ID 的最近心跳时间，过期窗口为 5 分钟。
+其他表：`profile`、`site_config`、`thoughts_config`、`writings_config`、`pins`、`comments`、`likes`、`presence`、`audit_events`、`content_view_events`、`media`、`admin_credentials`、`admin_sessions`、锚定链三表（`chain_keys`、`chain_anchors`、`chain_blocks`，迁移 `0005`，`schemaVersion` 5）。链表结构、只增不改不变量与全部链语义见 [`docs/chain.md`](chain.md)。`media`（`id`、`mime`、`size`、`sha256 UNIQUE`、`filename`、`data BLOB`、`created_at`）保存上传的媒体字节（图片与 PDF），按 SHA256 去重（相同字节复用同一行）；`mime` 只允许 png/jpeg/webp/gif/avif 与 `application/pdf`（上传时嗅探，SVG 永不入库）；公开访问 `GET /api/v1/media/{id}` 依赖该表，缓存语义见路由表。`admin_credentials`（`id`、`username`、`password_hash`、`updated_at`）保存管理员 bcrypt 凭据：首次启动用 `CORE_ADMIN_PASSWORD_HASH` 播种一行，之后以 DB 行为权威，`CORE_ADMIN_PASSWORD_HASH` 不再覆盖（改密码写入此行、重启保留）。`admin_sessions`（`id`（= JWT `jti`）、`subject`、`created_at`、`expires_at`、`revoked_at`）支持可撤销会话：登录时插入一行，`RequireAdmin` 每次校验 `revoked_at IS NULL AND expires_at > now`，`logout`/`logout-all`/改密码都会写 `revoked_at`。`content_view_events` 是浏览事件表（`content_id`、`visitor_id`、`referrer`（origin 或空）、`day`（UTC 日期）、`created_at`）：识别访客通过部分唯一索引 `(content_id, visitor_id, day) WHERE visitor_id != ''` 按"同人同内容同 UTC 日"去重，匿名浏览每次插入一条；该表驱动 `GET /admin/analytics/views`，与累计 `view_count` 并存——`view_count` 保持无条件递增，分析口径只统计去重事件，Admin 侧两处浏览量（Overview 的 `totalViews` 与 Analytics 的 `totalViews`）设计上不相等，差异即匿名与重复访问。`thoughts_config` 是 `thoughts_1` 单例，仅保留 `updated_at`；`writings_config` 是 `writings_1` 单例，同构。置顶由 `pins` 表承载：`pins`（`content_id` 主键、`content(id)` 外键 `ON DELETE CASCADE`、`kind`、`position`、`created_at`），每个 kind 按 `(kind, position)` 排序，置顶顺序即插入/替换顺序。Core 为归档查询维护 `(kind,status,published_at DESC)` 索引。`content.view_count` 在公开详情读取时同步原子递增，列表响应直接返回该持久化计数；`likeCount` 从 `likes` 聚合，`commentCount` 只统计未删除且未隐藏评论（隐藏只影响被选中的行，回复不级联），评论创建、隐藏/取消隐藏、软删除或恢复时 Core 会失效对应内容详情缓存并刷新 Admin Overview。详情读取同时写入 `audit_events(event_name = 'content.viewed', resource_type = 'content')` 供观测使用，审计队列丢弃不会影响浏览量统计。Profile 包含 `resume_url`、`interests_json`、`education_json`、`experience_json`、`series_json`、`contacts_json`；Series 项为 `{name,url,description,category}`（category 可为 null），联系方式为 `{label,url,handle,icon}`（handle/icon 可为 null）；`site_config` 是 `site_1` 单例，包含站点身份列（`title`、`description`、`footer_text`、`social_json`、`comments_enabled`）与首页组合列（`navigation_json`、`sections_json`）。评论创建即公开（无审核状态，`deleted_at` 软删标记，`hidden_at` 隐藏标记，二者正交，公开列表保留隐藏行但脱敏），可见性索引为 `idx_comments_content_visibility (content_id, created_at) WHERE deleted_at IS NULL`；点赞有 `(content_id, visitor_id)` 唯一约束；Presence 只保存匿名 visitor ID 的最近心跳时间，过期窗口为 5 分钟。
 
 > **不兼容历史 schema**：程序按版本顺序应用迁移，旧库（版本低于 binary）原地升级；只有版本高于 binary 的库才拒绝启动，提示升级 Core binary。
 
@@ -264,8 +294,9 @@ Metadata：Thought 使用 `mood/question/context/source`；Article 使用 Core �
 
 修改 Core 时必须检查：
 
-- 路由/字段/状态码是否需要同步 `packages/contracts`、`packages/sdk`、`docs/admin.md`、`docs/decisions/web.md`。
-- schema 是否同时修改 `app/core/db/migrations/0001_init.sql` 与测试。
+- 路由/字段/状态码是否需要同步 `packages/contracts`、`packages/sdk`、`docs/admin.md`、`docs/decisions/web.md`、`docs/chain.md`（链行为或锚定清单）。
+- schema 是否同时修改 `app/core/db/migrations/` 与测试。
+- **新增任何数据库写路径时，必须按 `docs/chain.md` §4 登记锚定清单（source/payload/metadata）或说明例外，并接入 `anchorBusinessChange`；不允许静默绕过锚定清单。**
 - 缓存、审计、鉴权、CORS、配置或错误语义是否需要更新本文。
 
 ```bash

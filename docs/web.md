@@ -4,4 +4,6 @@ Web 的当前详细架构和 API 消费说明位于 [`docs/decisions/web.md`](de
 
 评论隐藏由 Core 返回的 `Comment.hidden` 表示：未软删的隐藏行保留线程位置，但公开响应不包含作者名、网站、正文或头像种子，Web 渲染固定占位符 `This comment was hidden by moderation.`；隐藏不级联回复，隐藏行也不参与公开搜索或 `comment_count`。评论相关事实以 `docs/decisions/web.md` 和 `docs/core.md` 为准。
 
+`/chain` 是锚定链浏览器与验证页（契约见 [`docs/chain.md`](chain.md)）：概览卡（height/anchors/pending/PoW 模式/站点公钥）、区块列表与展开的证书详情、三种验证模式（贴 payload、按 sha256 哈希、按内容 slug）和公开锚定提交表单；全部哈希/规范化由 Core 完成，Web 不复制链逻辑。Writing 与 Thought 详情页的返回行渲染锚定徽标（`ContentDetail.latestAnchor`：指纹前缀 + `block #N` 或 sealing 状态，无证书不渲染），点击进入 `/chain`。
+
 本文只保留入口，避免 `docs/web.md` 与决策目录中的 Web 契约出现两份不一致的事实。修改 Web 路由、Core 请求、Markdown 渲染、评论/反应、SEO 或设计约束时，必须同步 `docs/decisions/web.md`，并检查本索引是否仍准确。

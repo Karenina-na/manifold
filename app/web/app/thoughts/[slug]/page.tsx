@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { CommentsSection } from "../../../components/comment-thread";
 import { ThoughtActions } from "../../../components/thought-actions";
+import { AnchorBadge } from "../../../components/anchor-badge";
 import { createServerClient, loadSiteData } from "../../../lib/api";
 import { ThoughtSurface } from "@manifold/render";
 import styles from "../../site.module.css";
@@ -32,7 +33,7 @@ export default async function ThoughtDetailPage({ params }: Props) {
   return <main className={styles.page}>
     <article className="articleSurface">
       <div className="articleSurfaceInner thoughtDetail">
-        <div className="articleBack"><Link href="/thoughts"><ArrowLeft size={15} /> Back to thoughts</Link></div>
+        <div className="articleBack"><Link href="/thoughts"><ArrowLeft size={15} /> Back to thoughts</Link><AnchorBadge latestAnchor={content.latestAnchor} /></div>
         <ThoughtSurface
           title={content.title || "A thought"}
           summary={content.summary}
