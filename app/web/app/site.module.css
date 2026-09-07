@@ -1,7 +1,6 @@
 .page { --paper: var(--surface-paper); --ink: var(--color-ink); --muted: var(--color-muted); --line: var(--color-line); --accent: var(--color-accent); --accent-soft: var(--color-accent-soft); min-height: 100vh; background: transparent; color: var(--ink); }
 .shell { width: min(780px, calc(100% - 48px)); margin: 0 auto; }
 .minimalMetadata { position: fixed; z-index: 100; inset: 0; pointer-events: none; color: color-mix(in srgb, var(--color-muted) 72%, transparent); font-family: var(--font-mono); font-size: 9px; letter-spacing: .08em; }
-.metadataClock { position: absolute; top: 50%; left: max(16px, calc((100vw - 980px) / 2 - 68px)); writing-mode: vertical-rl; text-orientation: mixed; opacity: .6; transform: translateY(-50%); white-space: nowrap; }
 .metadataProgress { position: absolute; top: 50%; right: max(16px, calc((100vw - 980px) / 2 - 68px)); width: 24px; height: 180px; transform: translateY(-50%); }
 .metadataTrack { position: absolute; top: 0; right: 11px; width: 1px; height: 100%; background: color-mix(in srgb, var(--color-line) 62%, transparent); }
 .metadataTrackFill { position: absolute; top: 0; left: 0; width: 1px; background: var(--color-accent); transition: height .2s ease; }
@@ -101,12 +100,11 @@
 
 /* Typography hierarchy: display serif, italic emphasis, sans reading copy, mono metadata. */
 .eyebrow { display: inline-flex; align-items: baseline; gap: 6px; color: var(--color-accent); font-family: var(--font-mono); font-size: 10px; font-weight: 500; letter-spacing: .08em; text-transform: uppercase; }
-.eyebrowIndex { color: var(--color-muted); font-size: 9px; letter-spacing: .04em; }
 .intro h1 { max-width: 720px; margin-top: 8px; font-family: var(--app-font-serif); font-size: clamp(44px, 7vw, 72px); font-weight: 400; letter-spacing: -.02em; line-height: 1.02; }
 .introGreeting { color: var(--color-ink); font-weight: 500; }.introName { color: var(--color-ink); font-style: italic; font-weight: 400; }
 .introTagline { display: flex; align-items: baseline; gap: 10px; margin: 17px 0 0; color: var(--color-accent); font-family: var(--app-font-sans); font-size: 16px; font-weight: 500; line-height: 1.45; }.introTagline em { font-family: var(--app-font-serif); font-weight: 400; }
 .taglineRule { color: var(--color-line); font-family: var(--font-mono); font-style: normal; }
-.aboutSection h2, .sectionHeading h2 { font-family: var(--app-font-serif); font-weight: 400; letter-spacing: -.01em; }.aboutSection h2 { display: flex; align-items: baseline; gap: 12px; font-size: 26px; }.sectionIndex { color: var(--color-accent); font-family: var(--font-mono); font-size: 10px; font-style: normal; letter-spacing: .06em; }
+.aboutSection h2, .sectionHeading h2 { font-family: var(--app-font-serif); font-weight: 400; letter-spacing: -.01em; }.aboutSection h2 { display: flex; align-items: baseline; gap: 12px; font-size: 26px; }
 .aboutSection p { max-width: 680px; color: var(--color-neutral-8, var(--color-muted)); font-size: 15px; line-height: 1.75; }.aboutSection p::first-line { color: var(--color-ink); }
 .sectionHeading h2 { font-size: 27px; }.sectionHeading h2 em { color: var(--color-accent); font-family: var(--app-font-serif); font-size: .86em; font-style: italic; }
 .sectionHint { font-size: 10px; letter-spacing: .02em; }
@@ -205,7 +203,7 @@ html { scroll-behavior: smooth; }
 .profilePortraitWrap .introPortrait { width: 104px; border-radius: 16px; }
 .cvLink { display: inline-flex; align-items: center; gap: 4px; padding: 4px 9px; border: 1px solid color-mix(in srgb, var(--color-accent) 38%, var(--color-line)); border-radius: 999px; background: color-mix(in srgb, var(--color-accent) 9%, transparent); color: var(--color-accent); font-family: var(--font-mono); font-size: 10px; transition: background .2s ease, color .2s ease, transform .2s ease; }
 .cvLink:hover { background: var(--color-accent); color: var(--surface-paper); transform: translateY(-1px); }
-.introBox { margin-top: 22px; padding: 17px 18px; border-radius: 10px; background: var(--surface-paper); }
+.introBox { margin-top: 22px; padding: 17px 18px; border: 1px solid color-mix(in srgb, var(--color-line) 72%, transparent); border-radius: 8px; background: color-mix(in srgb, var(--surface-paper) 92%, white); }
 .introBoxHeader { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
 .introBoxTitle { display: flex; align-items: baseline; gap: 10px; }
 .introBoxTitle h2 { margin: 0; color: var(--color-ink); font-family: var(--app-font-serif); font-size: 20px; font-weight: 400; line-height: 1.3; }
@@ -307,9 +305,6 @@ html { scroll-behavior: smooth; }
 }
 
 /* Compact project/contact surfaces and deliberate transitions between scenes. */
-.sceneBreak { display: flex; align-items: center; gap: 12px; height: 18px; margin: 22px 0 0; opacity: .72; }
-.sceneBreakLine { flex: 1; height: 1px; background: color-mix(in srgb, var(--color-line) 58%, transparent); }
-.sceneBreakNode { width: 6px; height: 6px; flex: 0 0 6px; border: 1px solid var(--color-accent); border-radius: 50%; background: var(--surface-paper); box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 10%, transparent); }
 .profileSection { padding-bottom: 24px; }
 .updateRail { margin-top: 24px; }
 .seriesSection, .contactSection { padding-top: 24px; }
@@ -341,7 +336,6 @@ html { scroll-behavior: smooth; }
 .contactItem:nth-last-child(-n + 2) .contactTooltip { right: 0; left: auto; }
 
 @media (max-width: 760px) {
-  .sceneBreak { margin-top: 16px; gap: 9px; }
   .profileSection { padding-bottom: 18px; }
   .updateRail { margin-top: 18px; }
   .seriesSection, .contactSection { padding-top: 18px; }
@@ -448,23 +442,12 @@ html { scroll-behavior: smooth; }
   .updateNode[data-update-edge="end"] .updatePreview[data-open="true"] { transform: translate(0, 0); }
 }
 
-/* The side metadata acts as a quiet telemetry tape and an interactive mini-map. */
-.metadataTelemetry { position: absolute; top: 68%; left: max(16px, calc((100vw - 780px) / 2 - 204px)); display: grid; width: min(180px, max(0px, calc((100vw - 780px) / 2 - 24px))); gap: 9px; color: color-mix(in srgb, var(--color-muted) 78%, transparent); writing-mode: horizontal-tb; text-orientation: mixed; transform: translateY(-50%); white-space: normal; pointer-events: auto; }
-.telemetryItem { display: inline-flex; align-items: flex-start; gap: 6px; line-height: 1.3; }
-.telemetryItem:first-child { color: var(--color-success); }
-.telemetryOnlineDot { width: 5px; height: 5px; flex: 0 0 5px; border-radius: 50%; background: var(--color-success); box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-success) 18%, transparent); }
+/* The right-edge metadata acts as an interactive mini-map of the home sections. */
 .metadataPreview { position: absolute; z-index: 1000; top: 50%; right: 30px; display: grid; gap: 5px; width: 205px; padding: 12px 13px; border: 1px solid var(--color-line); border-radius: 8px; background: color-mix(in srgb, var(--surface-paper) 96%, transparent); box-shadow: 0 12px 30px rgba(24, 24, 20, .12); color: var(--color-muted); opacity: 0; visibility: hidden; pointer-events: none; transform: translateY(-50%) translateX(6px); transition: opacity .18s ease, transform .18s ease, visibility .18s ease; writing-mode: horizontal-tb; text-align: left; white-space: normal; }
 .metadataMarker:hover .metadataPreview, .metadataMarker:focus-visible .metadataPreview { opacity: 1; visibility: visible; pointer-events: auto; transform: translateY(-50%) translateX(0); }
 .metadataPreview strong { color: var(--color-ink); font-family: var(--app-font-serif); font-size: 14px; font-weight: 400; line-height: 1.25; }
 .metadataPreview small { color: var(--color-muted); font-family: var(--app-font-sans); font-size: 11px; line-height: 1.45; }
 .metadataPreview code { color: var(--color-accent); font-family: var(--font-mono); font-size: 9px; }
-@media (max-width: 760px) {
-  .metadataTelemetry { display: none; }
-}
-
-@media (min-width: 761px) and (max-width: 980px) {
-  .metadataTelemetry { display: none; }
-}
 
 /* A small command surface that stays out of the reading flow until invoked. */
 .floatingRepl { position: fixed; z-index: 18; right: 24px; bottom: 24px; color: var(--color-ink); font-family: var(--font-mono); font-size: 10px; }
@@ -839,8 +822,10 @@ html { scroll-behavior: smooth; }
   .seriesHost { max-width: 26vw; }
 }
 
-/* Unified home paper mask: translucent paper + blur, no border (c.f. Updates). */
-.backgroundSurface, .contentSurface, .seriesCard, .updateRail { border: 0; border-radius: 10px; background: color-mix(in srgb, var(--surface-paper) 82%, transparent); backdrop-filter: blur(8px); }
+/* Unified home paper: same opaque paper + hairline border language as the archives. */
+.backgroundSurface, .contentSurface, .seriesCard, .updateRail { border: 1px solid color-mix(in srgb, var(--color-line) 72%, transparent); border-radius: 8px; background: color-mix(in srgb, var(--surface-paper) 92%, white); backdrop-filter: none; }
+/* The icon-only contact rail stays transparent but must not keep the old blur. */
+.contactPanel { backdrop-filter: none; }
 /* Moderated comments keep their thread slot while hiding visitor details. */
 .commentHiddenBubble { border-style: dashed; background: color-mix(in srgb, var(--color-line) 24%, transparent); }
 

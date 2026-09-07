@@ -35,10 +35,6 @@ function getRelativeDate(value: string | null | undefined) {
   return `${days} days ago`;
 }
 
-function sectionIndex(index: number) {
-  return String(index + 1).padStart(2, "0");
-}
-
 export default async function Home() {
   const data = await loadHomeData();
   const profile = data.profile;
@@ -48,9 +44,6 @@ export default async function Home() {
   const initials = profile?.displayName?.slice(0, 1).toUpperCase() ?? "M";
   const updateTimeline = buildUpdateTimeline(data.feed ?? []);
   const contributionItems = data.contentHistory ?? [];
-  const currentFocus = "Open focus";
-  const location = profile?.location?.split(",")[0]?.trim() || "Shanghai";
-  const gitSha = process.env.NEXT_PUBLIC_GIT_SHA?.slice(0, 7) ?? "local";
   const contactLinks = [
 	    ...(profile?.websiteUrl ? [{ label: "Website", url: profile.websiteUrl, handle: null, icon: "globe" }] : []),
     ...(profile?.contacts ?? []),
@@ -58,11 +51,11 @@ export default async function Home() {
   const education = profile?.education ?? [];
   const experience = profile?.experience ?? [];
 
-  const block = (section: HomepageSection, index: number) => {
+  const block = (section: HomepageSection) => {
     switch (section) {
       case "PROFILE": return <Reveal className={styles.introReveal} key={section}><section className={styles.profileSection} id="profile-section" aria-labelledby="intro-heading">
         <div className={styles.profileCopy}>
-          <span className={styles.eyebrow}>Profile <span className={styles.eyebrowIndex}>/ {sectionIndex(index)}</span></span>
+          <span className={styles.eyebrow}>Profile</span>
           <h1 id="intro-heading"><span className={styles.introGreeting}>Hi, I&apos;m</span> <span className={styles.introName}>{profile?.displayName ?? "Manifold"}.</span></h1>
           <p className={styles.introTagline}><span className={styles.taglineRule}>—</span><em>{profile?.headline ?? "Developer, explorer, and lifelong learner."}</em></p>
         </div>
@@ -72,7 +65,7 @@ export default async function Home() {
         </div>
         <div className={styles.introBox}>
           <div className={styles.introBoxHeader}>
-            <div className={styles.introBoxTitle}><span className={styles.sectionIndex}>{sectionIndex(index)}</span><h2>Introduction</h2></div>
+            <div className={styles.introBoxTitle}><h2>Introduction</h2></div>
           </div>
           {profile?.organization && <p className={styles.profileOrg}>{profile.organization}</p>}
           <p className={styles.profileBio}>{profile?.bio ?? "I build small, durable tools and keep notes on the questions that sit between software, research, and everyday life. This is where unfinished ideas can stay visible long enough to become useful."}</p>
@@ -80,7 +73,7 @@ export default async function Home() {
         </div>
       </section></Reveal>;
       case "BACKGROUND": return <Reveal className={styles.sectionReveal} key={section}><section className={styles.backgroundSection} id="background-section" aria-labelledby="background-heading">
-        <div className={styles.sectionHeading}><div><span className={styles.eyebrow}>◇ Background <span className={styles.eyebrowIndex}>/ {sectionIndex(index)}</span></span><h2 id="background-heading">Background</h2></div><span className={styles.sectionHint}>Education and experience</span></div>
+        <div className={styles.sectionHeading}><div><span className={styles.eyebrow}>◇ Background</span><h2 id="background-heading">Background</h2></div><span className={styles.sectionHint}>Education and experience</span></div>
         <div className={styles.backgroundSurface} data-background-surface>
           <div className={styles.backgroundColumns}>
             <div className={styles.backgroundColumn}>
@@ -107,7 +100,7 @@ export default async function Home() {
         </div>
       </section></Reveal>;
       case "RECENT_CONTENT": return <Reveal className={styles.sectionReveal} key={section}><section className={styles.streamSection} id="recent-content-section" aria-labelledby="stream-heading">
-        <div className={styles.sectionHeading}><div><span className={styles.eyebrow}>✦ Recent content <span className={styles.eyebrowIndex}>/ {sectionIndex(index)}</span></span><h2 id="stream-heading">Writings <em>and</em> thoughts</h2></div><span className={styles.sectionHint}>{data.stats?.contentCount ?? 0} published notes</span></div>
+        <div className={styles.sectionHeading}><div><span className={styles.eyebrow}>✦ Recent content</span><h2 id="stream-heading">Writings <em>and</em> thoughts</h2></div><span className={styles.sectionHint}>{data.stats?.contentCount ?? 0} published notes</span></div>
         <div className={styles.contentSurface} data-content-surface>
           <div className={styles.streamColumns}>
             <TimelineColumn title="Writings" icon="✍" href="/writing" items={writings} empty="No writings published yet." />
@@ -116,17 +109,17 @@ export default async function Home() {
         </div>
       </section></Reveal>;
       case "UPDATES": return <Reveal className={styles.sectionReveal} key={section}><section className={styles.updateRail} id="updates-section" data-update-rail aria-labelledby="updates-heading">
-        <div className={styles.updateRailHeader}><div><span className={styles.eyebrow}>↗ Updates <span className={styles.eyebrowIndex}>/ {sectionIndex(index)}</span></span><h2 id="updates-heading" className={styles.updateTitle}>Sequence</h2></div><span className={styles.sectionHint}>Last 10 content updates</span></div>
+        <div className={styles.updateRailHeader}><div><span className={styles.eyebrow}>↗ Updates</span><h2 id="updates-heading" className={styles.updateTitle}>Sequence</h2></div><span className={styles.sectionHint}>Last 10 content updates</span></div>
         <UpdateTimelineView timeline={updateTimeline} />
         <ContributionHeatmap items={contributionItems} />
       </section></Reveal>;
       case "SERIES": return <Reveal className={styles.sectionReveal} key={section}><section className={styles.seriesSection} id="series-section" aria-labelledby="series-heading">
-        <div className={styles.sectionHeading}><div><span className={styles.eyebrow}>◈ My Series <span className={styles.eyebrowIndex}>/ {sectionIndex(index)}</span></span><h2 id="series-heading">My Series</h2></div><span className={styles.sectionHint}>Services and tools</span></div>
+        <div className={styles.sectionHeading}><div><span className={styles.eyebrow}>◈ My Series</span><h2 id="series-heading">My Series</h2></div><span className={styles.sectionHint}>Services and tools</span></div>
         <SeriesLinks series={profile?.series ?? []} />
         {!(profile?.series?.length) && <p className={styles.muted}>Series will appear here as they take shape.</p>}
       </section></Reveal>;
       case "CONTACT": return <Reveal className={styles.sectionReveal} key={section}><section className={styles.contactSection} id="contact-section" aria-labelledby="contact-heading">
-        <div className={styles.sectionHeading}><div><span className={styles.eyebrow}>↘ Contact <span className={styles.eyebrowIndex}>/ {sectionIndex(index)}</span></span><h2 id="contact-heading">Contact</h2></div><span className={styles.sectionHint}>Public links</span></div>
+        <div className={styles.sectionHeading}><div><span className={styles.eyebrow}>↘ Contact</span><h2 id="contact-heading">Contact</h2></div><span className={styles.sectionHint}>Public links</span></div>
         <div className={styles.contactPanel} data-contact-panel>
           <ContactLinks contacts={contactLinks} />
           {!contactLinks.length && <p className={styles.muted}>No public links yet.</p>}
@@ -135,23 +128,19 @@ export default async function Home() {
     }
   };
 
-  const anchors = sections.map((section, index) => ({ id: sectionIndex(index), ...sectionMeta[section] }));
+  const anchors = sections.map((section) => ({ id: section, ...sectionMeta[section] }));
 
   return <main className={styles.page} data-route="home">
-    <MinimalMetadata anchors={anchors} focus={currentFocus} location={location} gitSha={gitSha} />
+    <MinimalMetadata anchors={anchors} />
     <div className={styles.shell}>
       {data.error && <p className={styles.errorBanner}>{data.error}</p>}
-      {sections.map((section, index) => <div key={section} data-home-block={section}>{index > 0 && <SceneBreak />}{block(section, index)}</div>)}
+      {sections.map((section) => <div key={section} data-home-block={section}>{block(section)}</div>)}
     </div>
   </main>;
 }
 
 function TimelineColumn({ title, icon, href, items, empty }: { title: string; icon: string; href: string; items: Content[]; empty: string }) {
   return <div className={styles.timelineColumn}><div className={styles.timelineHeading}><span>{icon} {title}</span><Link href={href} aria-label={`Browse all ${title.toLowerCase()}`}><ArrowUpRight size={14} /></Link></div><div className={styles.timeline}>{items.length ? items.map((item, index) => <Link className={styles.timelineItem} href={buildHref(item)} key={item.id}><span className={styles.timelinePin} data-timeline-pin aria-hidden="true" /><div><div className={styles.timelineItemTop}><span className={styles.timelineNumber}>/{String(index + 1).padStart(2, "0")}</span><time dateTime={item.publishedAt}>{getRelativeDate(item.publishedAt)} · {getDate(item.publishedAt)}{readingMinutes(item.metadata) ? ` · ${readingMinutes(item.metadata)} min` : ""}</time></div><h3>{item.title || "Untitled thought"}</h3><p>{item.summary || "A quiet note waiting for its next sentence."}</p></div></Link>) : <p className={styles.muted}>{empty}</p>}</div></div>;
-}
-
-function SceneBreak() {
-  return <div className={styles.sceneBreak} data-scene-break aria-hidden="true"><span className={styles.sceneBreakLine} /><span className={styles.sceneBreakNode} /><span className={styles.sceneBreakLine} /></div>;
 }
 
 function readingMinutes(metadata: unknown) {
