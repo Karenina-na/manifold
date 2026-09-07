@@ -89,6 +89,7 @@ Core 使用 `caarlos0/env` 读取 `CORE_` 前缀变量；启动时自动从工�
 | `CORE_CHAIN_MAX_BLOCK_ANCHORS` | `500` | 单块证书上限 |
 | `CORE_CHAIN_FLUSH_TIMEOUT` | `30s` | 防饿死阀门：最老 pending 等待上限 |
 | `CORE_CHAIN_ANCHOR_MAX_BYTES` | `65536` | 公开/Admin 锚定提交 payload 上限，超限 413 |
+| `CORE_CHAIN_VERIFY_RATE_PER_MIN` | `20` | 四个 verify 入口共用的独立限流配额（每分钟）；verify 每请求全链重放，比公开提交更昂贵，配额更紧（见 [`docs/chain.md`](chain.md) 第 10 节） |
 
 默认开发账号为 `admin` / `password`，仅用于本地联调。
 
@@ -204,6 +205,8 @@ Thoughts 归档参数为 `page`（默认 1）、`pageSize`（默认 8，范围 1
 | `POST` | `/api/v1/chain/verify` | 贴原文查证：`{payload}`，Core 按原字节重算哈希后查证 |
 | `GET` | `/api/v1/chain/verify/content/{slug}` | 按公开内容查证：live 行重建 canonical payload；仅 PUBLISHED，否则 404 |
 | `GET` | `/api/v1/chain/verify/comment/{id}` | 按评论查证：同上；隐藏/软删评论 404（历史承诺仍可按哈希验证） |
+
+四个 verify 入口共用独立限流桶 `verifyLimiter`（`CORE_CHAIN_VERIFY_RATE_PER_MIN`，默认 20/min），命中 `429`——每次验证全链重放，配额必须低于公开写入。
 | `GET` | `/api/v1/chain/keys` | `{keys: [{keyId, publicKey, createdAt}]}` 站点公钥列表 |
 
 `GET /api/v1/content/{slug}` 的响应在锚定链启用时额外携带 `latestAnchor: { anchorId, subjectHash, status, blockId } | null`（按 contentId 的最新 content 源证书；链未启用或无证书时为 `null`）。

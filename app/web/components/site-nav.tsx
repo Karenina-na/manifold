@@ -12,6 +12,7 @@ const defaultLinks: SiteNavigationItem[] = [
   { label: "Home", href: "/" },
   { label: "Writings", href: "/writing" },
   { label: "Thoughts", href: "/thoughts" },
+  { label: "Chain", href: "/chain" },
 ];
 
 type SearchResult = { id: string; href: string; kind: string; title: string | null | undefined; summary: string; publishedAt: string | null };

@@ -199,7 +199,7 @@ function WritingEditorPage({ client, editingId, commentsRequested, routeQuery }:
     <TextInput label="Slug" description={`${webBaseUrl}/writing/${watched.slug || '…'}`} {...form.register('slug')} placeholder="a-readable-url" error={form.formState.errors.slug?.message} />
     <Textarea label="Summary" description={`✦ ${watched.summary.trim().length}/4000 — shown on archive cards`} {...form.register('summary')} minRows={2} error={form.formState.errors.summary?.message} />
     <div><label>Tags</label><ChipsInput value={watched.tags} onChange={(next) => form.setValue('tags', next, { shouldDirty: true })} placeholder="Add tag and press Enter" /></div>
-    <div className="form-grid">
+    <div className="form-grid form-grid-even">
       <Autocomplete
         label="Language"
         description="The language the piece is written in, shown in the article meta line"

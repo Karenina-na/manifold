@@ -192,6 +192,7 @@ button { cursor: pointer; }
 .mini-button.danger { color: var(--danger); }
 .editor-panel { position: sticky; top: 18px; }
 .form-grid { display: grid; grid-template-columns: 0.7fr 1.3fr; gap: 14px; }
+.form-grid-even { grid-template-columns: 1fr 1fr; }
 .muted { color: var(--muted); font-size: 13px; }
 .empty-state { padding: 55px 20px; color: var(--muted); text-align: center; }
 .empty-state svg { color: var(--success); }
@@ -238,7 +239,7 @@ button { cursor: pointer; }
 .dash-list li:last-child { border-bottom: 0; }
 .dash-list .dash-main { min-width: 0; display: grid; gap: 4px; }
 .dash-list .dash-main strong { font-weight: 700; overflow-wrap: anywhere; }
-.dash-list .dash-meta { color: var(--muted); font-size: 11px; line-height: 1.5; }
+.dash-list .dash-meta { color: var(--muted); font-size: 11px; line-height: 1.5; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dash-list .dash-value { flex: 0 0 auto; color: var(--muted); font-size: 12px; }
 .panel-stack { display: flex; flex-direction: column; }
 /* Both panel lists page at 10 rows; the min-height keeps short pages from

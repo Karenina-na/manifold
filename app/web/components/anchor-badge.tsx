@@ -6,7 +6,9 @@ import styles from "../app/site.module.css";
 type AnchorBadgeProps = { latestAnchor: ContentDetail["latestAnchor"] };
 
 // latestAnchor is null before any write has been anchored; the badge renders
-// nothing rather than advertising an absent chain state.
+// nothing rather than advertising an absent chain state. It rides at the end
+// of the articleMeta row (right-bottom of the title block) for both detail
+// surfaces.
 export function AnchorBadge({ latestAnchor }: AnchorBadgeProps) {
   if (!latestAnchor) return null;
   const anchored = latestAnchor.status === "anchored";

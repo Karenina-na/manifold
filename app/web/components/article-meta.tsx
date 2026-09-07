@@ -14,9 +14,10 @@ type ArticleMetaProps = {
   likeCount: number;
   tags: string[];
   slug: string;
+  children?: React.ReactNode;
 };
 
-export function ArticleMeta({ date, metadata, viewCount, likeCount, tags, slug }: ArticleMetaProps) {
+export function ArticleMeta({ date, metadata, viewCount, likeCount, tags, slug, children }: ArticleMetaProps) {
   const [visitorId] = useState(() => typeof window === "undefined" ? "" : getVisitorId());
   const likesQuery = useQuery({
     queryKey: ["likes", slug, visitorId],
@@ -31,5 +32,6 @@ export function ArticleMeta({ date, metadata, viewCount, likeCount, tags, slug }
     <span><Eye size={14} aria-hidden="true" /> {viewCount}</span>
     <span><Heart size={14} aria-hidden="true" /> {currentLikeCount}</span>
     {tags.map((tag) => <span key={tag} className="articleMetaTag">#{tag}</span>)}
+    {children}
   </div>;
 }

@@ -159,6 +159,8 @@ func newRouterWithMiner(cfg config.Config, database *store.Store, ledger *chain.
 	}
 	publicLimiter := newRateLimiter(cfg.RateLimitPerMin)
 	loginLimiter := newRateLimiter(cfg.LoginRatePerMin)
+	// 每个验证请求都会全链重放，配额比普通公开写入更紧（docs/chain.md §10）。
+	verifyLimiter := newRateLimiter(cfg.ChainVerifyRatePerMin)
 	trustedProxies := trustedProxyNetworks(cfg.TrustedProxyCIDRs)
 	router := chi.NewRouter()
 	router.Use(requestIDMiddleware)
@@ -192,10 +194,10 @@ func newRouterWithMiner(cfg config.Config, database *store.Store, ledger *chain.
 			ch.Get("/anchors/{id}", h.getChainAnchor)
 			ch.Get("/blocks", h.listChainBlocks)
 			ch.Get("/blocks/{id}", h.getChainBlock)
-			ch.Get("/verify", h.verifyAnchorByHash)
-			ch.Post("/verify", h.verifyAnchorPayload)
-			ch.Get("/verify/content/{slug}", h.verifyAnchorContent)
-			ch.Get("/verify/comment/{id}", h.verifyAnchorComment)
+			ch.With(verifyLimiter.middleware(trustedProxies)).Get("/verify", h.verifyAnchorByHash)
+			ch.With(verifyLimiter.middleware(trustedProxies)).Post("/verify", h.verifyAnchorPayload)
+			ch.With(verifyLimiter.middleware(trustedProxies)).Get("/verify/content/{slug}", h.verifyAnchorContent)
+			ch.With(verifyLimiter.middleware(trustedProxies)).Get("/verify/comment/{id}", h.verifyAnchorComment)
 			ch.Get("/keys", h.listChainKeys)
 		})
 		api.Route("/admin", func(admin chi.Router) {

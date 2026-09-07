@@ -54,6 +54,8 @@ export default function ThoughtArchive({ initialArchive, pinned, tags, initialQu
   const filtersActive = Boolean(query || selectedTags.length);
   const totalPages = data?.pagination.totalPages ?? 1;
   const yearGroups = useMemo(() => groupThoughtsByYear(data?.data ?? []), [data]);
+  const heroTotal = initialArchive?.pagination.totalItems ?? 0;
+  const latestAt = initialArchive?.data[0]?.publishedAt ?? null;
 
   const changePage = (next: number) => {
     if (!data || isPending) return;
@@ -64,8 +66,14 @@ export default function ThoughtArchive({ initialArchive, pinned, tags, initialQu
     <div className={styles.thoughtShell}>
       <Reveal className={styles.writingReveal}>
         <header className={styles.thoughtHero}>
-          <span className={styles.eyebrow}>Thoughts</span>
-          <h1>Thoughts</h1>
+          <div>
+            <span className={styles.eyebrow}>◇ Thoughts</span>
+            <h1>Thoughts</h1>
+          </div>
+          <div className={styles.thoughtHeroStatus}>
+            <span className={styles.chainPulse}><span className={styles.chainPulseDot} aria-hidden="true" /> In motion</span>
+            <span className={styles.thoughtHeroStat}>{heroTotal} notes · last {latestAt ? formatThoughtDate(latestAt) : "—"}</span>
+          </div>
         </header>
       </Reveal>
 
@@ -110,6 +118,7 @@ export default function ThoughtArchive({ initialArchive, pinned, tags, initialQu
             {yearGroups.map((yearGroup) => <section className={styles.thoughtYear} key={yearGroup.year} aria-labelledby={`year-${yearGroup.year}`}>
               <header className={styles.thoughtYearHeader} id={`year-${yearGroup.year}`}>
                 <strong>{yearGroup.year}</strong>
+                <span className={styles.thoughtYearCount}>{yearGroup.months.reduce((count, group) => count + group.items.length, 0)} notes</span>
               </header>
               <div className={styles.thoughtYearMonths}>
                 {yearGroup.months.map((group) => <div className={styles.thoughtMonth} key={group.key}>

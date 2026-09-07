@@ -89,6 +89,11 @@
       {
         "label": "Thoughts",
         "href": "/thoughts"
+      },
+      {
+        "label": "Chain",
+        "href": "/chain",
+        "external": false
       }
     ],
     "sections": [

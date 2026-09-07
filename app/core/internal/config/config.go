@@ -34,6 +34,9 @@ type Config struct {
 	ChainMaxBlockAnchors int           `env:"CHAIN_MAX_BLOCK_ANCHORS" envDefault:"500"`
 	ChainFlushTimeout    time.Duration `env:"CHAIN_FLUSH_TIMEOUT" envDefault:"30s"`
 	ChainAnchorMaxBytes  int64         `env:"CHAIN_ANCHOR_MAX_BYTES" envDefault:"65536"`
+	// 验证接口每请求都会全链重放（docs/chain.md §10），比写入更昂贵，
+	// 因此单独按更低的配额限流，避免被打满 CPU 与 DB。
+	ChainVerifyRatePerMin int `env:"CHAIN_VERIFY_RATE_PER_MIN" envDefault:"20"`
 }
 
 const devJWTSecret = "manifold-dev-secret-change-me"

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Eye, Heart, Search, SlidersHorizontal } from "lucide-react";
+import { ArrowRight, Eye, Heart, Search, SlidersHorizontal } from "lucide-react";
 import { buildHref, formatDate } from "../../lib/api";
 import { useRef } from "react";
 import type { Content, ContentSort, TagSummary } from "@manifold/contracts";
@@ -62,6 +62,8 @@ export default function WritingArchive({ initialList, pinned, tags, query, activ
   const noAiActive = extra.noAi === "1";
   const showPinned = !activeQuery && selectedTags.length === 0 && !noAiActive && activeSort === "newest";
   const articles = data?.items ?? [];
+  const heroTotal = initialList?.totalItems ?? 0;
+  const latestAt = initialList?.items[0]?.publishedAt ?? null;
 
   const changePage = (next: number) => {
     if (!data || isPending) return;
@@ -70,7 +72,16 @@ export default function WritingArchive({ initialList, pinned, tags, query, activ
 
   return <main className={styles.page}><div className={styles.writingShell}><div className={styles.writingMain}>
     <Reveal className={styles.writingReveal}>
-      <header className={styles.writingHero}><span className={styles.eyebrow}>Writings</span><h1>Writing</h1></header>
+      <header className={styles.writingHero}>
+        <div>
+          <span className={styles.eyebrow}>✦ Writings</span>
+          <h1>Writing</h1>
+        </div>
+        <div className={styles.writingHeroStatus}>
+          <span className={styles.chainPulse}><span className={styles.chainPulseDot} aria-hidden="true" /> In motion</span>
+          <span className={styles.writingHeroStat}>{heroTotal} articles · last {latestAt ? formatDate(latestAt) : "—"}</span>
+        </div>
+      </header>
     </Reveal>
     {showPinned && pinned.length > 0 && <Reveal className={styles.writingReveal}>
       <div className={styles.pinnedRow}>
@@ -100,15 +111,19 @@ export default function WritingArchive({ initialList, pinned, tags, query, activ
         </div>
         <div className={styles.writingListSurface} data-pending={isPending}>
           <div className={styles.writingList}>
-            {articles.map((item) => <Link className={styles.writingItem} key={item.id} href={buildHref(item)}>
-              <h3>{item.title}</h3>
-              <WritingPreview item={item} />
-              <div>
-                <span>{formatDate(item.publishedAt)}</span>
-                <span>{item.tags.map((value) => `#${value}`).join(" ")}</span>
-                <span>{item.metadata.readingMinutes ? `${item.metadata.readingMinutes} min read` : "Article"}</span>
-                <span><Eye size={12} /> {item.viewCount} · <Heart size={12} /> {item.likeCount}</span>
-              </div>
+            {articles.map((item, index) => <Link className={styles.writingItem} key={item.id} href={buildHref(item)}>
+              <span className={styles.writingItemIndex} aria-hidden="true">{String(index + 1).padStart(2, "0")}</span>
+              <span className={styles.writingItemBody}>
+                <h3>{item.title}</h3>
+                <WritingPreview item={item} />
+                <div>
+                  <span>{formatDate(item.publishedAt)}</span>
+                  <span>{item.tags.map((value) => `#${value}`).join(" ")}</span>
+                  <span>{item.metadata.readingMinutes ? `${item.metadata.readingMinutes} min read` : "Article"}</span>
+                  <span><Eye size={12} /> {item.viewCount} · <Heart size={12} /> {item.likeCount}</span>
+                </div>
+              </span>
+              <ArrowRight size={14} className={styles.writingItemArrow} aria-hidden="true" />
             </Link>)}
           </div>
           {!articles.length && <p className={styles.thoughtEmpty}>No writings match the current filters.</p>}

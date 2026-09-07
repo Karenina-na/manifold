@@ -385,7 +385,7 @@ async function main() {
 
     await web.setViewportSize({ width: 1280, height: 400 });
     await web.goto(`${webUrl}/writing`, { waitUntil: 'networkidle' });
-    await web.getByText(/\d+ articles/, { exact: true }).waitFor({ state: 'visible' });
+    await web.locator('[class*="writingToolbar"]').getByText(/\d+ articles/).waitFor({ state: 'visible' });
     const writingScrollHint = web.locator('[class*="scrollHint"]');
     await writingScrollHint.waitFor({ state: 'visible' });
     const writingRevealed = await web.locator('[class*="writingCollection"]').evaluate((el) => el.closest('[data-revealed]')?.getAttribute('data-revealed'));
@@ -396,13 +396,13 @@ async function main() {
     const writingSearch = web.getByRole('textbox', { name: 'Search writings' });
     await writingSearch.fill('boundary');
     await web.waitForURL((url) => url.searchParams.get('q') === 'boundary');
-    await web.getByText(/\d+ articles/, { exact: true }).waitFor({ state: 'visible' });
+    await web.locator('[class*="writingToolbar"]').getByText(/\d+ articles/).waitFor({ state: 'visible' });
     await writingSearch.fill('');
-    await web.getByText(/\d+ articles/, { exact: true }).waitFor({ state: 'visible' });
+    await web.locator('[class*="writingToolbar"]').getByText(/\d+ articles/).waitFor({ state: 'visible' });
     await web.getByRole('button', { name: /design \d/ }).click();
-    await web.getByText(/\d+ articles/, { exact: true }).waitFor({ state: 'visible' });
+    await web.locator('[class*="writingToolbar"]').getByText(/\d+ articles/).waitFor({ state: 'visible' });
     await web.getByRole('button', { name: /design \d/ }).click();
-    await web.getByText(/\d+ articles/, { exact: true }).waitFor({ state: 'visible' });
+    await web.locator('[class*="writingToolbar"]').getByText(/\d+ articles/).waitFor({ state: 'visible' });
     await web.getByLabel('Sort writings').selectOption('oldest');
     await web.getByRole('heading', { name: 'Designing Boundaries' }).waitFor({ state: 'visible' });
 
@@ -412,19 +412,19 @@ async function main() {
     await writingPickerPanel.getByRole('button', { name: /design \d/ }).click();
     await writingPickerPanel.getByRole('button', { name: /systems \d/ }).click();
     await web.waitForURL((url) => url.searchParams.getAll('tag').join(',') === 'design,systems');
-    await web.getByText(/\d+ articles/, { exact: true }).waitFor({ state: 'visible' });
+    await web.locator('[class*="writingToolbar"]').getByText(/\d+ articles/).waitFor({ state: 'visible' });
     await web.getByRole('heading', { name: 'Writing', exact: true }).click();
     await writingPickerPanel.waitFor({ state: 'detached' });
     await web.getByRole('button', { name: /systems \d/ }).click();
     await web.waitForURL((url) => url.searchParams.getAll('tag').join(',') === 'design');
-    await web.getByText(/\d+ articles/, { exact: true }).waitFor({ state: 'visible' });
+    await web.locator('[class*="writingToolbar"]').getByText(/\d+ articles/).waitFor({ state: 'visible' });
     await web.getByRole('button', { name: /design \d/ }).click();
     await web.waitForURL((url) => url.searchParams.getAll('tag').length === 0);
-    await web.getByText(/\d+ articles/, { exact: true }).waitFor({ state: 'visible' });
+    await web.locator('[class*="writingToolbar"]').getByText(/\d+ articles/).waitFor({ state: 'visible' });
 
     await web.setViewportSize({ width: 1280, height: 400 });
     await web.goto(`${webUrl}/thoughts`, { waitUntil: 'networkidle' });
-    const thoughtCount = web.getByText(/\d+ notes/, { exact: true });
+    const thoughtCount = web.locator('[class*="thoughtSectionHeading"]').getByText(/\d+ notes/);
     await thoughtCount.waitFor({ state: 'visible' });
     const thoughtScrollHint = web.locator('[class*="scrollHint"]');
     await thoughtScrollHint.waitFor({ state: 'visible' });
@@ -436,11 +436,11 @@ async function main() {
     const thoughtSearch = web.getByRole('textbox', { name: 'Search thoughts' });
     await thoughtSearch.fill('probe');
     await web.waitForURL((url) => url.searchParams.get('q') === 'probe');
-    await web.getByText('1 notes', { exact: true }).waitFor({ state: 'visible' });
+    await web.locator('[class*="thoughtSectionHeading"]').getByText('1 notes', { exact: true }).waitFor({ state: 'visible' });
     await thoughtSearch.fill('');
     await thoughtCount.waitFor({ state: 'visible' });
     await web.getByRole('button', { name: /notes \d/ }).click();
-    await web.getByText('1 notes', { exact: true }).waitFor({ state: 'visible' });
+    await web.locator('[class*="thoughtSectionHeading"]').getByText('1 notes', { exact: true }).waitFor({ state: 'visible' });
     await web.getByRole('button', { name: /notes \d/ }).click();
     await thoughtCount.waitFor({ state: 'visible' });
 

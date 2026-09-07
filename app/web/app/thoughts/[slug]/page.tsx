@@ -33,7 +33,7 @@ export default async function ThoughtDetailPage({ params }: Props) {
   return <main className={styles.page}>
     <article className="articleSurface">
       <div className="articleSurfaceInner thoughtDetail">
-        <div className="articleBack"><Link href="/thoughts"><ArrowLeft size={15} /> Back to thoughts</Link><AnchorBadge latestAnchor={content.latestAnchor} /></div>
+        <div className="articleBack"><Link href="/thoughts"><ArrowLeft size={15} /> Back to thoughts</Link></div>
         <ThoughtSurface
           title={content.title || "A thought"}
           summary={content.summary}
@@ -46,6 +46,7 @@ export default async function ThoughtDetailPage({ params }: Props) {
           body={content.body}
           progress
           actions={<ThoughtActions item={content} />}
+          meta={<AnchorBadge latestAnchor={content.latestAnchor} />}
         />
         {site?.commentsEnabled === false ? null : <CommentsSection slug={contentSlug} viewCount={content.viewCount} likeCount={content.likeCount} />}
       </div>

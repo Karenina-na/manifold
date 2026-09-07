@@ -1253,6 +1253,33 @@ func TestRateLimitingProtectsPublicWrites(t *testing.T) {
 	}
 }
 
+// Every verify request replays the whole chain, so the four verify routes share
+// a dedicated (tighter) bucket instead of only the general public one.
+func TestVerifyEndpointsAreRateLimited(t *testing.T) {
+	router, _ := newTestRouterWithConfig(t, func(cfg *config.Config) { cfg.ChainVerifyRatePerMin = 2; cfg.RateLimitPerMin = 0 })
+
+	hash := strings.Repeat("a", 64)
+	codes := []int{}
+	for i := 0; i < 4; i++ {
+		codes = append(codes, request(t, router, http.MethodGet, "/api/v1/chain/verify?hash="+hash, nil).Code)
+	}
+	sawLimit := false
+	for _, code := range codes {
+		if code == http.StatusTooManyRequests {
+			sawLimit = true
+		}
+	}
+	if !sawLimit {
+		t.Fatalf("expected a 429 within the verify burst, got %v", codes)
+	}
+
+	// The payload route shares the same bucket, so it is capped immediately.
+	payload := request(t, router, http.MethodPost, "/api/v1/chain/verify", strings.NewReader(`{"payload":"hello manifold"}`))
+	if payload.Code != http.StatusTooManyRequests {
+		t.Fatalf("expected the shared verify bucket to cap POST /chain/verify, got %d %s", payload.Code, payload.Body.String())
+	}
+}
+
 func TestMediaLifecycle(t *testing.T) {
 	router := newTestRouter(t)
 	token := adminToken(t, router)

@@ -142,6 +142,7 @@ POST /api/v1/chain/anchors ─┼──> handler 构造 payload ──> chain.Su
 | `CORE_CHAIN_MAX_BLOCK_ANCHORS` | `500` | 单块证书上限，超出分多块连挖 |
 | `CORE_CHAIN_FLUSH_TIMEOUT` | `30s` | 防饿死阀门：最老 pending 等待超过该时长即打包 |
 | `CORE_CHAIN_ANCHOR_MAX_BYTES` | `65536` | 公开/Admin 提交 payload 上限（64KB），超限 413 |
+| `CORE_CHAIN_VERIFY_RATE_PER_MIN` | `20` | 四个 verify 入口共用的独立限流配额（每分钟）；每个验证请求都会全链重放（见第 10 节），比公开提交更昂贵，故配额更紧 |
 
 发布打包脚本校验：`CORE_CHAIN_PROOF_MODE ∈ {sim, proof}`；`proof` 模式下 `CORE_CHAIN_DIFFICULTY ≥ 1`。sim 模式可在生产运行（这是学习特性站点，链延迟出块不影响业务正确性）。
 
@@ -162,6 +163,8 @@ POST /api/v1/chain/anchors ─┼──> handler 构造 payload ──> chain.Su
 | `GET` | `/chain/verify/content/{slug}` | 按公开内容查证：Core 从 live 行重建 canonical payload → 哈希 → 查证；仅 PUBLISHED 内容（草稿/删除 404） |
 | `GET` | `/chain/verify/comment/{id}` | 按评论查证：同上从 live 评论行重建；隐藏/软删评论 404（其历史承诺仍可被持有原文者用哈希验证，见第 10 节） |
 | `GET` | `/chain/keys` | `{keys: [{keyId, publicKey, createdAt}]}` 站点公钥列表 |
+
+四个 verify 入口（`/chain/verify` GET/POST、`verify/content/{slug}`、`verify/comment/{id}`）共用独立的 `verifyLimiter`（`CORE_CHAIN_VERIFY_RATE_PER_MIN`，默认 20/min）。每次验证都全链重放（见第 10 节），比写入更消耗 CPU/DB，因此配额远低于公开提交限流，命中返回 `429`。
 
 ## 7. Admin API
 
@@ -260,6 +263,7 @@ CREATE INDEX IF NOT EXISTS idx_chain_anchors_block ON chain_anchors(block_id);
 ```
 
 - `signatureValid`：用证书自带的 `site_public_key` 对 `subject_hash` 验证 `site_signature`。
+- **限流**：verify 每请求全链重放，四个入口共用独立限流桶（`CORE_CHAIN_VERIFY_RATE_PER_MIN`，默认 20/min），命中 `429`；Web 端按钮同步冷却，防止按住不放打满 CPU/DB。
 - `chainIntegrity`：**全链重放**——从 genesis 到 tip 逐块重算 `hash`（含 `proofMode`/`difficulty`）、校验 `prev_hash` 串接、按 `cert_ids_json` 重算 `cert_root`；sim 块跳过前导 0 校验、proof 块强制校验。整个重放在**单个只读事务**内执行：矿工可能在重放中途提交新块，不取快照会让孤儿扫描读到「属于新块的证书、而块查询没看到该块」，在并发下产生虚假篡改报告。个人站点规模（数百块）下 O(n) 重放开销可忽略，且「每次验证都真验整条链」正是本探索的教学卖点。
 - `found=false` 时其余字段为缺省（`signatureValid`/`chainIntegrity` 仍返回全链结果，允许验证不存在的哈希时顺带确认链完整性）。
 - **同哈希多证书**：同一正文多次提交（重发布、幂等请求）会产生相同 `subject_hash` 的多张证书。按哈希查证时返回**最新一张**（`createdAt` 降序、并列 `id` 降序的第一条），`found` 即表示「该哈希曾至少被承诺一次」。
@@ -310,7 +314,7 @@ export interface AnchorQuery { source?: AnchorSource; ref?: string; page?: numbe
 | --- | --- |
 | 公开提交 payload 超 `CORE_CHAIN_ANCHOR_MAX_BYTES` | `413 PAYLOAD_TOO_LARGE` |
 | label 超 64 字符、payload 空、请求体非法 | `422 VALIDATION_ERROR` / `400` |
-| 限流命中（公开 POST） | `429`（沿用现有 publicLimiter 语义） |
+| 限流命中（公开 POST 与 verify 入口） | `429`（公开提交沿用 `publicLimiter`；verify 走独立 `verifyLimiter`，默认 20/min） |
 | `source`/`ref` 非法、分页参数非法 | `400 INVALID_QUERY` |
 | verify 的 hash 非 64 位 hex | `400 INVALID_QUERY` |
 | verify content/comment 目标不存在或不可见 | `404`（对齐公开可见性） |

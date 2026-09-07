@@ -12,7 +12,7 @@ export function formatDate(iso: string): string {
   return new Intl.DateTimeFormat("en", { month: "short", day: "2-digit", year: "numeric" }).format(new Date(iso));
 }
 
-export function ThoughtHeader({ title, summary, date, mood, tags, actions, question, context, source }: { title: string; summary?: string | null; date: string; mood?: string | null; tags: string[]; actions?: ReactNode; question?: string | null; context?: string | null; source?: string | null }) {
+export function ThoughtHeader({ title, summary, date, mood, tags, actions, question, context, source, meta }: { title: string; summary?: string | null; date: string; mood?: string | null; tags: string[]; actions?: ReactNode; question?: string | null; context?: string | null; source?: string | null; meta?: ReactNode }) {
   return <header className="articleHeader">
     <span className="eyebrow">Thought</span>
     <h1>{title || "A thought"}</h1>
@@ -21,6 +21,7 @@ export function ThoughtHeader({ title, summary, date, mood, tags, actions, quest
       <span><CalendarDays size={14} aria-hidden="true" /> <time dateTime={date}>{formatDate(date)}</time></span>
       {mood && <span className="thoughtMood"><Sparkles size={14} aria-hidden="true" /> {mood}</span>}
       {tags.map((tag) => <span key={tag}><Tag size={14} aria-hidden="true" /> {tag}</span>)}
+      {meta}
     </div>
     {actions}
     {question && <blockquote className="thoughtReflection">{question}</blockquote>}
@@ -49,12 +50,13 @@ type ThoughtSurfaceProps = {
   body: string;
   progress?: boolean;
   actions?: ReactNode;
+  meta?: ReactNode;
 };
 
-export function ThoughtSurface({ title, summary, date, mood, tags, question, context, source, body, progress = false, actions }: ThoughtSurfaceProps) {
+export function ThoughtSurface({ title, summary, date, mood, tags, question, context, source, body, progress = false, actions, meta }: ThoughtSurfaceProps) {
   return <div className="thoughtReadingArea">
     <section className="articleTitleBlock">
-      <ThoughtHeader title={title} summary={summary} date={date} mood={mood} tags={tags} actions={actions} question={question} context={context} source={source} />
+      <ThoughtHeader title={title} summary={summary} date={date} mood={mood} tags={tags} actions={actions} question={question} context={context} source={source} meta={meta} />
     </section>
     {progress && <div className="thoughtProgressRail"><ReadingProgress /></div>}
     <ThoughtBody body={body} />
