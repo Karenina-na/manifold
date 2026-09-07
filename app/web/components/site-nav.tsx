@@ -42,6 +42,12 @@ export function SiteNav({ navigation }: { navigation?: SiteNavigationItem[] }) {
     void createBrowserClient().profile().then((profile) => setResumeUrl(profile.resumeUrl)).catch(() => undefined);
   }, [theme]);
 
+  // Route hue identity: keep the document root in sync with the active route so
+  // chrome outside the page <main> (nav pill, search, footer) shares the hue.
+  useEffect(() => {
+    document.documentElement.dataset.route = pathname.startsWith("/writing") ? "writing" : pathname.startsWith("/thoughts") ? "thought" : pathname.startsWith("/chain") ? "chain" : "home";
+  }, [pathname]);
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {

@@ -998,3 +998,42 @@ html { scroll-behavior: smooth; }
   .chainReceiptRow { grid-template-columns: 1fr; gap: 3px; }
   .chainLinkStrip { flex-wrap: wrap; }
 }
+
+/* ────────────────────────────────────────────────────────────────
+   Route identity: one restrained 和色 hue per public route.
+   globals.css swaps --color-accent at route scope; this section adds the
+   quiet design elements that carry the hue — a soft page-top wash, a fading
+   hairline under archive heroes, and two-tone home streams.
+   ──────────────────────────────────────────────────────────────── */
+
+/* Soft wash behind the hero of every routed page: two quiet radial tints
+   in the route hue, far below the 5% accent budget. */
+.page[data-route] {
+  background:
+    radial-gradient(760px 300px at 12% -70px, color-mix(in srgb, var(--color-accent) 6%, transparent), transparent 72%),
+    radial-gradient(560px 260px at 97% -100px, color-mix(in srgb, var(--color-accent) 4.5%, transparent), transparent 70%);
+}
+
+/* Archive heroes end in a hairline that fades out of the route hue. */
+.thoughtHero, .writingHero, .chainHero { position: relative; }
+.thoughtHero::after, .writingHero::after, .chainHero::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 1px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--color-accent) 50%, transparent), color-mix(in srgb, var(--color-accent) 15%, transparent) 36%, transparent 82%);
+  opacity: .8;
+}
+
+/* Home stream columns borrow their archive hues: writings 縹, thoughts 若竹. */
+.streamColumns > .timelineColumn:nth-child(1) { --column-hue: var(--hue-writing); }
+.streamColumns > .timelineColumn:nth-child(2) { --column-hue: var(--hue-thought); }
+.streamColumns .timeline::before { background: color-mix(in srgb, var(--column-hue, var(--color-accent)) 36%, var(--color-line)); }
+.streamColumns .timelinePin { background: var(--column-hue, var(--color-accent)); box-shadow: 0 0 0 1px var(--column-hue, var(--color-accent)); }
+.streamColumns .timelineNumber { color: var(--column-hue, var(--color-accent)); }
+.streamColumns .timelineItem:hover { background: color-mix(in srgb, var(--column-hue, var(--color-accent)) 8%, transparent); }
+
+/* Pinned badges deepen the hue so white-on-accent text holds ≥ 4.5:1. */
+.featuredBadge { background: color-mix(in srgb, var(--color-accent) 72%, var(--color-ink)); color: var(--surface-paper); }

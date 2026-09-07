@@ -102,7 +102,9 @@ export function BackgroundCanvas() {
             }
           }
           const ink = dark ? "255,255,255" : "0,0,0";
-          const accent = dark ? "226,114,91" : "217,93,57";
+          // Brand accent 梅 ume (#c56473 / dark #e095a4) so the ambient field
+          // stays in the same color family as the theme tokens.
+          const accent = dark ? "224,149,164" : "197,100,115";
           context.beginPath();
           context.arc(x + offsetX, y + offsetY, Math.max(0.85, 1.35 + lensInfluence * 0.9), 0, Math.PI * 2);
           const alpha = Math.min(0.9, (dark ? 0.31 : 0.37) * focus * (0.88 + restingPulse * 0.2) + highlight * 0.48);

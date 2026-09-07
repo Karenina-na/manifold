@@ -62,7 +62,7 @@ export default function ThoughtArchive({ initialArchive, pinned, tags, initialQu
     goToPage(clampPage(next, data.pagination.totalPages));
   };
 
-  return <main className={styles.page}>
+  return <main className={styles.page} data-route="thought">
     <div className={styles.thoughtShell}>
       <Reveal className={styles.writingReveal}>
         <header className={styles.thoughtHero}>

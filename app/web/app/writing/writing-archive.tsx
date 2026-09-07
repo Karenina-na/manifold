@@ -70,7 +70,7 @@ export default function WritingArchive({ initialList, pinned, tags, query, activ
     goToPage(clampPage(next, data.totalPages));
   };
 
-  return <main className={styles.page}><div className={styles.writingShell}><div className={styles.writingMain}>
+  return <main className={styles.page} data-route="writing"><div className={styles.writingShell}><div className={styles.writingMain}>
     <Reveal className={styles.writingReveal}>
       <header className={styles.writingHero}>
         <div>

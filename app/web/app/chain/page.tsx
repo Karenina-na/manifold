@@ -15,7 +15,7 @@ export default async function ChainPage() {
     client.chainBlocks({ pageSize: 20 }).catch(() => null),
   ]);
   return (
-    <main className={styles.page}>
+    <main className={styles.page} data-route="chain">
       <div className={styles.chainShell}>
         <Reveal className={styles.chainReveal}>
           <header className={styles.chainHero}>

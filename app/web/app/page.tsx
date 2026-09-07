@@ -137,7 +137,7 @@ export default async function Home() {
 
   const anchors = sections.map((section, index) => ({ id: sectionIndex(index), ...sectionMeta[section] }));
 
-  return <main className={styles.page}>
+  return <main className={styles.page} data-route="home">
     <MinimalMetadata anchors={anchors} focus={currentFocus} location={location} gitSha={gitSha} />
     <div className={styles.shell}>
       {data.error && <p className={styles.errorBanner}>{data.error}</p>}

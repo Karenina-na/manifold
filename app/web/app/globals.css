@@ -53,5 +53,28 @@ body { min-height: 100vh; margin: 0; background: var(--surface-paper); }
 .siteContent, .siteFooter { position: relative; z-index: 1; }
 .siteContent { min-height: 100vh; }
 [data-theme="dark"] { --surface-paper: #141414; --color-ink: #f0f0f0; --color-muted: #a8a8a8; --color-line: #404040; --color-accent-soft: #242424; --color-error-soft: #3b2225; --color-accent: #e095a4; }
+
+/* Route identity hues — 和色 accents from the shared design contract
+   (docs/design-system/src/tokens.css). Neutrals stay on the Pure scale;
+   only the accent swaps per route so each surface keeps one restrained hue
+   family: Home 梅 ume (default), Writings 縹 hanada, Thoughts 若竹 wakatake,
+   Chain 朽葉 kuchiba. The light values are deepened from the raw tokens so
+   9–10px mono labels keep ≥ 4.5:1 on paper. */
+:root {
+  --hue-writing: #3d6896;
+  --hue-thought: #447a5c;
+  --hue-chain: #96692b;
+}
+[data-theme="dark"] {
+  --hue-writing: #7fa6cd;
+  --hue-thought: #83b99a;
+  --hue-chain: #c9a568;
+}
+/* Route scope lives on each page's <main data-route> (SSR) and on the
+   document root (client, via SiteNav) so nav, dialogs, footer and reading
+   surfaces follow the same route hue. */
+[data-route="writing"] { --color-accent: var(--hue-writing); --color-accent-soft: color-mix(in srgb, var(--hue-writing) 10%, var(--surface-paper)); }
+[data-route="thought"] { --color-accent: var(--hue-thought); --color-accent-soft: color-mix(in srgb, var(--hue-thought) 10%, var(--surface-paper)); }
+[data-route="chain"] { --color-accent: var(--hue-chain); --color-accent-soft: color-mix(in srgb, var(--hue-chain) 10%, var(--surface-paper)); }
 a { color: inherit; text-decoration: none; }
 button, input, textarea { font: inherit; }

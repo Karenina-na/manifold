@@ -30,7 +30,7 @@ export default async function ThoughtDetailPage({ params }: Props) {
   const metadata = content.metadata;
   const contentSlug = content.slug;
   const site = await loadSiteData();
-  return <main className={styles.page}>
+  return <main className={styles.page} data-route="thought">
     <article className="articleSurface">
       <div className="articleSurfaceInner thoughtDetail">
         <div className="articleBack"><Link href="/thoughts"><ArrowLeft size={15} /> Back to thoughts</Link></div>

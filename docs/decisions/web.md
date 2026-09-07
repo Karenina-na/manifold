@@ -128,7 +128,8 @@ Article 的 `metadata.toc` 和 `readingMinutes` 由 Core 在保存时从 Markdow
 ## 8. 设计和开发约束
 
 1. 颜色和字体优先使用 `app/web/app/globals.css` 中对齐 `docs/design-system/src/tokens.css` 的变量。
-2. 不在页面组件中直接拼接 Core URL，不直接计算 Core 统计或状态。
+2. 每类公开路由使用一种和色强调色（Home 梅 ume、Writings 縹 hanada、Thoughts 若竹 wakatake、Chain 朽葉 kuchiba，token 见 `globals.css` 的 `--hue-*`），路由作用域只替换 `--color-accent`/`--color-accent-soft`，不新增平行色板；强调色覆盖不超过表面 5%，9–10px mono 标签在 paper 上对比度 ≥ 4.5:1。
+3. 不在页面组件中直接拼接 Core URL，不直接计算 Core 统计或状态。
 3. 新增 Client Component 前确认是否真的需要浏览器状态，避免把整页改成 CSR；Thoughts 和 Writing 归档共用 `useArchiveFilters` 作为筛选/翻页客户端边界：首屏数据仍由 Server Component 读取，后续搜索（防抖 300ms，立即操作先 flush 未提交输入）、tag/排序/开关和翻页由客户端 SDK 请求对应页，`history.replaceState` 同步 URL（不触发 RSC 重渲染），请求以单调序号去陈旧；浏览器回退/前进时由 Server Component 以新参数重挂载归档（`key` 含全部筛选参数）。
 4. 页面必须有 loading/error/empty 状态和移动端约束；按钮使用现有图标体系和可访问名称。
 5. Markdown 必须经过 sanitize；任何 renderer 改动都要检查 XSS、标题锚点和代码复制。
