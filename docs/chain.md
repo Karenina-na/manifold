@@ -98,7 +98,7 @@ POST /api/v1/chain/anchors ─┼──> handler 构造 payload ──> chain.Su
 | source | 触发路径 | payload（被哈希的字节） | `subject_ref` | metadata |
 | --- | --- | --- | --- | --- |
 | `content` | create / update / publish / unpublish / delete / restore | 变更后行实质：`{kind, slug, title, summary, body, tags(排序), metadata(仅编辑字段：Thought 的 mood/question/context/source；Article 的 language/aiAssisted，不含派生的 readingMinutes/toc)}` | contentId | `{contentId, kind, status, version, slug}`（slug 供矿工自包含地失效内容缓存） |
-| `comment` | 公开/管理员创建、hide、unhide、软删、恢复、编辑作者 | 变更后行实质：`{contentId, authorName, authorUrl, body, replyToId, avatarSeed}`（取持久化后的值；状态翻转动作的 payload 是未变的实质、重签一次，动作记 metadata） | commentId | `{commentId, action: created/hidden/unhidden/deleted/restored/author-updated}` |
+| `comment` | 公开/管理员创建、hide、unhide、软删、恢复、编辑作者 | 变更后行实质：`{contentId, authorName, authorUrl, body, replyToId, avatarSeed, authorProvider, authorAvatarUrl}`（取持久化后的值；状态翻转动作的 payload 是未变的实质、重签一次，动作记 metadata） | commentId | `{commentId, action: created/hidden/unhidden/deleted/restored/author-updated}` |
 | `reaction` | 点赞 PUT / DELETE | 动作描述符：`{contentId, visitorId, action: added/removed}` | 空 | `{contentId, action}` |
 | `profile` | PUT profile | 提交的 ProfileInput 整体 | `profile_1` | `{}` |
 | `site` | PUT site | 提交的 SiteConfigInput 整体 | `site_1` | `{target: site}` |
@@ -122,6 +122,7 @@ POST /api/v1/chain/anchors ─┼──> handler 构造 payload ──> chain.Su
 | `presence` 心跳 | 高频可再生观测数据，无归档价值；上链会让链被心跳淹没 |
 | `content_view_events` 浏览事件 | 随流量无界增长、可再生；每多一次浏览多一张永久证书没有承诺意义 |
 | `audit_events` 写入 | 结构性不能上链：挖块产生审计事件 → 审计事件又要求上链 → 无限回归 |
+| `identities` upsert（OAuth 换发时刷新第三方账号资料） | 第三方账号资料镜像，可再生（下次 GitHub 登录重新拉取），非本站用户内容，无承诺价值 |
 
 新增数据库写路径时，必须先在本清单登记（或说明归入哪条例外），再合并实现；见第 14 节。
 
