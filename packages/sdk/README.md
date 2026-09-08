@@ -52,6 +52,12 @@ const page = await client.content({ kind: "ARTICLE", pageSize: 20 })
 | `createComment(slug, input)` | POST | `/api/v1/content/:slug/comments` | `Comment` |
 | `likes(slug, visitorId?)` | GET | `/api/v1/content/:slug/likes` | `LikeSummary` |
 | `setLike(slug, visitorId, enabled)` | PUT/DELETE | `/api/v1/content/:slug/likes` | `LikeSummary` |
+| `authMe()` | GET | `/api/v1/auth/me` | `AuthMeResponse`；未带 visitor 凭据时 `authenticated=false` 并返回 `providers`（已配置的第三方登录） |
+| `exchangeGitHub(input)` | POST | `/api/v1/auth/github/exchange` | `GitHubExchangeResponse`；`{ code }` 换发 visitor 会话 JWT，90 天 |
+
+### 评论访客会话（GitHub 登录）
+
+`ManifoldClient` 构造选项新增 `browserVisitorCookie: true`：开启后浏览器环境自动读取 `manifold-visitor` cookie（Web 端 OAuth 回调写入），并以 `Authorization: Bearer <token>` 直连 Core（浏览器直连 Core 时 cookie 域隔离，必须走 header 转递）。开启后 `createComment` 带有效会话时由 Core 服务端覆盖作者名/头像，`authMe()` 返回登录态；未开启时走匿名路径不变。服务端调用方不要开启该选项。
 
 ### 锚定链（公开，`docs/chain.md`）
 

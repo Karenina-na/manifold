@@ -1,4 +1,4 @@
-import type { AdminComment, AdminCommentQuery, AdminContent, AdminContentQuery, AdminOverview, AdminSessionList, AdminStats, AnalyticsViews, AnalyticsViewsQuery, AnchorQuery, AuditEventCollection, AuditQuery, ChainAnchor, ChainBlockDetail, ChainBlockSummary, ChainInfo, ChainPublicKey, ChangePasswordInput, Collection, Comment, CommentQuery, Content, ContentDetail, ContentDetailQuery, ContentInput, ContentQuery, CreateCommentInput, HealthStatus, LikeSummary, LoginInput, LoginResponse, Media, MediaQuery, MediaReferenceList, PresenceStatus, Profile, ProfileInput, SiteComposition, SiteConfig, SiteConfigInput, Stats, SubmitAnchorInput, SubmitAnchorResponse, SystemStatus, TagQuery, TagSummary, ThoughtConfig, ThoughtConfigInput, UpdateCommentInput, UpdateContentInput, VerifyResponse, WritingConfig, WritingConfigInput } from "@manifold/contracts";
+import type { AdminComment, AdminCommentQuery, AdminContent, AdminContentQuery, AdminOverview, AdminSessionList, AdminStats, AnalyticsViews, AnalyticsViewsQuery, AnchorQuery, AuditEventCollection, AuditQuery, AuthMeResponse, ChainAnchor, ChainBlockDetail, ChainBlockSummary, ChainInfo, ChainPublicKey, ChangePasswordInput, Collection, Comment, CommentQuery, Content, ContentDetail, ContentDetailQuery, ContentInput, ContentQuery, CreateCommentInput, GitHubExchangeInput, GitHubExchangeResponse, HealthStatus, LikeSummary, LoginInput, LoginResponse, Media, MediaQuery, MediaReferenceList, PresenceStatus, Profile, ProfileInput, SiteComposition, SiteConfig, SiteConfigInput, Stats, SubmitAnchorInput, SubmitAnchorResponse, SystemStatus, TagQuery, TagSummary, ThoughtConfig, ThoughtConfigInput, UpdateCommentInput, UpdateContentInput, VerifyResponse, WritingConfig, WritingConfigInput } from "@manifold/contracts";
 
 export class ApiError extends Error {
 	readonly status: number;
@@ -23,15 +23,27 @@ export function createTraceId() {
 	return `trace_${uuid?.replaceAll("-", "") ?? `${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`}`;
 }
 
-export interface ManifoldClientOptions { baseUrl: string; fetch?: typeof globalThis.fetch; token?: string }
+export interface ManifoldClientOptions { baseUrl: string; fetch?: typeof globalThis.fetch; token?: string; browserVisitorCookie?: boolean }
+
+const VISITOR_COOKIE = "manifold-visitor";
+
+function readVisitorCookie(): string {
+	if (typeof document === "undefined") return "";
+	const match = document.cookie.split(";").map((part) => part.trim()).find((part) => part.startsWith(`${VISITOR_COOKIE}=`));
+	if (!match) return "";
+	return decodeURIComponent(match.slice(VISITOR_COOKIE.length + 1));
+}
 
 export class ManifoldClient {
 	private readonly fetcher: typeof globalThis.fetch;
 	private readonly baseUrl: string;
+	private readonly browserVisitorCookie: boolean;
 	private token?: string;
 
-	constructor(options: ManifoldClientOptions) { this.baseUrl = options.baseUrl.replace(/\/$/, ""); this.fetcher = options.fetch ?? globalThis.fetch.bind(globalThis); this.token = options.token; }
+	constructor(options: ManifoldClientOptions) { this.baseUrl = options.baseUrl.replace(/\/$/, ""); this.fetcher = options.fetch ?? globalThis.fetch.bind(globalThis); this.token = options.token; this.browserVisitorCookie = options.browserVisitorCookie ?? false; }
 	setToken(token?: string) { this.token = token; }
+	authMe() { return this.request<AuthMeResponse>("/api/v1/auth/me"); }
+	exchangeGitHub(input: GitHubExchangeInput) { return this.request<GitHubExchangeResponse>("/api/v1/auth/github/exchange", { method: "POST", body: input }); }
 	health() { return this.request<HealthStatus>("/healthz"); }
 	profile() { return this.request<Profile>("/api/v1/profile"); }
 	site() { return this.request<SiteComposition>("/api/v1/site"); }
@@ -122,6 +134,10 @@ export class ManifoldClient {
 			if (options.body.type) headers.set("Content-Type", options.body.type);
 		} else if (options.body !== undefined) headers.set("Content-Type", "application/json");
 		if (this.token) headers.set("Authorization", `Bearer ${this.token}`);
+		else if (this.browserVisitorCookie) {
+			const visitor = readVisitorCookie();
+			if (visitor) headers.set("Authorization", `Bearer ${visitor}`);
+		}
 		for (const [key, value] of Object.entries(options.headers ?? {})) headers.set(key, value);
 		const body = options.body === undefined ? undefined : options.body instanceof Blob ? options.body : JSON.stringify(options.body);
 		const response = await this.fetcher(`${this.baseUrl}${path}`, { method: options.method ?? "GET", headers, body });
