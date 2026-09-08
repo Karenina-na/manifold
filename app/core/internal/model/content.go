@@ -132,17 +132,36 @@ type TagSummary struct {
 }
 
 // Comment is the public comment shape; moderation timestamps exist only in the
-// admin view.
+// admin view. AuthorProvider is "visitor" for the anonymous form (avatar comes
+// from the seeded avatar) or an OAuth provider ("github"), in which case
+// AuthorAvatarURL carries the provider's avatar snapshot.
 type Comment struct {
-	ID         string  `json:"id"`
-	ContentID  string  `json:"contentId"`
-	AuthorName string  `json:"authorName"`
-	AuthorURL  *string `json:"authorUrl"`
-	Body       string  `json:"body"`
-	CreatedAt  string  `json:"createdAt"`
-	ReplyToID  *string `json:"replyToId"`
-	AvatarSeed string  `json:"avatarSeed"`
-	Hidden     bool    `json:"hidden"`
+	ID               string  `json:"id"`
+	ContentID        string  `json:"contentId"`
+	AuthorName       string  `json:"authorName"`
+	AuthorURL        *string `json:"authorUrl"`
+	Body             string  `json:"body"`
+	CreatedAt        string  `json:"createdAt"`
+	ReplyToID        *string `json:"replyToId"`
+	AvatarSeed       string  `json:"avatarSeed"`
+	AuthorProvider   string  `json:"authorProvider"`
+	AuthorAvatarURL  string  `json:"authorAvatarUrl"`
+	Hidden           bool    `json:"hidden"`
+}
+
+// Identity is a provider-backed comment identity (GitHub sign-in). The row is
+// upserted on every successful OAuth exchange; display_name and avatar_url are
+// refreshed so the account stays current while old comments keep their own
+// snapshot columns.
+type Identity struct {
+	ID          string `json:"id"`
+	Provider    string `json:"provider"`
+	ProviderID  string `json:"providerId"`
+	DisplayName string `json:"displayName"`
+	AvatarURL   string `json:"avatarUrl"`
+	Email       string `json:"email"`
+	CreatedAt   string `json:"createdAt"`
+	UpdatedAt   string `json:"updatedAt"`
 }
 
 type AdminComment struct {

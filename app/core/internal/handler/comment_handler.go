@@ -67,10 +67,13 @@ func (h *apiHandler) createComment(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	h.createCommentOnContent(w, r, content)
+	h.createCommentOnContent(w, r, content, true)
 }
 
-func (h *apiHandler) createCommentOnContent(w http.ResponseWriter, r *http.Request, content model.Content) {
+// createCommentOnContent shares the comment-write path between the public
+// endpoint (withVisitor resolves the Bearer visitor session) and the admin
+// endpoint (false: admin tokens are admin JWTs, not visitor sessions).
+func (h *apiHandler) createCommentOnContent(w http.ResponseWriter, r *http.Request, content model.Content, withVisitor bool) {
 	var input commentInput
 	if err := decodeJSON(r, &input); err != nil || h.validate.Struct(input) != nil {
 		WriteError(w, http.StatusUnprocessableEntity, "VALIDATION_ERROR", "Comment body is required.")
@@ -79,6 +82,25 @@ func (h *apiHandler) createCommentOnContent(w http.ResponseWriter, r *http.Reque
 	authorName := strings.TrimSpace(input.AuthorName)
 	if authorName == "" {
 		authorName = "Anonymous"
+	}
+	authorProvider := "visitor"
+	authorAvatarURL := ""
+	avatarSeed := strings.TrimSpace(input.AvatarSeed)
+	if withVisitor {
+		visitor, err := h.visitorIdentity(r)
+		if err != nil {
+			WriteError(w, http.StatusUnauthorized, "INVALID_VISITOR_SESSION", "The signed-in session is no longer valid.")
+			return
+		}
+		if visitor != nil {
+			// A provider-backed session is authoritative: the account name and
+			// avatar replace whatever the client sent, so identity cannot be
+			// spoofed by editing the form.
+			authorName = visitor.DisplayName
+			authorProvider = visitor.Provider
+			authorAvatarURL = visitor.AvatarURL
+			avatarSeed = ""
+		}
 	}
 	var authorURL *string
 	if input.AuthorURL != nil {
@@ -91,7 +113,7 @@ func (h *apiHandler) createCommentOnContent(w http.ResponseWriter, r *http.Reque
 	if input.ReplyToID != nil && strings.TrimSpace(*input.ReplyToID) != "" {
 		replyToID = input.ReplyToID
 	}
-	comment, err := h.store.CreateComment(content.ID, authorName, authorURL, strings.TrimSpace(input.Body), replyToID, strings.TrimSpace(input.AvatarSeed))
+	comment, err := h.store.CreateComment(content.ID, authorName, authorURL, strings.TrimSpace(input.Body), replyToID, avatarSeed, authorProvider, authorAvatarURL)
 	if errors.Is(err, store.ErrCommentReplyInvalid) {
 		WriteError(w, http.StatusUnprocessableEntity, "REPLY_TARGET_INVALID", "The comment you replied to is no longer available.")
 		return

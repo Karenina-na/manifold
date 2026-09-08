@@ -23,7 +23,7 @@ type CommentListResult struct {
 	TotalPages int
 }
 
-const commentColumns = `id, content_id, author_name, author_url, body, created_at, reply_to_id, avatar_seed, deleted_at, hidden_at`
+const commentColumns = `id, content_id, author_name, author_url, body, created_at, reply_to_id, avatar_seed, author_provider, author_avatar_url, deleted_at, hidden_at`
 
 // matchedCommentThreads returns a CTE of top-level comments whose own
 // author/body matches the needle or that own any matching reply, so a hit
@@ -42,7 +42,7 @@ func matchedCommentThreads() string {
 func scanComment(scanner interface{ Scan(dest ...any) error }) (model.Comment, error) {
 	var c model.Comment
 	var authorURL, replyToID, deletedAt, hiddenAt sql.NullString
-	if err := scanner.Scan(&c.ID, &c.ContentID, &c.AuthorName, &authorURL, &c.Body, &c.CreatedAt, &replyToID, &c.AvatarSeed, &deletedAt, &hiddenAt); err != nil {
+	if err := scanner.Scan(&c.ID, &c.ContentID, &c.AuthorName, &authorURL, &c.Body, &c.CreatedAt, &replyToID, &c.AvatarSeed, &c.AuthorProvider, &c.AuthorAvatarURL, &deletedAt, &hiddenAt); err != nil {
 		return model.Comment{}, err
 	}
 	if authorURL.Valid {
@@ -83,6 +83,8 @@ func redactHiddenComment(comment *model.Comment) {
 	comment.AuthorURL = nil
 	comment.Body = ""
 	comment.AvatarSeed = ""
+	comment.AuthorProvider = "visitor"
+	comment.AuthorAvatarURL = ""
 }
 
 // ListComments paginates roots of undeleted threads and attaches every
@@ -157,7 +159,7 @@ func matchedAdminCommentThreads() string {
 	)`
 }
 
-const adminCommentColumns = `comments.id, comments.content_id, comments.author_name, comments.author_url, comments.body, comments.created_at, comments.reply_to_id, comments.avatar_seed, comments.deleted_at, comments.hidden_at, COALESCE(content.title, ''), content.slug, COALESCE(content.kind, '')`
+const adminCommentColumns = `comments.id, comments.content_id, comments.author_name, comments.author_url, comments.body, comments.created_at, comments.reply_to_id, comments.avatar_seed, comments.author_provider, comments.author_avatar_url, comments.deleted_at, comments.hidden_at, COALESCE(content.title, ''), content.slug, COALESCE(content.kind, '')`
 
 func (s *Store) scanAdminComments(query string, args ...any) ([]model.AdminComment, error) {
 	rows, err := s.DB.Query(query, args...)
@@ -169,7 +171,7 @@ func (s *Store) scanAdminComments(query string, args ...any) ([]model.AdminComme
 	for rows.Next() {
 		var c model.AdminComment
 		var authorURL, replyToID, deletedAt, hiddenAt sql.NullString
-		if err := rows.Scan(&c.ID, &c.ContentID, &c.AuthorName, &authorURL, &c.Body, &c.CreatedAt, &replyToID, &c.AvatarSeed, &deletedAt, &hiddenAt, &c.ContentTitle, &c.ContentSlug, &c.ContentKind); err != nil {
+		if err := rows.Scan(&c.ID, &c.ContentID, &c.AuthorName, &authorURL, &c.Body, &c.CreatedAt, &replyToID, &c.AvatarSeed, &c.AuthorProvider, &c.AuthorAvatarURL, &deletedAt, &hiddenAt, &c.ContentTitle, &c.ContentSlug, &c.ContentKind); err != nil {
 			return nil, err
 		}
 		if authorURL.Valid {
@@ -255,8 +257,9 @@ func (s *Store) adminFocusPage(matched string, matchArgs []any, focus string, pa
 }
 
 // CreateComment appends a comment and keeps the content row's comment_count in
-// sync inside one transaction.
-func (s *Store) CreateComment(contentID, authorName string, authorURL *string, body string, replyToID *string, avatarSeed string) (model.Comment, error) {
+// sync inside one transaction. authorProvider is "visitor" (avatar comes from
+// avatarSeed) or an OAuth provider with authorAvatarURL carrying the snapshot.
+func (s *Store) CreateComment(contentID, authorName string, authorURL *string, body string, replyToID *string, avatarSeed, authorProvider, authorAvatarURL string) (model.Comment, error) {
 	tx, err := s.DB.Begin()
 	if err != nil {
 		return model.Comment{}, err
@@ -278,7 +281,7 @@ func (s *Store) CreateComment(contentID, authorName string, authorURL *string, b
 	}
 	id := newID("comment")
 	created := nowRFC3339()
-	if _, err := tx.Exec(`INSERT INTO comments (id, content_id, author_name, author_url, body, reply_to_id, avatar_seed, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, id, contentID, authorName, authorURL, body, replyToID, avatarSeed, created); err != nil {
+	if _, err := tx.Exec(`INSERT INTO comments (id, content_id, author_name, author_url, body, reply_to_id, avatar_seed, author_provider, author_avatar_url, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, id, contentID, authorName, authorURL, body, replyToID, avatarSeed, authorProvider, authorAvatarURL, created); err != nil {
 		return model.Comment{}, err
 	}
 	if err := refreshCommentCountTx(tx, contentID); err != nil {
@@ -287,7 +290,7 @@ func (s *Store) CreateComment(contentID, authorName string, authorURL *string, b
 	if err := tx.Commit(); err != nil {
 		return model.Comment{}, err
 	}
-	return model.Comment{ID: id, ContentID: contentID, AuthorName: authorName, AuthorURL: authorURL, Body: body, CreatedAt: created, ReplyToID: replyToID, AvatarSeed: avatarSeed}, nil
+	return model.Comment{ID: id, ContentID: contentID, AuthorName: authorName, AuthorURL: authorURL, Body: body, CreatedAt: created, ReplyToID: replyToID, AvatarSeed: avatarSeed, AuthorProvider: authorProvider, AuthorAvatarURL: authorAvatarURL}, nil
 }
 
 func (s *Store) SoftDeleteComment(id string) (string, error) {

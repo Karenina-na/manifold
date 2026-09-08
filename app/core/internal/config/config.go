@@ -37,6 +37,14 @@ type Config struct {
 	// 验证接口每请求都会全链重放（docs/chain.md §10），比写入更昂贵，
 	// 因此单独按更低的配额限流，避免被打满 CPU 与 DB。
 	ChainVerifyRatePerMin int `env:"CHAIN_VERIFY_RATE_PER_MIN" envDefault:"20"`
+	// GitHub OAuth for comment identities. Empty values disable the provider
+	// (auth/me reports providers: [] and the web gate hides the button).
+	GitHubClientID     string `env:"GITHUB_CLIENT_ID" envDefault:""`
+	GitHubClientSecret string `env:"GITHUB_CLIENT_SECRET" envDefault:""`
+	// GitHubRedirectURI is the full callback URL of the consuming web app, e.g.
+	// http://localhost:3000/api/v1/auth/callback/github. It must match the
+	// Redirect URI registered in the GitHub OAuth App.
+	GitHubRedirectURI string `env:"GITHUB_REDIRECT_URI" envDefault:""`
 }
 
 const devJWTSecret = "manifold-dev-secret-change-me"

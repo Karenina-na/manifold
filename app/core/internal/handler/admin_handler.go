@@ -602,8 +602,9 @@ func (h *apiHandler) adminCreateComment(w http.ResponseWriter, r *http.Request) 
 		WriteError(w, http.StatusInternalServerError, "CONTENT_UNAVAILABLE", "Content is unavailable.")
 		return
 	}
-	// Admin replies bypass the public comments toggle by design.
-	h.createCommentOnContent(w, r, content)
+	// Admin replies bypass the public comments toggle by design and are never
+	// attributed to a visitor session (admin tokens are not visitor sessions).
+	h.createCommentOnContent(w, r, content, false)
 }
 
 func (h *apiHandler) adminListComments(w http.ResponseWriter, r *http.Request) {

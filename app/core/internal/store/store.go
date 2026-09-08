@@ -20,7 +20,7 @@ import (
 	"github.com/manifold-space/manifold/app/core/internal/seed"
 )
 
-const schemaVersion = 5
+const schemaVersion = 6
 
 var (
 	ErrContentNotFound     = errors.New("content not found")

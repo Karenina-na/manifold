@@ -71,12 +71,13 @@ func ContentPayload(c model.Content) (payload []byte, label, subjectRef string, 
 // subject ref is the commentId — contentId stays in metadata only.
 func CommentPayload(c model.Comment, action string) (payload []byte, label, subjectRef string, metadata map[string]any, err error) {
 	canonical, err := chain.CanonicalJSON(map[string]any{
-		"contentId":  c.ContentID,
-		"authorName": c.AuthorName,
-		"authorUrl":  nullable(c.AuthorURL),
-		"body":       c.Body,
-		"replyToId":  nullable(c.ReplyToID),
-		"avatarSeed": c.AvatarSeed,
+		"contentId":      c.ContentID,
+		"authorName":     c.AuthorName,
+		"authorUrl":      nullable(c.AuthorURL),
+		"authorProvider": c.AuthorProvider,
+		"body":           c.Body,
+		"replyToId":      nullable(c.ReplyToID),
+		"avatarSeed":     c.AvatarSeed,
 	})
 	if err != nil {
 		return nil, "", "", nil, err

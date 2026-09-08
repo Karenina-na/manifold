@@ -56,6 +56,7 @@ type apiHandler struct {
 	auditEvents   events.AuditPublisher
 	ledger        *chain.Ledger
 	minerCancel   context.CancelFunc
+	githubClient  *http.Client
 }
 
 // coreVersion is the build version reported by /healthz and the admin system endpoint.
@@ -105,7 +106,7 @@ func newRouterWithMiner(cfg config.Config, database *store.Store, ledger *chain.
 	if err != nil {
 		panic(err)
 	}
-	h := &apiHandler{cfg: cfg, store: database, auth: authService, validate: validator.New(), contentCache: cache.NewContentCache(cfg.ContentCacheTTL), statsCache: cache.NewStatsCache(cfg.StatsCacheTTL), overviewCache: cache.NewOverviewCache(cfg.StatsCacheTTL), auditEvents: auditEvents, ledger: ledger}
+	h := &apiHandler{cfg: cfg, store: database, auth: authService, validate: validator.New(), contentCache: cache.NewContentCache(cfg.ContentCacheTTL), statsCache: cache.NewStatsCache(cfg.StatsCacheTTL), overviewCache: cache.NewOverviewCache(cfg.StatsCacheTTL), auditEvents: auditEvents, ledger: ledger, githubClient: &http.Client{Timeout: 12 * time.Second}}
 	if ledger != nil {
 		minerCtx, minerCancel := context.WithCancel(context.Background())
 		h.minerCancel = minerCancel
@@ -183,6 +184,8 @@ func newRouterWithMiner(cfg config.Config, database *store.Store, ledger *chain.
 		api.Get("/media/{id}", h.getMedia)
 		api.Get("/content/{slug}/comments", h.listPublicComments)
 		api.With(publicLimiter.middleware(trustedProxies)).Post("/content/{slug}/comments", h.createComment)
+		api.Get("/auth/me", h.authMe)
+		api.With(publicLimiter.middleware(trustedProxies)).Post("/auth/github/exchange", h.githubExchange)
 		api.Get("/content/{slug}/likes", h.getLikes)
 		api.With(publicLimiter.middleware(trustedProxies)).Put("/content/{slug}/likes", h.putLike)
 		api.With(publicLimiter.middleware(trustedProxies)).Delete("/content/{slug}/likes", h.deleteLike)

@@ -218,7 +218,7 @@ func TestOverviewIgnoresDeletedContentTotals(t *testing.T) {
 	if err := database.SetLike(created.ID, "visitor-a"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := database.CreateComment(created.ID, "Reader", nil, "A note", nil, ""); err != nil {
+	if _, err := database.CreateComment(created.ID, "Reader", nil, "A note", nil, "", "visitor", ""); err != nil {
 		t.Fatal(err)
 	}
 	if err := database.DeleteContent(created.ID); err != nil {
@@ -256,7 +256,7 @@ func TestLikeAndCommentCountersArePersisted(t *testing.T) {
 	if err := database.SetLike(created.ID, "visitor-a"); err != nil {
 		t.Fatal(err)
 	}
-	comment, err := database.CreateComment(created.ID, "Reader", nil, "A note", nil, "")
+	comment, err := database.CreateComment(created.ID, "Reader", nil, "A note", nil, "", "visitor", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -302,11 +302,11 @@ func TestCommentModerationLifecycleKeepsHiddenAndDeletedOrthogonal(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	root, err := database.CreateComment(created.ID, "Reader", nil, "Root", nil, "root-seed")
+	root, err := database.CreateComment(created.ID, "Reader", nil, "Root", nil, "root-seed", "visitor", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := database.CreateComment(created.ID, "Reply", nil, "Reply", &root.ID, "reply-seed"); err != nil {
+	if _, err := database.CreateComment(created.ID, "Reply", nil, "Reply", &root.ID, "reply-seed", "visitor", ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -366,7 +366,7 @@ func TestUpdateCommentAuthorDistinguishesOmittedAndExplicitNullURL(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	comment, err := database.CreateComment(created.ID, "Original", stringPtr("https://original.example"), "Body", nil, "original-seed")
+	comment, err := database.CreateComment(created.ID, "Original", stringPtr("https://original.example"), "Body", nil, "original-seed", "visitor", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -439,8 +439,8 @@ func TestIncrementalCommentMigrationFromSchemaV2(t *testing.T) {
 	if err := database.DB.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
 		t.Fatal(err)
 	}
-	if version != 5 {
-		t.Fatalf("expected user_version 5, got %d", version)
+	if version != schemaVersion {
+		t.Fatalf("expected user_version %d, got %d", schemaVersion, version)
 	}
 	var hiddenColumn int
 	if err := database.DB.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('comments') WHERE name = 'hidden_at'`).Scan(&hiddenColumn); err != nil {
@@ -448,6 +448,26 @@ func TestIncrementalCommentMigrationFromSchemaV2(t *testing.T) {
 	}
 	if hiddenColumn != 1 {
 		t.Fatal("expected incremental migration to add comments.hidden_at")
+	}
+	var providerColumn, avatarColumn int
+	if err := database.DB.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('comments') WHERE name = 'author_provider'`).Scan(&providerColumn); err != nil {
+		t.Fatal(err)
+	}
+	if providerColumn != 1 {
+		t.Fatal("expected incremental migration to add comments.author_provider")
+	}
+	if err := database.DB.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('comments') WHERE name = 'author_avatar_url'`).Scan(&avatarColumn); err != nil {
+		t.Fatal(err)
+	}
+	if avatarColumn != 1 {
+		t.Fatal("expected incremental migration to add comments.author_avatar_url")
+	}
+	var identityTable int
+	if err := database.DB.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'identities'`).Scan(&identityTable); err != nil {
+		t.Fatal(err)
+	}
+	if identityTable != 1 {
+		t.Fatal("expected incremental migration to create identities table")
 	}
 	var pinsColumn int
 	if err := database.DB.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('thoughts_config') WHERE name = 'featured_thought_id'`).Scan(&pinsColumn); err != nil {
@@ -492,8 +512,8 @@ func TestIncrementalChainMigrationFromSchemaV4(t *testing.T) {
 	if err := database.DB.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
 		t.Fatal(err)
 	}
-	if version != 5 {
-		t.Fatalf("expected user_version 5, got %d", version)
+	if version != schemaVersion {
+		t.Fatalf("expected user_version %d, got %d", schemaVersion, version)
 	}
 	for _, table := range []string{"chain_anchors", "chain_blocks", "chain_keys"} {
 		var exists int
