@@ -3,7 +3,8 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
-import { Filter, MessageCircle, Reply, Search, Send, Share2, X } from "lucide-react";
+import { Filter, MessageCircle, Reply, Search, Send, Share2, UserRound, X } from "lucide-react";
+import { FaGithub } from "react-icons/fa";
 import { Button } from "@radix-ui/themes";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { useForm } from "react-hook-form";
@@ -19,13 +20,13 @@ import { CommentMarkdown } from "@manifold/render";
 import { LikeButton } from "./like-button";
 import { Pagination } from "./pagination";
 
-const makeCommentSchema = (captchaAnswer: string) => z.object({
-  authorName: z.string().trim().max(80),
-  authorUrl: z.string().trim().url("Use a complete URL.").or(z.literal("")),
+const makeCommentSchema = (captchaAnswer: string, authed: boolean) => z.object({
+  authorName: z.string().trim().max(80).optional(),
+  authorUrl: z.string().trim().url("Use a complete URL.").or(z.literal("")).optional(),
   body: z.string().trim().min(3, "A little more detail would help.").max(4000),
-  captcha: z.string().min(1, "Solve the small check."),
+  captcha: authed ? z.string().optional() : z.string().min(1, "Solve the small check."),
 }).superRefine((value, context) => {
-  if (value.captcha !== captchaAnswer) context.addIssue({ code: "custom", path: ["captcha"], message: "Solve the small check." });
+  if (value.captcha && value.captcha !== captchaAnswer) context.addIssue({ code: "custom", path: ["captcha"], message: "Solve the small check." });
 });
 type CommentForm = z.infer<ReturnType<typeof makeCommentSchema>>;
 
@@ -113,10 +114,16 @@ function CommentItem({ node, depth = 0 }: { node: CommentNode; depth?: number })
           </div>
         </div>
       : <div className={styles.commentRow}>
-          <CommentAvatar seed={comment.avatarSeed || comment.id} />
+          {comment.authorAvatarUrl
+            // GitHub avatar URLs are provider-signed and outside next/image's
+            // remote patterns; referrerPolicy keeps them private.
+            // eslint-disable-next-line @next/next/no-img-element
+            ? <img src={comment.authorAvatarUrl} alt="" className={styles.commentAvatarImage} referrerPolicy="no-referrer" loading="lazy" />
+            : <CommentAvatar seed={comment.avatarSeed || comment.id} />}
           <div className={styles.commentBubbleWrap}>
             <div className={styles.commentMetaRow}>
               <strong>{comment.authorName}</strong>
+              {comment.authorProvider === "github" && <span className={styles.commentProvider}>via GitHub</span>}
               <time className={styles.commentTime} dateTime={comment.createdAt}>{formatRelativeTime(comment.createdAt)}</time>
             </div>
             <div className={styles.commentBubble}>
@@ -234,9 +241,16 @@ export function CommentComposer({ slug, expanded, compact = false, anchorId, onE
   const [postedMissing, setPostedMissing] = useState(false);
   const [composerPhase, setComposerPhase] = useState<ComposerPhase>("editing");
   const [localExpanded, setLocalExpanded] = useState(expanded);
+  const [gateMode, setGateMode] = useState<"gate" | "visitor">("gate");
   const [captcha, setCaptcha] = useState<CaptchaChallenge | null>(null);
   const isExpanded = onExpandedChange ? expanded : localExpanded;
-  const commentSchema = useMemo(() => makeCommentSchema(captcha?.answer ?? ""), [captcha]);
+  const authQuery = useQuery({ queryKey: ["auth", "me"], queryFn: () => client.authMe(), retry: 1, staleTime: 5 * 60 * 1000 });
+  const isAuthed = authQuery.data?.authenticated === true;
+  const authedName = authQuery.data?.displayName ?? "";
+  const authedAvatar = authQuery.data?.avatarUrl ?? "";
+  const authProviders = authQuery.data?.providers ?? [];
+  const showForm = isAuthed || gateMode === "visitor";
+  const commentSchema = useMemo(() => makeCommentSchema(captcha?.answer ?? "", isAuthed), [captcha, isAuthed]);
   const form = useForm<CommentForm>({ resolver: zodResolver(commentSchema), defaultValues: { authorName: "", authorUrl: "", body: "", captcha: "" } });
   useEffect(() => {
     // The challenge must be generated client-side only: a random prompt in the
@@ -283,9 +297,11 @@ export function CommentComposer({ slug, expanded, compact = false, anchorId, onE
     for (const timer of viewTimersRef.current) window.clearTimeout(timer);
   }, []);
   const mutation = useMutation({
-    mutationFn: (input: CommentForm) => client.createComment(slug, { authorName: input.authorName, authorUrl: input.authorUrl || undefined, body: input.body, replyToId: replyTarget?.id, avatarSeed: identity.avatarSeed || undefined }),
+    mutationFn: (input: CommentForm) => isAuthed
+      ? client.createComment(slug, { authorUrl: input.authorUrl || undefined, body: input.body, replyToId: replyTarget?.id })
+      : client.createComment(slug, { authorName: input.authorName || undefined, authorUrl: input.authorUrl || undefined, body: input.body, replyToId: replyTarget?.id, avatarSeed: identity.avatarSeed || undefined }),
     onSuccess: (comment, input) => {
-      saveIdentity({ name: input.authorName || identity.name, avatarSeed: identity.avatarSeed }, visitorId);
+      if (!isAuthed) saveIdentity({ name: input.authorName || identity.name, avatarSeed: identity.avatarSeed }, visitorId);
       void queryClient.invalidateQueries({ queryKey: ["comments", slug] });
       const finalize = () => {
         cancelReply();
@@ -338,6 +354,13 @@ export function CommentComposer({ slug, expanded, compact = false, anchorId, onE
     attempt(POSTED_COMMENT_SCROLL_TRIES);
   };
   const toggleExpanded = () => onExpandedChange ? onExpandedChange(!expanded) : setLocalExpanded((value) => !value);
+  const startGitHub = () => {
+    const returnTo = `${window.location.pathname}${window.location.search}`;
+    // The OAuth leg leaves the SPA for GitHub and returns via a server route;
+    // a router push would not carry the state cookies of the full navigation.
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+    window.location.href = `/api/v1/auth/github/login?return_to=${encodeURIComponent(returnTo)}`;
+  };
   const chooseAvatar = (avatarSeed: string) => {
     setIdentity((current) => ({ ...current, avatarSeed }));
     saveIdentity({ avatarSeed }, visitorId);
@@ -351,7 +374,14 @@ export function CommentComposer({ slug, expanded, compact = false, anchorId, onE
       <button type="button" className={styles.articleActionButton} onClick={shareArticle}><Share2 size={15} /> <span>Share</span></button>
     </div>
     <AnimatePresence initial={false}>
-      {isExpanded && <motion.form className={styles.commentForm} onSubmit={submitComment} initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.38, ease: [0.16, 1, 0.3, 1] }}>
+      {isExpanded && !showForm && <motion.div className={styles.commentGate} key="gate" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}>
+        <span className={styles.commentGateHint}>Sign in to comment with your GitHub account, or continue as a guest.</span>
+        <div className={styles.commentGateButtons}>
+          {authProviders.includes("github") && <button type="button" className={styles.commentGateButton} onClick={startGitHub}><FaGithub size={17} aria-hidden="true" /> GitHub</button>}
+          <button type="button" className={styles.commentGateButton} onClick={() => setGateMode("visitor")}><UserRound size={17} aria-hidden="true" /> Guest</button>
+        </div>
+      </motion.div>}
+      {isExpanded && showForm && <motion.form className={styles.commentForm} onSubmit={submitComment} initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.38, ease: [0.16, 1, 0.3, 1] }}>
         <div className={styles.commentFormBody}>
           {replyTarget && <div className={styles.replyBanner} role="note">
             <div className={styles.replyBannerBody}>
@@ -360,16 +390,33 @@ export function CommentComposer({ slug, expanded, compact = false, anchorId, onE
             </div>
             <button type="button" className={styles.replyBannerCancel} onClick={cancelReply} aria-label="Cancel reply"><X size={14} /></button>
           </div>}
-          <div className={styles.commentIdentity}>
-            <AvatarPicker seed={identity.avatarSeed || "manifold"} onChange={chooseAvatar} />
-            <label>Name <span>(optional)</span><input {...form.register("authorName")} placeholder="Anonymous" autoComplete="name" />{form.formState.errors.authorName && <small>{form.formState.errors.authorName.message}</small>}</label>
-            <label>Website <span>(optional)</span><input {...form.register("authorUrl")} placeholder="https://" inputMode="url" autoComplete="url" />{form.formState.errors.authorUrl && <small>{form.formState.errors.authorUrl.message}</small>}</label>
-          </div>
+          {isAuthed
+            ? <div className={styles.commentIdentity}>
+                {authedAvatar
+                  // GitHub avatar URL, provider-signed; see the comment row note.
+                  // eslint-disable-next-line @next/next/no-img-element
+                  && <img src={authedAvatar} alt="" className={styles.accountAvatar} referrerPolicy="no-referrer" />}
+                <div className={styles.accountInfo}>
+                  <strong>{authedName}</strong>
+                  <span className={styles.accountProvider}>via GitHub</span>
+                </div>
+                <label>Website <span>(optional)</span><input {...form.register("authorUrl")} placeholder="https://" inputMode="url" autoComplete="url" />{form.formState.errors.authorUrl && <small>{form.formState.errors.authorUrl.message}</small>}</label>
+              </div>
+            : <div className={styles.commentIdentity}>
+                <AvatarPicker seed={identity.avatarSeed || "manifold"} onChange={chooseAvatar} />
+                <label>Name <span>(optional)</span><input {...form.register("authorName")} placeholder="Anonymous" autoComplete="name" />{form.formState.errors.authorName && <small>{form.formState.errors.authorName.message}</small>}</label>
+                <label>Website <span>(optional)</span><input {...form.register("authorUrl")} placeholder="https://" inputMode="url" autoComplete="url" />{form.formState.errors.authorUrl && <small>{form.formState.errors.authorUrl.message}</small>}</label>
+              </div>}
           <label>Comment<textarea {...form.register("body")} id="comment-body" placeholder="Write a comment" rows={5} />{form.formState.errors.body && <small>{form.formState.errors.body.message}</small>}</label>
-          <div className={styles.commentSubmitRow}>
-            <label>Quick check <span>({captcha ? captcha.prompt : "small check"})</span><input {...form.register("captcha")} inputMode="numeric" placeholder="Answer" autoComplete="off" />{form.formState.errors.captcha && <small>{form.formState.errors.captcha.message}</small>}</label>
-            <Button className={styles.primaryButton} type="submit" disabled={mutation.isPending}><Send size={15} /> Post comment</Button>
-          </div>
+          {isAuthed
+            ? <div className={styles.commentSubmitRow}>
+                <span className={styles.accountSignedIn}>Signed in as <strong>{authedName}</strong></span>
+                <Button className={styles.primaryButton} type="submit" disabled={mutation.isPending}><Send size={15} /> Post comment</Button>
+              </div>
+            : <div className={styles.commentSubmitRow}>
+                <label>Quick check <span>({captcha ? captcha.prompt : "small check"})</span><input {...form.register("captcha")} inputMode="numeric" placeholder="Answer" autoComplete="off" />{form.formState.errors.captcha && <small>{form.formState.errors.captcha.message}</small>}</label>
+                <Button className={styles.primaryButton} type="submit" disabled={mutation.isPending}><Send size={15} /> Post comment</Button>
+              </div>}
           {mutation.isError && <p className={styles.errorText}>Could not send the comment. Please try again.</p>}
         </div>
         <AnimatePresence>

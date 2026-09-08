@@ -14,7 +14,7 @@ export function createServerClient() {
 }
 
 export function createBrowserClient() {
-  return new ManifoldClient({ baseUrl: coreUrl, fetch: noStoreFetch });
+  return new ManifoldClient({ baseUrl: coreUrl, fetch: noStoreFetch, browserVisitorCookie: true });
 }
 
 export function buildHref(content: Pick<Content, "kind" | "slug">) {
