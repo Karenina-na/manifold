@@ -60,7 +60,11 @@ app/core JSON <--> packages/contracts <--> packages/sdk <--> Web / Admin
 - `SystemStatus`：Core 运行状态。
 - `AuditEvent` / `AuditEventCollection` / `AuditQuery`：审计事件（含 `requestId`/`traceId: string | null` 关联键），`page`/`pageSize` 分页。
 - `PresenceStatus`：匿名在线心跳。
-- `Comment`：公开评论。`authorUrl`/`replyToId` 可空值用 `null`；`avatarSeed` 必有；`hidden` 标记被隐藏的评论。隐藏行仍保留线程位置，但公开响应会清空作者名、网站、正文和头像种子；软删时间 `deletedAt` 仅出现在管理端视图。
+- `Comment`：公开评论。`authorUrl`/`replyToId` 可空值用 `null`；`avatarSeed` 必有；`hidden` 标记被隐藏的评论。隐藏行仍保留线程位置，但公开响应会清空作者名、网站、正文和头像种子；软删时间 `deletedAt` 仅出现在管理端视图。`authorProvider`（`"visitor" | "github"`，默认 `visitor`）与 `authorAvatarUrl`（GitHub 登录评论的账号头像快照，匿名评论为空字符串）标识评论身份来源。
+- `AuthProvider`：`"github"`，当前支持的第三方评论登录提供方枚举。
+- `GitHubExchangeInput`：`{ code: string }`，GitHub OAuth 授权码换发 visitor 会话的输入。
+- `GitHubExchangeResponse`：`{ token, provider, displayName, avatarUrl }`，换发成功后返回的 visitor 会话 JWT 与身份资料。
+- `AuthMeResponse`：`{ authenticated, provider?, displayName?, avatarUrl?, providers }`；`authenticated=false` 时身份字段缺省，`providers` 是当前 Core 已配置的登录提供方列表（未配置 GitHub 时为空数组）。
 - `AdminComment extends Comment`：管理端评论视图，追加 `deletedAt: string | null`、`hiddenAt: string | null` 与所属内容 `contentTitle`/`contentSlug`/`contentKind`；内容外键和 slug 均为数据库非空约束。
 - `CreateCommentInput`：评论创建输入。
 - `UpdateCommentInput`：管理员覆盖评论作者资料的部分更新输入；`authorUrl: null` 显式清空网站。

@@ -97,6 +97,8 @@ export interface Comment {
   createdAt: string;
   replyToId: string | null;
   avatarSeed: string;
+  authorProvider: string;
+  authorAvatarUrl: string;
   hidden: boolean;
 }
 export interface AdminComment extends Comment {
@@ -112,6 +114,11 @@ export interface CommentQuery { page?: number; pageSize?: number; q?: string }
 export interface AdminCommentQuery { contentId?: string; q?: string; page?: number; pageSize?: number; focus?: string }
 
 export interface LikeSummary { likeCount: number; viewerLiked: boolean }
+
+export type AuthProvider = "github";
+export interface GitHubExchangeInput { code: string }
+export interface GitHubExchangeResponse { token: string; provider: AuthProvider; displayName: string; avatarUrl: string }
+export interface AuthMeResponse { authenticated: boolean; provider?: AuthProvider; displayName?: string; avatarUrl?: string; providers: AuthProvider[] }
 export interface Stats { contentCount: number; articleCount: number; thoughtCount: number; wordCount: number; updatedAt: string }
 export interface PresenceStatus { activeVisitors: number; observedAt: string }
 export interface AdminStats { content: Stats }
