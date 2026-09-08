@@ -1054,9 +1054,9 @@ html { scroll-behavior: smooth; }
 /* Home surfaces: Writings/thoughts and Background flow without card framing. */
 .backgroundSurface, .contentSurface { border: 0; border-radius: 0; background: transparent; backdrop-filter: none; }
 
-/* Detail pages: keep the return link close to the nav so no empty
-   background band appears above the title card. */
-:global(main .articleSurface) { margin-top: 20px; }
+/* Detail pages: the transparent surface starts flush under the nav so no
+   empty background band appears above the return link. */
+:global(main .articleSurface) { margin-top: 0; }
 :global(main .articleSurface .articleBack) { padding-top: 8px; margin-bottom: 10px; }
 :global(main .articleSurface .articleTitleBlock .articleHeader) { padding-top: 28px; }
 
