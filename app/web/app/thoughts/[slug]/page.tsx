@@ -1,11 +1,10 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { cookies, headers } from "next/headers";
 import { notFound } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
 import { CommentsSection } from "../../../components/comment-thread";
 import { ThoughtActions } from "../../../components/thought-actions";
 import { AnchorBadge } from "../../../components/anchor-badge";
+import { BackLink } from "../../../components/back-link";
 import { createServerClient, loadSiteData } from "../../../lib/api";
 import { ThoughtSurface } from "@manifold/render";
 import styles from "../../site.module.css";
@@ -25,6 +24,8 @@ export default async function ThoughtDetailPage({ params }: Props) {
   const { slug } = await params;
   const referer = (await headers()).get("referer") ?? undefined;
   const visitorId = (await cookies()).get("manifold-vid")?.value;
+  const host = (await headers()).get("host");
+  const canGoBack = !!referer && !!host && (() => { try { return new URL(referer).host === host; } catch { return false; } })();
   const content = await createServerClient().contentBySlug(slug, { referrer: referer }, visitorId).catch(() => null);
   if (!content || content.kind !== "THOUGHT") notFound();
   const metadata = content.metadata;
@@ -33,7 +34,7 @@ export default async function ThoughtDetailPage({ params }: Props) {
   return <main className={styles.page} data-route="thought">
     <article className="articleSurface">
       <div className="articleSurfaceInner thoughtDetail">
-        <div className="articleBack"><Link href="/thoughts"><ArrowLeft size={15} /> Back to thoughts</Link></div>
+        <div className="articleBack"><BackLink href="/thoughts" label="Back to thoughts" canGoBack={canGoBack} /></div>
         <ThoughtSurface
           title={content.title || "A thought"}
           summary={content.summary}
