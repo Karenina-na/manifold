@@ -4,7 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
 import { Filter, MessageCircle, Reply, Search, Send, Share2, X } from "lucide-react";
-import { Button, TextArea, TextField } from "@radix-ui/themes";
+import { Button, TextArea } from "@radix-ui/themes";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -361,16 +361,15 @@ export function CommentComposer({ slug, expanded, compact = false, anchorId, onE
           </div>}
           <div className={styles.commentIdentity}>
             <AvatarPicker seed={identity.avatarSeed || "manifold"} onChange={chooseAvatar} />
-            <label>Name <span>(optional)</span><TextField.Root {...form.register("authorName")} placeholder="Anonymous" autoComplete="name" />{form.formState.errors.authorName && <small>{form.formState.errors.authorName.message}</small>}</label>
-            <label>Website <span>(optional)</span><TextField.Root {...form.register("authorUrl")} placeholder="https://" inputMode="url" autoComplete="url" />{form.formState.errors.authorUrl && <small>{form.formState.errors.authorUrl.message}</small>}</label>
+            <label>Name <span>(optional)</span><input {...form.register("authorName")} placeholder="Anonymous" autoComplete="name" />{form.formState.errors.authorName && <small>{form.formState.errors.authorName.message}</small>}</label>
+            <label>Website <span>(optional)</span><input {...form.register("authorUrl")} placeholder="https://" inputMode="url" autoComplete="url" />{form.formState.errors.authorUrl && <small>{form.formState.errors.authorUrl.message}</small>}</label>
           </div>
           <label>Comment<TextArea {...form.register("body")} id="comment-body" placeholder="Write a comment" rows={5} />{form.formState.errors.body && <small>{form.formState.errors.body.message}</small>}</label>
           <div className={styles.commentSubmitRow}>
-            <label>Quick check <span>({captcha ? captcha.prompt : "small check"})</span><TextField.Root {...form.register("captcha")} inputMode="numeric" placeholder="Answer" autoComplete="off" />{form.formState.errors.captcha && <small>{form.formState.errors.captcha.message}</small>}</label>
-            <Button className={styles.primaryButton} type="submit" disabled={mutation.isPending}><Send size={15} /> Send comment</Button>
+            <label>Quick check <span>({captcha ? captcha.prompt : "small check"})</span><input {...form.register("captcha")} inputMode="numeric" placeholder="Answer" autoComplete="off" />{form.formState.errors.captcha && <small>{form.formState.errors.captcha.message}</small>}</label>
+            <Button className={styles.primaryButton} type="submit" disabled={mutation.isPending}><Send size={15} /> Post comment</Button>
           </div>
           {mutation.isError && <p className={styles.errorText}>Could not send the comment. Please try again.</p>}
-          <Button className={styles.primaryButton} type="submit" disabled={mutation.isPending}><Send size={15} /> Send comment</Button>
         </div>
         <AnimatePresence>
           {composerPhase === "submitting" && <motion.div key="veil" className={styles.commentVeil} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }} role="status" aria-live="polite">
