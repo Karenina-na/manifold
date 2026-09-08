@@ -1022,3 +1022,49 @@ html { scroll-behavior: smooth; }
 
 /* Pinned badges deepen the hue so white-on-accent text holds ≥ 4.5:1. */
 .featuredBadge { background: color-mix(in srgb, var(--color-accent) 72%, var(--color-ink)); color: var(--surface-paper); }
+
+/* Home section rhythm: deliberate breathing room between blocks. */
+.profileSection { padding-bottom: 40px; }
+.backgroundSection { padding-top: 56px; }
+.streamSection { padding-top: 56px; }
+.updateRail { margin-top: 56px; }
+.seriesSection { padding-top: 56px; }
+.contactSection { padding-top: 56px; }
+@media (max-width: 760px) {
+  .profileSection { padding-bottom: 28px; }
+  .backgroundSection { padding-top: 36px; }
+  .streamSection { padding-top: 36px; }
+  .updateRail { margin-top: 48px; }
+  .seriesSection, .contactSection { padding-top: 36px; }
+}
+
+/* Home surfaces: Writings/thoughts and Background flow without card framing. */
+.backgroundSurface, .contentSurface { border: 0; border-radius: 0; background: transparent; backdrop-filter: none; }
+
+/* Detail pages: keep the return link close to the nav so no empty
+   background band appears above the title card. */
+:global(main .articleSurface) { margin-top: 20px; }
+:global(main .articleSurface .articleBack) { padding-top: 8px; margin-bottom: 10px; }
+:global(main .articleSurface .articleTitleBlock .articleHeader) { padding-top: 28px; }
+
+/* Detail-page back links share the site's pill-button language and a larger touch target. */
+:global(main .articleSurface .articleBack a) {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 16px;
+  border: 1px solid var(--color-line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: .02em;
+  transition: border-color .2s ease, color .2s ease, background .2s ease, transform .2s ease;
+}
+:global(main .articleSurface .articleBack a:hover) {
+  border-color: color-mix(in srgb, var(--color-accent) 46%, var(--color-line));
+  color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent-soft) 62%, transparent);
+  transform: translateY(-1px);
+}
