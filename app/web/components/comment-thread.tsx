@@ -4,7 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
 import { Filter, MessageCircle, Reply, Search, Send, Share2, X } from "lucide-react";
-import { Button, TextArea } from "@radix-ui/themes";
+import { Button } from "@radix-ui/themes";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -15,6 +15,7 @@ import { getIdentity, saveIdentity, type CommentIdentity } from "../lib/identity
 import { formatRelativeTime } from "../lib/relative-time";
 import styles from "../app/site.module.css";
 import { AvatarPicker, CommentAvatar } from "./comment-avatar";
+import { CommentMarkdown } from "@manifold/render";
 import { LikeButton } from "./like-button";
 import { Pagination } from "./pagination";
 
@@ -119,7 +120,7 @@ function CommentItem({ node, depth = 0 }: { node: CommentNode; depth?: number })
               <time className={styles.commentTime} dateTime={comment.createdAt}>{formatRelativeTime(comment.createdAt)}</time>
             </div>
             <div className={styles.commentBubble}>
-              <p>{comment.body}</p>
+              <CommentMarkdown content={comment.body} />
               <button type="button" className={styles.commentReplyButton} onClick={() => startReply(comment)}><Reply size={12} /> Reply</button>
             </div>
           </div>
@@ -364,7 +365,7 @@ export function CommentComposer({ slug, expanded, compact = false, anchorId, onE
             <label>Name <span>(optional)</span><input {...form.register("authorName")} placeholder="Anonymous" autoComplete="name" />{form.formState.errors.authorName && <small>{form.formState.errors.authorName.message}</small>}</label>
             <label>Website <span>(optional)</span><input {...form.register("authorUrl")} placeholder="https://" inputMode="url" autoComplete="url" />{form.formState.errors.authorUrl && <small>{form.formState.errors.authorUrl.message}</small>}</label>
           </div>
-          <label>Comment<TextArea {...form.register("body")} id="comment-body" placeholder="Write a comment" rows={5} />{form.formState.errors.body && <small>{form.formState.errors.body.message}</small>}</label>
+          <label>Comment<textarea {...form.register("body")} id="comment-body" placeholder="Write a comment" rows={5} />{form.formState.errors.body && <small>{form.formState.errors.body.message}</small>}</label>
           <div className={styles.commentSubmitRow}>
             <label>Quick check <span>({captcha ? captcha.prompt : "small check"})</span><input {...form.register("captcha")} inputMode="numeric" placeholder="Answer" autoComplete="off" />{form.formState.errors.captcha && <small>{form.formState.errors.captcha.message}</small>}</label>
             <Button className={styles.primaryButton} type="submit" disabled={mutation.isPending}><Send size={15} /> Post comment</Button>

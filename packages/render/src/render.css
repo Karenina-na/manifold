@@ -114,3 +114,23 @@
 .thoughtReflection { max-width: 680px; margin: 22px 0 0; padding: 15px 20px; border-left: 2px solid var(--mdr-accent); background: color-mix(in srgb, var(--mdr-accent-soft) 52%, transparent); color: var(--mdr-ink); font-family: var(--mdr-serif); font-size: 19px; font-style: italic; line-height: 1.6; }
 .thoughtProvenance { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 14px; color: var(--mdr-muted); font: 11px var(--mdr-mono); }
 .thoughtProvenance span { display: inline-flex; align-items: center; gap: 6px; }
+
+/* Comment thread: lightweight Markdown inside bubbles. Compact rhythm, no
+   heading outline, no code toolbar; line breaks from the composer survive. */
+.commentMarkdown { font-size: 14px; color: var(--mdr-muted); }
+.commentMarkdown > :first-child { margin-top: 0; }
+.commentMarkdown > :last-child { margin-bottom: 0; }
+.commentMarkdown p { margin: 0 0 9px; color: var(--mdr-muted); line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+.commentMarkdown a { color: var(--mdr-accent); text-decoration: none; }
+.commentMarkdown a:hover { text-decoration: underline; }
+.commentMarkdown strong { color: var(--mdr-ink); font-weight: 600; }
+.commentMarkdown code { font-family: var(--mdr-mono); font-size: 12.5px; background: color-mix(in srgb, var(--mdr-ink) 8%, transparent); color: var(--mdr-ink); border-radius: 4px; padding: 1px 5px; }
+.commentMarkdown pre { margin: 9px 0; padding: 11px 13px; border: 1px solid var(--mdr-line); border-radius: 8px; background: color-mix(in srgb, var(--mdr-paper) 86%, transparent); overflow-x: auto; }
+.commentMarkdown pre code { padding: 0; background: none; font-size: 12.5px; line-height: 1.6; }
+.commentMarkdown ul, .commentMarkdown ol { margin: 0 0 9px; padding-left: 20px; line-height: 1.6; }
+.commentMarkdown li { margin: 2px 0; }
+.commentMarkdown blockquote { margin: 0 0 9px; padding-left: 12px; border-left: 2px solid var(--mdr-line); color: var(--mdr-muted); }
+.commentMarkdown hr { margin: 13px 0; border: 0; border-top: 1px solid var(--mdr-line); }
+.commentMarkdown table { margin: 0 0 9px; border-collapse: collapse; font-size: 13px; }
+.commentMarkdown th, .commentMarkdown td { border: 1px solid var(--mdr-line); padding: 5px 9px; text-align: left; }
+.commentMarkdown thead th { background: color-mix(in srgb, var(--mdr-line) 26%, transparent); }

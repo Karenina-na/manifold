@@ -7,6 +7,7 @@
 | 导出 | 用途 |
 | --- | --- |
 | `MarkdownContent` | Markdown 正文渲染：GFM、数学公式（KaTeX）、代码高亮、sanitize、标题锚点（`data-content-heading`）、CodeBlock 复制按钮、图片块级展示（显式 sanitize schema 允许 `img`，组件注入 `loading="lazy" decoding="async"`，`render.css` 提供边框圆角与自适应宽度） |
+| `CommentMarkdown` | 评论正文轻量 Markdown：GFM + 软换行（`remark-breaks`，单次 Enter 即换行）、sanitize（schema 移除标题与 `img`，评论不得注入标题大纲或外链图片）、无代码工具栏/KaTeX/目录机制 |
 | `ArticleToc` / `ReadingProgress` | TOC 侧栏（scrollspy + 进度）与阅读进度轨 |
 | `ReadingShell` | 长文阅读三栏网格骨架；web 通过 `rail/discussion/composer` slots 注入评论编排，admin 只传正文与 TOC。未传 `rail` 时自动切到 `no-rail` 网格（正文列 + TOC，无预留 rail 列） |
 | `ArticleSurface` / `ThoughtSurface` / `ThoughtHeader` / `ThoughtBody` | 文章与 Thought 的详情面组成件（标题块、meta 行、溯源组）；`ThoughtHeader`/`ThoughtSurface` 的 `meta` slot 在 meta 行行尾追加调用方内容（web 用于锚定徽标） |
@@ -32,4 +33,5 @@
 ## 依赖说明
 
 - `react-markdown` + remark/rehype 插件栈与 web 原实现完全一致；`rehype-sanitize` 保证 Markdown 的 HTML 输出安全（Core 存储不承诺 HTML 安全，清洗发生在渲染边界）。
+- `remark-breaks`（约 2KB，无运行时依赖）仅用于 `CommentMarkdown`：评论在普通 textarea 中输入，单换行渲染为 `<br>` 符合输入直觉；替代方案是在渲染前把单换行改写为段落（间距过大）或不处理（存量多行评论会被并成一行），均不采用。
 - `lucide-react` 用于 meta 行与 CodeBlock 图标；`katex` 样式由消费端引入（web 在 `globals.css`，admin 在 `main.tsx`）。
