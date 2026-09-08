@@ -3,7 +3,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
-import { Eye, Filter, Heart, MessageCircle, Reply, Search, Send, Share2, X } from "lucide-react";
+import { Filter, MessageCircle, Reply, Search, Send, Share2, X } from "lucide-react";
 import { Button, TextArea, TextField } from "@radix-ui/themes";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { useForm } from "react-hook-form";
@@ -18,13 +18,24 @@ import { AvatarPicker, CommentAvatar } from "./comment-avatar";
 import { LikeButton } from "./like-button";
 import { Pagination } from "./pagination";
 
-const commentSchema = z.object({
+const makeCommentSchema = (captchaAnswer: string) => z.object({
   authorName: z.string().trim().max(80),
   authorUrl: z.string().trim().url("Use a complete URL.").or(z.literal("")),
   body: z.string().trim().min(3, "A little more detail would help.").max(4000),
   captcha: z.string().min(1, "Solve the small check."),
-}).superRefine((value, context) => { if (value.captcha !== "7") context.addIssue({ code: "custom", path: ["captcha"], message: "Solve the small check." }); });
-type CommentForm = z.infer<typeof commentSchema>;
+}).superRefine((value, context) => {
+  if (value.captcha !== captchaAnswer) context.addIssue({ code: "custom", path: ["captcha"], message: "Solve the small check." });
+});
+type CommentForm = z.infer<ReturnType<typeof makeCommentSchema>>;
+
+type CaptchaChallenge = { prompt: string; answer: string };
+function makeCaptcha(): CaptchaChallenge {
+  const a = 1 + Math.floor(Math.random() * 9);
+  const b = 1 + Math.floor(Math.random() * 9);
+  return { prompt: `What is ${a} + ${b}?`, answer: String(a + b) };
+}
+
+const OPEN_COMPOSER_EVENT = "manifold:open-composer";
 
 const MAX_INDENT = 2;
 const COMMENT_PAGE_SIZE = 10;
@@ -181,9 +192,9 @@ export function ArticleDiscussion({ slug, viewCount = 0, likeCount = 0, showStat
       <span className={styles.commentCount}>{totalComments}</span>
     </div>
     {showStats && <div className={styles.commentStats} aria-label="Article discussion statistics">
-      <span><Eye size={15} aria-hidden="true" /> <strong>{viewCount}</strong> views</span>
-      <span><Heart size={15} aria-hidden="true" /> <strong>{currentLikeCount}</strong> likes</span>
-      <span><MessageCircle size={15} aria-hidden="true" /> <strong>{totalComments}</strong> comments</span>
+      <span><strong>{viewCount}</strong> views</span>
+      <span><strong>{currentLikeCount}</strong> likes</span>
+      <span><strong>{totalComments}</strong> comments</span>
     </div>}
     <div className={styles.commentTools}>
       <label className={styles.commentSearch}><Search size={15} aria-hidden="true" /><span className={styles.srOnly}>Search comments</span><input value={search} onChange={(event) => onSearchInput(event.target.value)} placeholder="Search comments" /></label>
@@ -191,7 +202,9 @@ export function ArticleDiscussion({ slug, viewCount = 0, likeCount = 0, showStat
     </div>
     {commentsQuery.isLoading && <p className={styles.muted}>Loading responses...</p>}
     {commentsQuery.isError && <p className={styles.errorText}>Responses are unavailable at the moment.</p>}
-    {!commentsQuery.isLoading && !commentsQuery.isError && totalComments === 0 && (debouncedSearch ? <p className={styles.muted}>No comments match this search.</p> : <p className={styles.muted}>No responses yet. Start the thread.</p>)}
+    {!commentsQuery.isLoading && !commentsQuery.isError && totalComments === 0 && (debouncedSearch
+      ? <p className={styles.muted}>No comments match this search.</p>
+      : <p className={styles.commentEmpty}><span>No responses yet.</span><button type="button" className={styles.commentEmptyCTA} onClick={() => window.dispatchEvent(new CustomEvent(OPEN_COMPOSER_EVENT))}><MessageCircle size={15} /> Start the thread</button></p>)}
     {!commentsQuery.isLoading && !commentsQuery.isError && comments.length > 0 && visibleComments.length === 0 && <p className={styles.muted}>No comments match this filter on this page.</p>}
     <CommentList comments={visibleComments} />
     {totalPages > 1 && <Pagination page={displayPage} totalPages={totalPages} onChange={changePage} disabled={commentsQuery.isPending || commentsQuery.isPlaceholderData} label="Comment pages" />}
@@ -220,8 +233,30 @@ export function CommentComposer({ slug, expanded, compact = false, anchorId, onE
   const [postedMissing, setPostedMissing] = useState(false);
   const [composerPhase, setComposerPhase] = useState<ComposerPhase>("editing");
   const [localExpanded, setLocalExpanded] = useState(expanded);
+  const [captcha, setCaptcha] = useState<CaptchaChallenge | null>(null);
   const isExpanded = onExpandedChange ? expanded : localExpanded;
+  const commentSchema = useMemo(() => makeCommentSchema(captcha?.answer ?? ""), [captcha]);
   const form = useForm<CommentForm>({ resolver: zodResolver(commentSchema), defaultValues: { authorName: "", authorUrl: "", body: "", captcha: "" } });
+  useEffect(() => {
+    // The challenge must be generated client-side only: a random prompt in the
+    // initializer would differ between the SSR HTML and the hydration render.
+    // setTimeout keeps generating even while the tab is backgrounded (rAF pauses).
+    const timer = window.setTimeout(() => setCaptcha(makeCaptcha()), 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+  useEffect(() => {
+    const openComposer = () => {
+      if (onExpandedChange) onExpandedChange(true);
+      else setLocalExpanded(true);
+      const el = document.getElementById("comment-composer");
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+        window.setTimeout(() => document.getElementById("comment-body")?.focus({ preventScroll: true }), 420);
+      }
+    };
+    window.addEventListener(OPEN_COMPOSER_EVENT, openComposer);
+    return () => window.removeEventListener(OPEN_COMPOSER_EVENT, openComposer);
+  }, [onExpandedChange]);
   const successTimerRef = useRef<number | null>(null);
   const viewTimersRef = useRef<number[]>([]);
   const updatePhase = useCallback((phase: ComposerPhase) => {
@@ -254,6 +289,7 @@ export function CommentComposer({ slug, expanded, compact = false, anchorId, onE
       const finalize = () => {
         cancelReply();
         form.reset({ authorName: input.authorName || identity.name, authorUrl: "", body: "", captcha: "" });
+        setCaptcha(makeCaptcha());
         setPostedCommentId(comment.id);
         setPostedMissing(false);
         pagingRef.current.revealPosted(comment);
@@ -277,6 +313,7 @@ export function CommentComposer({ slug, expanded, compact = false, anchorId, onE
     mutation.reset();
     setPostedCommentId(null);
     setPostedMissing(false);
+    setCaptcha(makeCaptcha());
     updatePhase("editing");
     window.setTimeout(() => document.getElementById("comment-body")?.focus({ preventScroll: true }), 420);
   };
@@ -325,10 +362,13 @@ export function CommentComposer({ slug, expanded, compact = false, anchorId, onE
           <div className={styles.commentIdentity}>
             <AvatarPicker seed={identity.avatarSeed || "manifold"} onChange={chooseAvatar} />
             <label>Name <span>(optional)</span><TextField.Root {...form.register("authorName")} placeholder="Anonymous" autoComplete="name" />{form.formState.errors.authorName && <small>{form.formState.errors.authorName.message}</small>}</label>
+            <label>Website <span>(optional)</span><TextField.Root {...form.register("authorUrl")} placeholder="https://" inputMode="url" autoComplete="url" />{form.formState.errors.authorUrl && <small>{form.formState.errors.authorUrl.message}</small>}</label>
           </div>
-          <label>Website <span>(optional)</span><TextField.Root {...form.register("authorUrl")} placeholder="https://" inputMode="url" autoComplete="url" />{form.formState.errors.authorUrl && <small>{form.formState.errors.authorUrl.message}</small>}</label>
           <label>Comment<TextArea {...form.register("body")} id="comment-body" placeholder="Write a comment" rows={5} />{form.formState.errors.body && <small>{form.formState.errors.body.message}</small>}</label>
-          <label>Quick check <span>(what is 3 + 4?)</span><TextField.Root {...form.register("captcha")} inputMode="numeric" placeholder="7" />{form.formState.errors.captcha && <small>{form.formState.errors.captcha.message}</small>}</label>
+          <div className={styles.commentSubmitRow}>
+            <label>Quick check <span>({captcha ? captcha.prompt : "small check"})</span><TextField.Root {...form.register("captcha")} inputMode="numeric" placeholder="Answer" autoComplete="off" />{form.formState.errors.captcha && <small>{form.formState.errors.captcha.message}</small>}</label>
+            <Button className={styles.primaryButton} type="submit" disabled={mutation.isPending}><Send size={15} /> Send comment</Button>
+          </div>
           {mutation.isError && <p className={styles.errorText}>Could not send the comment. Please try again.</p>}
           <Button className={styles.primaryButton} type="submit" disabled={mutation.isPending}><Send size={15} /> Send comment</Button>
         </div>
