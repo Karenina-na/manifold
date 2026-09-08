@@ -286,6 +286,7 @@ export function CommentComposer({ slug, expanded, compact = false, anchorId, onE
   }, [onExpandedChange]);
   const successTimerRef = useRef<number | null>(null);
   const viewTimersRef = useRef<number[]>([]);
+  const authListenerRef = useRef<((event: MessageEvent) => void) | null>(null);
   const updatePhase = useCallback((phase: ComposerPhase) => {
     setComposerPhase(phase);
     onPhaseChange?.(phase);
@@ -307,6 +308,7 @@ export function CommentComposer({ slug, expanded, compact = false, anchorId, onE
   useEffect(() => () => {
     if (successTimerRef.current !== null) window.clearTimeout(successTimerRef.current);
     for (const timer of viewTimersRef.current) window.clearTimeout(timer);
+    if (authListenerRef.current) window.removeEventListener("message", authListenerRef.current);
   }, []);
   const mutation = useMutation({
     mutationFn: (input: CommentForm) => showGitHubIdentity
@@ -368,16 +370,41 @@ export function CommentComposer({ slug, expanded, compact = false, anchorId, onE
   const toggleExpanded = () => onExpandedChange ? onExpandedChange(!expanded) : setLocalExpanded((value) => !value);
   const expandComposer = () => onExpandedChange ? onExpandedChange(true) : setLocalExpanded(true);
   const startGitHub = () => {
-    setAuthMode("github");
     if (isAuthed) {
+      setAuthMode("github");
       expandComposer();
       return;
     }
     const returnTo = `${window.location.pathname}${window.location.search}`;
-    // The OAuth leg leaves the SPA for GitHub and returns via a server route;
-    // a router push would not carry the state cookies of the full navigation.
-    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
-    window.location.href = `/api/v1/auth/github/login?return_to=${encodeURIComponent(returnTo)}`;
+    const authUrl = `/api/v1/auth/github/login?return_to=${encodeURIComponent(returnTo)}`;
+    // OAuth runs in a popup so the current page never navigates away and the
+    // history stack stays untouched (the back button can't land on GitHub).
+    // The callback notifies this window via postMessage, then closes itself.
+    const popup = window.open(authUrl, "manifold-github-oauth", "width=680,height=820,popup=yes");
+    if (!popup) {
+      // Popup blocked: fall back to a full-page leg; the callback's
+      // location.replace keeps the history stack clean.
+      // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+      window.location.href = authUrl;
+      return;
+    }
+    if (authListenerRef.current) window.removeEventListener("message", authListenerRef.current);
+    const onAuthMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
+      if (event.data?.type !== "manifold:github-auth") return;
+      window.removeEventListener("message", onAuthMessage);
+      authListenerRef.current = null;
+      popup.close();
+      if (event.data.ok === true) {
+        setAuthMode("github");
+        expandComposer();
+        // The popup leg already wrote the visitor cookie; drop the stale
+        // session so the GitHub identity form renders.
+        void queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
+      }
+    };
+    authListenerRef.current = onAuthMessage;
+    window.addEventListener("message", onAuthMessage);
   };
   const selectGuest = () => {
     setAuthMode("guest");
@@ -391,8 +418,10 @@ export function CommentComposer({ slug, expanded, compact = false, anchorId, onE
   // Height animation is deliberately avoided: animating the container height in
   // the document flow makes the scrollbar grow/shrink on every frame. The card
   // and form snap to their target height once while the content fades, so the
-  // page height changes exactly twice per toggle instead of flickering.
-  return <motion.div layoutId={compact ? "article-composer-compact" : "article-composer-bottom"} id={anchorId} className={styles.articleComposerCard} data-compact={compact ? "true" : "false"} data-expanded={isExpanded ? "true" : "false"} data-replying={replyTarget ? "true" : "false"} data-phase={composerPhase} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.26, ease: [0.16, 1, 0.3, 1] }} style={{ overflowAnchor: "none" }}>
+  // page height changes exactly twice per toggle instead of flickering. The
+  // compact rail slides down and fades when it hands over to the bottom
+  // composer, keeping the "slide down" feel without a cross-position layoutId.
+  return <motion.div layoutId={compact ? "article-composer-compact" : "article-composer-bottom"} id={anchorId} className={styles.articleComposerCard} data-compact={compact ? "true" : "false"} data-expanded={isExpanded ? "true" : "false"} data-replying={replyTarget ? "true" : "false"} data-phase={composerPhase} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={compact ? { opacity: 0, y: 24 } : { opacity: 0 }} transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }} style={{ overflowAnchor: "none" }}>
     <div className={styles.articleComposerActions}>
       <span className={styles.articleActionLabel}>{compact ? "Leave a trace" : "Add a comment"}</span>
       <span className={styles.commentAuthButtons}>

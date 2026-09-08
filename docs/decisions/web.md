@@ -103,7 +103,8 @@ Article 的 `metadata.toc` 和 `readingMinutes` 由 Core 在保存时从 Markdow
 Web 承担 OAuth 的浏览器侧编排，认证逻辑仍在 Core（Web 不接触 Client Secret、不验签）：
 
 - `GET /api/v1/auth/github/login?return_to=…`（`app/api/v1/auth/github/login/route.ts`，Node runtime）发起流程：`return_to` 必须是站内相对路径（防开放重定向），生成随机 state 与回跳目标写入 10 分钟 HttpOnly cookie（`manifold_oauth_state`/`manifold_oauth_return`），302 到 GitHub 授权页；未配置 `GITHUB_CLIENT_ID`（Web 侧 `app/web/.env.local`）时返回 503。
-- `GET /api/v1/auth/callback/github`（`app/api/v1/auth/callback/github/route.ts`）接收 `code`+`state`：校验 state 匹配后 POST Core `/api/v1/auth/github/exchange` 换发 visitor 会话 JWT，写入 90 天 `manifold-visitor` cookie（`sameSite=lax`、非 HttpOnly——浏览器 SDK 需读取它转 Bearer 直连 Core，因为浏览器直连跨端口时 cookie 域隔离），再重定向回 `return_to`；state 不匹配或 Core 换发失败时带 `?oauth=state|failed` 回首页。
+- 授权跑在弹窗里：Web 点击 GitHub 图标时 `window.open` 打开 `login` 路由（`popup=yes`），当前页面不导航、历史栈不动，浏览器 back 不会回到授权中间页；弹窗被拦截时降级为整页跳转（回调页用 `location.replace` 回跳，同样不污染历史栈）。
+- `GET /api/v1/auth/callback/github`（`app/api/v1/auth/callback/github/route.ts`）接收 `code`+`state`：校验 state 匹配后 POST Core `/api/v1/auth/github/exchange` 换发 visitor 会话 JWT，写入 90 天 `manifold-visitor` cookie（`sameSite=lax`、非 HttpOnly——浏览器 SDK 需读取它转 Bearer 直连 Core，因为浏览器直连跨端口时 cookie 域隔离）。随后返回一个极简 HTML：若存在 `window.opener`（弹窗场景）则向 opener `postMessage({ type: "manifold:github-auth", ok })`（targetOrigin 限定本站）并 `window.close()`，父窗口收到消息后失效 `auth/me` query 刷新登录态；无 opener（降级整页跳转）则 `location.replace` 回 `return_to`。state 不匹配或 Core 换发失败时同一 HTML 发送 `ok:false`（或回 `/?oauth=state|failed`），父窗口保持原状态。
 - 登录态由客户端 `authMe()` 驱动（query key `auth/me`，5 分钟 staleTime）；`manifold-visitor` cookie 删除后重新加载即回到默认访客模式。GitHub 会话长期保持（90 天），无站内登出按钮。
 - 降级：Core 未配置 GitHub（`CORE_GITHUB_CLIENT_*` 为空）时 `authMe().providers` 为空，动作行只显示 Guest 图标，Web 不渲染 GitHub 图标；Core 侧对 `/auth/github/exchange` 返回 501。
 
