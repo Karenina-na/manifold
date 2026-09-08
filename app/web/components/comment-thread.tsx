@@ -10,12 +10,13 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import type { Comment } from "@manifold/contracts";
-import { createBrowserClient, getVisitorId } from "../lib/api";
+import { createAnonymousBrowserClient, createBrowserClient, getVisitorId } from "../lib/api";
 import { filterComments, type CommentFilter } from "../lib/comment-filter";
 import { getIdentity, saveIdentity, type CommentIdentity } from "../lib/identity";
 import { formatRelativeTime } from "../lib/relative-time";
 import styles from "../app/site.module.css";
 import { AvatarPicker, CommentAvatar } from "./comment-avatar";
+import { FloatingTooltip } from "./floating-tooltip";
 import { CommentMarkdown } from "@manifold/render";
 import { LikeButton } from "./like-button";
 import { Pagination } from "./pagination";
@@ -232,6 +233,7 @@ type CommentComposerProps = { slug: string; expanded: boolean; compact?: boolean
 
 export function CommentComposer({ slug, expanded, compact = false, anchorId, onExpandedChange, onPhaseChange }: CommentComposerProps) {
   const client = useMemo(() => createBrowserClient(), []);
+  const guestClient = useMemo(() => createAnonymousBrowserClient(), []);
   const queryClient = useQueryClient();
   const { replyTarget, cancelReply } = useReply();
   const pagingRef = useContext(CommentsPagingRefContext);
@@ -241,16 +243,26 @@ export function CommentComposer({ slug, expanded, compact = false, anchorId, onE
   const [postedMissing, setPostedMissing] = useState(false);
   const [composerPhase, setComposerPhase] = useState<ComposerPhase>("editing");
   const [localExpanded, setLocalExpanded] = useState(expanded);
-  const [gateMode, setGateMode] = useState<"gate" | "visitor">("gate");
+  // null means "not picked yet": derive from the session so a signed-in visitor
+  // starts on GitHub while an anonymous one starts as a guest. Picking an icon
+  // pins the mode until the next explicit choice, which is what lets a GitHub
+  // session post as a guest (and back) without losing the sign-in.
+  const [authMode, setAuthMode] = useState<"github" | "guest" | null>(null);
+  const [githubTip, setGithubTip] = useState(false);
+  const [guestTip, setGuestTip] = useState(false);
+  const githubAnchorRef = useRef<HTMLButtonElement>(null);
+  const guestAnchorRef = useRef<HTMLButtonElement>(null);
   const [captcha, setCaptcha] = useState<CaptchaChallenge | null>(null);
   const isExpanded = onExpandedChange ? expanded : localExpanded;
   const authQuery = useQuery({ queryKey: ["auth", "me"], queryFn: () => client.authMe(), retry: 1, staleTime: 5 * 60 * 1000 });
   const isAuthed = authQuery.data?.authenticated === true;
   const authedName = authQuery.data?.displayName ?? "";
   const authedAvatar = authQuery.data?.avatarUrl ?? "";
-  const authProviders = authQuery.data?.providers ?? [];
-  const showForm = isAuthed || gateMode === "visitor";
-  const commentSchema = useMemo(() => makeCommentSchema(captcha?.answer ?? "", isAuthed), [captcha, isAuthed]);
+  const githubAvailable = authQuery.data?.providers?.includes("github") ?? false;
+  const effectiveAuthMode = authMode ?? (isAuthed ? "github" : "guest");
+  const showGitHubIdentity = effectiveAuthMode === "github" && isAuthed;
+  const showForm = isExpanded && (effectiveAuthMode === "guest" || isAuthed);
+  const commentSchema = useMemo(() => makeCommentSchema(captcha?.answer ?? "", showGitHubIdentity), [captcha, showGitHubIdentity]);
   const form = useForm<CommentForm>({ resolver: zodResolver(commentSchema), defaultValues: { authorName: "", authorUrl: "", body: "", captcha: "" } });
   useEffect(() => {
     // The challenge must be generated client-side only: a random prompt in the
@@ -297,11 +309,11 @@ export function CommentComposer({ slug, expanded, compact = false, anchorId, onE
     for (const timer of viewTimersRef.current) window.clearTimeout(timer);
   }, []);
   const mutation = useMutation({
-    mutationFn: (input: CommentForm) => isAuthed
+    mutationFn: (input: CommentForm) => showGitHubIdentity
       ? client.createComment(slug, { authorUrl: input.authorUrl || undefined, body: input.body, replyToId: replyTarget?.id })
-      : client.createComment(slug, { authorName: input.authorName || undefined, authorUrl: input.authorUrl || undefined, body: input.body, replyToId: replyTarget?.id, avatarSeed: identity.avatarSeed || undefined }),
+      : guestClient.createComment(slug, { authorName: input.authorName || undefined, authorUrl: input.authorUrl || undefined, body: input.body, replyToId: replyTarget?.id, avatarSeed: identity.avatarSeed || undefined }),
     onSuccess: (comment, input) => {
-      if (!isAuthed) saveIdentity({ name: input.authorName || identity.name, avatarSeed: identity.avatarSeed }, visitorId);
+      if (!showGitHubIdentity) saveIdentity({ name: input.authorName || identity.name, avatarSeed: identity.avatarSeed }, visitorId);
       void queryClient.invalidateQueries({ queryKey: ["comments", slug] });
       const finalize = () => {
         cancelReply();
@@ -354,34 +366,53 @@ export function CommentComposer({ slug, expanded, compact = false, anchorId, onE
     attempt(POSTED_COMMENT_SCROLL_TRIES);
   };
   const toggleExpanded = () => onExpandedChange ? onExpandedChange(!expanded) : setLocalExpanded((value) => !value);
+  const expandComposer = () => onExpandedChange ? onExpandedChange(true) : setLocalExpanded(true);
   const startGitHub = () => {
+    setAuthMode("github");
+    if (isAuthed) {
+      expandComposer();
+      return;
+    }
     const returnTo = `${window.location.pathname}${window.location.search}`;
     // The OAuth leg leaves the SPA for GitHub and returns via a server route;
     // a router push would not carry the state cookies of the full navigation.
     // eslint-disable-next-line @next/next/no-location-assign-relative-destination
     window.location.href = `/api/v1/auth/github/login?return_to=${encodeURIComponent(returnTo)}`;
   };
+  const selectGuest = () => {
+    setAuthMode("guest");
+    expandComposer();
+  };
   const chooseAvatar = (avatarSeed: string) => {
     setIdentity((current) => ({ ...current, avatarSeed }));
     saveIdentity({ avatarSeed }, visitorId);
   };
 
-  return <motion.div layoutId="article-composer" id={anchorId} className={styles.articleComposerCard} data-compact={compact ? "true" : "false"} data-expanded={isExpanded ? "true" : "false"} data-replying={replyTarget ? "true" : "false"} data-phase={composerPhase}>
+  // Height animation is deliberately avoided: animating the container height in
+  // the document flow makes the scrollbar grow/shrink on every frame. The card
+  // and form snap to their target height once while the content fades, so the
+  // page height changes exactly twice per toggle instead of flickering.
+  return <motion.div layoutId={compact ? "article-composer-compact" : "article-composer-bottom"} id={anchorId} className={styles.articleComposerCard} data-compact={compact ? "true" : "false"} data-expanded={isExpanded ? "true" : "false"} data-replying={replyTarget ? "true" : "false"} data-phase={composerPhase} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.26, ease: [0.16, 1, 0.3, 1] }} style={{ overflowAnchor: "none" }}>
     <div className={styles.articleComposerActions}>
       <span className={styles.articleActionLabel}>{compact ? "Leave a trace" : "Add a comment"}</span>
+      <span className={styles.commentAuthButtons}>
+        {githubAvailable && <button ref={githubAnchorRef} type="button" className={`${styles.commentAuthButton} ${effectiveAuthMode === "github" ? styles.commentAuthButtonActive : ""}`} aria-label="GitHub" aria-pressed={effectiveAuthMode === "github"} onClick={startGitHub} onMouseEnter={() => setGithubTip(true)} onMouseLeave={() => setGithubTip(false)} onFocus={() => setGithubTip(true)} onBlur={() => setGithubTip(false)}><FaGithub size={15} aria-hidden="true" /></button>}
+        <button ref={guestAnchorRef} type="button" className={`${styles.commentAuthButton} ${effectiveAuthMode === "guest" ? styles.commentAuthButtonActive : ""}`} aria-label="Guest" aria-pressed={effectiveAuthMode === "guest"} onClick={selectGuest} onMouseEnter={() => setGuestTip(true)} onMouseLeave={() => setGuestTip(false)} onFocus={() => setGuestTip(true)} onBlur={() => setGuestTip(false)}><UserRound size={15} aria-hidden="true" /></button>
+      </span>
+      <FloatingTooltip anchorRef={githubAnchorRef} open={githubTip} placement={compact ? "right" : "top"} dataAttribute="data-auth-tooltip">
+        <span className={styles.tooltipMeta}>GitHub</span>
+        <span>{showGitHubIdentity ? `Signed in as ${authedName}` : "Sign in with GitHub"}</span>
+      </FloatingTooltip>
+      <FloatingTooltip anchorRef={guestAnchorRef} open={guestTip} placement={compact ? "right" : "top"} dataAttribute="data-auth-tooltip">
+        <span className={styles.tooltipMeta}>Guest</span>
+        <span>{effectiveAuthMode === "guest" ? "Commenting as guest" : "Comment as guest"}</span>
+      </FloatingTooltip>
       <LikeButton slug={slug} compact={compact} />
       <button type="button" className={styles.articleActionButton} aria-expanded={isExpanded} onClick={toggleExpanded}><MessageCircle size={15} /> <span>{isExpanded ? "Hide comment" : "Comment"}</span></button>
       <button type="button" className={styles.articleActionButton} onClick={shareArticle}><Share2 size={15} /> <span>Share</span></button>
     </div>
     <AnimatePresence initial={false}>
-      {isExpanded && !showForm && <motion.div className={styles.commentGate} key="gate" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}>
-        <span className={styles.commentGateHint}>Sign in to comment with your GitHub account, or continue as a guest.</span>
-        <div className={styles.commentGateButtons}>
-          {authProviders.includes("github") && <button type="button" className={styles.commentGateButton} onClick={startGitHub}><FaGithub size={17} aria-hidden="true" /> GitHub</button>}
-          <button type="button" className={styles.commentGateButton} onClick={() => setGateMode("visitor")}><UserRound size={17} aria-hidden="true" /> Guest</button>
-        </div>
-      </motion.div>}
-      {isExpanded && showForm && <motion.form className={styles.commentForm} onSubmit={submitComment} initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.38, ease: [0.16, 1, 0.3, 1] }}>
+      {showForm && <motion.form className={styles.commentForm} onSubmit={submitComment} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }} transition={{ duration: 0.26, ease: [0.16, 1, 0.3, 1] }} style={{ overflowAnchor: "none" }}>
         <div className={styles.commentFormBody}>
           {replyTarget && <div className={styles.replyBanner} role="note">
             <div className={styles.replyBannerBody}>
@@ -390,7 +421,7 @@ export function CommentComposer({ slug, expanded, compact = false, anchorId, onE
             </div>
             <button type="button" className={styles.replyBannerCancel} onClick={cancelReply} aria-label="Cancel reply"><X size={14} /></button>
           </div>}
-          {isAuthed
+          {showGitHubIdentity
             ? <div className={styles.commentIdentity}>
                 {authedAvatar
                   // GitHub avatar URL, provider-signed; see the comment row note.
@@ -408,7 +439,7 @@ export function CommentComposer({ slug, expanded, compact = false, anchorId, onE
                 <label>Website <span>(optional)</span><input {...form.register("authorUrl")} placeholder="https://" inputMode="url" autoComplete="url" />{form.formState.errors.authorUrl && <small>{form.formState.errors.authorUrl.message}</small>}</label>
               </div>}
           <label>Comment<textarea {...form.register("body")} id="comment-body" placeholder="Write a comment" rows={5} />{form.formState.errors.body && <small>{form.formState.errors.body.message}</small>}</label>
-          {isAuthed
+          {showGitHubIdentity
             ? <div className={styles.commentSubmitRow}>
                 <span className={styles.accountSignedIn}>Signed in as <strong>{authedName}</strong></span>
                 <Button className={styles.primaryButton} type="submit" disabled={mutation.isPending}><Send size={15} /> Post comment</Button>

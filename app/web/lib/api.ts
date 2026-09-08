@@ -17,6 +17,12 @@ export function createBrowserClient() {
   return new ManifoldClient({ baseUrl: coreUrl, fetch: noStoreFetch, browserVisitorCookie: true });
 }
 
+// Guest-mode comments must not carry the visitor JWT: without browserVisitorCookie
+// the SDK never reads the manifold-visitor cookie into an Authorization header.
+export function createAnonymousBrowserClient() {
+  return new ManifoldClient({ baseUrl: coreUrl, fetch: noStoreFetch });
+}
+
 export function buildHref(content: Pick<Content, "kind" | "slug">) {
   return content.kind === "ARTICLE" ? `/writing/${encodeURIComponent(content.slug)}` : `/thoughts/${encodeURIComponent(content.slug)}`;
 }

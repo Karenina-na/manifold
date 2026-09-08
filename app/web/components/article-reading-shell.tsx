@@ -13,7 +13,7 @@ export function ArticleReadingShell({ children, discussion, toc, slug }: { child
   const discussionEndRef = useRef<HTMLDivElement>(null);
   const [atEnd, setAtEnd] = useState(false);
   const [compactExpanded, setCompactExpanded] = useState(false);
-  const [bottomExpanded, setBottomExpanded] = useState(true);
+  const [bottomExpanded, setBottomExpanded] = useState(false);
   const [replyTarget, setReplyTarget] = useState<Comment | null>(null);
   const [bottomComposerPhase, setBottomComposerPhase] = useState<ComposerPhase>("editing");
   const [railPhase, setRailPhase] = useState<ComposerPhase>("editing");
