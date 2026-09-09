@@ -1,5 +1,5 @@
 const { execSync, spawn } = require('node:child_process');
-const { mkdtempSync, rmSync } = require('node:fs');
+const { mkdtempSync, readFileSync, rmSync, writeFileSync } = require('node:fs');
 const { get } = require('node:http');
 const net = require('node:net');
 const { join, resolve } = require('node:path');
@@ -20,6 +20,11 @@ const testPasswordHash = '$2a$04$cBGlIsF54naKZob1XF7AOOoNHedqhmrHMXcgNd7p1Phvn24
 const chromePath = process.env.MANIFOLD_CHROME_PATH;
 const children = [];
 let temporaryDirectory;
+// next dev syncs its distDir types into app/web/tsconfig.json. With a custom
+// NEXT_DIST_DIR that rewrite points at the throwaway temp dir, so we back the
+// file up before spawning and restore it on teardown to keep the worktree clean.
+const webTsconfigPath = join(root, 'app/web/tsconfig.json');
+let webTsconfigBackup = null;
 
 if (!startServices && process.env.MANIFOLD_ALLOW_EXTERNAL_MUTATIONS !== '1') {
   throw new Error('External service mode mutates Core. Set MANIFOLD_ALLOW_EXTERNAL_MUTATIONS=1 explicitly.');
@@ -79,6 +84,11 @@ function waitForUrl(url, timeout = 90_000) {
 }
 
 async function stopServices() {
+  // Only the process groups this run spawned are ours to reap. Children are
+  // spawned detached (process-group leaders), so killing each group covers go
+  // run's compiled server and next/vite descendants. Never lsof-kill a port:
+  // the developer may be serving their own instance on 3000/8080/5173, and a
+  // port-sweeping kill would take that process down with the test run.
   for (const child of children.slice().reverse()) {
     if (child.pid && child.exitCode === null) {
       try { process.kill(-child.pid, 'SIGTERM'); } catch (error) { if (error.code !== 'ESRCH') throw error; }
@@ -90,18 +100,10 @@ async function stopServices() {
       try { process.kill(-child.pid, 'SIGKILL'); } catch (error) { if (error.code !== 'ESRCH') throw error; }
     }
   }
-  for (const port of [corePort, webPort, adminPort]) {
-    if (!port) continue;
-    try {
-      const pids = execSync(`lsof -ti tcp:${port} -sTCP:LISTEN`, { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim().split('\n').filter(Boolean);
-      for (const pid of pids) {
-        try { process.kill(Number(pid), 'SIGKILL'); } catch (error) { if (error.code !== 'ESRCH') throw error; }
-      }
-    } catch {
-      // lsof finds no listener once the group kills landed
-    }
-  }
   if (temporaryDirectory) rmSync(temporaryDirectory, { recursive: true, force: true });
+  if (webTsconfigBackup !== null) {
+    try { writeFileSync(webTsconfigPath, webTsconfigBackup); } catch { /* leave it; next run backs up again */ }
+  }
 }
 
 function coreResponse(response, path, method, status) {
@@ -123,6 +125,7 @@ async function main() {
   process.on('SIGINT', () => { void stopServices().finally(() => process.exit(130)); });
   process.on('SIGTERM', () => { void stopServices().finally(() => process.exit(143)); });
   if (startServices) {
+    webTsconfigBackup = readFileSync(webTsconfigPath, 'utf8');
     corePort ??= await freePort();
     webPort ??= await freePort();
     adminPort ??= await freePort();
@@ -138,6 +141,9 @@ async function main() {
       CORE_ADMIN_PASSWORD_HASH: process.env.CORE_ADMIN_PASSWORD_HASH ?? testPasswordHash,
     });
     spawnService('pnpm', ['exec', 'next', 'dev', '--hostname', '127.0.0.1', '--port', webPort], join(root, 'app/web'), {
+      // Isolate this instance's .next dev lock so it never collides with a
+      // developer's own `pnpm dev` running in the same directory.
+      NEXT_DIST_DIR: join(temporaryDirectory, 'web-dist'),
       NEXT_PUBLIC_CORE_URL: coreUrl,
       NEXT_PUBLIC_SITE_URL: webUrl,
     });

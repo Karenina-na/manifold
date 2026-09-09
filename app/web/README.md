@@ -23,6 +23,6 @@ pnpm browser-test
 
 根目录 `pnpm dev` 使用开发 supervisor 同时启动 Web 和 Admin；任一前端异常退出（包括 `SIGTERM` 导致的退出码 143）会按退避自动重启。直接运行本工作区命令时仍由调用方负责进程重启。
 
-配置 `NEXT_PUBLIC_CORE_URL` 指向 Core，`NEXT_PUBLIC_SITE_URL` 用于 canonical 和 metadataBase。修改 Web 路由、页面数据、渲染器或交互时，必须同时检查 [`docs/decisions/web.md`](../../docs/decisions/web.md)、[`docs/core.md`](../../docs/core.md)、[`packages/sdk/README.md`](../../packages/sdk/README.md) 和根目录 [`AGENTS.md`](../../AGENTS.md)。
+配置 `NEXT_PUBLIC_CORE_URL` 指向 Core，`NEXT_PUBLIC_SITE_URL` 用于 canonical 和 metadataBase。构建目录默认 `.next`；设置 `NEXT_DIST_DIR` 可把 dev/build 产物隔离到其他目录——`pnpm browser-test` 用它起独立的 Next 实例，避免与开发者自己运行的 `pnpm dev` 争夺 `.next` 锁。修改 Web 路由、页面数据、渲染器或交互时，必须同时检查 [`docs/decisions/web.md`](../../docs/decisions/web.md)、[`docs/core.md`](../../docs/core.md)、[`packages/sdk/README.md`](../../packages/sdk/README.md) 和根目录 [`AGENTS.md`](../../AGENTS.md)。
 
 生产构建启用 Next.js standalone，并以仓库根目录作为 monorepo 文件追踪边界。根发布脚本负责把 standalone 默认不复制的 `public` 与 `.next/static` 补入产物，并只保留 Linux x64 glibc 原生依赖。`NEXT_PUBLIC_*` 在构建时固化，因此 `.env.production` 必须在打包前写入最终公开地址；目标服务器通过包内 `./manifold start` 启动 `server.js`，无需安装 workspace 依赖。
