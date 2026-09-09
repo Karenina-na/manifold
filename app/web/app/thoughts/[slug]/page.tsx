@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { cookies, headers } from "next/headers";
 import { notFound } from "next/navigation";
+import { ArticleLightbox } from "../../../components/article-lightbox";
 import { CommentsSection } from "../../../components/comment-thread";
 import { ThoughtActions } from "../../../components/thought-actions";
 import { AnchorBadge } from "../../../components/anchor-badge";
@@ -52,5 +53,6 @@ export default async function ThoughtDetailPage({ params }: Props) {
         {site?.commentsEnabled === false ? null : <CommentsSection slug={contentSlug} viewCount={content.viewCount} likeCount={content.likeCount} />}
       </div>
     </article>
+    <ArticleLightbox />
   </main>;
 }
