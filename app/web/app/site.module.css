@@ -257,7 +257,7 @@ html { scroll-behavior: smooth; }
 .updateDot { display: block; width: 13px; height: 13px; border: 3px solid var(--surface-paper); border-radius: 50%; background: var(--color-accent); box-shadow: 0 0 0 1px var(--color-accent); transition: transform .2s ease, background .2s ease; }
 .updateNode:hover .updateDot, .updateNode:focus-visible .updateDot { transform: scale(1.3); background: var(--color-ink); }
 .updatePreview { position: absolute; bottom: 25px; left: 50%; display: grid; gap: 8px; width: 260px; max-height: 280px; overflow-y: auto; padding: 12px; border: 1px solid var(--color-line); border-radius: 8px; background: color-mix(in srgb, var(--surface-paper) 96%, transparent); box-shadow: 0 12px 32px rgba(24, 24, 20, .12); color: var(--color-muted); opacity: 0; pointer-events: none; transform: translate(-50%, 6px); transition: opacity .18s ease, transform .18s ease; }
-.updateNode:hover .updatePreview, .updateNode:focus-visible .updatePreview { opacity: 1; transform: translate(-50%, 0); }
+.updateNode:hover .updatePreview, .updateNode:focus-visible .updatePreview { opacity: 1; transform: translate(-50%, 0); transition-delay: 140ms; }
 .updatePreviewMeta { color: var(--color-accent); font-family: var(--font-mono); font-size: 9px; letter-spacing: .06em; }
 .updatePreviewList { display: grid; gap: 8px; }
 .updatePreviewItem { display: grid; gap: 3px; padding-top: 8px; border-top: 1px solid var(--color-line); }
@@ -267,9 +267,9 @@ html { scroll-behavior: smooth; }
 .updatePreviewItem > span:last-child { display: -webkit-box; overflow: hidden; font-size: 11px; line-height: 1.45; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
 @media (max-width: 760px) {
   .updateNode[data-update-edge="start"] .updatePreview { left: 0; transform: translate(0, 6px); }
-  .updateNode[data-update-edge="start"]:hover .updatePreview, .updateNode[data-update-edge="start"]:focus-visible .updatePreview { transform: translate(0, 0); }
+  .updateNode[data-update-edge="start"]:hover .updatePreview, .updateNode[data-update-edge="start"]:focus-visible .updatePreview { transform: translate(0, 0); transition-delay: 140ms; }
   .updateNode[data-update-edge="end"] .updatePreview { left: auto; right: 0; transform: translate(0, 6px); }
-  .updateNode[data-update-edge="end"]:hover .updatePreview, .updateNode[data-update-edge="end"]:focus-visible .updatePreview { transform: translate(0, 0); }
+  .updateNode[data-update-edge="end"]:hover .updatePreview, .updateNode[data-update-edge="end"]:focus-visible .updatePreview { transform: translate(0, 0); transition-delay: 140ms; }
 }
 .seriesGrid { align-items: stretch; }
 .seriesCard { min-height: 204px; display: flex; flex-direction: column; justify-content: space-between; padding: 18px; border-radius: 8px; }
@@ -373,10 +373,6 @@ html { scroll-behavior: smooth; }
 .floatingTooltip[data-contact-tooltip] .tooltipMeta,
 .floatingTooltip[data-contact-tooltip] .tooltipInner > span:not(.tooltipMeta) { display: none; }
 .floatingTooltip[data-contact-tooltip] strong { font-family: var(--app-font-sans); font-size: 16px; font-weight: 400; line-height: 1.2; }
-.floatingTooltip[data-contribution-tooltip] { gap: 6px; width: min(280px, calc(100vw - 24px)); padding: 11px 12px; }
-.floatingTooltip[data-contribution-tooltip] .tooltipMeta { letter-spacing: .08em; }
-.floatingTooltip[data-contribution-tooltip] .updatePreviewList { gap: 0; }
-.floatingTooltip[data-contribution-tooltip] .updatePreviewItem { padding-top: 7px; }
 .floatingTooltip[data-auth-tooltip] { width: max-content; max-width: min(260px, calc(100vw - 24px)); padding: 9px 12px; border-radius: 10px; }
 .floatingTooltip[data-auth-tooltip] .tooltipInner { gap: 3px; }
 .floatingTooltip[data-auth-tooltip] .tooltipInner > span:last-child { color: var(--color-ink); font-size: 12px; }
@@ -423,7 +419,7 @@ html { scroll-behavior: smooth; }
 .updateDot { display: block; width: 13px; height: 13px; border: 3px solid var(--surface-paper); border-radius: 50%; background: var(--color-accent); box-shadow: 0 0 0 1px var(--color-accent); transition: transform .2s ease, background .2s ease; }
 .updateTrigger:hover .updateDot, .updateTrigger:focus-visible .updateDot, .updateNode[data-pinned="true"] .updateDot { transform: scale(1.3); background: var(--color-ink); }
 .updateDate { position: absolute; top: 25px; left: 50%; color: var(--color-muted); font-family: var(--font-mono); font-size: 9px; line-height: 1; transform: translateX(-50%); white-space: nowrap; }
-.updatePreview { position: absolute; z-index: 1000; bottom: 61px; left: 50%; display: grid; gap: 8px; width: 260px; max-height: 280px; overflow-y: auto; overscroll-behavior: contain; padding: 12px; border: 1px solid var(--color-line); border-radius: 8px; background: color-mix(in srgb, var(--surface-paper) 96%, transparent); box-shadow: 0 12px 32px rgba(24, 24, 20, .12); color: var(--color-muted); opacity: 0; pointer-events: none; transform: translate(-50%, 6px); transition: opacity .18s ease, transform .18s ease; }
+.updatePreview { position: absolute; z-index: 1000; bottom: 92px; left: 50%; display: grid; gap: 8px; width: 260px; max-height: 280px; overflow-y: auto; overscroll-behavior: contain; padding: 12px; border: 1px solid var(--color-line); border-radius: 8px; background: color-mix(in srgb, var(--surface-paper) 96%, transparent); box-shadow: 0 12px 32px rgba(24, 24, 20, .12); color: var(--color-muted); opacity: 0; pointer-events: none; transform: translate(-50%, 6px); transition: opacity .18s ease, transform .18s ease; }
 .updatePreview[data-open="true"] { opacity: 1; pointer-events: auto; transform: translate(-50%, 0); }
 .updatePreviewMeta { color: var(--color-accent); font-family: var(--font-mono); font-size: 9px; letter-spacing: .06em; }
 .updatePreviewList { display: grid; gap: 8px; }
@@ -496,45 +492,6 @@ html { scroll-behavior: smooth; }
   .replDialog .replSubmit { width: 38px; height: 38px; }
 }
 
-/* GitHub-inspired contribution activity, kept quiet beside the main timeline. */
-.contributionHeatmap { margin-top: 24px; padding-top: 18px; border-top: 1px solid color-mix(in srgb, var(--color-line) 72%, transparent); }
-.contributionHeader { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
-.contributionHeading { display: grid; gap: 5px; }
-.contributionKicker { display: inline-flex; align-items: center; gap: 5px; color: var(--color-accent); font-family: var(--font-mono); font-size: 9px; letter-spacing: .08em; }
-.contributionHeading h3 { margin: 0; color: var(--color-ink); font-family: var(--app-font-serif); font-size: 18px; font-weight: 400; line-height: 1.3; }
-.contributionYear { display: inline-flex; align-items: center; gap: 8px; color: var(--color-muted); font-family: var(--font-mono); font-size: 9px; }
-.contributionSelectWrap { position: relative; display: inline-flex; align-items: center; }
-.contributionSelectWrap select { appearance: none; min-width: 76px; height: 30px; padding: 0 25px 0 10px; border: 1px solid var(--color-line); border-radius: 7px; outline: 0; background: var(--surface-paper); color: var(--color-ink); font-family: var(--font-mono); font-size: 10px; cursor: pointer; }
-.contributionSelectWrap select:focus-visible { border-color: var(--color-accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 16%, transparent); }
-.contributionSelectWrap svg { position: absolute; right: 8px; pointer-events: none; color: var(--color-muted); }
-.contributionSummary { margin-top: 12px; color: var(--color-muted); font-family: var(--font-mono); font-size: 10px; }
-.contributionSummary strong { color: var(--color-ink); font-weight: 500; }
-.contributionScroll { overflow-x: auto; margin-top: 17px; padding: 17px 0 5px; scrollbar-width: thin; }
-.contributionCanvas { position: relative; min-width: 714px; padding-left: 31px; }
-.contributionMonths { position: relative; height: 17px; margin-left: 31px; }
-.contributionMonths span { position: absolute; top: 0; color: var(--color-muted); font-family: var(--font-mono); font-size: 9px; transform: translateX(-2px); white-space: nowrap; }
-.contributionBody { display: grid; grid-template-columns: 25px 1fr; gap: 6px; }
-.contributionWeekdays { display: grid; grid-template-rows: repeat(7, 10px); gap: 3px; color: var(--color-muted); font-family: var(--font-mono); font-size: 8px; line-height: 10px; text-align: right; }
-.contributionGrid { display: grid; grid-template-columns: repeat(var(--contribution-weeks), 10px); gap: 3px; }
-.contributionWeek { display: grid; grid-template-rows: repeat(7, 10px); gap: 3px; }
-.contributionCell, .contributionCellOutside { display: block; width: 10px; height: 10px; border: 1px solid color-mix(in srgb, var(--color-line) 48%, transparent); border-radius: 2px; background: color-mix(in srgb, var(--color-line) 24%, transparent); }
-.contributionCell[data-level="0"] { background: color-mix(in srgb, var(--color-line) 28%, transparent); }
-.contributionCell[data-level="1"] { border-color: color-mix(in srgb, var(--color-accent) 22%, var(--color-line)); background: color-mix(in srgb, var(--color-accent) 22%, var(--surface-paper)); }
-.contributionCell[data-level="2"] { border-color: color-mix(in srgb, var(--color-accent) 38%, var(--color-line)); background: color-mix(in srgb, var(--color-accent) 42%, var(--surface-paper)); }
-.contributionCell[data-level="3"] { border-color: color-mix(in srgb, var(--color-accent) 58%, var(--color-line)); background: color-mix(in srgb, var(--color-accent) 65%, var(--surface-paper)); }
-.contributionCell[data-level="4"] { border-color: var(--color-accent); background: var(--color-accent); }
-[data-theme="dark"] .contributionCell[data-level="0"] { background: color-mix(in srgb, var(--color-line) 70%, transparent); }
-.contributionCell[role="img"] { cursor: help; transition: transform .16s ease, border-color .16s ease; }
-.contributionCell[role="img"][data-contribution-interactive="true"] { cursor: pointer; }
-.contributionCell[role="img"]:hover, .contributionCell[role="img"]:focus-visible { border-color: var(--color-ink); transform: scale(1.35); outline: 0; }
-.contributionFooter { display: flex; align-items: center; justify-content: flex-end; gap: 6px; margin-top: 8px; color: var(--color-muted); font-family: var(--font-mono); font-size: 9px; }
-.contributionLegend { display: inline-flex; gap: 3px; }
-@media (max-width: 760px) {
-  .contributionHeader { align-items: flex-start; }
-  .contributionYear { display: grid; justify-items: end; gap: 5px; }
-  .contributionScroll { margin-right: -2px; }
-  .contributionCanvas { min-width: 714px; }
-}
 
 /* Restrained Home interaction motion with a consistent editorial easing curve. */
 .timelineItem { transition: background var(--motion-base) var(--motion-ease), transform var(--motion-base) var(--motion-ease), padding-left var(--motion-base) var(--motion-ease); }
@@ -1096,3 +1053,68 @@ html { scroll-behavior: smooth; }
   .commentGateButton { width: 100%; justify-content: center; }
   .accountInfo { flex: 1 1 calc(100% - 56px); }
 }
+
+/* Home revision: uniform block rhythm, two-tier surfaces, data-driven meta.
+   These rules sit last so they override the accumulated historical variants:
+   one spacing token per breakpoint, archive-style opaque containers for the
+   focus surfaces, transparent content flows kept as-is, and mono metadata rows
+   fed by data the homepage already fetches. */
+.profileSection { padding-bottom: 72px; }
+.backgroundSection, .streamSection, .seriesSection, .contactSection { padding-top: 72px; }
+.updateRail { margin-top: 72px; }
+.introStats { margin: 14px 0 0; color: var(--color-muted); font: 10px var(--font-mono); letter-spacing: .04em; }
+.timelineItemMeta { display: grid; gap: 3px; justify-items: end; min-width: 0; }
+.timelineStats { color: var(--color-muted); font: 9px var(--font-mono); letter-spacing: .02em; }
+.timelineItemTop time { margin: 0; }
+.introBox, .updateRail, .seriesCard, .contactPanel { border: 1px solid color-mix(in srgb, var(--color-line) 72%, transparent); border-radius: 8px; background: color-mix(in srgb, var(--surface-paper) 92%, white); backdrop-filter: none; }
+.homeTags { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin-top: 18px; padding-top: 16px; border-top: 1px solid color-mix(in srgb, var(--color-line) 72%, transparent); }
+.homeTagsLabel { margin-right: 4px; color: var(--color-muted); font: 10px var(--font-mono); text-transform: uppercase; letter-spacing: .08em; }
+.homeTagPill { border: 1px solid color-mix(in srgb, var(--color-line) 86%, transparent); border-radius: 999px; padding: 5px 9px; background: transparent; color: var(--color-muted); font-size: 11px; transition: background var(--motion-base) var(--motion-ease), color var(--motion-base) var(--motion-ease); }
+.homeTagPill:hover { background: color-mix(in srgb, var(--color-accent-soft) 62%, transparent); color: var(--color-ink); }
+.homeTagPill small { margin-left: 3px; color: var(--color-accent); }
+@media (max-width: 768px) {
+  .profileSection { padding-bottom: 44px; }
+  .backgroundSection, .streamSection, .seriesSection, .contactSection { padding-top: 44px; }
+  .updateRail { margin-top: 44px; }
+}
+
+/* Updates timeline revision: year-range filters above the rail, a season band
+   under the month tick marks (4 muted semantic hues, no new accent palette),
+   and a taller track to host the band. Dense multi-year labels thin out by
+   showing every other month instead of overlapping. */
+.updateTrack { height: 84px; }
+.updateSeasonBand { position: absolute; top: 47px; z-index: 0; height: 10px; border-radius: 5px; }
+.updateSeasonBand[data-season="0"] { background: color-mix(in srgb, #7d8fc4 22%, transparent); }
+.updateSeasonBand[data-season="1"] { background: color-mix(in srgb, #86a96e 24%, transparent); }
+.updateSeasonBand[data-season="2"] { background: color-mix(in srgb, #d0a45c 24%, transparent); }
+.updateSeasonBand[data-season="3"] { background: color-mix(in srgb, #c1845e 22%, transparent); }
+.updateSeasonLabel { position: absolute; top: -1px; left: 6px; color: var(--color-muted); font: 8px var(--font-mono); letter-spacing: .1em; line-height: 1; text-transform: uppercase; white-space: nowrap; }
+@media (max-width: 760px) {
+  .updateSeasonLabel { display: none; }
+  .updateRailActions { flex-wrap: wrap; gap: 8px; }
+  .updateRangePanel { left: 0; right: auto; }
+}
+
+/* Updates range picker: one trigger button opens a dialog panel with a dual
+   slider plus month inputs. Both sliders share one track; thumbs stay
+   interactive while the track itself ignores pointers so the two never
+   fight for a drag. Node dates and month ticks thin out by measured width
+   (LABEL_GAP_PX in the component) instead of overlapping when dense. */
+.updateRangeWrap { position: relative; display: inline-block; margin: 0; }
+.updateRailActions { display: flex; align-items: center; gap: 12px; }
+.updateRangeButton { display: inline-flex; align-items: center; gap: 6px; border: 1px solid color-mix(in srgb, var(--color-line) 86%, transparent); border-radius: 999px; padding: 5px 12px; background: transparent; color: var(--color-muted); font: 10px var(--font-mono); letter-spacing: .04em; cursor: pointer; transition: border-color var(--motion-base) var(--motion-ease), color var(--motion-base) var(--motion-ease), background var(--motion-base) var(--motion-ease); }
+.updateRangeButton:hover, .updateRangeButton[aria-expanded="true"] { border-color: var(--color-accent); color: var(--color-accent); }
+.updateRangePanel { position: absolute; top: calc(100% + 8px); left: auto; right: 0; z-index: 20; display: grid; gap: 12px; width: min(280px, calc(100vw - 24px)); padding: 14px; border: 1px solid var(--color-line); border-radius: 8px; background: color-mix(in srgb, var(--surface-paper) 96%, transparent); box-shadow: 0 12px 32px rgba(24, 24, 20, .12); }
+.updateRangeValues { color: var(--color-accent); font: 9px var(--font-mono); letter-spacing: .06em; }
+.updateRangeSliderTrack { position: relative; height: 18px; margin: 2px 0 0; padding: 0 7px; }
+.updateRangeSliderTrack::before { content: ""; position: absolute; top: 8px; left: 4px; right: 4px; height: 2px; border-radius: 1px; background: var(--color-line); }
+.zoomSlider { position: absolute; top: 0; left: 0; width: 100%; height: 18px; margin: 0; -webkit-appearance: none; appearance: none; background: transparent; cursor: pointer; }
+.zoomSlider::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 14px; height: 14px; border: 2px solid var(--color-accent); border-radius: 50%; background: var(--surface-paper); cursor: grab; }
+.zoomSlider::-moz-range-thumb { width: 14px; height: 14px; border: 2px solid var(--color-accent); border-radius: 50%; background: var(--surface-paper); cursor: grab; }
+.zoomSlider:focus-visible::-webkit-slider-thumb { outline: 2px solid color-mix(in srgb, var(--color-accent) 40%, transparent); outline-offset: 2px; }
+.zoomSlider:focus-visible::-moz-range-thumb { outline: 2px solid color-mix(in srgb, var(--color-accent) 40%, transparent); outline-offset: 2px; }
+.updateRangeRow { display: flex; align-items: center; justify-content: space-between; }
+.updateRangeHint { color: var(--color-muted); font: 9px var(--font-mono); }
+.updateRangeReset { border: 1px solid color-mix(in srgb, var(--color-line) 86%, transparent); border-radius: 999px; padding: 4px 10px; background: transparent; color: var(--color-muted); font: 9px var(--font-mono); letter-spacing: .03em; cursor: pointer; transition: border-color var(--motion-base) var(--motion-ease), color var(--motion-base) var(--motion-ease), background var(--motion-base) var(--motion-ease); }
+.updateRangeReset:hover { border-color: var(--color-accent); color: var(--color-accent); }
+.updateDate[data-hidden="true"] { display: none; }

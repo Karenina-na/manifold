@@ -68,14 +68,18 @@ export async function loadHomeData({ includeHistory = true }: { includeHistory?:
   const client = createServerClient();
   try {
     const fetchContent = (kind: Content["kind"]) => fetchPublicContent(client, kind, includeHistory);
-    const [profile, site, writings, thoughts, stats] = await Promise.all([
+    // tags feeds the home topic rail; a tags failure must never take the
+    // whole homepage down, so it degrades to an empty list on its own.
+    const [profile, site, writings, thoughts, stats, tagsResult] = await Promise.all([
       client.profile(), client.site(), fetchContent("ARTICLE"), fetchContent("THOUGHT"), client.stats(),
+      client.tags().catch(() => null),
     ]);
+    const tags = tagsResult?.data ?? [];
     const contentHistory = [...writings, ...thoughts].sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
     const feed = [...contentHistory].sort((a, b) => Date.parse(b.publishedAt) - Date.parse(a.publishedAt));
-    return { profile, site, feed, contentHistory, stats, error: null };
+    return { profile, site, feed, contentHistory, stats, tags, error: null };
   } catch {
-    return { profile: null, site: null, feed: null, contentHistory: [], stats: null, error: "Core is unavailable right now. Please try again in a moment." };
+    return { profile: null, site: null, feed: null, contentHistory: [], stats: null, tags: [], error: "Core is unavailable right now. Please try again in a moment." };
   }
 }
 

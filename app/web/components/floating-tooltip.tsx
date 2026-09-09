@@ -24,7 +24,7 @@ type FloatingTooltipProps = {
   showArrow?: boolean;
   interactive?: boolean;
   className?: string;
-  dataAttribute?: "data-series-tooltip" | "data-contact-tooltip" | "data-contribution-tooltip" | string;
+  dataAttribute?: "data-series-tooltip" | "data-contact-tooltip" | string;
   id?: string;
   onMouseEnter?: (event: React.MouseEvent<HTMLDivElement>) => void;
   onMouseLeave?: (event: React.MouseEvent<HTMLDivElement>) => void;

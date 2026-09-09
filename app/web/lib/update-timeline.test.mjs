@@ -6,13 +6,13 @@ function content(id, updatedAt, kind = "THOUGHT") {
   return { id, kind, status: "PUBLISHED", slug: id, title: id, summary: `${id} summary`, tags: [], publishedAt: updatedAt, createdAt: updatedAt, updatedAt, version: 1, href: `/${id}`, metadata: {} };
 }
 
-test("keeps the ten newest updates and creates evenly spaced month markers", () => {
+test("keeps every update and creates evenly spaced month markers", () => {
   const items = Array.from({ length: 12 }, (_, index) => content(`item-${index}`, `2026-${String(Math.floor(index / 4) + 1).padStart(2, "0")}-${String((index % 4) * 7 + 2).padStart(2, "0")}T00:00:00Z`));
   const timeline = buildUpdateTimeline(items);
 
-  assert.equal(timeline.points.length, 10);
+  assert.equal(timeline.points.length, 12);
   assert.deepEqual(timeline.months.map((month) => month.position), [0, 50, 100]);
-  assert.equal(timeline.points[0].id, "item-2");
+  assert.equal(timeline.points[0].id, "item-0");
   assert.equal(timeline.points.at(-1)?.id, "item-11");
 });
 

@@ -54,11 +54,13 @@ function clamp(value: number) {
 }
 
 export function buildUpdateTimeline(items: Content[]): UpdateTimeline {
+  // Publish date is the immutable first-publication anchor (docs/core.md);
+  // updatedAt is not a reliable distribution signal because import jobs
+  // refresh it for every row at once.
   const dated = items
-    .map((item) => ({ item, date: new Date(item.updatedAt || item.publishedAt || item.createdAt) }))
+    .map((item) => ({ item, date: new Date(item.publishedAt || item.updatedAt || item.createdAt) }))
     .filter(({ date }) => !Number.isNaN(date.getTime()))
-    .sort((a, b) => a.date.getTime() - b.date.getTime())
-    .slice(-10);
+    .sort((a, b) => a.date.getTime() - b.date.getTime());
 
   if (!dated.length) return { months: [], points: [] };
 
@@ -93,7 +95,7 @@ export function buildUpdateTimeline(items: Content[]): UpdateTimeline {
     const edge: UpdateTimelinePoint["edge"] = position < 32 ? "start" : position > 68 ? "end" : "middle";
     return {
       id: entries.map(({ item }) => item.id).join("-"),
-      date: entries[entries.length - 1].item.updatedAt || entries[entries.length - 1].item.publishedAt || entries[entries.length - 1].item.createdAt,
+      date: entries[entries.length - 1].item.publishedAt || entries[entries.length - 1].item.updatedAt || entries[entries.length - 1].item.createdAt,
       monthKey: monthKey(date),
       position: clamp(position),
       edge,
@@ -103,7 +105,7 @@ export function buildUpdateTimeline(items: Content[]): UpdateTimeline {
         href: item.kind === "ARTICLE" ? `/writing/${encodeURIComponent(item.slug)}` : `/thoughts/${encodeURIComponent(item.slug)}`,
         title: item.title || "Untitled thought",
         summary: item.summary || "A quiet note waiting for its next sentence.",
-        date: item.updatedAt || item.publishedAt || item.createdAt,
+        date: item.publishedAt || item.updatedAt || item.createdAt,
       })),
     };
   });
