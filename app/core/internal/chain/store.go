@@ -518,6 +518,19 @@ func (l *Ledger) ListBlocks(page, pageSize int) ([]Block, int, error) {
 }
 
 // GetBlock returns one block with its contained anchors.
+// BlockByIndex fetches a single block by its chain index (used to render the
+// block before/after a verified certificate in the explorer's chain context).
+func (l *Ledger) BlockByIndex(index int) (Block, error) {
+	block, err := l.scanBlock(l.db.QueryRow(`SELECT `+blockColumns+` FROM chain_blocks WHERE block_index = ?`, index))
+	if errors.Is(err, sql.ErrNoRows) {
+		return Block{}, sql.ErrNoRows
+	}
+	if err != nil {
+		return Block{}, err
+	}
+	return block, nil
+}
+
 func (l *Ledger) GetBlock(id string) (Block, []Anchor, error) {
 	block, err := l.scanBlock(l.db.QueryRow(`SELECT `+blockColumns+` FROM chain_blocks WHERE id = ?`, id))
 	if errors.Is(err, sql.ErrNoRows) {

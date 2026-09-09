@@ -1740,6 +1740,82 @@ func TestChainAnchorsReactionAndCommentAndAuth(t *testing.T) {
 	}
 }
 
+// TestChainAnchorEnrichment covers the handler-side enrichment that turns a
+// bare subject hash into a human summary plus a jump target (docs/chain.md §12).
+func TestChainAnchorEnrichment(t *testing.T) {
+	router, database := newTestRouterWithChain(t, nil)
+	token := adminToken(t, router)
+
+	created := adminRequest(t, router, token, http.MethodPost, "/api/v1/admin/content", `{"kind":"ARTICLE","slug":"chain-enrich","title":"Enrich","summary":"s","body":"Body","tags":[],"metadata":{"language":null,"aiAssisted":false}}`)
+	if created.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d %s", created.Code, created.Body.String())
+	}
+	contentID := jsonStringField(t, created.Body.String(), "id")
+	_ = adminRequest(t, router, token, http.MethodPost, "/api/v1/admin/content/"+contentID+"/publish", "")
+
+	comment := request(t, router, http.MethodPost, "/api/v1/content/chain-enrich/comments", strings.NewReader(`{"authorName":"bob","body":"hi","avatarSeed":"s2"}`))
+	if comment.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d %s", comment.Code, comment.Body.String())
+	}
+	commentID := jsonStringField(t, comment.Body.String(), "id")
+
+	_ = requestWithVisitor(t, router, http.MethodPut, "/api/v1/content/chain-enrich/likes", "visitor_enrich_1")
+
+	contentAnchor := chainAnchorProbe(t, database, `WHERE source = 'content' AND subject_ref = ? AND metadata_json LIKE '%"status":"PUBLISHED"%' ORDER BY created_at DESC, id DESC LIMIT 1`, contentID)
+	contentDetail := chainAnchorDetail(t, router, contentAnchor["id"].(string))
+	if contentDetail["summary"] != "Writing “chain-enrich” · published · v2" {
+		t.Fatalf("content summary mismatch: %v", contentDetail["summary"])
+	}
+	contentTarget := contentDetail["target"].(map[string]any)
+	if contentTarget["kind"] != "content" || contentTarget["href"] != "/writing/chain-enrich" {
+		t.Fatalf("content target mismatch: %v", contentTarget)
+	}
+
+	commentAnchor := chainAnchorProbe(t, database, `WHERE source = 'comment' AND subject_ref = ? ORDER BY created_at DESC, id DESC LIMIT 1`, commentID)
+	commentDetail := chainAnchorDetail(t, router, commentAnchor["id"].(string))
+	if commentDetail["summary"] != "Comment created" {
+		t.Fatalf("comment summary mismatch: %v", commentDetail["summary"])
+	}
+	commentTarget := commentDetail["target"].(map[string]any)
+	if commentTarget["kind"] != "comment" || commentTarget["href"] != "/writing/chain-enrich#comments" {
+		t.Fatalf("comment target mismatch: %v", commentTarget)
+	}
+
+	reactionAnchor := chainAnchorProbe(t, database, `WHERE source = 'reaction' ORDER BY created_at DESC, id DESC LIMIT 1`)
+	reactionDetail := chainAnchorDetail(t, router, reactionAnchor["id"].(string))
+	if reactionDetail["summary"] != "Like added" {
+		t.Fatalf("reaction summary mismatch: %v", reactionDetail["summary"])
+	}
+	reactionTarget := reactionDetail["target"].(map[string]any)
+	if reactionTarget["kind"] != "content" || reactionTarget["href"] != "/writing/chain-enrich" {
+		t.Fatalf("reaction target mismatch: %v", reactionTarget)
+	}
+
+	// visitor commitments stay private: no target, generic summary.
+	_ = request(t, router, http.MethodPost, "/api/v1/chain/anchors", strings.NewReader(`{"payload":"public note","label":"guest"}`))
+	visitorAnchor := chainAnchorProbe(t, database, `WHERE source = 'visitor' ORDER BY created_at DESC, id DESC LIMIT 1`)
+	visitorDetail := chainAnchorDetail(t, router, visitorAnchor["id"].(string))
+	if visitorDetail["summary"] != "Public commitment · “guest”" {
+		t.Fatalf("visitor summary mismatch: %v", visitorDetail["summary"])
+	}
+	if target, present := visitorDetail["target"].(map[string]any); present {
+		t.Fatalf("visitor anchor must have no target: %v", target)
+	}
+}
+
+func chainAnchorDetail(t *testing.T, router http.Handler, id string) map[string]any {
+	t.Helper()
+	resp := request(t, router, http.MethodGet, "/api/v1/chain/anchors/"+id, nil)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d %s", resp.Code, resp.Body.String())
+	}
+	var raw map[string]any
+	if err := json.Unmarshal(resp.Body.Bytes(), &raw); err != nil {
+		t.Fatal(err)
+	}
+	return raw
+}
+
 func jsonStringField(t *testing.T, raw, field string) string {
 	t.Helper()
 	var parsed map[string]any
@@ -1781,6 +1857,51 @@ func TestChainPublicSubmitVerifyAndLatestAnchor(t *testing.T) {
 			if blockID, _ := anchor["blockId"].(string); blockID != "" {
 				if result["found"] != true || result["signatureValid"] != true || result["chainIntegrity"] != true {
 					t.Fatalf("verify mismatch: %s", verify.Body.String())
+				}
+				// The verify process must expose every step with real values:
+				// steps (5, all passed), a merkle audit path whose recomputed
+				// root matches the block, and the prev/current/next context.
+				steps, _ := result["steps"].([]any)
+				if len(steps) != 5 {
+					t.Fatalf("expected 5 verify steps, got %d: %s", len(steps), verify.Body.String())
+				}
+				for _, rawStep := range steps {
+					step, _ := rawStep.(map[string]any)
+					if step["status"] != "passed" {
+						t.Fatalf("verify step %v must pass: %s", step["id"], verify.Body.String())
+					}
+					if detail, _ := step["detail"].(string); detail == "" {
+						t.Fatalf("verify step %v must carry a detail", step["id"])
+					}
+				}
+				merkle, _ := result["merkle"].(map[string]any)
+				if merkle == nil || merkle["matches"] != true {
+					t.Fatalf("merkle proof must match block root: %s", verify.Body.String())
+				}
+				if leaf, _ := merkle["leaf"].(string); len(leaf) != 64 {
+					t.Fatalf("merkle leaf must be a sha256 hex: %s", verify.Body.String())
+				}
+				if siblings, _ := merkle["siblings"].([]any); len(siblings) == 0 {
+					t.Fatalf("merkle proof must list at least one sibling: %s", verify.Body.String())
+				}
+				context, _ := result["context"].(map[string]any)
+				if context == nil {
+					t.Fatalf("verify context missing: %s", verify.Body.String())
+				}
+				current, _ := context["current"].(map[string]any)
+				if current == nil || current["id"] != blockID {
+					t.Fatalf("verify context current must be the anchoring block: %s", verify.Body.String())
+				}
+				blockIndex, _ := current["index"].(float64)
+				if prev, ok := context["prev"].(map[string]any); ok && prev != nil {
+					if pIndex, _ := prev["index"].(float64); pIndex != blockIndex-1 {
+						t.Fatalf("context prev index %v must be current-1 (%v): %s", pIndex, blockIndex, verify.Body.String())
+					}
+				}
+				if next, ok := context["next"].(map[string]any); ok && next != nil {
+					if nIndex, _ := next["index"].(float64); nIndex != blockIndex+1 {
+						t.Fatalf("context next index %v must be current+1 (%v): %s", nIndex, blockIndex, verify.Body.String())
+					}
 				}
 				anchored = true
 				break

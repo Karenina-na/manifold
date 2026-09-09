@@ -196,12 +196,21 @@ export type AnchorSource = "content" | "comment" | "reaction" | "profile" | "sit
 export type AnchorMetadata = Record<string, string | number | boolean | null>;
 
 export interface ChainPublicKey { keyId: string; publicKey: string; createdAt: string }
-export interface ChainAnchor { id: string; subjectHash: string; source: AnchorSource; subjectRef: string; label: string; metadata: AnchorMetadata; siteKeyId: string; sitePublicKey: string; siteSignature: string; createdAt: string; status: AnchorStatus; blockId: string | null }
+// AnchorTarget is a derived, human-meaningful link for an anchor: which event
+// or content a subject hash stands for, resolved by Core from live data.
+export interface AnchorTarget { kind: "content" | "comment" | "media"; href: string; label: string }
+export interface ChainAnchor { id: string; subjectHash: string; source: AnchorSource; subjectRef: string; label: string; metadata: AnchorMetadata; siteKeyId: string; sitePublicKey: string; siteSignature: string; createdAt: string; status: AnchorStatus; blockId: string | null; summary: string; target: AnchorTarget | null }
 export interface SubmitAnchorInput { payload: string; label?: string }
 export interface SubmitAnchorResponse { anchorId: string; subjectHash: string; status: "pending" }
 export interface ChainBlockSummary { id: string; index: number; prevHash: string; timestamp: string; certRoot: string; nonce: number; proofMode: ChainProofMode; difficulty: number; hash: string; anchorCount: number }
 export interface ChainBlockDetail extends ChainBlockSummary { certIds: string[]; anchors: ChainAnchor[] }
 export interface ChainInfo { height: number; totalAnchors: number; pendingAnchors: number; proofMode: ChainProofMode; difficulty: number; genesisHash: string; tipHash: string; sitePublicKey: string }
-export interface VerifyResponse { found: boolean; anchor: ChainAnchor | null; block: ChainBlockSummary | null; signatureValid: boolean; chainIntegrity: boolean }
+export interface VerifyStepInput { name: string; value: string; note?: string }
+export interface VerifyStepComputation { expression: string; value: string }
+export interface VerifyStep { id: string; label: string; status: "passed" | "failed"; detail: string; inputs?: VerifyStepInput[]; computations?: VerifyStepComputation[]; output?: string }
+export interface MerkleSibling { position: "left" | "right"; value: string }
+export interface VerifyMerkleProof { leafIndex: number; leaf: string; siblings: MerkleSibling[]; root: string; matches: boolean }
+export interface VerifyChainContext { prev: ChainBlockSummary | null; current: ChainBlockSummary | null; next: ChainBlockSummary | null }
+export interface VerifyResponse { found: boolean; anchor: ChainAnchor | null; block: ChainBlockSummary | null; signatureValid: boolean; chainIntegrity: boolean; steps: VerifyStep[]; merkle: VerifyMerkleProof | null; context: VerifyChainContext | null }
 export interface AnchorQuery { source?: AnchorSource; ref?: string; page?: number; pageSize?: number }
 export interface AnchorSummary { anchorId: string; subjectHash: string; status: AnchorStatus; blockId: string | null }

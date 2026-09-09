@@ -7,11 +7,16 @@ import (
 
 // ReplayReport is the full-chain verification outcome (docs/chain.md §10):
 // every tamper — block fields, hash linkage, merkle roots, certificate rows
-// or signatures — surfaces as a located problem.
+// or signatures — surfaces as a located problem. The counts let the explorer
+// show exactly what a chain replay evaluated.
 type ReplayReport struct {
-	Intact   bool
-	Height   int
-	Problems []string
+	Intact       bool
+	Height       int
+	IndexChecks  int
+	PrevLinks    int
+	MerkleRoots  int
+	Signatures   int
+	Problems     []string
 }
 
 // ReplayVerify walks genesis→tip: recomputes each block hash (proofMode and
@@ -49,9 +54,11 @@ func (l *Ledger) replayTx(tx *sql.Tx) (ReplayReport, error) {
 	}
 	byID := make(map[string]Anchor, len(blocks)*4)
 	for index, block := range blocks {
+		report.IndexChecks++
 		if block.Index != index {
 			add("block %s: index %d breaks continuity (expected %d)", block.ID, block.Index, index)
 		}
+		report.PrevLinks++
 		prevHash := genesisPrevHash
 		if index > 0 {
 			prevHash = blocks[index-1].Hash
@@ -67,6 +74,7 @@ func (l *Ledger) replayTx(tx *sql.Tx) (ReplayReport, error) {
 		if block.ProofMode == ProofModeProof && !header.Satisfies() {
 			add("block %s: proof-mode hash does not meet difficulty %d", block.ID, block.Difficulty)
 		}
+		report.MerkleRoots++
 		if root := MerkleRoot(block.CertIDs); root != block.CertRoot {
 			add("block %s: cert_root %s does not match merkle root %s", block.ID, block.CertRoot, root)
 		}
@@ -82,6 +90,7 @@ func (l *Ledger) replayTx(tx *sql.Tx) (ReplayReport, error) {
 				if anchor.BlockID != block.ID {
 					add("anchor %s: block_id %s does not match containing block %s", anchor.ID, anchor.BlockID, block.ID)
 				}
+				report.Signatures++
 				if !VerifySubjectHash(anchor.SitePublicKey, anchor.SubjectHash, anchor.SiteSignature) {
 					add("anchor %s: site signature does not verify", anchor.ID)
 				}
