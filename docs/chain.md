@@ -165,6 +165,10 @@ POST /api/v1/chain/anchors ─┼──> handler 构造 payload ──> chain.Su
 | `GET` | `/chain/verify/comment/{id}` | 按评论查证：同上从 live 评论行重建；隐藏/软删评论 404（其历史承诺仍可被持有原文者用哈希验证，见第 10 节） |
 | `GET` | `/chain/keys` | `{keys: [{keyId, publicKey, createdAt}]}` 站点公钥列表 |
 
+> **响应字段（anchorView）**：证书对象即 contracts 的 `ChainAnchor`。除存储直出字段（`id`/`subjectHash`/`source`/`subjectRef`/`label`/`metadata`/`siteSignature`/`createdAt`/`status`/`blockId`）外，handler 在 `listChainAnchors`/`getChainAnchor`/`getChainBlock`/`verify` 四处统一派生两个字段：
+> - `summary`：人类可读概述，由 source + metadata 生成（不读 payload，见第 2 节边界）：content → `Writing “<slug>” · published · v2`（kind=ARTICLE）/`Thought “<slug>” · …`；comment → `Comment created/hidden/unhidden/deleted/restored/author updated`；reaction → `Like added/removed`；media → `Media uploaded/deleted`；profile → `Profile updated`；site → `Site updated` 或 `Pinned content updated`；auth → `Sign-in/Sign-out/…`；visitor/admin → `Public/Admin commitment · “<label>”`。
+> - `target`（`AnchorTarget {kind, href, label}` 或 `null`）：可跳转目标。content → `/writing/<slug>` 或 `/thoughts/<slug>`（kind=ARTICLE）；comment → 所属内容页 `#comments` 锚点（Core 经 `comments.content_id` → `content.slug/kind` 解析，评论或内容已删则 `null`）；reaction → 所属内容页；media → `/api/v1/media/<id>`；其余 source 一律 `null`。客户端只渲染不派生。
+
 四个 verify 入口（`/chain/verify` GET/POST、`verify/content/{slug}`、`verify/comment/{id}`）共用独立的 `verifyLimiter`（`CORE_CHAIN_VERIFY_RATE_PER_MIN`，默认 20/min）。每次验证都全链重放（见第 10 节），比写入更消耗 CPU/DB，因此配额远低于公开提交限流，命中返回 `429`。
 
 ## 7. Admin API
@@ -260,13 +264,16 @@ CREATE INDEX IF NOT EXISTS idx_chain_anchors_block ON chain_anchors(block_id);
 所有 verify 入口统一返回 `VerifyResponse`：
 
 ```text
-{ found, anchor?, block?, signatureValid, chainIntegrity }
+{ found, anchor?, block?, signatureValid, chainIntegrity, steps, merkle?, context? }
 ```
 
 - `signatureValid`：用证书自带的 `site_public_key` 对 `subject_hash` 验证 `site_signature`。
 - **限流**：verify 每请求全链重放，四个入口共用独立限流桶（`CORE_CHAIN_VERIFY_RATE_PER_MIN`，默认 20/min），命中 `429`；Web 端按钮同步冷却，防止按住不放打满 CPU/DB。
 - `chainIntegrity`：**全链重放**——从 genesis 到 tip 逐块重算 `hash`（含 `proofMode`/`difficulty`）、校验 `prev_hash` 串接、按 `cert_ids_json` 重算 `cert_root`；sim 块跳过前导 0 校验、proof 块强制校验。整个重放在**单个只读事务**内执行：矿工可能在重放中途提交新块，不取快照会让孤儿扫描读到「属于新块的证书、而块查询没看到该块」，在并发下产生虚假篡改报告。个人站点规模（数百块）下 O(n) 重放开销可忽略，且「每次验证都真验整条链」正是本探索的教学卖点。
-- `found=false` 时其余字段为缺省（`signatureValid`/`chainIntegrity` 仍返回全链结果，允许验证不存在的哈希时顺带确认链完整性）。
+- **`steps`（验证过程明细，chain 浏览器 proof-path 可视化用）**：固定 5 步——`lookup`（证书按 subject_hash 命中）、`signature`（ed25519 验签）、`merkle`（按 `cert_ids_json` 重算根并比较 `cert_root`）、`block-hash`（按头部 preimage 重算 `sha256(index‖prevHash‖timestamp‖certRoot‖proofMode‖difficulty‖nonce)`）、`chain`（全链重放统计）。每步含 `status`（passed/failed）、`detail`、以及**真实计算明细**：`inputs`（计算输入名值对，如验签的 publicKey/message/signature、块哈希的 7 个 preimage 字段）、`computations`（中间计算表达式 → 结果，如 merkle 每一层的 `sha256(a‖b)` 与父节点值）、`output`（该步结论）。
+- **`merkle`（审计路径）**：证书所在块的 merkle 树路径——`leafIndex`、`leaf`（`sha256(cert id)`）、自底向上的 `siblings`（含左右位置）、`root` 与 `matches`（与 `block.certRoot` 比较），以及逐层 `computations`。
+- **`context`（链上下文）**：`prev`/`current`/`next` 三个块摘要（`blockSummaryView`），`current` 是证书所在块，`prev`/`next` 按块索引相邻查询（genesis 无 prev、tip 无 next 时为 `null`），供 Web 渲染「前一块 → 当前块 → 后一块」链结构并跳转账本。
+- `found=false` 时其余字段为缺省（`signatureValid`/`chainIntegrity` 仍返回全链结果，允许验证不存在的哈希时顺带确认链完整性；`steps` 只含 lookup 失败与 chain 两步）。
 - **同哈希多证书**：同一正文多次提交（重发布、幂等请求）会产生相同 `subject_hash` 的多张证书。按哈希查证时返回**最新一张**（`createdAt` 降序、并列 `id` 降序的第一条），`found` 即表示「该哈希曾至少被承诺一次」。
 
 不可撤销性的诚实属性：

@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { ArrowRight, BadgeCheck, Boxes, Check, ChevronDown, Clock, Copy, Cpu, Fingerprint, Hash, KeyRound, Link2, Layers, ScanLine, ShieldCheck } from "lucide-react";
-import type { AnchorSource, ChainBlockSummary, ChainInfo, SubmitAnchorResponse, VerifyResponse } from "@manifold/contracts";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ArrowRight, BadgeCheck, Boxes, Check, ChevronDown, ChevronLeft, ChevronRight, Clock, Copy, Cpu, Fingerprint, Hash, KeyRound, Layers, Link2, ScanLine, ShieldCheck } from "lucide-react";
+import type { AnchorSource, ChainAnchor, ChainBlockDetail, ChainBlockSummary, ChainInfo, SubmitAnchorResponse, VerifyChainContext, VerifyMerkleProof, VerifyResponse, VerifyStep } from "@manifold/contracts";
 import { createBrowserClient } from "../lib/api";
 import { Pagination } from "./pagination";
 import { Reveal } from "./reveal";
@@ -10,7 +12,12 @@ import styles from "../app/site.module.css";
 
 type BlocksPage = { items: ChainBlockSummary[]; page: number; totalPages: number };
 type VerifyMode = "payload" | "hash" | "content";
-type BlockDetail = { id: string; certIds: string[]; anchors: Array<{ id: string; source: AnchorSource; label: string; subjectHash: string; status: string; siteSignature: string }> };
+type BlockDetail = { id: string; certIds: string[]; anchors: ChainAnchor[] };
+// A user-submitted commitment kept across refreshes: the payload text is shown
+// as evidence of what was anchored, and the anchor is re-verified on load.
+type PendingCommit = { anchorId: string; subjectHash: string; label: string; payload: string; at: string; status: "pending" | "anchored"; blockId: string | null };
+const PENDING_COMMITS_KEY = "manifold.chain.pendingCommits";
+const PENDING_COMMITS_CAP = 8;
 
 type VerifyResult = {
   mode: VerifyMode;
@@ -45,8 +52,18 @@ const SOURCE_DOTS: Record<AnchorSource, string> = {
 };
 
 export function ChainExplorer({ info, initialBlocks }: { info: ChainInfo | null; initialBlocks: BlocksPage | null }) {
+  // The block page lives in the URL (?page=N) so browser back/forward (e.g.
+  // after jumping to a certificate's content) restores the exact page state.
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const urlPage = Math.min(Math.max(1, Number(searchParams.get("page")) || 1), initialBlocks?.totalPages ?? 1);
   const [blocks, setBlocks] = useState<BlocksPage | null>(initialBlocks);
-  const [page, setPage] = useState(initialBlocks?.page ?? 1);
+  const [page, setPage] = useState(urlPage);
+  // The whole sealed chain (pageSize 100 clamps at Core), loaded once so the
+  // spine can scroll the entire sequence instead of depending on the ledger
+  // pagination below. Refreshed after a fresh commit lands a new block.
+  const [fullBlocks, setFullBlocks] = useState<ChainBlockSummary[] | null>(null);
+  const [spineRefresh, setSpineRefresh] = useState(0);
   const [openBlock, setOpenBlock] = useState<BlockDetail | null>(null);
   const [spineId, setSpineId] = useState<string | null>(initialBlocks?.items[0]?.id ?? null);
   const [mode, setMode] = useState<VerifyMode>("payload");
@@ -54,7 +71,7 @@ export function ChainExplorer({ info, initialBlocks }: { info: ChainInfo | null;
   const [verify, setVerify] = useState<VerifyResult | null>(null);
   const [payload, setPayload] = useState("");
   const [label, setLabel] = useState("");
-  const [submitted, setSubmitted] = useState<SubmitAnchorResponse | null>(null);
+  const [pendingCommits, setPendingCommits] = useState<PendingCommit[]>([]);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -63,6 +80,72 @@ export function ChainExplorer({ info, initialBlocks }: { info: ChainInfo | null;
   const [now, setNow] = useState(0);
 
   const client = useMemo(() => createBrowserClient(), []);
+  const totalPages = blocks?.totalPages ?? 1;
+
+  // Keep the page in sync when the URL changes through back/forward navigation.
+  useEffect(() => {
+    const next = Math.min(Math.max(1, Number(searchParams.get("page")) || 1), totalPages);
+    setPage((current) => (current === next ? current : next));
+  }, [searchParams, totalPages]);
+
+  const persistPending = (list: PendingCommit[]) => {
+    try {
+      localStorage.setItem(PENDING_COMMITS_KEY, JSON.stringify(list));
+    } catch {
+      // storage full or unavailable — the in-memory list still shows this session
+    }
+  };
+
+  // Restore user-submitted commitments across refreshes, then re-verify the
+  // still-pending ones so a sealed card upgrades to anchored with its block.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    let cancelled = false;
+    let saved: PendingCommit[] = [];
+    try {
+      const raw = localStorage.getItem(PENDING_COMMITS_KEY);
+      if (raw) saved = JSON.parse(raw) as PendingCommit[];
+    } catch {
+      saved = [];
+    }
+    if (!cancelled) setPendingCommits(saved);
+    void (async () => {
+      for (const commit of saved) {
+        if (commit.status !== "pending") continue;
+        try {
+          const result = await client.verifyByHash(commit.subjectHash);
+          if (!cancelled && result.found && result.anchor?.blockId) {
+            setPendingCommits((current) => {
+              const next = current.map((item) => item.anchorId === commit.anchorId ? { ...item, status: "anchored" as const, blockId: result.anchor?.blockId ?? null } : item);
+              persistPending(next);
+              return next;
+            });
+          }
+        } catch {
+          // network hiccup — keep it pending, it re-verifies on the next visit
+        }
+        await new Promise((resolveDelay) => setTimeout(resolveDelay, 300));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [client]);
+
+  // Deep link from a detail page badge: /chain?block=<id>. Select that block in
+  // the Sealed sequence when it is on screen, otherwise expand its ledger row
+  // (older blocks fall outside the spine window).
+  useEffect(() => {
+    const blockId = searchParams.get("block");
+    if (!blockId || !blocks) return;
+    if (spine.some((block) => block.id === blockId)) {
+      setSpineId(blockId);
+      window.setTimeout(() => {
+        document.getElementById("sealed-sequence")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 80);
+    } else {
+      void openInLedger(blockId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Ticks only while a cool-down is pending so the buttons can count down.
   useEffect(() => {
@@ -75,11 +158,12 @@ export function ChainExplorer({ info, initialBlocks }: { info: ChainInfo | null;
     return () => window.clearInterval(timer);
   }, [verifyUntil, anchorUntil]);
 
-  // Reload the block list when the page changes beyond the server-rendered
-  // first page; fetching happens inside the async callback, not as a direct
-  // synchronous setState in the effect body.
+  // Reload the block list whenever the requested page differs from the page we
+  // currently hold — including back to page 1 after Next, which the
+  // server-rendered first page must not short-circuit (otherwise Prev would
+  // leave the stale page-2 list on screen).
   useEffect(() => {
-    if (initialBlocks && page === initialBlocks.page) return;
+    if (blocks && blocks.page === page) return;
     let cancelled = false;
     void (async () => {
       try {
@@ -90,12 +174,30 @@ export function ChainExplorer({ info, initialBlocks }: { info: ChainInfo | null;
       }
     })();
     return () => { cancelled = true; };
-  }, [page, initialBlocks, client]);
+  }, [page, blocks, client]);
 
   // Blocks arrive newest-first, so the spine reads genesis → tip left to right.
-  const spine = useMemo(() => (blocks?.items ?? []).slice(0, 9).reverse(), [blocks]);
+  // It renders the full sealed chain (not just the current ledger page) and
+  // scrolls horizontally.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const result = await client.chainBlocks({ page: 1, pageSize: 100 });
+        if (!cancelled) setFullBlocks(result.data);
+      } catch {
+        if (!cancelled) setFullBlocks(null);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [client, spineRefresh]);
+
+  const spine = useMemo(() => {
+    const source = fullBlocks ?? blocks?.items ?? [];
+    return [...source].reverse();
+  }, [fullBlocks, blocks]);
+  const spineScroller = useRef<HTMLDivElement | null>(null);
   const spineBlock = spine.find((block) => block.id === spineId) ?? spine[spine.length - 1] ?? null;
-  const totalPages = blocks?.totalPages ?? 1;
 
   const copy = async (value: string, key: string) => {
     try {
@@ -114,14 +216,52 @@ export function ChainExplorer({ info, initialBlocks }: { info: ChainInfo | null;
     }
     try {
       const detail = await client.chainBlock(id);
-      setOpenBlock({
-        id,
-        certIds: detail.certIds,
-        anchors: detail.anchors.map((anchor) => ({ id: anchor.id, source: anchor.source, label: anchor.label, subjectHash: anchor.subjectHash, status: anchor.status, siteSignature: anchor.siteSignature })),
-      });
+      setOpenBlock({ id, certIds: detail.certIds, anchors: detail.anchors });
     } catch {
       setOpenBlock(null);
     }
+  };
+
+  const changePage = (next: number) => {
+    const clamped = Math.min(Math.max(1, next), totalPages);
+    if (clamped === page) return;
+    setPage(clamped);
+    router.replace(clamped === 1 ? "/chain" : `/chain?page=${clamped}`, { scroll: false });
+  };
+
+  // Spine → ledger: bring the chosen block row onto the current page (spine is
+  // tip-side), expand its certificates, then scroll it into view. When the
+  // block lives on an older page, its index locates that page (blocks are
+  // listed newest-first at 20/page).
+  const openInLedger = async (blockId: string) => {
+    let detail: ChainBlockDetail | null = null;
+    try {
+      detail = await client.chainBlock(blockId);
+    } catch {
+      setOpenBlock(null);
+      return;
+    }
+    const onPage = blocks?.items.some((block) => block.id === blockId) ?? false;
+    if (!onPage && detail) {
+      const topIndex = blocks?.items[0]?.index ?? 0;
+      const pageSize = 20;
+      const targetPage = Math.max(1, Math.floor((topIndex - detail.index) / pageSize) + 1);
+      if (targetPage !== page) {
+        try {
+          const result = await client.chainBlocks({ page: targetPage, pageSize });
+          setBlocks({ items: result.data, page: result.pagination.page, totalPages: result.pagination.totalPages });
+          setPage(targetPage);
+          router.replace(targetPage === 1 ? "/chain" : `/chain?page=${targetPage}`, { scroll: false });
+        } catch {
+          // keep the current list; the detail may still open below
+        }
+      }
+    }
+    setOpenBlock({ id: blockId, certIds: detail.certIds, anchors: detail.anchors });
+    // Let the expanded row render before scrolling to it.
+    window.setTimeout(() => {
+      document.getElementById(`ledger-block-${blockId}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 100);
   };
 
   const runVerify = async () => {
@@ -145,17 +285,30 @@ export function ChainExplorer({ info, initialBlocks }: { info: ChainInfo | null;
   const submit = async () => {
     if (!payload.trim() || Date.now() < anchorUntil) return;
     setBusy(true);
-    setSubmitted(null);
     setSubmitError(null);
     try {
-      setSubmitted(await client.submitAnchor({ payload, label: label.trim() }));
+      const result = await client.submitAnchor({ payload, label: label.trim() });
+      const commit: PendingCommit = {
+        anchorId: result.anchorId,
+        subjectHash: result.subjectHash,
+        label: label.trim(),
+        payload,
+        at: new Date().toISOString(),
+        status: "pending",
+        blockId: null,
+      };
+      setPendingCommits((current) => {
+        const next = [...current, commit].slice(-PENDING_COMMITS_CAP);
+        persistPending(next);
+        return next;
+      });
       setPayload("");
       setLabel("");
       setAnchorUntil(Date.now() + ANCHOR_COOLDOWN_MS);
-      const result = await client.chainBlocks({ page, pageSize: 20 });
-      setBlocks({ items: result.data, page: result.pagination.page, totalPages: result.pagination.totalPages });
+      const list = await client.chainBlocks({ page, pageSize: 20 });
+      setBlocks({ items: list.data, page: list.pagination.page, totalPages: list.pagination.totalPages });
+      setSpineRefresh((current) => current + 1);
     } catch (error) {
-      setSubmitted(null);
       const outcome = describeFailure(error);
       setSubmitError(outcome.message);
       setAnchorUntil(Date.now() + (outcome.rateLimited ? RATE_LIMIT_COOLDOWN_MS : ANCHOR_COOLDOWN_MS));
@@ -189,7 +342,7 @@ export function ChainExplorer({ info, initialBlocks }: { info: ChainInfo | null;
       </Reveal>
 
       <Reveal className={styles.chainReveal}>
-        <section className={styles.chainPanel} aria-label="Block spine">
+        <section className={styles.chainPanel} aria-label="Block spine" id="sealed-sequence">
           <div className={styles.chainPanelHead}>
             <div>
               <span className={styles.eyebrow}>◇ Spine</span>
@@ -201,25 +354,33 @@ export function ChainExplorer({ info, initialBlocks }: { info: ChainInfo | null;
             <p className={styles.chainEmpty}>The chain is not reachable right now.</p>
           ) : (
             <>
-              <div className={styles.chainSpine} role="tablist" aria-label="Recent blocks">
-                {spine.map((block, index) => (
-                  <div key={block.id} className={styles.chainSpineSlot}>
-                    {index > 0 ? <span className={styles.chainSpineLink} aria-hidden="true" /> : null}
-                    <button
-                      type="button"
-                      role="tab"
-                      aria-selected={spineBlock?.id === block.id}
-                      className={styles.chainSpineNode}
-                      data-tip={index === spine.length - 1}
-                      data-selected={spineBlock?.id === block.id}
-                      onClick={() => setSpineId(block.id)}
-                    >
-                      <span className={styles.chainSpineCube} aria-hidden="true">{block.index}</span>
-                      <span className={styles.chainSpineMeta}>{shortHash(block.hash, 6)}</span>
-                      <span className={styles.chainSpineMeta}>{block.anchorCount}×</span>
-                    </button>
-                  </div>
-                ))}
+              <div className={styles.chainSpineNav}>
+                <button type="button" className={styles.chainSpineNavBtn} aria-label="Scroll spine toward genesis" onClick={() => spineScroller.current?.scrollBy({ left: -(spineScroller.current.clientWidth * 0.7), behavior: "smooth" })}>
+                  <ChevronLeft size={14} aria-hidden="true" />
+                </button>
+                <div ref={spineScroller} className={styles.chainSpine} role="tablist" aria-label="Chain blocks">
+                  {spine.map((block, index) => (
+                    <div key={block.id} className={styles.chainSpineSlot}>
+                      {index > 0 ? <span className={styles.chainSpineLink} aria-hidden="true" /> : null}
+                      <button
+                        type="button"
+                        role="tab"
+                        aria-selected={spineBlock?.id === block.id}
+                        className={styles.chainSpineNode}
+                        data-tip={index === spine.length - 1}
+                        data-selected={spineBlock?.id === block.id}
+                        onClick={() => setSpineId(block.id)}
+                      >
+                        <span className={styles.chainSpineCube} aria-hidden="true">{block.index}</span>
+                        <span className={styles.chainSpineMeta}>{shortHash(block.hash, 6)}</span>
+                        <span className={styles.chainSpineMeta}>{block.anchorCount}×</span>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <button type="button" className={styles.chainSpineNavBtn} aria-label="Scroll spine toward tip" onClick={() => spineScroller.current?.scrollBy({ left: spineScroller.current.clientWidth * 0.7, behavior: "smooth" })}>
+                  <ChevronRight size={14} aria-hidden="true" />
+                </button>
               </div>
               {spineBlock ? (
                 <div className={styles.chainSpineDetail}>
@@ -231,6 +392,9 @@ export function ChainExplorer({ info, initialBlocks }: { info: ChainInfo | null;
                   <Field label="Target" value={spineBlock.proofMode === "proof" ? `${spineBlock.difficulty} zeros` : "sim"} />
                   <Field label="Certificates" value={`${spineBlock.anchorCount}`} />
                   <Field label="Sealed" wide value={<span><Clock size={10} aria-hidden="true" /> {formatUtc(spineBlock.timestamp)}</span>} />
+                  <button type="button" className={styles.chainSpineJump} onClick={() => void openInLedger(spineBlock.id)}>
+                    <ArrowRight size={12} aria-hidden="true" /> Open block #{spineBlock.index} in ledger
+                  </button>
                 </div>
               ) : null}
             </>
@@ -247,32 +411,39 @@ export function ChainExplorer({ info, initialBlocks }: { info: ChainInfo | null;
             </div>
             <span className={styles.chainPanelHint}>sha256 · ed25519 · replay</span>
           </div>
-          <div className={styles.chainSegmented} role="tablist" aria-label="Verification mode">
-            {VERIFY_MODES.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                role="tab"
-                aria-selected={mode === item.id}
-                className={mode === item.id ? `${styles.chainSegment} ${styles.chainSegmentActive}` : styles.chainSegment}
-                onClick={() => { setMode(item.id); setVerify(null); }}
-              >
-                {item.label}
-              </button>
-            ))}
+          <div className={styles.chainVerifyGrid}>
+            <div className={styles.chainVerifyLeft} data-verify-left>
+              <div className={styles.chainSegmented} role="tablist" aria-label="Verification mode">
+                {VERIFY_MODES.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={mode === item.id}
+                    className={mode === item.id ? `${styles.chainSegment} ${styles.chainSegmentActive}` : styles.chainSegment}
+                    onClick={() => { setMode(item.id); setVerify(null); }}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+              {mode === "payload" ? (
+                <textarea className={styles.chainTextarea} rows={3} value={verifyInput} onChange={(event) => setVerifyInput(event.target.value)} placeholder={VERIFY_MODES[0].placeholder} />
+              ) : (
+                <input className={styles.chainInput} value={verifyInput} onChange={(event) => setVerifyInput(event.target.value)} placeholder={VERIFY_MODES.find((item) => item.id === mode)?.placeholder} />
+              )}
+              <div className={styles.chainActions}>
+                <button type="button" className={styles.chainButtonPrimary} disabled={busy || !verifyReady || verifyRemaining > 0} onClick={() => void runVerify()}>
+                  <ScanLine size={12} aria-hidden="true" /> {verifyRemaining > 0 ? `Retry in ${verifyRemaining}s` : "Run verification"}
+                </button>
+                {verifyRemaining > 0 ? <span className={styles.chainActionsHint} data-tone="warn">Paced — verification replays the whole chain.</span> : null}
+              </div>
+              {verify ? <VerifyReceipt result={verify} onCopy={copy} copied={copied} onOpenBlock={(id) => void openInLedger(id)} /> : null}
+            </div>
+            <div className={styles.chainVerifyRight} data-verify-right>
+              <VerifyProcessGraph steps={verify?.response?.steps ?? null} merkle={verify?.response?.merkle ?? null} context={verify?.response?.context ?? null} running={busy} verdict={verify?.response?.found && verify.response.signatureValid && verify.response.chainIntegrity ? "verified" : verify?.response?.found ? "mismatch" : "idle"} />
+            </div>
           </div>
-          {mode === "payload" ? (
-            <textarea className={styles.chainTextarea} rows={3} value={verifyInput} onChange={(event) => setVerifyInput(event.target.value)} placeholder={VERIFY_MODES[0].placeholder} />
-          ) : (
-            <input className={styles.chainInput} value={verifyInput} onChange={(event) => setVerifyInput(event.target.value)} placeholder={VERIFY_MODES.find((item) => item.id === mode)?.placeholder} />
-          )}
-          <div className={styles.chainActions}>
-            <button type="button" className={styles.chainButtonPrimary} disabled={busy || !verifyReady || verifyRemaining > 0} onClick={() => void runVerify()}>
-              <ScanLine size={12} aria-hidden="true" /> {verifyRemaining > 0 ? `Retry in ${verifyRemaining}s` : "Run verification"}
-            </button>
-            {verifyRemaining > 0 ? <span className={styles.chainActionsHint} data-tone="warn">Paced — verification replays the whole chain.</span> : null}
-          </div>
-          {verify ? <VerifyReceipt result={verify} onCopy={copy} copied={copied} /> : null}
         </section>
       </Reveal>
 
@@ -291,7 +462,7 @@ export function ChainExplorer({ info, initialBlocks }: { info: ChainInfo | null;
             <button type="button" className={styles.chainButtonPrimary} disabled={busy || !payload.trim() || anchorRemaining > 0} onClick={() => void submit()}>
               <Layers size={12} aria-hidden="true" /> {anchorRemaining > 0 ? `Retry in ${anchorRemaining}s` : "Anchor it"}
             </button>
-            {anchorRemaining > 0 ? <span className={styles.chainActionsHint} data-tone="warn">Paced — one commitment at a time.</span> : null}
+            {anchorRemaining > 0 ? <span className={styles.chainActionsHint} data-tone="warn">Paced — you can submit again once the cooldown clears.</span> : null}
           </div>
           {submitError ? (
             <div className={styles.chainReceipt} data-verdict="error">
@@ -301,20 +472,32 @@ export function ChainExplorer({ info, initialBlocks }: { info: ChainInfo | null;
               </div>
             </div>
           ) : null}
-          {submitted ? (
-            <div className={styles.chainReceipt} data-verdict="sealing">
-              <div className={styles.chainVerdict}>
-                <span className={styles.chainVerdictBadge}><span className={styles.chainPulseDot} aria-hidden="true" /> Sealing</span>
-                <span className={styles.chainVerdictNote}>The miner mints a block within ~30s.</span>
-              </div>
-              <div className={styles.chainReceiptRows}>
-                <Row label="Certificate" value={<Copyable value={submitted.anchorId} text={shortHash(submitted.anchorId, 12)} copyKey="anchor" onCopy={copy} copied={copied} />} />
-                <Row label="Subject hash" value={<Copyable value={submitted.subjectHash} text={shortHash(submitted.subjectHash, 16)} copyKey="subject" onCopy={copy} copied={copied} />} />
-                <Row label="Status" value={submitted.status} />
-              </div>
-              <p className={styles.chainReceiptFoot}>
-                <ArrowRight size={11} aria-hidden="true" /> Verify it above once the miner seals a block.
-              </p>
+          {pendingCommits.length > 0 ? (
+            <div className={styles.chainCommits}>
+              {pendingCommits.map((commit) => (
+                <div key={commit.anchorId} className={styles.chainCommitCard} data-status={commit.status}>
+                  <div className={styles.chainCommitHead}>
+                    <span className={styles.chainVerdictBadge}>
+                      {commit.status === "anchored" ? <><BadgeCheck size={11} aria-hidden="true" /> Sealed</> : <><span className={styles.chainPulseDot} aria-hidden="true" /> Sealing</>}
+                    </span>
+                    <span className={styles.chainCommitAt}>{formatUtc(commit.at)}</span>
+                  </div>
+                  {commit.label ? <span className={styles.chainCommitLabel}>“{commit.label}”</span> : null}
+                  <p className={styles.chainCommitPayload} title={commit.payload}>{commit.payload}</p>
+                  <div className={styles.chainCommitRows}>
+                    <Row label="Certificate" value={<Copyable value={commit.anchorId} text={shortHash(commit.anchorId, 12)} copyKey={`anchor-${commit.anchorId}`} onCopy={copy} copied={copied} />} />
+                    <Row label="Subject hash" value={<Copyable value={commit.subjectHash} text={shortHash(commit.subjectHash, 16)} copyKey={`subject-${commit.anchorId}`} onCopy={copy} copied={copied} />} />
+                    {commit.status === "anchored" && commit.blockId ? (
+                      <Row label="Block" value={commit.blockId.replace("block_", "#")} />
+                    ) : (
+                      <Row label="Status" value="pending" />
+                    )}
+                  </div>
+                  <p className={styles.chainReceiptFoot}>
+                    <ArrowRight size={11} aria-hidden="true" /> Verify it above once the miner seals a block.
+                  </p>
+                </div>
+              ))}
             </div>
           ) : null}
         </section>
@@ -338,7 +521,7 @@ export function ChainExplorer({ info, initialBlocks }: { info: ChainInfo | null;
               {blocks.items.map((block, index) => {
                 const open = openBlock?.id === block.id;
                 return (
-                  <li key={block.id}>
+                  <li key={block.id} id={`ledger-block-${block.id}`}>
                     <button type="button" className={styles.chainLedgerRow} onClick={() => void toggleBlock(block.id)} aria-expanded={open}>
                       <span className={styles.chainLedgerIndex}>#{block.index}</span>
                       <span className={styles.chainLedgerMain}>
@@ -369,11 +552,21 @@ export function ChainExplorer({ info, initialBlocks }: { info: ChainInfo | null;
                                   <span className={styles.chainSourceDot} style={{ background: SOURCE_DOTS[anchor.source] }} aria-hidden="true" />
                                   {anchor.source}
                                 </span>
-                                <code className={styles.chainMono}>{shortHash(anchor.subjectHash, 16)}</code>
+                                <span className={styles.chainCertBody}>
+                                  <span className={styles.chainCertSummary} title={anchor.summary}>{anchor.summary}</span>
+                                  <code className={styles.chainMono}>{shortHash(anchor.subjectHash, 14)}</code>
+                                </span>
                                 <span className={styles.chainCertStatus} data-status={anchor.status}>{anchor.status}</span>
                                 <span className={styles.chainCertSigned} title="Signed with the site key">
                                   {anchor.siteSignature ? <><BadgeCheck size={12} aria-hidden="true" /> signed</> : "unsigned"}
                                 </span>
+                                {anchor.target ? (
+                                  <Link className={styles.chainCertLink} href={anchor.target.href} aria-label={anchor.target.label} title={anchor.target.label}>
+                                    <ArrowRight size={13} aria-hidden="true" />
+                                  </Link>
+                                ) : (
+                                  <span className={styles.chainCertLinkPlaceholder} aria-hidden="true" />
+                                )}
                               </li>
                             ))}
                           </ul>
@@ -388,9 +581,9 @@ export function ChainExplorer({ info, initialBlocks }: { info: ChainInfo | null;
               })}
             </ul>
           )}
-          {blocks && totalPages > 1 ? (
+          {blocks ? (
             <div className={styles.chainPagerWrap}>
-              <Pagination page={page} totalPages={totalPages} onChange={setPage} label="Chain block pages" />
+              <Pagination page={page} totalPages={totalPages} onChange={changePage} label="Chain block pages" />
             </div>
           ) : null}
         </section>
@@ -474,7 +667,7 @@ function HashLine({ value }: { value: string }) {
   );
 }
 
-function VerifyReceipt({ result, onCopy, copied }: { result: VerifyResult; onCopy: (value: string, key: string) => Promise<void>; copied: string | null }) {
+function VerifyReceipt({ result, onCopy, copied, onOpenBlock }: { result: VerifyResult; onCopy: (value: string, key: string) => Promise<void>; copied: string | null; onOpenBlock: (id: string) => void }) {
   if (result.error) {
     return (
       <div className={styles.chainReceipt} data-verdict="error">
@@ -510,15 +703,187 @@ function VerifyReceipt({ result, onCopy, copied }: { result: VerifyResult; onCop
         </span>
         <span>{result.mode === "payload" ? "hashed by Core" : result.mode === "hash" ? "hash lookup" : "slug lookup"}</span>
       </div>
+      {verdict === "verified" && response.context ? (
+        <div className={styles.chainContext}>
+          <span className={styles.chainContextTitle}><Link2 size={11} aria-hidden="true" /> Chain position</span>
+          <div className={styles.chainContextChain}>
+            {response.context.prev ? <ChainBlockChip block={response.context.prev} label="prev" isCurrent={false} onOpen={onOpenBlock} /> : <span className={styles.chainContextGap}>genesis</span>}
+            <span className={styles.chainContextArrow} aria-hidden="true">→</span>
+            <ChainBlockChip block={response.context.current} label="this cert" isCurrent onOpen={onOpenBlock} />
+            <span className={styles.chainContextArrow} aria-hidden="true">→</span>
+            {response.context.next ? <ChainBlockChip block={response.context.next} label="next" isCurrent={false} onOpen={onOpenBlock} /> : <span className={styles.chainContextGap}>tip</span>}
+          </div>
+        </div>
+      ) : null}
       {response.anchor ? (
         <div className={styles.chainReceiptRows}>
           <Row label="Subject hash" value={<Copyable value={response.anchor.subjectHash} text={shortHash(response.anchor.subjectHash, 16)} copyKey="verify-subject" onCopy={onCopy} copied={copied} />} />
+          <Row label="Summary" value={response.anchor.summary} />
           <Row label="Source" value={`${response.anchor.source}${response.anchor.label ? ` · “${response.anchor.label}”` : ""}`} />
           <Row label="Block" value={blockIndex === null ? "pending" : `#${blockIndex}`} />
           <Row label="Committed" value={formatUtc(response.anchor.createdAt)} />
           <Row label="Certificate" value={<span className={styles.chainMono}>{shortHash(response.anchor.id, 12)}</span>} />
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function ChainBlockChip({ block, label, isCurrent, onOpen }: { block: ChainBlockSummary | null; label: string; isCurrent: boolean; onOpen: (id: string) => void }) {
+  if (!block) return <span className={styles.chainContextGap}>{label}</span>;
+  return (
+    <div className={styles.chainContextBlock} data-block-index={block.index} data-current={isCurrent}>
+      <span className={styles.chainContextBlockLabel}>{label}</span>
+      <span className={styles.chainSpineCube}>{block.index}</span>
+      <span className={styles.chainSpineMeta}>{shortHash(block.hash, 6)}</span>
+      <span className={styles.chainSpineMeta}>{block.anchorCount}×</span>
+      <button type="button" className={styles.chainContextJump} data-jump-block={block.id} onClick={() => onOpen(block.id)} title={`Open block #${block.index} in the ledger`}>
+        <ArrowRight size={11} aria-hidden="true" /> Ledger
+      </button>
+    </div>
+  );
+}
+
+// VerifyProcessGraph renders the proof path as a live step flow: each step
+// lights up in order once the verify response arrives (Core replays the whole
+// chain per request), and clicking a step expands its full computation —
+// inputs, per-level intermediate values, and the recomputed-vs-stored verdict.
+function VerifyProcessGraph({ steps, merkle, context, running, verdict }: { steps: VerifyStep[] | null; merkle: VerifyMerkleProof | null; context: VerifyChainContext | null; running: boolean; verdict: "verified" | "mismatch" | "idle" }) {
+  const [visible, setVisible] = useState(0);
+  const [openStep, setOpenStep] = useState<string | null>(null);
+  useEffect(() => {
+    setVisible(0);
+    if (!steps || steps.length === 0) return;
+    const timer = window.setInterval(() => {
+      setVisible((current) => {
+        if (current >= steps.length) {
+          window.clearInterval(timer);
+          return current;
+        }
+        return current + 1;
+      });
+    }, 240);
+    return () => window.clearInterval(timer);
+  }, [steps]);
+
+  return (
+    <div className={styles.chainGraphPanel} data-verdict={verdict}>
+      <div className={styles.chainGraphHead}>
+        <span className={styles.eyebrow}>⌁ Proof path</span>
+        <span className={styles.chainGraphHint}>{running ? "verifying…" : steps && steps.length > 0 ? `${visible}/${steps.length} steps traced` : "click a step for the full computation"}</span>
+      </div>
+      {!steps || steps.length === 0 ? (
+        <p className={styles.chainGraphEmpty}>Run a verification to trace how Core proves this commitment — certificate lookup → site signature → merkle root → block hash → full-chain replay.</p>
+      ) : (
+        <ol className={styles.chainGraph}>
+          {steps.map((step, index) => {
+            const revealed = index < visible;
+            const open = openStep === step.id;
+            return (
+              <li key={step.id} className={styles.chainGraphStep} data-step-id={step.id} data-state={revealed ? step.status : "pending"} data-lit={revealed && index + 1 < visible}>
+                <button type="button" className={styles.chainGraphNode} tabIndex={0} aria-expanded={open} onClick={() => setOpenStep(open ? null : step.id)}>
+                  <span className={styles.chainGraphBadge}>
+                    {!revealed ? <Clock size={11} aria-hidden="true" /> : step.status === "passed" ? <BadgeCheck size={11} aria-hidden="true" /> : <ChevronDown size={11} aria-hidden="true" />}
+                  </span>
+                  <span className={styles.chainGraphLabel}>{step.label}</span>
+                  <span className={styles.chainGraphState}>{revealed ? step.status : "pending"}</span>
+                  <ChevronDown size={11} aria-hidden="true" className={styles.chainGraphChevron} />
+                </button>
+                {index < steps.length - 1 ? <span className={styles.chainGraphLink} aria-hidden="true" /> : null}
+                {revealed && open ? (
+                  <div className={styles.chainGraphDetail} data-step-detail>
+                    <div className={styles.chainGraphDetailHead}>
+                      <span className={styles.chainGraphDetailMark} data-ok={step.status === "passed"}>
+                        {step.status === "passed" ? <BadgeCheck size={12} aria-hidden="true" /> : <ChevronDown size={12} aria-hidden="true" />}
+                      </span>
+                      <span className={styles.chainGraphDetailTitle}>{step.label}</span>
+                      <span className={styles.chainGraphDetailStatus}>{step.status}</span>
+                    </div>
+                    {step.detail ? (
+                      <p className={styles.chainGraphDetailLead} data-step-detail-lead>{step.detail}</p>
+                    ) : null}
+                    {step.inputs && step.inputs.length > 0 ? (
+                      step.id === "block-hash" ? (
+                        <div className={styles.chainGraphPreimage} data-preimage>
+                          {step.inputs.map((input, inputIndex) => (
+                            <span key={input.name} className={styles.chainGraphPreimageSeg}>
+                              {inputIndex > 0 ? <b className={styles.chainGraphPreimagePipe} aria-hidden="true">|</b> : null}
+                              <code title={input.name}>{input.value}</code>
+                            </span>
+                          ))}
+                          <span className={styles.chainGraphPreimageArrow} data-preimage-arrow aria-hidden="true">→ sha256</span>
+                        </div>
+                      ) : (
+                        <dl className={styles.chainGraphInputs} data-step-inputs>
+                          {step.inputs.map((input) => (
+                            <div key={input.name} className={styles.chainGraphInputRow}>
+                              <dt>{input.name}</dt>
+                              <dd><code>{input.value}</code></dd>
+                            </div>
+                          ))}
+                        </dl>
+                      )
+                    ) : null}
+                    {step.computations && step.computations.length > 0 ? (
+                      <ol className={styles.chainGraphComps} data-step-comps>
+                        {step.computations.map((computation, computationIndex) => (
+                          <li key={computationIndex} className={styles.chainGraphCompRow}>
+                            <span className={styles.chainGraphCompLevel}>L{computationIndex + 1}</span>
+                            <code className={styles.chainGraphCompExpr}>{computation.expression}</code>
+                            <span className={styles.chainGraphCompEq} aria-hidden="true">=</span>
+                            <code className={styles.chainGraphCompVal}>{computation.value}</code>
+                          </li>
+                        ))}
+                      </ol>
+                    ) : null}
+                    {step.id === "block-hash" && context?.current && step.computations && step.computations.length > 0 ? (
+                      <div className={styles.chainGraphCompare} data-compare>
+                        <div className={styles.chainGraphCompareRow}>
+                          <span>recomputed</span>
+                          <code>{step.computations[0].value}</code>
+                        </div>
+                        <div className={styles.chainGraphCompareRow}>
+                          <span>stored</span>
+                          <code>{context.current.hash}</code>
+                        </div>
+                        <div className={styles.chainGraphCompareRow}>
+                          <span>match</span>
+                          <code data-ok={step.computations[0].value === context.current.hash}>
+                            {step.computations[0].value === context.current.hash ? "=== ✓" : "!= ✗"}
+                          </code>
+                        </div>
+                      </div>
+                    ) : null}
+                    {step.id === "merkle" && merkle ? (
+                      <div className={styles.chainGraphMerkle} data-merkle-path>
+                        <div className={styles.chainGraphCompareRow}>
+                          <span>leaf[{merkle.leafIndex}]</span>
+                          <code>{merkle.leaf}</code>
+                        </div>
+                        {merkle.siblings.map((sibling, siblingIndex) => (
+                          <div key={siblingIndex} className={styles.chainGraphCompareRow}>
+                            <span>sibling[{sibling.position}]</span>
+                            <code>{sibling.value}</code>
+                          </div>
+                        ))}
+                        <div className={styles.chainGraphCompareRow}>
+                          <span>root</span>
+                          <code data-ok={merkle.matches}>{merkle.root}</code>
+                        </div>
+                      </div>
+                    ) : null}
+                    {step.output ? (
+                      <div className={styles.chainGraphVerdict} data-step-verdict data-ok={step.status === "passed"}>
+                        {step.output}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+              </li>
+            );
+          })}
+        </ol>
+      )}
     </div>
   );
 }

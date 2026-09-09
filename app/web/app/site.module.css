@@ -843,7 +843,11 @@ html { scroll-behavior: smooth; }
 .chainLinkStrip code { color: var(--color-ink); }
 .chainLinkRule { flex: 1; height: 1px; background: repeating-linear-gradient(90deg, color-mix(in srgb, var(--color-accent) 48%, var(--color-line)) 0 6px, transparent 6px 12px); }
 
-.chainSpine { display: flex; align-items: stretch; padding: 2px 0 4px; overflow-x: auto; scrollbar-width: thin; }
+.chainSpine { display: flex; align-items: stretch; padding: 2px 0 4px; overflow-x: auto; scrollbar-width: thin; scroll-behavior: smooth; }
+.chainSpineNav { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.chainSpineNavBtn { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 30px; height: 30px; border: 1px solid color-mix(in srgb, var(--color-line) 75%, transparent); border-radius: 50%; background: transparent; color: var(--color-muted); cursor: pointer; transition: border-color var(--motion-base, 320ms) var(--motion-ease, ease), color var(--motion-base, 320ms) var(--motion-ease, ease), background var(--motion-base, 320ms) var(--motion-ease, ease); }
+.chainSpineNavBtn:hover, .chainSpineNavBtn:focus-visible { border-color: var(--color-accent); color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 8%, transparent); }
+.chainSpineNav .chainSpine { flex: 1 1 auto; min-width: 0; }
 .chainSpineSlot { display: flex; align-items: center; flex: 0 0 auto; }
 .chainSpineLink { position: relative; width: 26px; height: 1px; background: color-mix(in srgb, var(--color-line) 92%, transparent); }
 .chainSpineLink::after { content: ""; position: absolute; top: -2px; right: 0; width: 5px; height: 5px; border-top: 1px solid color-mix(in srgb, var(--color-accent) 58%, var(--color-line)); border-right: 1px solid color-mix(in srgb, var(--color-accent) 58%, var(--color-line)); transform: rotate(45deg); }
@@ -915,7 +919,109 @@ html { scroll-behavior: smooth; }
 .chainLedgerChevron[data-open="true"] { transform: rotate(180deg); }
 .chainLedgerDetail { display: grid; gap: 10px; padding: 14px 16px 16px; border-bottom: 1px solid color-mix(in srgb, var(--color-line) 60%, transparent); background: color-mix(in srgb, var(--surface-paper) 86%, var(--color-accent-soft)); }
 .chainCertList { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
-.chainCertRow { display: grid; grid-template-columns: 104px minmax(0, 1fr) auto auto; align-items: center; gap: 12px; padding: 8px 11px; border: 1px solid color-mix(in srgb, var(--color-line) 58%, transparent); border-radius: 6px; background: color-mix(in srgb, var(--surface-paper) 94%, transparent); color: var(--color-muted); font: 10px var(--font-mono); }
+.chainCertBody { display: grid; gap: 2px; min-width: 0; }
+.chainCertSummary { overflow: hidden; color: var(--color-ink); font-size: 12px; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
+.chainCertBody code { overflow: hidden; color: var(--color-muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.chainCertLink { display: inline-grid; place-items: center; width: 26px; height: 26px; border: 1px solid color-mix(in srgb, var(--color-line) 70%, transparent); border-radius: 999px; color: var(--color-ink); transition: border-color var(--motion-base) var(--motion-ease), color var(--motion-base) var(--motion-ease), background var(--motion-base) var(--motion-ease); }
+.chainCertLink:hover { border-color: var(--color-accent); color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 8%, transparent); }
+.chainCertLink:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+.chainCertLinkPlaceholder { width: 26px; }
+
+.chainSpineJump { display: inline-flex; align-items: center; gap: 6px; grid-column: 1 / -1; justify-self: start; padding: 7px 12px; border: 1px solid color-mix(in srgb, var(--color-line) 70%, transparent); border-radius: 999px; background: transparent; color: var(--color-ink); font: inherit; font-size: 12px; letter-spacing: .02em; cursor: pointer; transition: border-color var(--motion-base) var(--motion-ease), color var(--motion-base) var(--motion-ease), background var(--motion-base) var(--motion-ease); }
+.chainSpineJump:hover { border-color: var(--color-accent); color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 8%, transparent); }
+.chainSpineJump:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+
+/* Prove a commitment — left input/receipt, right live proof path */
+.chainVerifyGrid { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr); gap: 18px; align-items: start; }
+.chainVerifyLeft { display: grid; gap: 12px; min-width: 0; }
+.chainVerifyRight { display: grid; gap: 12px; min-width: 0; position: sticky; top: 24px; }
+@media (max-width: 900px) {
+  .chainVerifyGrid { grid-template-columns: 1fr; }
+  .chainVerifyRight { position: static; }
+}
+
+/* Verified-on-chain position: prev → current → next blocks */
+.chainContext { display: grid; gap: 9px; padding-top: 12px; border-top: 1px dashed color-mix(in srgb, var(--color-line) 78%, transparent); }
+.chainContextTitle { display: inline-flex; align-items: center; gap: 6px; color: var(--color-muted); font: 10px var(--font-mono); letter-spacing: .08em; text-transform: uppercase; }
+.chainContextChain { display: flex; align-items: stretch; flex-wrap: wrap; gap: 8px; }
+.chainContextArrow { align-self: center; color: var(--color-muted); font: 12px var(--font-mono); }
+.chainContextBlock { display: grid; justify-items: center; gap: 6px; min-width: 92px; flex: 0 0 auto; padding: 10px 10px 8px; border: 1px solid transparent; border-radius: 10px; transition: background var(--motion-base, 320ms) var(--motion-ease, ease), transform var(--motion-base, 320ms) var(--motion-ease, ease); }
+.chainContextBlock:hover { background: color-mix(in srgb, var(--color-accent-soft) 40%, transparent); transform: translateY(-2px); }
+.chainContextBlock[data-current="true"] .chainSpineCube { border-color: var(--color-accent); color: var(--color-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 14%, transparent); }
+.chainContextBlockLabel { color: var(--color-muted); font: 9px var(--font-mono); letter-spacing: .1em; text-transform: uppercase; }
+.chainContextJump { display: inline-flex; align-items: center; gap: 5px; margin-top: 2px; padding: 4px 10px; border: 1px solid color-mix(in srgb, var(--color-line) 70%, transparent); border-radius: 999px; background: transparent; color: var(--color-ink); font: 9px var(--font-mono); letter-spacing: .06em; text-transform: uppercase; cursor: pointer; transition: border-color var(--motion-base) var(--motion-ease), color var(--motion-base) var(--motion-ease), background var(--motion-base) var(--motion-ease); }
+.chainContextJump:hover, .chainContextJump:focus-visible { border-color: var(--color-accent); color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 8%, transparent); }
+.chainContextGap { align-self: center; color: var(--color-muted); font: 10px var(--font-mono); letter-spacing: .08em; text-transform: uppercase; }
+
+/* Proof path graph */
+.chainGraphPanel { display: grid; gap: 11px; padding: 15px 16px; border: 1px solid var(--color-line); border-radius: 8px; background: color-mix(in srgb, var(--surface-paper) 90%, var(--color-accent-soft)); }
+.chainGraphPanel[data-verdict="verified"] { border-color: color-mix(in srgb, var(--color-accent) 50%, var(--color-line)); }
+.chainGraphPanel[data-verdict="mismatch"] { border-color: color-mix(in srgb, var(--color-error) 48%, var(--color-line)); }
+.chainGraphHead { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.chainGraphHint { color: var(--color-muted); font: 10px var(--font-mono); }
+.chainGraphEmpty { margin: 0; color: var(--color-muted); font-size: 12px; line-height: 1.65; }
+.chainGraph { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
+.chainGraphStep { position: relative; display: grid; justify-items: start; }
+.chainGraphNode { display: flex; align-items: center; gap: 9px; width: 100%; padding: 8px 10px; border: 1px solid color-mix(in srgb, var(--color-line) 70%, transparent); border-radius: 7px; background: color-mix(in srgb, var(--surface-paper) 92%, transparent); cursor: pointer; text-align: left; font: inherit; color: inherit; }
+.chainGraphNode:hover, .chainGraphNode:focus-visible { border-color: color-mix(in srgb, var(--color-accent) 55%, var(--color-line)); outline: none; }
+.chainGraphStep[data-state="pending"] .chainGraphNode { opacity: .55; }
+.chainGraphStep[data-state="failed"] .chainGraphNode { border-color: color-mix(in srgb, var(--color-error) 48%, var(--color-line)); }
+.chainGraphChevron { margin-left: 2px; color: var(--color-muted); transition: transform var(--motion-base, 320ms) var(--motion-ease, ease); }
+.chainGraphNode[aria-expanded="true"] .chainGraphChevron { transform: rotate(180deg); }
+.chainGraphBadge { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; border: 1px solid color-mix(in srgb, var(--color-line) 75%, transparent); color: var(--color-muted); flex: none; }
+.chainGraphStep[data-state="passed"] .chainGraphBadge { border-color: color-mix(in srgb, var(--color-success) 55%, var(--color-line)); color: var(--color-success); }
+.chainGraphStep[data-state="failed"] .chainGraphBadge { border-color: color-mix(in srgb, var(--color-error) 55%, var(--color-line)); color: var(--color-error); }
+.chainGraphLabel { color: var(--color-ink); font: 11px var(--font-mono); letter-spacing: .04em; }
+.chainGraphState { margin-left: auto; color: var(--color-muted); font: 9px var(--font-mono); letter-spacing: .1em; text-transform: uppercase; }
+.chainGraphStep[data-state="passed"] .chainGraphState { color: var(--color-success); }
+.chainGraphStep[data-state="failed"] .chainGraphState { color: var(--color-error); }
+.chainGraphLink { width: 1px; height: 14px; margin-left: 17px; background: color-mix(in srgb, var(--color-line) 80%, transparent); }
+.chainGraphStep[data-lit="true"] .chainGraphLink { background: color-mix(in srgb, var(--color-success) 60%, var(--color-line)); }
+
+/* Expanded per-step computation detail (click a node to open) — the hover
+   summary leads, then the full values: preimage segments, name/value rows,
+   per-level computations, recomputed-vs-stored and merkle audit paths. */
+.chainGraphDetail { display: grid; gap: 8px; width: calc(100% - 20px); margin: 4px 0 6px 20px; padding: 11px 12px; border-left: 2px solid color-mix(in srgb, var(--color-accent) 45%, var(--color-line)); border-radius: 0 8px 8px 0; background: color-mix(in srgb, var(--surface-paper) 94%, transparent); }
+.chainGraphDetailHead { display: flex; align-items: center; gap: 8px; }
+.chainGraphDetailMark { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; border: 1px solid color-mix(in srgb, var(--color-success) 55%, var(--color-line)); color: var(--color-success); flex: none; }
+.chainGraphDetailMark[data-ok="false"] { border-color: color-mix(in srgb, var(--color-error) 55%, var(--color-line)); color: var(--color-error); }
+.chainGraphDetailTitle { color: var(--color-ink); font: 11px var(--font-mono); letter-spacing: .04em; }
+.chainGraphDetailStatus { margin-left: auto; color: var(--color-muted); font: 9px var(--font-mono); letter-spacing: .1em; text-transform: uppercase; }
+.chainGraphDetailLead { margin: 0; color: var(--color-accent); font: 10px var(--font-mono); letter-spacing: .03em; line-height: 1.55; }
+.chainGraphInputs { display: grid; gap: 4px; margin: 0; }
+.chainGraphInputRow { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 8px; align-items: baseline; }
+.chainGraphInputRow dt { color: var(--color-muted); font: 9px var(--font-mono); letter-spacing: .06em; }
+.chainGraphInputRow dd { margin: 0; min-width: 0; }
+.chainGraphInputRow code { display: block; color: var(--color-ink); font: 9.5px var(--font-mono); line-height: 1.6; word-break: break-all; }
+.chainGraphPreimage { display: flex; align-items: center; flex-wrap: wrap; gap: 0 4px; padding: 7px 9px; border: 1px solid color-mix(in srgb, var(--color-line) 76%, transparent); border-radius: 7px; background: color-mix(in srgb, var(--surface-paper) 90%, transparent); font: 9px var(--font-mono); }
+.chainGraphPreimageSeg { display: inline-flex; align-items: center; gap: 4px; min-width: 0; }
+.chainGraphPreimageSeg code { color: var(--color-ink); line-height: 1.5; word-break: break-all; }
+.chainGraphPreimagePipe { color: var(--color-muted); font-weight: 400; }
+.chainGraphPreimageArrow { margin-left: auto; color: var(--color-accent); font: 9px var(--font-mono); letter-spacing: .05em; white-space: nowrap; }
+.chainGraphComps { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; border-top: 1px dashed color-mix(in srgb, var(--color-line) 78%, transparent); padding-top: 7px; }
+.chainGraphCompRow { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto auto; gap: 6px; align-items: baseline; }
+.chainGraphCompLevel { color: var(--color-muted); font: 8.5px var(--font-mono); letter-spacing: .08em; }
+.chainGraphCompExpr { color: var(--color-muted); font: 9px var(--font-mono); line-height: 1.6; word-break: break-all; }
+.chainGraphCompEq { color: var(--color-muted); font: 10px var(--font-mono); }
+.chainGraphCompVal { color: var(--color-accent); font: 9px var(--font-mono); line-height: 1.6; word-break: break-all; }
+.chainGraphCompare, .chainGraphMerkle { display: grid; gap: 4px; padding-top: 7px; border-top: 1px dashed color-mix(in srgb, var(--color-line) 78%, transparent); }
+.chainGraphCompareRow { display: grid; grid-template-columns: 86px minmax(0, 1fr); gap: 8px; align-items: baseline; }
+.chainGraphCompareRow > span { color: var(--color-muted); font: 9px var(--font-mono); letter-spacing: .06em; }
+.chainGraphCompareRow code { color: var(--color-ink); font: 9px var(--font-mono); line-height: 1.6; word-break: break-all; }
+.chainGraphCompareRow code[data-ok="true"] { color: var(--color-success); }
+.chainGraphCompareRow code[data-ok="false"] { color: var(--color-error); }
+.chainGraphVerdict { display: inline-flex; align-items: center; gap: 6px; justify-self: start; padding: 3px 10px; border-radius: 999px; border: 1px solid color-mix(in srgb, var(--color-success) 50%, var(--color-line)); color: var(--color-success); font: 9.5px var(--font-mono); letter-spacing: .05em; }
+.chainGraphVerdict[data-ok="false"] { border-color: color-mix(in srgb, var(--color-error) 50%, var(--color-line)); color: var(--color-error); }
+
+.chainCommits { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 10px; margin-top: 12px; }
+.chainCommitCard { display: grid; gap: 8px; padding: 12px 13px; border: 1px dashed color-mix(in srgb, var(--color-accent) 45%, transparent); border-radius: 10px; background: color-mix(in srgb, var(--surface-paper) 94%, transparent); }
+.chainCommitCard[data-status="anchored"] { border-style: solid; border-color: color-mix(in srgb, var(--color-success) 55%, transparent); }
+.chainCommitHead { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.chainCommitAt { color: var(--color-muted); font-size: 11px; letter-spacing: .03em; }
+.chainCommitLabel { color: var(--color-ink); font-size: 12px; font-weight: 600; letter-spacing: .02em; }
+.chainCommitPayload { margin: 0; padding: 8px 10px; border-radius: 6px; background: color-mix(in srgb, var(--color-line) 22%, transparent); color: var(--color-ink); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.chainCommitRows { display: grid; gap: 5px; }
+.chainCertRow { display: grid; grid-template-columns: 104px minmax(0, 1fr) auto auto auto; align-items: center; gap: 12px; padding: 8px 11px; border: 1px solid color-mix(in srgb, var(--color-line) 58%, transparent); border-radius: 6px; background: color-mix(in srgb, var(--surface-paper) 94%, transparent); color: var(--color-muted); font: 10px var(--font-mono); }
 .chainCertRow code { overflow: hidden; color: var(--color-ink); text-overflow: ellipsis; white-space: nowrap; }
 .chainSourceChip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px; border: 1px solid color-mix(in srgb, var(--color-line) 70%, transparent); border-radius: 999px; color: var(--color-ink); letter-spacing: .04em; text-transform: uppercase; }
 .chainSourceDot { width: 6px; height: 6px; border-radius: 50%; }

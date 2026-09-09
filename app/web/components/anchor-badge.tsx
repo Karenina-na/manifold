@@ -13,8 +13,12 @@ export function AnchorBadge({ latestAnchor }: AnchorBadgeProps) {
   if (!latestAnchor) return null;
   const anchored = latestAnchor.status === "anchored";
   const blockLabel = anchored && latestAnchor.blockId ? latestAnchor.blockId.replace("block_", "block #") : "sealing…";
+  // Sealed anchors deep-link to their block in the chain explorer's Sealed
+  // sequence (?block=), so a click lands on the exact certificate that this
+  // content is committed to; unsealed ones just open the explorer.
+  const href = anchored && latestAnchor.blockId ? `/chain?block=${latestAnchor.blockId}` : "/chain";
   return (
-    <Link href="/chain" className={styles.anchorBadge} data-anchored={anchored} title={`Fingerprint ${latestAnchor.subjectHash}`}>
+    <Link href={href} className={styles.anchorBadge} data-anchored={anchored} title={`Fingerprint ${latestAnchor.subjectHash}`}>
       <ShieldCheck size={13} aria-hidden="true" />
       <span className={styles.anchorBadgeHash}>{latestAnchor.subjectHash.slice(0, 12)}</span>
       <span className={styles.anchorBadgeState}>{blockLabel}</span>

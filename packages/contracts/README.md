@@ -76,10 +76,10 @@ app/core JSON <--> packages/contracts <--> packages/sdk <--> Web / Admin
 ### 锚定链（`docs/chain.md`）
 
 - `ChainProofMode`：`"sim" | "proof"` 挖矿模式；`AnchorStatus`：`"pending" | "anchored"`；`AnchorSource` 九值来源枚举（`content`/`comment`/`reaction`/`profile`/`site`/`media`/`auth`/`visitor`/`admin`）。
-- `ChainAnchor`：锚定证书。证书只承诺 payload 的 SHA-256（`subjectHash`），不携带原文；`metadata` 为 source 特定事实字段（`AnchorMetadata`）；`status`/`blockId` 由 `block_id` 派生（pending 时 `blockId: null`）。
+- `ChainAnchor`：锚定证书。证书只承诺 payload 的 SHA-256（`subjectHash`），不携带原文；`metadata` 为 source 特定事实字段（`AnchorMetadata`）；`status`/`blockId` 由 `block_id` 派生（pending 时 `blockId: null`）。`summary`（人类可读概述）与 `target`（`AnchorTarget`：`kind`/`href`/`label`，无可跳转目标为 `null`）由 Core 根据 live 行派生——评论/点赞等无法从证书字段还原的跳转也由 Core 解析，客户端不复制该逻辑。
 - `ChainBlockSummary` / `ChainBlockDetail`：区块摘要（列表用，含 `anchorCount` 不含 certIds）与详情（含 `certIds` 和内含 `anchors`）。
 - `ChainInfo`：链概览（height/totalAnchors/pendingAnchors/proofMode/difficulty/genesisHash/tipHash/sitePublicKey）。
-- `VerifyResponse`：验证结果（`found`、`anchor?`、`block?`、`signatureValid`、`chainIntegrity`——全链重放）。
+- `VerifyResponse`：验证结果（`found`、`anchor?`、`block?`、`signatureValid`、`chainIntegrity`——全链重放；`steps` 五步验证过程明细含 `inputs`/`computations`/`output`、`merkle?` 审计路径、`context?` 前/当前/后块摘要）。
 - `SubmitAnchorInput` / `SubmitAnchorResponse`：公开/Admin 提交任意 payload（≤`CORE_CHAIN_ANCHOR_MAX_BYTES`），响应 202 携带 `anchorId`/`subjectHash`/`status: "pending"`。
 - `AnchorQuery`：证书列表过滤参数 `source`/`ref`/`page`/`pageSize`。
 - `AnchorSummary`：`ContentDetail.latestAnchor` 的摘要形态（`anchorId`/`subjectHash`/`status`/`blockId`），无证书时为 `null`。

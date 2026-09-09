@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { createServerClient } from "../../lib/api";
 import { ChainExplorer } from "../../components/chain-explorer";
 import { Reveal } from "../../components/reveal";
@@ -31,10 +32,14 @@ export default async function ChainPage() {
             </div>
           </header>
         </Reveal>
-        <ChainExplorer
-          info={info}
-          initialBlocks={blocks ? { items: blocks.data, page: blocks.pagination.page, totalPages: blocks.pagination.totalPages } : null}
-        />
+        {/* The explorer reads ?page= from the URL (restored on back/forward);
+            useSearchParams needs a Suspense boundary in App Router. */}
+        <Suspense fallback={null}>
+          <ChainExplorer
+            info={info}
+            initialBlocks={blocks ? { items: blocks.data, page: blocks.pagination.page, totalPages: blocks.pagination.totalPages } : null}
+          />
+        </Suspense>
       </div>
     </main>
   );
