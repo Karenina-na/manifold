@@ -9,7 +9,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/manifold-space/manifold/app/core/internal/chain"
+	"github.com/manifold-space/manifold/app/core/internal/application"
 	"github.com/manifold-space/manifold/app/core/internal/model"
 	"github.com/manifold-space/manifold/app/core/internal/store"
 )
@@ -113,7 +113,10 @@ func (h *apiHandler) createCommentOnContent(w http.ResponseWriter, r *http.Reque
 	if input.ReplyToID != nil && strings.TrimSpace(*input.ReplyToID) != "" {
 		replyToID = input.ReplyToID
 	}
-	comment, err := h.store.CreateComment(content.ID, authorName, authorURL, strings.TrimSpace(input.Body), replyToID, avatarSeed, authorProvider, authorAvatarURL)
+	comment, err := h.mutations.CreateComment(mutationRequest(r), content, application.CommentInput{
+		AuthorName: authorName, AuthorURL: authorURL, Body: strings.TrimSpace(input.Body), ReplyToID: replyToID,
+		AvatarSeed: avatarSeed, AuthorProvider: authorProvider, AuthorAvatarURL: authorAvatarURL,
+	})
 	if errors.Is(err, store.ErrCommentReplyInvalid) {
 		WriteError(w, http.StatusUnprocessableEntity, "REPLY_TARGET_INVALID", "The comment you replied to is no longer available.")
 		return
@@ -122,12 +125,6 @@ func (h *apiHandler) createCommentOnContent(w http.ResponseWriter, r *http.Reque
 		WriteError(w, http.StatusInternalServerError, "COMMENT_CREATE_FAILED", "Comment could not be created.")
 		return
 	}
-	h.audit(r, "comment.created", "comment", comment.ID, map[string]string{"contentId": content.ID})
-	if payload, label, subjectRef, metadata, payloadErr := CommentPayload(comment, "created"); payloadErr == nil {
-		h.anchorBusinessChange(r, chain.SourceComment, payload, label, subjectRef, metadata)
-	}
-	h.invalidateContentBySlug(content.Slug)
-	h.contentCache.Remove(content.Slug)
 	WriteJSON(w, http.StatusCreated, comment)
 }
 
@@ -167,27 +164,10 @@ func (h *apiHandler) mutateLike(w http.ResponseWriter, r *http.Request, enabled 
 		WriteError(w, http.StatusBadRequest, "VISITOR_ID_INVALID", "Visitor ID is required and invalid.")
 		return
 	}
-	if enabled {
-		err = h.store.SetLike(content.ID, visitorID)
-	} else {
-		err = h.store.DeleteLike(content.ID, visitorID)
-	}
-	if err != nil {
+	if err := h.mutations.SetLike(mutationRequest(r), content, visitorID, enabled); err != nil {
 		WriteError(w, http.StatusInternalServerError, "LIKE_UPDATE_FAILED", "Like could not be updated.")
 		return
 	}
-	action := "removed"
-	if enabled {
-		action = "added"
-	}
-	h.audit(r, "content.like."+action, "content", content.ID, nil)
-	if payload, label, subjectRef, metadata, payloadErr := ReactionActionPayload(content.ID, visitorID, action); payloadErr == nil {
-		h.anchorBusinessChange(r, chain.SourceReaction, payload, label, subjectRef, metadata)
-	}
-	h.overviewCache.Purge()
-	// The cached detail carries likeCount; drop it so readers never see a
-	// stale count for the TTL window.
-	h.contentCache.Remove(content.Slug)
 	summary, err := h.store.GetLikeSummary(content.ID, visitorID)
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, "LIKES_UNAVAILABLE", "Likes are unavailable.")

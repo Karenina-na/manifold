@@ -49,6 +49,7 @@ app/core/
 ├── cmd/server/main.go              # 配置、seed 解析、数据库、HTTP server、优雅关闭
 ├── internal/config/config.go       # CORE_* 环境变量与 .env 自动加载
 ├── internal/handler/response.go    # 路由、handler、错误、分页和校验
+├── internal/application/           # 写用例及 audit、anchor、cache 编排
 ├── internal/auth/auth.go           # bcrypt、JWT、Casbin
 ├── internal/model/content.go       # Core 领域 JSON model
 ├── internal/store/store.go         # SQLite 初始化、seed 应用和 CRUD
@@ -290,7 +291,7 @@ Metadata：Thought 使用 `mood/question/context/source`；Article 使用 Core �
 - 缓存失效按内容可能被服务的全部 key 进行：内容 ID（Thought 详情 URL）与 slug（Writing 详情 URL 及 Thought 的可选 slug），不再整表清空；内容创建、更新、发布、撤回、删除、点赞变化与评论创建、隐藏/取消隐藏、软删/恢复和作者资料更新都会清理相关缓存。
 - Stats 与 Admin Overview 各使用单条 TTL 快照（共用 `CORE_STATS_CACHE_TTL`）。
 - 审计事件通过有界异步队列写入 `audit_events`；队列满会记录丢弃但不让业务请求失败。
-- `RouterWithLifecycle` 用于生产入口；监听失败会结束进程，正常关闭时先取消并等待矿工 goroutine，再最多等待 5 秒排空已接受的审计事件；`Router` 仅用于同步内部调用/测试。公共 HTTP 契约不受启动生命周期影响。
+- `RouterWithLifecycle` 用于生产入口；监听失败会结束进程，正常关闭时先取消并等待矿工 goroutine，再最多等待 5 秒排空已接受的审计事件；`Router` 仅用于同步内部调用/测试。HTTP handler 只负责协议边界，`internal/application` 负责写用例以及 audit、anchor 和 cache 失效编排，`internal/store` 隐藏 SQLite 查询。公共 HTTP 契约不受启动生命周期影响。
 - 发布包 supervisor 在 Web 子进程异常退出时按退避独立重启 Web，Core 和 Admin 保持运行；Core 异常退出或 Admin 监听失败时才向其余进程发送 SIGTERM。`stop` 等待正常退出，超时后才发送 SIGKILL。包内后台运行不包含开机自启、日志轮转、HTTPS 或反向代理。
 - Core 限流默认按 TCP 对端地址分桶。仅当对端位于 `CORE_TRUSTED_PROXY_CIDRS` 时才读取 `X-Real-IP`；反向代理必须覆盖并清洗该头，不能透传客户端输入。该配置只改变限流身份识别，不改变 HTTP 契约。
 

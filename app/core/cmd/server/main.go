@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/manifold-space/manifold/app/core/internal/application"
 	"github.com/manifold-space/manifold/app/core/internal/chain"
 	"github.com/manifold-space/manifold/app/core/internal/config"
 	"github.com/manifold-space/manifold/app/core/internal/handler"
@@ -109,39 +110,21 @@ func run(ctx context.Context, cfg config.Config) error {
 // certificates from their own write paths. Production skeletons have no
 // content rows, making this a no-op there.
 func seedAnchorsForDevContents(ledger *chain.Ledger, database *store.Store) error {
-	var existing int
-	if err := database.DB.QueryRow(`SELECT COUNT(*) FROM chain_anchors`).Scan(&existing); err != nil {
+	existing, err := ledger.AnchorCount()
+	if err != nil {
 		return err
 	}
 	if existing > 0 {
 		return nil
 	}
-	rows, err := database.DB.Query(`SELECT id FROM content WHERE status = 'PUBLISHED'`)
+	contents, err := database.PublishedContents()
 	if err != nil {
 		return err
 	}
-	var ids []string
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			rows.Close()
-			return err
-		}
-		ids = append(ids, id)
-	}
-	if err := rows.Err(); err != nil {
-		rows.Close()
-		return err
-	}
-	rows.Close()
-	for _, id := range ids {
-		content, err := database.GetContentByID(id, true)
-		if err != nil {
-			return err
-		}
-		// The seed path shares handler.ContentPayload — the certificate
+	for _, content := range contents {
+		// The seed path shares application.ContentPayload — the certificate
 		// format is defined once (docs/chain.md §4.1 seed rule).
-		payload, _, subjectRef, metadata, err := handler.ContentPayload(content)
+		payload, _, subjectRef, metadata, err := application.ContentPayload(content)
 		if err != nil {
 			return err
 		}

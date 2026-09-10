@@ -627,6 +627,12 @@ func (l *Ledger) ChainInfo() (ChainInfoResult, error) {
 	return info, nil
 }
 
+func (l *Ledger) AnchorCount() (int, error) {
+	var count int
+	err := l.db.QueryRow(`SELECT COUNT(*) FROM chain_anchors`).Scan(&count)
+	return count, err
+}
+
 // Wake nudges the miner loop; never blocks, never drops work.
 func (l *Ledger) Wake() {
 	select {

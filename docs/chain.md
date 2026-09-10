@@ -257,7 +257,7 @@ CREATE INDEX IF NOT EXISTS idx_chain_anchors_block ON chain_anchors(block_id);
 - **故障自愈**：矿工 panic → recover → 审计 `chain.miner.crashed` → 5s 后重启循环。SQLite 单连接（`SetMaxOpenConns(1)`）已消除写竞争。
 - **审计事件**：`chain.anchor.submitted`（含 source）、`chain.block.mined`（index、证书数、nonce、模式、耗时 ms）、`chain.anchor.failed`（提交失败、含 source 与原因）、`chain.miner.crashed`。审计事件本身不上链（4.2 例外）。
 - **证书提交失败不阻塞业务**：`Submit()` 报错只记 `chain.anchor.failed`，原业务请求照常成功返回。
-- **实现事实**：矿工 goroutine 由 `handler.RouterWithLifecycle` 启动（main 构造 `chain.NewLedger` 后传入），其 `OnMined` 钩子（仅在本轮真正产出区块时触发——空转 tick 不触发）发布 `chain.block.mined` 审计并对本块 content 源证书按 metadata.slug 失效内容缓存；close 顺序为取消矿工、等待 goroutine 退出、再 drain 审计队列。`main.go` 在启动矿工前调用 `seedAnchorsForDevContents`：链为空（新库或首次启用链）时为全部 PUBLISHED 内容补签 PUBLISHED 证书（payload 经 `handler.ContentPayload` 构造，不复制格式）。PoW（sim 延迟与 proof 碰撞）在**事务外**执行：头部组装先对 tip 快照挖矿，随后短事务复查 tip 未变再落块，tip 已移动则由下一轮 tick 重新评估；context 取消发生在事务提交前时，本轮块不落库——SQLite 单连接下把挖矿放进事务会冻结全部请求。`subject_ref` 是 `Submit()` 的显式参数（调用方按 §4.1 语义传入），不从 metadata 推导。
+- **实现事实**：矿工 goroutine 由 `handler.RouterWithLifecycle` 启动（main 构造 `chain.NewLedger` 后传入），其 `OnMined` 钩子（仅在本轮真正产出区块时触发——空转 tick 不触发）发布 `chain.block.mined` 审计并对本块 content 源证书按 metadata.slug 失效内容缓存；close 顺序为取消矿工、等待 goroutine 退出、再 drain 审计队列。`main.go` 在启动矿工前调用 `seedAnchorsForDevContents`：链为空（新库或首次启用链）时为全部 PUBLISHED 内容补签 PUBLISHED 证书（payload 经 `internal/application` 构造，不复制格式）。业务写入由 `internal/application` 统一编排持久化后的 audit、anchor 和缓存失效，handler 只负责 HTTP 边界。PoW（sim 延迟与 proof 碰撞）在**事务外**执行：头部组装先对 tip 快照挖矿，随后短事务复查 tip 未变再落块，tip 已移动则由下一轮 tick 重新评估；context 取消发生在事务提交前时，本轮块不落库——SQLite 单连接下把挖矿放进事务会冻结全部请求。`subject_ref` 是 `Submit()` 的显式参数（调用方按 §4.1 语义传入），不从 metadata 推导。
 
 ## 10. 验证语义
 

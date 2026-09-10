@@ -18,6 +18,7 @@ import (
 	"github.com/go-chi/cors"
 	"github.com/go-playground/validator/v10"
 
+	"github.com/manifold-space/manifold/app/core/internal/application"
 	"github.com/manifold-space/manifold/app/core/internal/auth"
 	"github.com/manifold-space/manifold/app/core/internal/cache"
 	"github.com/manifold-space/manifold/app/core/internal/chain"
@@ -55,6 +56,7 @@ type apiHandler struct {
 	overviewCache *cache.OverviewCache
 	auditEvents   events.AuditPublisher
 	ledger        *chain.Ledger
+	mutations     *application.Service
 	githubClient  *http.Client
 }
 
@@ -124,6 +126,7 @@ func newRouterWithMiner(cfg config.Config, database *store.Store, ledger *chain.
 		panic(err)
 	}
 	h := &apiHandler{cfg: cfg, store: database, auth: authService, validate: validator.New(), contentCache: cache.NewContentCache(cfg.ContentCacheTTL), statsCache: cache.NewStatsCache(cfg.StatsCacheTTL), overviewCache: cache.NewOverviewCache(cfg.StatsCacheTTL), auditEvents: auditEvents, ledger: ledger, githubClient: &http.Client{Timeout: 12 * time.Second}}
+	h.mutations = application.NewService(database, ledger, auditEvents, h.contentCache, h.statsCache, h.overviewCache)
 	var miner *minerLifecycle
 	if ledger != nil {
 		miner = startMiner(func(minerCtx context.Context) {
@@ -303,6 +306,14 @@ func (h *apiHandler) audit(r *http.Request, eventName, resourceType, resourceID 
 	if !h.auditEvents.Publish(events.AuditEvent{EventName: eventName, ResourceType: resourceType, ResourceID: resourceID, Actor: actor, RequestID: requestID, TraceID: traceID, Metadata: metadata}) {
 		slog.Warn("audit_event_dropped", "eventName", eventName, "resourceType", resourceType, "resourceId", resourceID)
 	}
+}
+
+func mutationRequest(r *http.Request) application.Request {
+	actor := "anonymous"
+	if claims := auth.ClaimsFromContext(r.Context()); claims != nil && claims.Subject != "" {
+		actor = claims.Subject
+	}
+	return application.Request{Actor: actor, RequestID: headerPtr(r.Header.Get("X-Request-ID")), TraceID: headerPtr(r.Header.Get("X-Trace-ID"))}
 }
 
 func headerPtr(value string) *string {

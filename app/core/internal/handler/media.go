@@ -12,7 +12,6 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/manifold-space/manifold/app/core/internal/chain"
 	"github.com/manifold-space/manifold/app/core/internal/model"
 	"github.com/manifold-space/manifold/app/core/internal/store"
 )
@@ -72,19 +71,12 @@ func (h *apiHandler) adminUploadMedia(w http.ResponseWriter, r *http.Request) {
 	}
 	digest := sha256.Sum256(data)
 	shaHex := hex.EncodeToString(digest[:])
-	media, created, err := h.store.InsertMedia(mime, filename, shaHex, data)
+	media, _, err := h.mutations.InsertMedia(mutationRequest(r), mime, filename, shaHex, data)
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, "MEDIA_UNAVAILABLE", "Media could not be stored.")
 		return
 	}
 	media.URL = h.mediaURL(r, media.ID)
-	if created {
-		h.audit(r, "media.uploaded", "media", media.ID, map[string]string{"mime": media.Mime, "size": strconv.FormatInt(media.Size, 10), "sha256": shaHex})
-		// sha256 dedup hits reuse an existing row: no new write, no certificate.
-		if payload, label, subjectRef, metadata, anchorErr := MediaUploadPayload(media.ID, media.Mime, media.Size, shaHex, media.Filename); anchorErr == nil {
-			h.anchorBusinessChange(r, chain.SourceMedia, payload, label, subjectRef, metadata)
-		}
-	}
 	WriteJSON(w, http.StatusCreated, media)
 }
 
@@ -126,17 +118,13 @@ func (h *apiHandler) adminDeleteMedia(w http.ResponseWriter, r *http.Request) {
 		WriteJSON(w, http.StatusConflict, map[string]any{"error": map[string]any{"code": "MEDIA_IN_USE", "message": "This media is referenced by published or draft content and cannot be deleted.", "details": map[string]any{"references": refs}}})
 		return
 	}
-	if err := h.store.DeleteMedia(id); err != nil {
+	if err := h.mutations.DeleteMedia(mutationRequest(r), id); err != nil {
 		if errors.Is(err, store.ErrMediaNotFound) {
 			WriteError(w, http.StatusNotFound, "MEDIA_NOT_FOUND", "Media was not found.")
 			return
 		}
 		WriteError(w, http.StatusInternalServerError, "MEDIA_DELETE_FAILED", "Media could not be deleted.")
 		return
-	}
-	h.audit(r, "media.deleted", "media", id, nil)
-	if payload, label, subjectRef, metadata, anchorErr := MediaDeletePayload(id); anchorErr == nil {
-		h.anchorBusinessChange(r, chain.SourceMedia, payload, label, subjectRef, metadata)
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

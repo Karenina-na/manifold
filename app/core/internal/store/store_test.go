@@ -112,13 +112,13 @@ func TestSetContentStatusRejectsMissingAndDeletedRows(t *testing.T) {
 
 	// Soft-deleted rows cannot be revived through status transitions, but
 	// the dedicated restore endpoint returns them to DRAFT.
-	if err := database.DeleteContent(created.ID); err != nil {
+	if _, err := database.DeleteContent(created.ID); err != nil {
 		t.Fatal(err)
 	}
 	if err := database.SetContentStatus(created.ID, model.StatusPublished); err != ErrContentNotFound {
 		t.Fatalf("expected not found for deleted id, got %v", err)
 	}
-	if err := database.DeleteContent(created.ID); err != ErrContentNotFound {
+	if _, err := database.DeleteContent(created.ID); err != ErrContentNotFound {
 		t.Fatalf("expected double delete to be not found, got %v", err)
 	}
 	restored, err := database.RestoreContent(created.ID)
@@ -221,7 +221,7 @@ func TestOverviewIgnoresDeletedContentTotals(t *testing.T) {
 	if _, err := database.CreateComment(created.ID, "Reader", nil, "A note", nil, "", "visitor", ""); err != nil {
 		t.Fatal(err)
 	}
-	if err := database.DeleteContent(created.ID); err != nil {
+	if _, err := database.DeleteContent(created.ID); err != nil {
 		t.Fatal(err)
 	}
 

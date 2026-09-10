@@ -254,6 +254,18 @@ func (s *Store) GetContentByID(id string, includeDrafts bool) (model.Content, er
 	return content, err
 }
 
+func (s *Store) getContentByID(id string, includeDeleted bool) (model.Content, error) {
+	query := `SELECT ` + contentColumns + ` FROM content WHERE id = ?`
+	if !includeDeleted {
+		query += ` AND status != 'DELETED'`
+	}
+	content, err := scanContent(s.DB.QueryRow(query, id))
+	if errors.Is(err, sql.ErrNoRows) {
+		return model.Content{}, ErrContentNotFound
+	}
+	return content, err
+}
+
 // PinnedContent resolves the configured pins for a kind in display order
 // (position, then pin time). Pins are explicit: an empty pin set returns nil.
 func (s *Store) PinnedContent(kind model.ContentKind) ([]model.Content, error) {
@@ -407,11 +419,11 @@ func (s *Store) SetContentStatus(id string, status model.ContentStatus) error {
 
 // DeleteContent soft-deletes; RestoreContent returns the row to DRAFT. Both
 // keep the like/comment counters consistent (restore re-counts).
-func (s *Store) DeleteContent(id string) error {
+func (s *Store) DeleteContent(id string) (model.Content, error) {
 	if err := s.SetContentStatus(id, model.StatusDeleted); err != nil {
-		return err
+		return model.Content{}, err
 	}
-	return nil
+	return s.getContentByID(id, true)
 }
 
 func (s *Store) RestoreContent(id string) (model.Content, error) {

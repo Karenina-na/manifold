@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/manifold-space/manifold/app/core/internal/application"
 	"github.com/manifold-space/manifold/app/core/internal/chain"
 	"github.com/manifold-space/manifold/app/core/internal/model"
 	"github.com/manifold-space/manifold/app/core/internal/store"
@@ -81,31 +82,19 @@ func (h *apiHandler) enrichAnchorViews(views []anchorView) []anchorView {
 	}
 	commentContent := map[string]string{}
 	if len(commentIDs) > 0 {
-		rows, err := h.store.DB.Query(`SELECT id, content_id FROM comments WHERE id IN (`+placeholders(len(commentIDs))+`)`, toAny(commentIDs)...)
-		if err == nil {
-			for rows.Next() {
-				var id, contentID string
-				if rows.Scan(&id, &contentID) == nil {
-					commentContent[id] = contentID
-					if contentID != "" {
-						contentIDs = append(contentIDs, contentID)
-					}
-				}
+		if resolved, err := h.store.CommentContentIDs(commentIDs); err == nil {
+			commentContent = resolved
+			for _, contentID := range resolved {
+				contentIDs = append(contentIDs, contentID)
 			}
-			rows.Close()
 		}
 	}
 	contentInfo := map[string]struct{ Slug, Kind string }{}
 	if len(contentIDs) > 0 {
-		rows, err := h.store.DB.Query(`SELECT id, slug, kind FROM content WHERE id IN (`+placeholders(len(contentIDs))+`)`, toAny(contentIDs)...)
-		if err == nil {
-			for rows.Next() {
-				var id, slug, kind string
-				if rows.Scan(&id, &slug, &kind) == nil {
-					contentInfo[id] = struct{ Slug, Kind string }{Slug: slug, Kind: kind}
-				}
+		if resolved, err := h.store.ChainContentTargets(contentIDs); err == nil {
+			for id, target := range resolved {
+				contentInfo[id] = struct{ Slug, Kind string }{Slug: target.Slug, Kind: string(target.Kind)}
 			}
-			rows.Close()
 		}
 	}
 	for index := range views {
@@ -291,25 +280,6 @@ func metadataString(metadata map[string]any, key string) (string, bool) {
 	default:
 		return "", false
 	}
-}
-
-func placeholders(count int) string {
-	if count <= 0 {
-		return ""
-	}
-	parts := make([]string, count)
-	for index := range parts {
-		parts[index] = "?"
-	}
-	return strings.Join(parts, ", ")
-}
-
-func toAny(values []string) []any {
-	out := make([]any, len(values))
-	for index, value := range values {
-		out[index] = value
-	}
-	return out
 }
 
 // enrichView is the single-anchor variant of enrichAnchorViews.
@@ -842,7 +812,7 @@ func (h *apiHandler) verifyAnchorContent(w http.ResponseWriter, r *http.Request)
 		WriteError(w, http.StatusInternalServerError, "CONTENT_UNAVAILABLE", "Content is unavailable.")
 		return
 	}
-	payload, _, _, _, err := ContentPayload(content)
+	payload, _, _, _, err := application.ContentPayload(content)
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, "CHAIN_UNAVAILABLE", "Payload could not be rebuilt.")
 		return
@@ -879,7 +849,7 @@ func (h *apiHandler) verifyAnchorComment(w http.ResponseWriter, r *http.Request)
 		WriteError(w, http.StatusNotFound, "COMMENT_NOT_FOUND", "Comment was not found.")
 		return
 	}
-	payloadHashes, err := commentPayloadHashes(comment.Comment)
+	payloadHashes, err := application.CommentPayloadHashes(comment.Comment)
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, "CHAIN_UNAVAILABLE", "Payload could not be rebuilt.")
 		return

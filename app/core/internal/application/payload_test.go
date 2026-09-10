@@ -1,4 +1,4 @@
-package handler
+package application
 
 import (
 	"encoding/json"
@@ -10,17 +10,12 @@ import (
 
 func TestCommentPayloadIncludesProviderAvatarSnapshot(t *testing.T) {
 	payload, _, _, _, err := CommentPayload(model.Comment{
-		ContentID:       "content_1",
-		AuthorName:      "Ada",
-		AuthorProvider:  "github",
-		AuthorAvatarURL: "https://avatars.example/ada.png",
-		Body:            "Hello",
-		AvatarSeed:      "ada",
+		ContentID: "content_1", AuthorName: "Ada", AuthorProvider: "github",
+		AuthorAvatarURL: "https://avatars.example/ada.png", Body: "Hello", AvatarSeed: "ada",
 	}, "created")
 	if err != nil {
 		t.Fatal(err)
 	}
-
 	var decoded map[string]any
 	if err := json.Unmarshal(payload, &decoded); err != nil {
 		t.Fatal(err)
@@ -32,18 +27,14 @@ func TestCommentPayloadIncludesProviderAvatarSnapshot(t *testing.T) {
 
 func TestCommentPayloadHashesKeepLegacyCertificatesVerifiable(t *testing.T) {
 	comment := model.Comment{
-		ContentID:       "content_1",
-		AuthorName:      "Ada",
-		AuthorProvider:  "github",
-		AuthorAvatarURL: "https://avatars.example/ada.png",
-		Body:            "Hello",
-		AvatarSeed:      "ada",
+		ContentID: "content_1", AuthorName: "Ada", AuthorProvider: "github",
+		AuthorAvatarURL: "https://avatars.example/ada.png", Body: "Hello", AvatarSeed: "ada",
 	}
-	hashes, err := commentPayloadHashes(comment)
+	hashes, err := CommentPayloadHashes(comment)
 	if err != nil {
 		t.Fatal(err)
 	}
-	legacy, err := legacyCommentPayload(comment)
+	legacy, err := commentPayload(comment, false)
 	if err != nil {
 		t.Fatal(err)
 	}
