@@ -6,7 +6,7 @@
 import "./render.css";
 import { remarkFootnotes } from "./footnotes";
 import type { MdNode } from "./mdast";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { AlertTriangle, BadgeInfo, Check, Copy, ImageOff, Info, Lightbulb, Link as LinkIcon, ShieldAlert } from "lucide-react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
@@ -64,8 +64,24 @@ const extractText = (node: React.ReactNode): string => {
 };
 
 function ImageWithFallback({ node: _node, ...props }: React.ComponentProps<"img"> & { node?: unknown }) {
+  const imgRef = useRef<HTMLImageElement | null>(null);
   const [failed, setFailed] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const { src } = props;
+
+  // Reloading while the image is already on screen (or hitting the cache) lets
+  // the request finish before React attaches onLoad, so the event is missed and
+  // the blur class sticks forever. Seed the state from the DOM after every
+  // commit that may have swapped the source, and keep the events for the
+  // normal in-viewport / lazy-load path.
+  useLayoutEffect(() => {
+    if (!src) return;
+    const image = imgRef.current;
+    if (!image?.complete) return;
+    setLoaded(image.naturalWidth > 0);
+    setFailed(image.naturalWidth === 0);
+  }, [src]);
+
   if (failed) {
     return (
       <span className="mdrImgFallback" role="img" aria-label={props.alt || "Image failed to load"}>
@@ -75,7 +91,7 @@ function ImageWithFallback({ node: _node, ...props }: React.ComponentProps<"img"
     );
   }
   const className = `${props.className ?? ""} ${loaded ? "mdrImgLoaded" : "mdrImgLoading"}`.trim();
-  return <img {...props} loading="lazy" decoding="async" className={className} onLoad={() => setLoaded(true)} onError={() => setFailed(true)} />;
+  return <img {...props} ref={imgRef} loading="lazy" decoding="async" className={className} onLoad={() => setLoaded(true)} onError={() => setFailed(true)} />;
 }
 
 function TableWrap({ children }: { children: React.ReactNode }) {
