@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowRight, BadgeCheck, Boxes, Check, ChevronDown, ChevronLeft, ChevronRight, Clock, Copy, Cpu, Fingerprint, Hash, KeyRound, Layers, Link2, ScanLine, ShieldCheck } from "lucide-react";
-import type { AnchorSource, ChainAnchor, ChainBlockDetail, ChainBlockSummary, ChainInfo, SubmitAnchorResponse, VerifyChainContext, VerifyMerkleProof, VerifyResponse, VerifyStep } from "@manifold/contracts";
+import type { AnchorSource, ChainAnchor, ChainBlockDetail, ChainBlockSummary, ChainInfo, VerifyChainContext, VerifyMerkleProof, VerifyResponse, VerifyStep } from "@manifold/contracts";
 import { createBrowserClient } from "../lib/api";
 import { Pagination } from "./pagination";
 import { Reveal } from "./reveal";
@@ -58,7 +58,10 @@ export function ChainExplorer({ info, initialBlocks }: { info: ChainInfo | null;
   const router = useRouter();
   const urlPage = Math.min(Math.max(1, Number(searchParams.get("page")) || 1), initialBlocks?.totalPages ?? 1);
   const [blocks, setBlocks] = useState<BlocksPage | null>(initialBlocks);
-  const [page, setPage] = useState(urlPage);
+  // The block page lives in the URL (?page=N) and is derived from it each
+  // render, so back/forward navigation restores the exact page without a
+  // state-sync effect.
+  const page = urlPage;
   // The whole sealed chain (pageSize 100 clamps at Core), loaded once so the
   // spine can scroll the entire sequence instead of depending on the ledger
   // pagination below. Refreshed after a fresh commit lands a new block.
@@ -82,12 +85,6 @@ export function ChainExplorer({ info, initialBlocks }: { info: ChainInfo | null;
   const client = useMemo(() => createBrowserClient(), []);
   const totalPages = blocks?.totalPages ?? 1;
 
-  // Keep the page in sync when the URL changes through back/forward navigation.
-  useEffect(() => {
-    const next = Math.min(Math.max(1, Number(searchParams.get("page")) || 1), totalPages);
-    setPage((current) => (current === next ? current : next));
-  }, [searchParams, totalPages]);
-
   const persistPending = (list: PendingCommit[]) => {
     try {
       localStorage.setItem(PENDING_COMMITS_KEY, JSON.stringify(list));
@@ -108,7 +105,8 @@ export function ChainExplorer({ info, initialBlocks }: { info: ChainInfo | null;
     } catch {
       saved = [];
     }
-    if (!cancelled) setPendingCommits(saved);
+    let restoreTimer = 0;
+    if (!cancelled) restoreTimer = window.setTimeout(() => { if (!cancelled) setPendingCommits(saved); }, 0);
     void (async () => {
       for (const commit of saved) {
         if (commit.status !== "pending") continue;
@@ -127,25 +125,8 @@ export function ChainExplorer({ info, initialBlocks }: { info: ChainInfo | null;
         await new Promise((resolveDelay) => setTimeout(resolveDelay, 300));
       }
     })();
-    return () => { cancelled = true; };
+    return () => { cancelled = true; window.clearTimeout(restoreTimer); };
   }, [client]);
-
-  // Deep link from a detail page badge: /chain?block=<id>. Select that block in
-  // the Sealed sequence when it is on screen, otherwise expand its ledger row
-  // (older blocks fall outside the spine window).
-  useEffect(() => {
-    const blockId = searchParams.get("block");
-    if (!blockId || !blocks) return;
-    if (spine.some((block) => block.id === blockId)) {
-      setSpineId(blockId);
-      window.setTimeout(() => {
-        document.getElementById("sealed-sequence")?.scrollIntoView({ behavior: "smooth", block: "start" });
-      }, 80);
-    } else {
-      void openInLedger(blockId);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   // Ticks only while a cool-down is pending so the buttons can count down.
   useEffect(() => {
@@ -192,10 +173,10 @@ export function ChainExplorer({ info, initialBlocks }: { info: ChainInfo | null;
     return () => { cancelled = true; };
   }, [client, spineRefresh]);
 
-  const spine = useMemo(() => {
+  const spine = (() => {
     const source = fullBlocks ?? blocks?.items ?? [];
     return [...source].reverse();
-  }, [fullBlocks, blocks]);
+  })();
   const spineScroller = useRef<HTMLDivElement | null>(null);
   const spineBlock = spine.find((block) => block.id === spineId) ?? spine[spine.length - 1] ?? null;
 
@@ -225,7 +206,6 @@ export function ChainExplorer({ info, initialBlocks }: { info: ChainInfo | null;
   const changePage = (next: number) => {
     const clamped = Math.min(Math.max(1, next), totalPages);
     if (clamped === page) return;
-    setPage(clamped);
     router.replace(clamped === 1 ? "/chain" : `/chain?page=${clamped}`, { scroll: false });
   };
 
@@ -250,7 +230,6 @@ export function ChainExplorer({ info, initialBlocks }: { info: ChainInfo | null;
         try {
           const result = await client.chainBlocks({ page: targetPage, pageSize });
           setBlocks({ items: result.data, page: result.pagination.page, totalPages: result.pagination.totalPages });
-          setPage(targetPage);
           router.replace(targetPage === 1 ? "/chain" : `/chain?page=${targetPage}`, { scroll: false });
         } catch {
           // keep the current list; the detail may still open below
@@ -263,6 +242,27 @@ export function ChainExplorer({ info, initialBlocks }: { info: ChainInfo | null;
       document.getElementById(`ledger-block-${blockId}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
     }, 100);
   };
+
+  // Deep link from a detail page badge: /chain?block=<id>. Select that block in
+  // the Sealed sequence when it is on screen, otherwise expand its ledger row
+  // (older blocks fall outside the spine window). Declared after the helpers it
+  // closes over; the restore is deferred so it never runs during the effect
+  // phase itself.
+  useEffect(() => {
+    const blockId = searchParams.get("block");
+    if (!blockId || !blocks) return;
+    let timer = 0;
+    if (spine.some((block) => block.id === blockId)) {
+      timer = window.setTimeout(() => {
+        setSpineId(blockId);
+        document.getElementById("sealed-sequence")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 0);
+    } else {
+      timer = window.setTimeout(() => { void openInLedger(blockId); }, 0);
+    }
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const runVerify = async () => {
     const input = verifyInput.trim();
@@ -752,8 +752,8 @@ function VerifyProcessGraph({ steps, merkle, context, running, verdict }: { step
   const [visible, setVisible] = useState(0);
   const [openStep, setOpenStep] = useState<string | null>(null);
   useEffect(() => {
-    setVisible(0);
-    if (!steps || steps.length === 0) return;
+    const reset = window.setTimeout(() => setVisible(0), 0);
+    if (!steps || steps.length === 0) return () => window.clearTimeout(reset);
     const timer = window.setInterval(() => {
       setVisible((current) => {
         if (current >= steps.length) {
@@ -763,7 +763,7 @@ function VerifyProcessGraph({ steps, merkle, context, running, verdict }: { step
         return current + 1;
       });
     }, 240);
-    return () => window.clearInterval(timer);
+    return () => { window.clearTimeout(reset); window.clearInterval(timer); };
   }, [steps]);
 
   return (

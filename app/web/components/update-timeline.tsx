@@ -15,11 +15,6 @@ const DAY_MS = 86_400_000;
 // Finest zoom window, in days, anchored to the newest content date.
 const MIN_WINDOW_DAYS = 7;
 
-function monthIndex(key: string) {
-  const [year, month] = key.split("-").map(Number);
-  return year * 12 + month - 1;
-}
-
 function monthStartTs(key: string) {
   const [year, month] = key.split("-").map(Number);
   return Date.UTC(year, month - 1, 1);
