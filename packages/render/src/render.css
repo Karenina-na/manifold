@@ -238,6 +238,8 @@
 .markdown .mdrFootnoteRef > a:hover { background: color-mix(in srgb, var(--mdr-accent) 20%, transparent); }
 .markdown .mdrFootnotePop { position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%) translateY(2px); z-index: 30; width: max-content; max-width: 280px; padding: 9px 12px; border: 1px solid var(--mdr-line); border-radius: 10px; background: var(--mdr-paper); box-shadow: 0 12px 30px rgba(24, 24, 20, .16); font-family: var(--mdr-serif); font-size: 13.5px; line-height: 1.55; color: var(--mdr-ink); opacity: 0; pointer-events: none; transition: opacity 140ms ease, transform 140ms ease; }
 .markdown .mdrFootnoteRef:hover .mdrFootnotePop { opacity: 1; transform: translateX(-50%) translateY(0); }
+/* Footnote anchors land mid-viewport instead of hugging the top edge. */
+.markdown sup.mdrFootnoteRef a[id^="fnref-"], .markdown section[data-footnotes] li[id^="fn-"] { scroll-margin-top: 45vh; }
 /* Footnote section: quiet card at the end. */
 .markdown section[data-footnotes] { margin-top: 64px; padding: 20px 24px; border: 1px dashed var(--mdr-line); border-radius: 14px; background: color-mix(in srgb, var(--mdr-paper) 62%, transparent); }
 .markdown section[data-footnotes] > hr { display: none; }

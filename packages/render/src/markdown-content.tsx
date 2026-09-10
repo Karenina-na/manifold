@@ -116,6 +116,12 @@ function remarkCallouts() {
           const match = /^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*/.exec(value);
           if (match && textNode) {
             textNode.value = value.slice(match[0].length);
+            // "> [!NOTE]" on its own line leaves an empty first paragraph
+            // behind after the tag is stripped; drop it so the callout body
+            // starts immediately below the tag.
+            if (textNode.value.trim() === "") {
+              node.children = (node.children ?? []).filter((child) => child !== first);
+            }
             node.data = {
               ...node.data,
               hProperties: {
