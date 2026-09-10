@@ -22,9 +22,9 @@ test("writing detail keeps the back link outside the title surface", () => {
 });
 
 test("writing detail keeps the title surfaces aligned before the three-column layout fits", () => {
-  assert.ok(renderCssSource.includes(".articleBack, .articleTitleBlock { width: min(860px, calc(100% - 434px)); margin-left: 192px; margin-right: 0;"));
+  assert.ok(renderCssSource.includes(".articleBack, .articleTitleBlock { width: min(912px, calc(100% - 380px)); margin-left: calc(190px + max(0px, calc((100% - 1292px) / 2)));"));
   assert.ok(renderCssSource.includes("@media (max-width: 1300px)"));
-  assert.ok(renderCssSource.includes(".articleBack, .articleTitleBlock { width: min(760px, calc(100% - 172px)); margin-left: calc(172px + max(0px, calc((100% - 932px) / 2)));"));
+  assert.ok(renderCssSource.includes(".articleBack, .articleTitleBlock { width: min(912px, calc(100% - 172px)); margin-left: calc(172px + max(0px, calc((100% - 1084px) / 2)));"));
 });
 
 test("article end state observes discussion layout changes", () => {

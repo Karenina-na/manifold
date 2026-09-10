@@ -32,7 +32,7 @@ export function ArticleToc({ items }: { items: RenderTocItem[] }) {
   return <aside className="articleToc" aria-label="On this page">
     <div className="articleTocHeading"><span>On this page</span><span>{Math.round(progress * 100)}%</span></div>
     <div className="articleTocTrack" aria-hidden="true"><span style={{ height: `${progress * 100}%` }} /></div>
-    <nav>{items.map((item) => <a key={item.id} href={`#${item.id}`} className={`${item.level === 3 ? "tocNested" : ""} ${activeId === item.id ? "articleTocActive" : ""}`} aria-current={activeId === item.id ? "location" : undefined}>{item.label}</a>)}</nav>
+    <nav>{items.map((item) => <a key={item.id} href={`#${item.id}`} title={item.label} className={`${item.level === 3 ? "tocNested" : ""} ${activeId === item.id ? "articleTocActive" : ""}`} aria-current={activeId === item.id ? "location" : undefined}>{item.label}</a>)}</nav>
   </aside>;
 }
 

@@ -11,6 +11,8 @@ html:root {
   --mdr-paper: var(--surface-paper);
   --mdr-serif: var(--app-font-serif);
   --mdr-mono: var(--font-mono);
+  --mdr-code-bg: var(--color-code-bg);
+  --mdr-code-text: var(--color-code-text);
   --mdr-code-line: var(--color-code-line);
   --mdr-code-muted: var(--color-code-muted);
   --mdr-code-keyword: var(--color-code-keyword);
@@ -29,12 +31,14 @@ html:root {
   --color-error: #a64953;
   --color-error-soft: #f7e2d9;
   --color-success: #2f6b4e;
-  --color-code-line: #36453d;
-  --color-code-muted: #b8c5bb;
-  --color-code-keyword: #f0a6a1;
-  --color-code-string: #c4d79b;
-  --color-code-number: #e8c58c;
-  --color-code-title: #9fc9dd;
+  --color-code-bg: #f4f3ee;
+  --color-code-text: #2b2a26;
+  --color-code-line: #d9d6cc;
+  --color-code-muted: #8a8578;
+  --color-code-keyword: #9d3a52;
+  --color-code-string: #35694a;
+  --color-code-number: #94611f;
+  --color-code-title: #2e5f86;
   --app-font-serif: "Noto Serif CJK SC", "Source Han Serif SC", Georgia, serif;
   --app-font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
@@ -52,7 +56,7 @@ body { min-height: 100vh; margin: 0; background: var(--surface-paper); }
 .backgroundCanvas { position: fixed; inset: 0; z-index: 0; width: 100vw; height: 100vh; pointer-events: none; opacity: .58; -webkit-mask-image: linear-gradient(90deg, #000 0%, rgba(0, 0, 0, .55) 16%, rgba(0, 0, 0, .12) 38%, rgba(0, 0, 0, .12) 62%, rgba(0, 0, 0, .55) 84%, #000 100%); mask-image: linear-gradient(90deg, #000 0%, rgba(0, 0, 0, .55) 16%, rgba(0, 0, 0, .12) 38%, rgba(0, 0, 0, .12) 62%, rgba(0, 0, 0, .55) 84%, #000 100%); }
 .siteContent, .siteFooter { position: relative; z-index: 1; }
 .siteContent { min-height: 100vh; }
-[data-theme="dark"] { --surface-paper: #141414; --color-ink: #f0f0f0; --color-muted: #a8a8a8; --color-line: #404040; --color-accent-soft: #242424; --color-error-soft: #3b2225; --color-accent: #e095a4; }
+[data-theme="dark"] { --surface-paper: #141414; --color-ink: #f0f0f0; --color-muted: #a8a8a8; --color-line: #404040; --color-accent-soft: #242424; --color-error-soft: #3b2225; --color-accent: #e095a4; --color-code-bg: #2b2a26; --color-code-text: #f2f1ec; --color-code-line: #36453d; --color-code-muted: #b8c5bb; --color-code-keyword: #f0a6a1; --color-code-string: #c4d79b; --color-code-number: #e8c58c; --color-code-title: #9fc9dd; }
 
 /* Route identity hues — 和色 accents from the shared design contract
    (docs/design-system/src/tokens.css). Neutrals stay on the Pure scale;

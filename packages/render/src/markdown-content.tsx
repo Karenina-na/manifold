@@ -4,27 +4,169 @@
 // Changes to this file or render.css must be verified against BOTH surfaces —
 // see packages/render/README.md before diverging.
 import "./render.css";
-import { useRef, useState } from "react";
-import { Check, Copy } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { AlertTriangle, BadgeInfo, Check, Copy, ImageOff, Info, Lightbulb, Link as LinkIcon, ShieldAlert } from "lucide-react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import rehypeKatex from "rehype-katex";
+import rehypeRaw from "rehype-raw";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 
 // Pin the image parts of the sanitize schema instead of trusting the default:
 // uploads render through img, and an upstream schema change must not silently
-// turn every embedded image back into a plain link.
+// turn every embedded image back into a plain link. Raw HTML (kbd/mark/…)
+// is parsed by rehype-raw and then sanitized here as the final gate.
 const renderSchema = {
   ...defaultSchema,
+  tagNames: [...(defaultSchema.tagNames ?? []), "mark"],
   attributes: {
     ...defaultSchema.attributes,
+    // callout cards carry a semantic className; footnote popovers need their
+    // span/sup classes kept, and <mark> must survive sanitization.
+    sup: [["className"]],
+    span: [["className"]],
+    mark: [["className"]],
+    blockquote: [...(defaultSchema.attributes?.blockquote ?? []), "className"],
     img: [...(defaultSchema.attributes?.img ?? []), "srcSet", "width", "height", "loading", "decoding"],
   },
 };
 
+const CALLOUT_META: Record<string, { label: string; icon: typeof Info }> = {
+  note: { label: "Note", icon: Info },
+  tip: { label: "Tip", icon: Lightbulb },
+  important: { label: "Important", icon: BadgeInfo },
+  warning: { label: "Warning", icon: AlertTriangle },
+  caution: { label: "Caution", icon: ShieldAlert },
+};
+
 const headingId = (value: React.ReactNode) => String(value).toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]+/g, "-").replace(/(^-|-$)/g, "");
+
+const extractText = (node: React.ReactNode): string => {
+  if (node == null || typeof node === "boolean") return "";
+  if (typeof node === "string" || typeof node === "number") return String(node);
+  if (Array.isArray(node)) return node.map(extractText).join("");
+  if (typeof node === "object" && node !== null && "props" in node) {
+    return extractText((node as { props: { children?: React.ReactNode } }).props.children);
+  }
+  return "";
+};
+
+function ImageWithFallback({ node: _node, ...props }: React.ComponentProps<"img"> & { node?: unknown }) {
+  const [failed, setFailed] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  if (failed) {
+    return (
+      <span className="mdrImgFallback" role="img" aria-label={props.alt || "Image failed to load"}>
+        <ImageOff size={20} aria-hidden="true" />
+        {props.alt ? <span>{props.alt}</span> : null}
+      </span>
+    );
+  }
+  const className = `${props.className ?? ""} ${loaded ? "mdrImgLoaded" : "mdrImgLoading"}`.trim();
+  return <img {...props} loading="lazy" decoding="async" className={className} onLoad={() => setLoaded(true)} onError={() => setFailed(true)} />;
+}
+
+function TableWrap({ children }: { children: React.ReactNode }) {
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const [state, setState] = useState({ overflow: false, atEnd: false });
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const update = () => {
+      const overflow = el.scrollWidth > el.clientWidth + 4;
+      const atEnd = overflow && el.scrollLeft + el.clientWidth >= el.scrollWidth - 8;
+      setState((prev) => (prev.overflow === overflow && prev.atEnd === atEnd ? prev : { overflow, atEnd }));
+    };
+    update();
+    el.addEventListener("scroll", update, { passive: true });
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(update);
+    observer?.observe(el);
+    return () => {
+      el.removeEventListener("scroll", update);
+      observer?.disconnect();
+    };
+  }, []);
+  const classes = `mdrTableWrap${state.overflow ? " is-overflow" : ""}${state.atEnd ? " is-at-end" : ""}`;
+  return <div ref={wrapRef} className={classes}>{children}</div>;
+}
+
+type CalloutNode = { type: string; children?: CalloutNode[]; value?: string; data?: Record<string, unknown> };
+
+// GFM-style alerts: > [!NOTE] … maps the blockquote to a semantic callout card
+// and strips the tag from the first paragraph. Runs at the mdast layer so the
+// text edit and className land before hast conversion (no React-node surgery).
+function remarkCallouts() {
+  return (tree: CalloutNode) => {
+    const walk = (node: CalloutNode) => {
+      if (node.type === "blockquote") {
+        const first = node.children?.[0];
+        if (first?.type === "paragraph") {
+          const textNode = first.children?.find((child) => child.type === "text");
+          const value = textNode?.value ?? "";
+          const match = /^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*/.exec(value);
+          if (match && textNode) {
+            textNode.value = value.slice(match[0].length);
+            node.data = {
+              ...node.data,
+              hProperties: {
+                className: `mdrCallout mdrCallout-${match[1].toLowerCase()}`,
+              },
+            };
+          }
+        }
+      }
+      node.children?.forEach(walk);
+    };
+    walk(tree);
+  };
+}
+
+const escapeHtml = (value: string) => value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+const mdastText = (node: CalloutNode): string =>
+  node.type === "text" ? node.value ?? "" : (node.children ?? []).map(mdastText).join("");
+
+// GFM footnotes have no first-class component in react-markdown v10, so they
+// are rewritten at the mdast layer: each reference becomes an inline <sup>
+// capsule (with a CSS hover popover carrying the note text), and all
+// definitions are gathered into one quiet <section data-footnotes> at the end.
+// The generated HTML goes through the normal raw->sanitize pipeline.
+function remarkFootnotes() {
+  return (tree: CalloutNode) => {
+    const defs: Record<string, string> = {};
+    const refs: { id: string; label: string; node: CalloutNode }[] = [];
+    const walk = (node: CalloutNode, parent?: CalloutNode, index?: number) => {
+      if (node.type === "footnoteDefinition") {
+        defs[String((node as { identifier?: unknown }).identifier ?? "")] = mdastText(node);
+        if (parent && index != null) parent.children?.splice(index, 1);
+        return;
+      }
+      if (node.type === "footnoteReference") {
+        const identifier = String((node as { identifier?: unknown }).identifier ?? "");
+        refs.push({ id: identifier, label: String((node as { label?: unknown }).label ?? identifier), node });
+        return;
+      }
+      node.children?.forEach((child, childIndex) => walk(child, node, childIndex));
+    };
+    walk(tree);
+    for (const { id, label, node } of refs) {
+      const content = defs[id] ?? "";
+      const pop = content ? `<span class="mdrFootnotePop">${escapeHtml(content)}</span>` : "";
+      node.type = "html";
+      node.value = `<sup class="mdrFootnoteRef"><a href="#fn-${id}" id="fnref-${id}" data-footnote-ref>${escapeHtml(label)}${pop}</a></sup>`;
+      delete node.children;
+    }
+    const entries = Object.entries(defs);
+    if (entries.length > 0) {
+      const items = entries
+        .map(([id, text]) => `<li id="fn-${id}"><p>${escapeHtml(text)} <a href="#fnref-${id}" data-footnote-backref>↩</a></p></li>`)
+        .join("");
+      tree.children?.push({ type: "html", value: `<section data-footnotes><ol>${items}</ol></section>` });
+    }
+  };
+}
 
 function CodeBlock({ children }: { children: React.ReactNode }) {
   const preRef = useRef<HTMLPreElement>(null);
@@ -42,16 +184,41 @@ function CodeBlock({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const language = (() => {
+    const child = Array.isArray(children) ? children[0] : children;
+    const childProps = (child as React.ReactElement | null)?.props as { className?: string } | undefined;
+    const match = /language-([\w-]+)/.exec(String(childProps?.className ?? ""));
+    return match ? match[1] : null;
+  })();
+
+  const codeText = extractText(children);
+  const lineCount = codeText.split("\n").length;
+  const [expanded, setExpanded] = useState(false);
+  const collapsible = lineCount > 12;
+  const lineNumbers = Array.from({ length: lineCount }, (_, index) => index + 1).join("\n");
+
   return (
     <div className="codeFrame">
       <div className="codeToolbar">
-        <span>Code</span>
-        <button type="button" className="codeCopy" onClick={copyCode} aria-label={copied ? "Copied" : "Copy code"} title={copied ? "Copied" : "Copy code"}>
+        <span>{language ? language : "Plain Text"}</span>
+        <button type="button" className={`codeCopy${copied ? " is-copied" : ""}`} onClick={copyCode} aria-label={copied ? "Copied" : "Copy code"} title={copied ? "Copied" : "Copy code"}>
           {copied ? <Check size={14} /> : <Copy size={14} />}
           <span>{copied ? "Copied" : "Copy"}</span>
         </button>
       </div>
-      <pre ref={preRef}>{children}</pre>
+      <div className={`codeCollapseWrap${expanded ? " is-expanded" : ""}`}>
+        <div className="codeInner">
+          <div className="codeBody">
+            <div className="codeLineNumbers" aria-hidden="true">{lineNumbers}</div>
+            <pre ref={preRef}>{children}</pre>
+          </div>
+        </div>
+      </div>
+      {collapsible ? (
+        <button type="button" className="codeExpandBtn" onClick={() => setExpanded((value) => !value)}>
+          {expanded ? "收起" : `展开全部 ${lineCount} 行`}
+        </button>
+      ) : null}
     </div>
   );
 }
@@ -80,20 +247,69 @@ function createComponents(content: string, headingIds: string[] = [], hideFirstH
     const line = node?.position?.start?.line;
     return (line ? headingLineIds.get(line) : undefined) ?? headingId(children);
   };
+  const anchorHeading = (level: "h2" | "h3" | "h4" | "h5" | "h6", props: { children?: React.ReactNode; node?: { position?: { start?: { line?: number } } } }) => {
+    const id = nextHeadingId(props.children, props.node);
+    const [copied, setCopied] = useState(false);
+    const copyAnchor = (event: React.MouseEvent) => {
+      event.preventDefault();
+      const url = `${window.location.origin}${window.location.pathname}#${id}`;
+      void navigator.clipboard?.writeText(url).then(() => {
+        setCopied(true);
+        window.setTimeout(() => setCopied(false), 1600);
+      });
+    };
+    const anchor = (
+      <a className="mdr-anchor" href={`#${id}`} onClick={copyAnchor} title={copied ? "Copied" : "Copy link"} aria-label={copied ? "Copied link" : "Copy link to this section"}>
+        <LinkIcon size={13} aria-hidden="true" />
+      </a>
+    );
+    if (level === "h2") return <h2 id={id} data-content-heading>{anchor}{props.children}</h2>;
+    if (level === "h3") return <h3 id={id} data-content-heading>{anchor}{props.children}</h3>;
+    if (level === "h4") return <h4 id={id} data-content-heading>{anchor}{props.children}</h4>;
+    if (level === "h5") return <h5 id={id} data-content-heading>{anchor}{props.children}</h5>;
+    return <h6 id={id} data-content-heading>{anchor}{props.children}</h6>;
+  };
   return {
     h1: ({ children }) => hideFirstH1 ? null : <h1>{children}</h1>,
-    h2: ({ children, node }) => <h2 id={nextHeadingId(children, node)} data-content-heading>{children}</h2>,
-    h3: ({ children, node }) => <h3 id={nextHeadingId(children, node)} data-content-heading>{children}</h3>,
+    h2: (props) => anchorHeading("h2", props),
+    h3: (props) => anchorHeading("h3", props),
+    h4: (props) => anchorHeading("h4", props),
+    h5: (props) => anchorHeading("h5", props),
+    h6: (props) => anchorHeading("h6", props),
     pre: ({ children }) => <CodeBlock>{children}</CodeBlock>,
-    img: (props) => <img {...props} loading="lazy" decoding="async" />,
+    blockquote: ({ className, children }) => {
+      const type = String(className ?? "").match(/mdrCallout-(\w+)/)?.[1];
+      const meta = type ? CALLOUT_META[type] : undefined;
+      if (!meta) return <blockquote className={className}>{children}</blockquote>;
+      const Icon = meta.icon;
+      return (
+        <blockquote className={className}>
+          <span className="mdrCalloutTag"><Icon size={13} aria-hidden="true" />{meta.label}</span>
+          {children}
+        </blockquote>
+      );
+    },
+    table: ({ children }) => <TableWrap><table>{children}</table></TableWrap>,
+    img: (props) => {
+      const { title, ...rest } = props;
+      const image = <ImageWithFallback {...rest} />;
+      if (!title) return image;
+      return (
+        <figure className="mdrFigure">
+          {image}
+          <figcaption>{title}</figcaption>
+        </figure>
+      );
+    },
   };
 }
 
 export function MarkdownContent({ content, headingIds, hideFirstH1 = false }: { content: string; headingIds?: string[]; hideFirstH1?: boolean }) {
   return (
     <ReactMarkdown
-      remarkPlugins={[remarkGfm, remarkMath]}
-      rehypePlugins={[[rehypeSanitize, renderSchema], rehypeKatex, rehypeHighlight]}
+      remarkPlugins={[remarkCallouts, remarkGfm, remarkFootnotes, remarkMath]}
+      remarkRehypeOptions={{ allowDangerousHtml: true }}
+      rehypePlugins={[[rehypeRaw], [rehypeSanitize, renderSchema], rehypeKatex, rehypeHighlight]}
       components={createComponents(content, headingIds, hideFirstH1)}
     >
       {content}

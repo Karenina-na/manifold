@@ -14,12 +14,16 @@
   --mdr-paper: #f9f8f5;
   --mdr-serif: "Noto Serif CJK SC", "Source Han Serif SC", Georgia, serif;
   --mdr-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  --mdr-code-line: #36453d;
-  --mdr-code-muted: #b8c5bb;
-  --mdr-code-keyword: #f0a6a1;
-  --mdr-code-string: #c4d79b;
-  --mdr-code-number: #e8c58c;
-  --mdr-code-title: #9fc9dd;
+  /* Code frames follow the surface theme: warm light paper by default,
+     dark theme overrides --mdr-code-* (see app/web globals). */
+  --mdr-code-bg: #f4f3ee;
+  --mdr-code-text: #2b2a26;
+  --mdr-code-line: #d9d6cc;
+  --mdr-code-muted: #8a8578;
+  --mdr-code-keyword: #9d3a52;
+  --mdr-code-string: #35694a;
+  --mdr-code-number: #94611f;
+  --mdr-code-title: #2e5f86;
 }
 
 /* Reading-surface selection echoes the accent so long-form text feels alive. */
@@ -58,7 +62,7 @@
   .articleReadingShell.no-rail { grid-template-columns: minmax(0, 760px); gap: 22px; }.articleReadingShell.no-rail .articleReadingMain { grid-column: 1; grid-row: 2; }.articleReadingShell.no-rail .articleToc { grid-column: 1 / -1; grid-row: 1; }
 }
 @media (max-width: 760px) {
-  .articleSurface { width: calc(100% - 18px); margin-top: 18px; }.articleSurfaceInner { padding-inline: 9px; }.articleBack, .articleTitleBlock { width: 100%; margin-left: 0; }.articleBack { margin-bottom: 10px; padding-top: 16px; }.articleTitleBlock, .articleBodyBlock { box-shadow: none; }.articleSurface .articleHeader { padding: 42px 16px 34px; }.articleSurface .articleHeader h1 { font-size: clamp(38px, 12vw, 58px); }.articleMeta { gap: 8px 12px; }.articleMeta span { white-space: normal; }.articleReadingShell { display: flex; flex-direction: column; gap: 18px; }.articleBodyBlock { padding: 24px 16px 40px; }.articleBodyBlock .markdown > p:first-of-type { font-size: 18px; }.articleToc { order: -1; width: 100%; }.articleActionRail { position: sticky; top: 82px; width: 100%; min-height: 180px; order: 0; }
+  .articleSurface { width: calc(100% - 18px); margin-top: 18px; }.articleSurfaceInner { padding-inline: 9px; }.articleBack, .articleTitleBlock { width: 100%; margin-left: 0; }.articleBack { margin-bottom: 10px; padding-top: 16px; }.articleTitleBlock, .articleBodyBlock { box-shadow: none; }.articleSurface .articleHeader { padding: 42px 16px 34px; }.articleSurface .articleHeader h1 { font-size: clamp(38px, 12vw, 58px); }.articleMeta { gap: 8px 12px; }.articleMeta span { white-space: normal; }.articleReadingShell { display: flex; flex-direction: column; gap: 18px; }.articleBodyBlock { padding: 24px 16px 40px; }.articleToc { order: -1; width: 100%; }.articleActionRail { position: sticky; top: 82px; width: 100%; min-height: 180px; order: 0; }
 }
 
 /* Article ending: discussion and composer share the same paper language as the title and body. */
@@ -105,39 +109,49 @@
    uniform 22px; headings keep a scroll margin for TOC deep links under the
    sticky nav; the first paragraph of a piece is set slightly larger. */
 .markdown { max-width: 912px; padding-top: 10px; font-size: 17px; line-height: 1.85; }
-.markdown :is(h2, h3) { scroll-margin-top: 92px; font-family: var(--mdr-serif); font-weight: 400; line-height: 1.2; }
-.markdown h2 { font-size: 32px; margin: 56px 0 14px; }
-.markdown h3 { font-size: 25px; margin: 36px 0 10px; }
-.markdown p { margin: 0 0 24px; }
-.markdown > p:first-of-type { font-size: 19px; line-height: 1.75; }
+.markdown :is(h2, h3, h4, h5, h6) { scroll-margin-top: 92px; position: relative; }.markdown .mdr-anchor { position: absolute; left: -1.4em; top: .22em; display: inline-flex; align-items: center; justify-content: center; width: 1.5em; height: 1.5em; opacity: 0; color: var(--mdr-accent); text-decoration: none; border-radius: 6px; transition: opacity 140ms ease, background 140ms ease; }.markdown :is(h2, h3, h4, h5, h6):hover .mdr-anchor, .markdown .mdr-anchor:focus-visible { opacity: .8; }.markdown .mdr-anchor:hover { opacity: 1; background: color-mix(in srgb, var(--mdr-accent) 12%, transparent); }
+.markdown h4 { font-family: var(--mdr-serif); font-weight: 600; font-size: clamp(17px, 1.6vw, 20px); line-height: 1.3; letter-spacing: .02em; margin: 30px 0 8px; }
+.markdown h5, .markdown h6 { font-family: var(--mdr-mono); font-weight: 500; font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: var(--mdr-muted); margin: 26px 0 8px; }
+.markdown h2 { font-size: clamp(26px, 3vw, 34px); margin: 72px 0 16px; }
+.markdown h3 { font-size: clamp(20px, 2.2vw, 25px); margin: 44px 0 10px; }
+.markdown p { margin: 0 0 28px; text-align: justify; }
+.markdown hr { border: 0; height: 1px; width: min(38%, 320px); margin: 44px auto; background: linear-gradient(to right, transparent, var(--mdr-line), transparent); }
 .markdown ul, .markdown ol { margin: 0 0 26px; padding-left: 4px; list-style: none; }
 .markdown ul li, .markdown ol li { position: relative; margin: 5px 0; padding-left: 24px; }
-.markdown ul li::before { content: "—"; position: absolute; left: 0; color: var(--mdr-accent); }
+.markdown ul > li::before { content: "—"; position: absolute; left: 0; color: var(--mdr-accent); }.markdown ul ul > li::before { content: ""; position: absolute; left: 5px; top: .58em; width: 5px; height: 5px; border: 1px solid var(--mdr-accent); border-radius: 50%; }.markdown ul ul ul > li::before { content: ""; position: absolute; left: 5px; top: .62em; width: 5px; height: 5px; border-radius: 1px; background: color-mix(in srgb, var(--mdr-accent) 72%, transparent); }
+.markdown li:has(> input[type="checkbox"]) { padding-left: 4px; }.markdown li:has(> input[type="checkbox"])::before { content: none; }.markdown input[type="checkbox"] { width: 15px; height: 15px; margin-right: 10px; vertical-align: -2px; accent-color: var(--mdr-accent); }.markdown li:has(> input[type="checkbox"]:checked) { color: var(--mdr-muted); }
 .markdown ol { counter-reset: mdr-li; }
 .markdown ol li { counter-increment: mdr-li; padding-left: 30px; }
 .markdown ol li::before { content: counter(mdr-li, decimal-leading-zero); position: absolute; left: 0; color: var(--mdr-accent); font-family: var(--mdr-mono); font-size: .76em; letter-spacing: .04em; }
-.markdown li ul, .markdown li ol { margin: 6px 0 8px; padding-left: 4px; }
-.markdown a { color: var(--mdr-accent); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; transition: color 160ms ease, text-underline-offset 160ms ease; }
-.markdown a:hover { color: color-mix(in srgb, var(--mdr-accent) 78%, var(--mdr-ink)); text-underline-offset: 5px; }
-.markdown blockquote { position: relative; margin: 34px 0; padding: 18px 22px 18px 32px; border-radius: 10px; background: color-mix(in srgb, var(--mdr-accent-soft) 46%, transparent); color: var(--mdr-muted); font-family: var(--mdr-serif); font-size: 19px; }
-.markdown blockquote::before { content: "“"; position: absolute; left: 13px; top: 8px; color: var(--mdr-accent); font-family: Georgia, serif; font-size: 30px; line-height: 1; opacity: .65; }
-.markdown code { font-family: var(--mdr-mono); font-size: .86em; background: var(--mdr-accent-soft); padding: 2px 5px; border-radius: 4px; }
-.markdown pre { overflow-x: auto; padding: 18px 20px; background: var(--mdr-ink); color: var(--mdr-paper); border-radius: 10px; font-size: 15px; line-height: 1.7; }
-.markdown pre code { background: transparent; padding: 0; }
+.markdown li ul, .markdown li ol { margin: 6px 0 8px; padding-left: 4px; }.markdown input[type="checkbox"] { appearance: none; -webkit-appearance: none; width: 15px; height: 15px; margin: 0 .45em 0 .1em; border: 1px solid var(--mdr-line); border-radius: 4px; vertical-align: -.25em; background: color-mix(in srgb, var(--mdr-paper) 80%, transparent); cursor: pointer; transition: background 140ms ease, border-color 140ms ease; }.markdown input[type="checkbox"]:checked { background: var(--mdr-accent); border-color: var(--mdr-accent); }.markdown input[type="checkbox"]:checked::after { content: ""; display: block; width: 4px; height: 7px; margin: 2px auto 0; border-right: 2px solid var(--mdr-paper); border-bottom: 2px solid var(--mdr-paper); transform: rotate(45deg); }.markdown li:has(> input[type="checkbox"])::before { content: none; }.markdown li:has(> input[type="checkbox"]:checked) { color: var(--mdr-muted); text-decoration: line-through; text-decoration-thickness: 1px; text-decoration-color: color-mix(in srgb, var(--mdr-line) 80%, transparent); }
+.markdown strong { font-weight: 600; }.markdown ::selection { background: color-mix(in srgb, var(--mdr-accent) 24%, transparent); }.markdown dl { margin: 0 0 24px; }.markdown dt { font-weight: 600; margin-top: 12px; }.markdown dt:first-child { margin-top: 0; }.markdown dd { margin: 4px 0 0; padding-left: 22px; color: var(--mdr-muted); }.markdown blockquote footer, .markdown blockquote cite { display: block; margin-top: 8px; font-family: var(--mdr-mono); font-size: 12px; letter-spacing: .04em; color: var(--mdr-muted); font-style: normal; }.markdown blockquote footer::before { content: "— "; opacity: .6; }.markdown sup, .markdown sub { color: var(--mdr-accent); font-weight: 600; }.markdown a:focus-visible { outline: 2px solid color-mix(in srgb, var(--mdr-accent) 60%, transparent); outline-offset: 2px; border-radius: 2px; }.markdown kbd { font-family: var(--mdr-mono); font-size: .8em; padding: .18em .5em; border: 1px solid var(--mdr-line); border-bottom-width: 2px; border-radius: 6px; background: color-mix(in srgb, var(--mdr-paper) 72%, transparent); }.markdown details { margin: 0 0 24px; padding: 14px 18px; border: 1px solid var(--mdr-line); border-radius: 10px; background: color-mix(in srgb, var(--mdr-paper) 55%, transparent); }.markdown summary { cursor: pointer; font-weight: 600; }.markdown summary::marker { color: var(--mdr-accent); }
+.markdown a { color: var(--mdr-accent); text-decoration: none; background-image: linear-gradient(currentColor, currentColor); background-repeat: no-repeat; background-position: 0 100%; background-size: 0% 1px; transition: color 160ms ease, background-size 220ms cubic-bezier(.4, 0, .2, 1); }
+.markdown a:hover { color: color-mix(in srgb, var(--mdr-accent) 78%, var(--mdr-ink)); background-size: 100% 1px; }.markdown a[href^="http"]::after { content: "↗"; display: inline-block; margin-left: 3px; font-size: .68em; line-height: 1; opacity: .5; vertical-align: .14em; text-decoration: none; transition: opacity 140ms ease; }.markdown a[href^="http"]:hover::after { opacity: .85; }
+.markdown blockquote p { margin-bottom: 12px; }.markdown blockquote p:last-child { margin-bottom: 0; }.markdown blockquote blockquote { margin: 12px 0 0; padding: 12px 16px 12px 24px; font-size: .95em; }
+.markdown blockquote { position: relative; margin: 28px 0; padding: 14px 20px; border-left: 3px solid var(--mdr-accent); border-radius: 10px; background: color-mix(in srgb, var(--mdr-accent) 4%, transparent); color: var(--mdr-muted); font-family: var(--mdr-serif); font-size: 17px; font-style: italic; line-height: 1.7; }
+.markdown blockquote.mdrCallout { position: relative; padding: 30px 18px 13px 20px; border-left-width: 4px; border-left-color: var(--mdr-callout-color); background: color-mix(in srgb, var(--mdr-callout-color) 7%, transparent); backdrop-filter: blur(6px); font-style: normal; color: var(--mdr-ink); }.markdown blockquote.mdrCallout .mdrCalloutTag { display: inline-flex; align-items: center; gap: 6px; margin-bottom: 6px; font-family: var(--mdr-mono); font-size: 10px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--mdr-callout-color); }.markdown blockquote.mdrCallout p { color: var(--mdr-ink); }.markdown blockquote.mdrCallout-note { --mdr-callout-color: #4a7fb5; }.markdown blockquote.mdrCallout-tip { --mdr-callout-color: #4f8f5f; }.markdown blockquote.mdrCallout-important { --mdr-callout-color: #8a6cb8; }.markdown blockquote.mdrCallout-warning { --mdr-callout-color: #c08a3e; }.markdown blockquote.mdrCallout-caution { --mdr-callout-color: #c0504f; }
+.markdown code { font-family: var(--mdr-mono); font-size: .88em; background: color-mix(in srgb, var(--mdr-line) 15%, transparent); color: color-mix(in srgb, var(--mdr-ink) 88%, var(--mdr-accent)); padding: .12em .42em; margin: 0 .1em; border: 1px solid color-mix(in srgb, var(--mdr-line) 45%, transparent); border-radius: 6px; vertical-align: .05em; }
+.markdown pre { overflow-x: auto; padding: 18px 20px; background: var(--mdr-code-bg); color: var(--mdr-code-text); border-radius: 14px; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--mdr-paper) 7%, transparent); font-size: 15px; line-height: 1.7; }
+.markdown pre code { background: transparent; border: 0; padding: 0; margin: 0; color: var(--mdr-code-text); font-size: 15px; vertical-align: baseline; }
 .markdown pre { border: 1px solid var(--mdr-code-line); }
-.markdown table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; margin: 0 0 22px; font-size: 15px; }.markdown th, .markdown td { border: 1px solid var(--mdr-line); padding: 8px 12px; text-align: left; vertical-align: top; }.markdown thead th { background: color-mix(in srgb, var(--mdr-line) 26%, transparent); font-weight: 600; white-space: nowrap; }
+.mdrTableWrap { position: relative; max-width: 100%; overflow-x: auto; margin: 0 0 22px; border: 1px solid var(--mdr-line); border-radius: 12px; scrollbar-width: thin; scrollbar-color: var(--mdr-line) transparent; }.mdrTableWrap::-webkit-scrollbar { height: 8px; }.mdrTableWrap::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--mdr-line) 80%, transparent); border-radius: 4px; }.mdrTableWrap::-webkit-scrollbar-track { background: transparent; }.mdrTableWrap::after { content: ""; position: absolute; top: 0; right: 0; bottom: 0; width: 46px; background: linear-gradient(to left, color-mix(in srgb, var(--mdr-paper) 88%, transparent), transparent); opacity: 0; pointer-events: none; transition: opacity 160ms ease; }.mdrTableWrap:hover::after { opacity: 1; }@media (hover: none) { .mdrTableWrap::after { opacity: .55; } }
+.markdown table { width: 100%; border-collapse: collapse; border: 0; margin: 0; font-size: 15px; font-variant-numeric: tabular-nums; }.markdown th, .markdown td { border: 0; border-bottom: 1px solid var(--mdr-line); padding: 9px 14px; text-align: left; vertical-align: top; }.markdown thead th { background: color-mix(in srgb, var(--mdr-line) 22%, transparent); font-size: 13px; letter-spacing: .04em; font-weight: 600; white-space: nowrap; }.markdown tr:last-child td { border-bottom: 0; }.markdown tbody tr { transition: background 140ms ease; }.markdown tbody tr:hover { background: color-mix(in srgb, var(--mdr-line) 9%, transparent); }
 /* Keep horizontal overflow discoverable: overlay scrollbars hide the fact
    that a long line or wide table continues past the clip edge. */
 .markdown pre { scrollbar-width: thin; scrollbar-color: var(--mdr-code-muted) transparent; }.markdown pre::-webkit-scrollbar { height: 8px; }.markdown pre::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--mdr-code-muted) 70%, transparent); border-radius: 4px; }.markdown pre::-webkit-scrollbar-track { background: transparent; }
-.markdown table { scrollbar-width: thin; scrollbar-color: var(--mdr-line) transparent; }.markdown table::-webkit-scrollbar { height: 8px; }.markdown table::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--mdr-line) 80%, transparent); border-radius: 4px; }.markdown table::-webkit-scrollbar-track { background: transparent; }
 /* Uploaded images display inline as their own block; the alt caption rides
    below in the muted mono voice used by the rest of the chrome. Zoom-in
    cursor advertises the reading-surface lightbox (app/web). */
-.markdown img { display: block; max-width: 100%; height: auto; margin: 0 auto 6px; border: 1px solid color-mix(in srgb, var(--mdr-line) 72%, transparent); border-radius: 6px; background: var(--mdr-paper); cursor: zoom-in; transition: border-color 160ms ease; }
+.markdown img { display: block; max-width: 100%; height: auto; margin: 0 auto 6px; border: 1px solid color-mix(in srgb, var(--mdr-line) 72%, transparent); border-radius: 10px; box-shadow: 0 10px 28px rgba(0, 0, 0, .12); background: linear-gradient(100deg, color-mix(in srgb, var(--mdr-paper) 78%, var(--mdr-line)) 30%, color-mix(in srgb, var(--mdr-paper) 58%, var(--mdr-line)) 50%, color-mix(in srgb, var(--mdr-paper) 78%, var(--mdr-line)) 70%); background-size: 200% 100%; animation: mdrShimmer 1.4s linear infinite; cursor: zoom-in; transition: border-color 160ms ease, box-shadow 160ms ease; }.markdown .mdrFigure > img { background: color-mix(in srgb, var(--mdr-paper) 72%, var(--mdr-line)); animation: none; }@keyframes mdrShimmer { 0% { background-position: 120% 0; } 100% { background-position: -80% 0; } }.markdown .mdrImgFallback { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 120px; padding: 26px; border: 1px dashed var(--mdr-line); border-radius: 10px; color: var(--mdr-muted); font-size: 13px; background: color-mix(in srgb, var(--mdr-paper) 70%, transparent); }
+
+/* Image with an explicit title renders as a captioned figure. */
+.markdown .mdrFigure { margin: 0 0 28px; }.markdown .mdrFigure > img { display: block; margin: 0 auto; }.markdown .mdrFigure figcaption { margin-top: 10px; text-align: center; font-size: 13px; color: var(--mdr-muted); font-family: var(--mdr-serif); line-height: 1.5; }.markdown p:has(> .mdrFigure) { margin: 0; }
 .markdown img:hover { border-color: color-mix(in srgb, var(--mdr-accent) 55%, var(--mdr-line)); }
 .markdown p:has(> img:only-child) { margin-bottom: 26px; }
 .markdown p:has(> img:only-child) img:not(:last-child) { margin-bottom: 18px; }
-.codeFrame { margin: 0 0 22px; border: 1px solid var(--mdr-code-line); background: var(--mdr-ink); }.codeToolbar { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border-bottom: 1px solid var(--mdr-code-line); color: var(--mdr-code-muted); font-family: var(--mdr-mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; }.codeCopy { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--mdr-code-muted); background: transparent; color: var(--mdr-paper); padding: 5px 8px; cursor: pointer; font-size: 11px; text-transform: none; letter-spacing: 0; }.codeCopy:hover { border-color: var(--mdr-code-muted); }.codeFrame pre { margin: 0; border: 0; }.markdown .katex { font-size: 1em; }.markdown .katex-display { overflow-x: auto; overflow-y: hidden; padding: 8px 0; }.markdown .hljs-comment, .markdown .hljs-quote { color: var(--mdr-code-muted); }.markdown .hljs-keyword, .markdown .hljs-selector-tag, .markdown .hljs-built_in { color: var(--mdr-code-keyword); }.markdown .hljs-string, .markdown .hljs-attr, .markdown .hljs-template-tag { color: var(--mdr-code-string); }.markdown .hljs-number, .markdown .hljs-literal { color: var(--mdr-code-number); }.markdown .hljs-title, .markdown .hljs-section, .markdown .hljs-name { color: var(--mdr-code-title); }
+.codeFrame { margin: 0 0 22px; border: 1px solid color-mix(in srgb, var(--mdr-code-text) 13%, transparent); border-radius: 14px; overflow: hidden; background: var(--mdr-code-bg); box-shadow: 0 16px 38px rgba(20, 19, 16, .12), 0 2px 8px rgba(20, 19, 16, .06); }.codeToolbar { display: flex; align-items: center; justify-content: space-between; padding: 8px 14px; border-bottom: 1px solid var(--mdr-code-line); color: var(--mdr-code-muted); font-family: var(--mdr-mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; }.codeCopy { display: inline-flex; align-items: center; gap: 6px; border: 0; background: transparent; color: var(--mdr-code-muted); padding: 5px 9px; cursor: pointer; font-size: 11px; text-transform: none; letter-spacing: 0; border-radius: 6px; transition: color 140ms ease, background 140ms ease, transform 140ms ease; }.codeCopy:hover { color: var(--mdr-code-text); background: color-mix(in srgb, var(--mdr-code-text) 8%, transparent); }.codeCopy.is-copied { color: #8fce8f; }.codeCopy.is-copied svg { transform: scale(1.15); }.codeBody { display: flex; min-width: 0; }
+.codeCollapseWrap { position: relative; }.codeCollapseWrap .codeInner { overflow: hidden; max-height: 340px; transition: max-height 300ms ease; }.codeCollapseWrap.is-expanded .codeInner { max-height: none; }.codeCollapseWrap::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 72px; background: linear-gradient(to top, var(--mdr-code-bg), transparent); pointer-events: none; opacity: 1; transition: opacity 220ms ease; }.codeCollapseWrap.is-expanded::after { opacity: 0; }.codeExpandBtn { display: block; width: 100%; border: 0; border-top: 1px solid var(--mdr-code-line); background: transparent; color: var(--mdr-code-muted); font: 11px var(--mdr-mono); letter-spacing: .06em; text-transform: uppercase; padding: 9px 12px; cursor: pointer; transition: color 140ms ease, background 140ms ease; }.codeExpandBtn:hover { color: var(--mdr-code-text); background: color-mix(in srgb, var(--mdr-code-text) 5%, transparent); }.codeLineNumbers { flex: none; width: 3.2em; padding: 18px 12px 18px 16px; text-align: right; user-select: none; color: color-mix(in srgb, var(--mdr-code-text) 34%, transparent); font-family: var(--mdr-mono); font-size: 15px; line-height: 1.7; border-right: 1px solid color-mix(in srgb, var(--mdr-code-text) 9%, transparent); }.codeFrame pre { flex: 1; min-width: 0; margin: 0; border: 0; border-radius: 0; }
+.markdown tbody tr:nth-child(even) { background: color-mix(in srgb, var(--mdr-line) 6%, transparent); }.markdown .katex { font-size: 1em; }.markdown .katex-display { overflow-x: auto; overflow-y: hidden; padding: 8px 0; }.markdown .hljs-comment, .markdown .hljs-quote { color: var(--mdr-code-muted); }.markdown .hljs-keyword, .markdown .hljs-selector-tag, .markdown .hljs-built_in { color: var(--mdr-code-keyword); }.markdown .hljs-string, .markdown .hljs-attr, .markdown .hljs-template-tag { color: var(--mdr-code-string); }.markdown .hljs-number, .markdown .hljs-literal { color: var(--mdr-code-number); }.markdown .hljs-title, .markdown .hljs-section, .markdown .hljs-name { color: var(--mdr-code-title); }
 
 /* Thought detail: header adornments and the reading-progress rail. */
 .thoughtSummary { display: flex; align-items: flex-start; gap: 7px; margin: 0; color: var(--mdr-muted); font-size: 12px; line-height: 1.55; }
@@ -175,3 +189,76 @@
 .commentMarkdown table { margin: 0 0 9px; border-collapse: collapse; font-size: 13px; }
 .commentMarkdown th, .commentMarkdown td { border: 1px solid var(--mdr-line); padding: 5px 9px; text-align: left; }
 .commentMarkdown thead th { background: color-mix(in srgb, var(--mdr-line) 26%, transparent); }
+
+@media print {
+  .markdown { font-size: 12pt; line-height: 1.6; }
+  .markdown p { text-align: left; }
+  .markdown pre, .codeFrame { background: #fff !important; color: #000; border: 1px solid #999; box-shadow: none; }
+  .markdown code { background: transparent; color: inherit; border-color: transparent; }
+  .markdown img { box-shadow: none; border: 1px solid #999; }
+  .markdown table, .markdown th, .markdown td { border-color: #999; }
+  .markdown blockquote { background: transparent; }
+  .markdown a { color: inherit; }
+  .markdown a[href^="http"]::after { content: " (" attr(href) ")"; font-size: .82em; }
+  .codeToolbar, .codeLineNumbers, .mdr-anchor { display: none; }
+}
+
+/* Dark theme: hover lifts the image with an accent glow instead of dimming it. */
+[data-theme="dark"] .markdown img:hover { box-shadow: 0 0 0 1px color-mix(in srgb, var(--mdr-accent) 55%, transparent), 0 10px 28px rgba(0, 0, 0, .4); }
+
+/* ============ Deep-beautify batch: rhythm, code, GFM, tables, media ============ */
+
+/* Structural blocks break out of the measure for a wide/narrow rhythm;
+   the web surface reserves ~42px beside the 760px column, so 36px/side is safe. */
+.markdown .codeFrame, .markdown .mdrTableWrap, .markdown .mdrFigure { width: calc(100% + 72px); max-width: none; margin-left: -36px; margin-right: -36px; }
+.markdown .mdrTableWrap, .markdown .codeFrame { margin-bottom: 26px; }
+@media (max-width: 900px) { .markdown .codeFrame, .markdown .mdrTableWrap, .markdown .mdrFigure { width: 100%; margin-left: 0; margin-right: 0; } }
+
+/* Heading rhythm: keep a title close to its body, collapse gaps after hr/callout. */
+.markdown h2 + hr, .markdown h3 + hr { margin-top: -10px; }
+.markdown h2 + .mdrCallout, .markdown h3 + .mdrCallout { margin-top: -8px; }
+.markdown hr + h2 { margin-top: 52px; }
+
+/* Code: programming ligatures when the font provides them. */
+.markdown pre code { font-variant-ligatures: contextual; font-feature-settings: "liga" 1, "calt" 1; }
+
+/* Git diff view: tint whole added/removed lines. */
+.markdown pre code.language-diff .hljs-addition { display: inline-block; width: 100%; background: color-mix(in srgb, var(--mdr-code-string) 22%, transparent); border-radius: 3px 0 0 3px; }
+.markdown pre code.language-diff .hljs-deletion { display: inline-block; width: 100%; background: color-mix(in srgb, var(--mdr-code-keyword) 20%, transparent); border-radius: 3px 0 0 3px; }
+
+/* Kbd keycaps: physical key look floating above the paper. */
+.markdown kbd { display: inline-block; min-width: 1.5em; padding: 2px 7px; font-family: var(--mdr-mono); font-size: 12px; font-weight: 500; line-height: 1.6; text-align: center; color: var(--mdr-ink); background: color-mix(in srgb, var(--mdr-paper) 80%, var(--mdr-line)); border: 1px solid color-mix(in srgb, var(--mdr-line) 88%, transparent); border-bottom-width: 2.5px; border-radius: 7px; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .45); vertical-align: middle; }
+
+/* Mark: translucent watercolour highlighter. */
+.markdown mark { padding: 0 .3em; border-radius: .3em; background: linear-gradient(100deg, color-mix(in srgb, #f2c06e 52%, transparent), color-mix(in srgb, #eda98f 58%, transparent)); color: inherit; }
+
+/* Footnote reference: capsule badge with hover popover. */
+.markdown sup.mdrFootnoteRef { font-size: .72em; line-height: 0; vertical-align: super; }
+.markdown .mdrFootnoteRef > a { position: relative; display: inline-block; padding: 0 5px; border-radius: 999px; background: color-mix(in srgb, var(--mdr-accent) 12%, transparent); color: var(--mdr-accent); font-family: var(--mdr-mono); font-size: 11px; font-weight: 600; text-decoration: none; }
+.markdown .mdrFootnoteRef > a:hover { background: color-mix(in srgb, var(--mdr-accent) 20%, transparent); }
+.markdown .mdrFootnotePop { position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%) translateY(2px); z-index: 30; width: max-content; max-width: 280px; padding: 9px 12px; border: 1px solid var(--mdr-line); border-radius: 10px; background: var(--mdr-paper); box-shadow: 0 12px 30px rgba(24, 24, 20, .16); font-family: var(--mdr-serif); font-size: 13.5px; line-height: 1.55; color: var(--mdr-ink); opacity: 0; pointer-events: none; transition: opacity 140ms ease, transform 140ms ease; }
+.markdown .mdrFootnoteRef:hover .mdrFootnotePop { opacity: 1; transform: translateX(-50%) translateY(0); }
+/* Footnote section: quiet card at the end. */
+.markdown section[data-footnotes] { margin-top: 64px; padding: 20px 24px; border: 1px dashed var(--mdr-line); border-radius: 14px; background: color-mix(in srgb, var(--mdr-paper) 62%, transparent); }
+.markdown section[data-footnotes] > hr { display: none; }
+.markdown section[data-footnotes] > h2, .markdown section[data-footnotes] > h3 { margin-top: 0; }
+.markdown section[data-footnotes] ol { margin: 0; padding-left: 22px; font-size: 13.5px; color: var(--mdr-muted); }
+.markdown section[data-footnotes] li { margin: 0 0 6px; }
+.markdown section[data-footnotes] a[data-footnote-backref] { color: var(--mdr-accent); text-decoration: none; margin-left: 4px; }
+.markdown section[data-footnotes] a[data-footnote-backref]:hover { text-decoration: underline; }
+
+/* Table smart scroll veil: only when overflowing, hidden at the right edge. */
+.mdrTableWrap::after { opacity: 0; }
+.mdrTableWrap.is-overflow::after { opacity: 1; }
+.mdrTableWrap.is-at-end::after { opacity: 0; }
+@media (hover: none) { .mdrTableWrap.is-overflow::after { opacity: .55; } }
+/* Empty cells get a quiet dash placeholder. */
+.markdown table td:empty::after { content: "—"; color: var(--mdr-muted); opacity: .55; }
+
+/* Images: progressive blur while loading, then fade in sharp. */
+.markdown img { transition: filter .5s ease, transform .5s ease, border-color 160ms ease, box-shadow 160ms ease; }
+.markdown img.mdrImgLoading { filter: blur(7px); transform: scale(1.015); }
+.markdown img.mdrImgLoaded { filter: blur(0); transform: scale(1); }
+
+/* TOC: clamp long labels, keep the rail tidy. */
+.articleToc nav a { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
