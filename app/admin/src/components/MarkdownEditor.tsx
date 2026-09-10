@@ -5,6 +5,11 @@ import { useEffect, useRef } from 'react'
 const UPLOAD_ACCEPT = 'image/png,image/jpeg,image/webp,image/gif,image/avif'
 const allowedImageTypes = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/avif'])
 const uploadIcon = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>'
+const calloutIcon = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><path d="M12 8h.01"/><path d="M11 12h1v4h1"/></svg>'
+const footnoteIcon = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19h16"/><path d="M12 5 9 14"/><path d="m12 5 3 9"/></svg>'
+const kbdIcon = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="12" x="2" y="6" rx="2" ry="2"/><path d="M6 10h.01"/><path d="M10 10h.01"/><path d="M14 10h.01"/><path d="M18 10h.01"/><path d="M9 14h6"/></svg>'
+const markIcon = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 9 9-9 9-9-9 9-9Z"/><path d="m7.5 7.5 9 9"/></svg>'
+const diffIcon = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h10"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/></svg>'
 
 // Instant-rendering (MarkText-like) markdown editor. The editor is a writing
 // aid only — it produces plain Markdown source; sanitization happens at the
@@ -23,6 +28,60 @@ export function MarkdownEditor({ value, onChange, disabled, placeholder, onUploa
   const onUploadRef = useRef(onUploadImage)
 
   useEffect(() => { onUploadRef.current = onUploadImage }, [onUploadImage])
+
+  // Wrap the current selection (or insert a placeholder at the caret) with
+  // GFM extensions the renderer supports: callouts, footnotes, kbd/mark and
+  // diff blocks. These buttons only write Markdown source — the render
+  // boundary in @manifold/render owns sanitization.
+  const wrapSelection = (editor: Vditor, prefix: string, suffix: string, placeholder: string) => {
+    const selected = editor.getSelection()
+    if (selected) editor.updateValue(`${prefix}${selected}${suffix}`)
+    else editor.insertValue(`${prefix}${placeholder}${suffix}`)
+  }
+  const gfmToolbar = (editor: () => Vditor | null) => {
+    const ed = () => editor()
+    return [
+      // vditor 3.x renders custom submenus as broken toolbar rows (the
+      // sub-items surface as bare buttons with no icon), so the five callout
+      // variants are plain buttons instead of one dropdown.
+      ...(['NOTE', 'TIP', 'IMPORTANT', 'WARNING', 'CAUTION'] as const).map((type) => ({
+        name: `callout-${type.toLowerCase()}`,
+        icon: calloutIcon,
+        tip: type[0] + type.slice(1).toLowerCase(),
+        click: () => {
+          const instance = ed(); if (!instance) return
+          const selected = instance.getSelection()
+          if (selected) instance.updateValue(`> [!${type}] ${selected}`)
+          else instance.insertValue(`> [!${type}] `)
+        },
+      })),
+      {
+        name: 'footnote', icon: footnoteIcon, tip: 'Footnote',
+        click: () => {
+          const instance = ed(); if (!instance) return
+          const selected = instance.getSelection()
+          if (selected) instance.updateValue(`${selected}[^1]`)
+          else instance.insertValue('word[^1]')
+          instance.insertValue('\n\n[^1]: ')
+        },
+      },
+      {
+        name: 'kbd', icon: kbdIcon, tip: 'Keyboard key',
+        click: () => { const instance = ed(); if (instance) wrapSelection(instance, '<kbd>', '</kbd>', '⌘K') },
+      },
+      {
+        name: 'mark', icon: markIcon, tip: 'Highlight',
+        click: () => { const instance = ed(); if (instance) wrapSelection(instance, '<mark>', '</mark>', 'highlighted') },
+      },
+      {
+        name: 'diff', icon: diffIcon, tip: 'Diff block',
+        click: () => {
+          const instance = ed(); if (!instance) return
+          instance.insertValue('```diff\n+ added line\n- removed line\n plain line\n```\n')
+        },
+      },
+    ]
+  }
 
   // vditor's handler return value is only a tip string, never content —
   // uploads insert their markdown through insertValue ourselves.
@@ -87,7 +146,8 @@ export function MarkdownEditor({ value, onChange, disabled, placeholder, onUploa
         'headings', 'bold', 'italic', 'strike', '|',
         'list', 'ordered-list', 'check', 'outdent', 'indent', '|',
         'quote', 'line', 'code', 'inline-code', 'link', 'table', '|',
-        'undo', 'redo', '|',
+        ...gfmToolbar(() => vditorRef.current),
+        '|', 'undo', 'redo', '|',
         'fullscreen', 'edit-mode', 'export', 'help',
         ...(onUploadRef.current ? [{ name: 'upload-image', icon: uploadIcon, tip: 'Upload image', click: () => inputRef.current?.click() }] : []),
       ],
