@@ -10,6 +10,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import type { Comment } from "@manifold/contracts";
+import { useCommentPagination } from "../features/comments/use-comment-pagination";
 import { createAnonymousBrowserClient, createBrowserClient, getVisitorId } from "../lib/api";
 import { filterComments, type CommentFilter } from "../lib/comment-filter";
 import { getIdentity, saveIdentity, type CommentIdentity } from "../lib/identity";
@@ -42,7 +43,6 @@ const OPEN_COMPOSER_EVENT = "manifold:open-composer";
 
 const MAX_INDENT = 2;
 const COMMENT_PAGE_SIZE = 10;
-const SEARCH_DEBOUNCE_MS = 300;
 const MIN_SUBMIT_VEIL_MS = 350;
 const POSTED_COMMENT_SCROLL_TRIES = 8;
 const POSTED_COMMENT_SCROLL_INTERVAL_MS = 350;
@@ -154,15 +154,9 @@ export function ArticleDiscussion({ slug, viewCount = 0, likeCount = 0, showStat
   const client = useMemo(() => createBrowserClient(), []);
   const pagingRef = useContext(CommentsPagingRefContext);
   const sectionRef = useRef<HTMLElement>(null);
-  const [search, setSearch] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [page, setPage] = useState(1);
+  const { search, debouncedSearch, page, changePage, updateSearch, revealPosted } = useCommentPagination(sectionRef);
   const [filter, setFilter] = useState<CommentFilter>("all");
   const [visitorId] = useState(() => typeof window === "undefined" ? "" : getVisitorId());
-  useEffect(() => {
-    const timer = window.setTimeout(() => setDebouncedSearch(search), SEARCH_DEBOUNCE_MS);
-    return () => window.clearTimeout(timer);
-  }, [search]);
   const commentsQuery = useQuery({
     queryKey: ["comments", slug, page, debouncedSearch],
     queryFn: () => client.comments(slug, { page, pageSize: COMMENT_PAGE_SIZE, q: debouncedSearch || undefined }),
@@ -179,20 +173,9 @@ export function ArticleDiscussion({ slug, viewCount = 0, likeCount = 0, showStat
   const currentLikeCount = likesQuery.data?.likeCount ?? likeCount;
   useEffect(() => {
     pagingRef.current.revealPosted = (comment: Comment) => {
-      if (comment.replyToId) return;
-      setSearch("");
-      setDebouncedSearch("");
-      setPage(totalPages);
+      revealPosted(comment.replyToId, totalPages);
     };
-  });
-  const changePage = (next: number) => {
-    setPage(Math.min(Math.max(1, next), totalPages));
-    window.requestAnimationFrame(() => sectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
-  };
-  const onSearchInput = (value: string) => {
-    setSearch(value);
-    setPage(1);
-  };
+  }, [pagingRef, revealPosted, totalPages]);
 
   if (!commentsEnabled) return null;
   return <section id="comments" ref={sectionRef} className={styles.commentSection} aria-labelledby="comments-title">
@@ -206,7 +189,7 @@ export function ArticleDiscussion({ slug, viewCount = 0, likeCount = 0, showStat
       <span><strong>{totalComments}</strong> comments</span>
     </div>}
     <div className={styles.commentTools}>
-      <label className={styles.commentSearch}><Search size={15} aria-hidden="true" /><span className={styles.srOnly}>Search comments</span><input value={search} onChange={(event) => onSearchInput(event.target.value)} placeholder="Search comments" /></label>
+      <label className={styles.commentSearch}><Search size={15} aria-hidden="true" /><span className={styles.srOnly}>Search comments</span><input value={search} onChange={(event) => updateSearch(event.target.value)} placeholder="Search comments" /></label>
       <label className={styles.commentFilter}><Filter size={15} aria-hidden="true" /><span className={styles.srOnly}>Filter comments</span><select value={filter} onChange={(event) => setFilter(event.target.value as CommentFilter)}><option value="all">All comments</option><option value="withWebsite">With website</option><option value="recent">Recent</option></select></label>
     </div>
     {commentsQuery.isLoading && <p className={styles.muted}>Loading responses...</p>}
@@ -216,7 +199,7 @@ export function ArticleDiscussion({ slug, viewCount = 0, likeCount = 0, showStat
       : <p className={styles.commentEmpty}><span>No responses yet.</span><button type="button" className={styles.commentEmptyCTA} onClick={() => window.dispatchEvent(new CustomEvent(OPEN_COMPOSER_EVENT))}><MessageCircle size={15} /> Start the thread</button></p>)}
     {!commentsQuery.isLoading && !commentsQuery.isError && comments.length > 0 && visibleComments.length === 0 && <p className={styles.muted}>No comments match this filter on this page.</p>}
     <CommentList comments={visibleComments} />
-    {totalPages > 1 && <Pagination page={displayPage} totalPages={totalPages} onChange={changePage} disabled={commentsQuery.isPending || commentsQuery.isPlaceholderData} label="Comment pages" />}
+    {totalPages > 1 && <Pagination page={displayPage} totalPages={totalPages} onChange={(next) => changePage(next, totalPages)} disabled={commentsQuery.isPending || commentsQuery.isPlaceholderData} label="Comment pages" />}
   </section>;
 }
 
