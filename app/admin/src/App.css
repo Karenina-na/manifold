@@ -147,6 +147,30 @@ button { cursor: pointer; }
 .context-editor .vditor-host { min-height: 520px; }
 .context-editor .vditor { min-height: 520px; display: flex; flex-direction: column; }
 .context-editor .vditor-content, .context-editor .vditor-ir { flex: 1; min-height: 0; }
+/* Highlight markup inside the editor once lute's mark rendering is enabled:
+   give <mark> a visible warm highlight so it reads as highlighted text,
+   matching the renderer's callout/highlight palette. */
+.context-editor .vditor-reset mark,
+.context-editor .vditor-ir mark {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: inherit;
+  padding: 0 2px;
+  border-radius: 3px;
+}
+.context-editor .vditor-reset a[data-footnote-ref] { text-decoration: none; }
+/* Raw inline HTML (e.g. <mark>, <kbd>) renders as a syntax marker in IR
+   mode by vditor design — style it as a crisp mono tag chip instead of a
+   faint undefined blur so the user can read the markup at a glance. */
+.context-editor .vditor-ir .vditor-ir__node[data-type="html-inline"] > code.vditor-ir__marker {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.85em;
+  color: color-mix(in srgb, var(--accent) 75%, var(--muted));
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+  border-radius: 4px;
+  padding: 0 3px;
+  white-space: pre;
+}
 .confirm-actions { display: flex; justify-content: flex-end; gap: 6px; }
 .editor-render .content-preview { max-width: 860px; margin: 0 auto; }
 .content-preview { display: grid; gap: 18px; padding: 18px; }

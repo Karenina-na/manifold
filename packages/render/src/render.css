@@ -244,8 +244,8 @@
 .markdown section[data-footnotes] > h2, .markdown section[data-footnotes] > h3 { margin-top: 0; }
 .markdown section[data-footnotes] ol { margin: 0; padding-left: 22px; font-size: 13.5px; color: var(--mdr-muted); }
 .markdown section[data-footnotes] li { margin: 0 0 6px; }
-.markdown section[data-footnotes] a[data-footnote-backref] { color: var(--mdr-accent); text-decoration: none; margin-left: 4px; }
-.markdown section[data-footnotes] a[data-footnote-backref]:hover { text-decoration: underline; }
+.markdown section[data-footnotes] a[data-footnote-backref] { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; margin-left: 8px; vertical-align: -5px; border-radius: 999px; background: color-mix(in srgb, var(--mdr-accent) 12%, transparent); color: var(--mdr-accent); font-family: var(--mdr-mono); font-size: 12px; line-height: 1; text-decoration: none; transition: background 140ms ease, color 140ms ease; }
+.markdown section[data-footnotes] a[data-footnote-backref]:hover { background: color-mix(in srgb, var(--mdr-accent) 22%, transparent); color: var(--mdr-accent); }
 
 /* Table smart scroll veil: only when overflowing, hidden at the right edge. */
 .mdrTableWrap::after { opacity: 0; }

@@ -16,20 +16,28 @@ import remarkMath from "remark-math";
 
 // Pin the image parts of the sanitize schema instead of trusting the default:
 // uploads render through img, and an upstream schema change must not silently
-// turn every embedded image back into a plain link. Raw HTML (kbd/mark/…)
-// is parsed by rehype-raw and then sanitized here as the final gate.
+// turn every embedded image back into a plain link. Raw HTML (kbd/mark/…) is
+// parsed by rehype-raw and then sanitized here as the final gate.
+// clobberPrefix is disabled so footnote ids we emit (fn-1/fnref-1) match their
+// hrefs; without this rehype-sanitize rewrites ids to user-content-* and the
+// ref→definition navigation breaks.
 const renderSchema = {
   ...defaultSchema,
   tagNames: [...(defaultSchema.tagNames ?? []), "mark"],
   attributes: {
     ...defaultSchema.attributes,
     // callout cards carry a semantic className; footnote popovers need their
-    // span/sup classes kept, and <mark> must survive sanitization.
+    // span/sup classes kept, <mark> must survive sanitization, and footnote
+    // anchors need their id + data-* attributes so ref→definition navigation
+    // and the back-reference still work after sanitization.
     sup: [["className"]],
     span: [["className"]],
     mark: [["className"]],
     blockquote: [...(defaultSchema.attributes?.blockquote ?? []), "className"],
     img: [...(defaultSchema.attributes?.img ?? []), "srcSet", "width", "height", "loading", "decoding"],
+    a: [...(defaultSchema.attributes?.a ?? []), ["id"], ["data-footnote-ref"], ["data-footnote-backref"], ["aria-label"]],
+    li: [...(defaultSchema.attributes?.li ?? []), ["id"]],
+    section: [...(defaultSchema.attributes?.section ?? []), ["data-footnotes"]],
   },
 };
 
@@ -308,8 +316,8 @@ export function MarkdownContent({ content, headingIds, hideFirstH1 = false }: { 
   return (
     <ReactMarkdown
       remarkPlugins={[remarkCallouts, remarkGfm, remarkFootnotes, remarkMath]}
-      remarkRehypeOptions={{ allowDangerousHtml: true }}
-      rehypePlugins={[[rehypeRaw], [rehypeSanitize, renderSchema], rehypeKatex, rehypeHighlight]}
+      remarkRehypeOptions={{ allowDangerousHtml: true, clobberPrefix: "" }}
+      rehypePlugins={[[rehypeRaw], [rehypeSanitize, { ...renderSchema, clobberPrefix: "" }], rehypeKatex, rehypeHighlight]}
       components={createComponents(content, headingIds, hideFirstH1)}
     >
       {content}
