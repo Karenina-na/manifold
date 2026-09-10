@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowRight, BadgeCheck, Boxes, Check, ChevronDown, ChevronLeft, ChevronRight, Clock, Copy, Cpu, Fingerprint, Hash, KeyRound, Layers, Link2, ScanLine, ShieldCheck } from "lucide-react";
 import type { AnchorSource, ChainAnchor, ChainBlockDetail, ChainBlockSummary, ChainInfo, VerifyChainContext, VerifyMerkleProof, VerifyResponse, VerifyStep } from "@manifold/contracts";
+import { usePendingCommits, type PendingCommit } from "../features/chain/use-pending-commits";
 import { createBrowserClient } from "../lib/api";
 import { Pagination } from "./pagination";
 import { Reveal } from "./reveal";
@@ -13,11 +14,6 @@ import styles from "../app/site.module.css";
 type BlocksPage = { items: ChainBlockSummary[]; page: number; totalPages: number };
 type VerifyMode = "payload" | "hash" | "content";
 type BlockDetail = { id: string; certIds: string[]; anchors: ChainAnchor[] };
-// A user-submitted commitment kept across refreshes: the payload text is shown
-// as evidence of what was anchored, and the anchor is re-verified on load.
-type PendingCommit = { anchorId: string; subjectHash: string; label: string; payload: string; at: string; status: "pending" | "anchored"; blockId: string | null };
-const PENDING_COMMITS_KEY = "manifold.chain.pendingCommits";
-const PENDING_COMMITS_CAP = 8;
 
 type VerifyResult = {
   mode: VerifyMode;
@@ -74,7 +70,6 @@ export function ChainExplorer({ info, initialBlocks }: { info: ChainInfo | null;
   const [verify, setVerify] = useState<VerifyResult | null>(null);
   const [payload, setPayload] = useState("");
   const [label, setLabel] = useState("");
-  const [pendingCommits, setPendingCommits] = useState<PendingCommit[]>([]);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -83,50 +78,8 @@ export function ChainExplorer({ info, initialBlocks }: { info: ChainInfo | null;
   const [now, setNow] = useState(0);
 
   const client = useMemo(() => createBrowserClient(), []);
+  const { pendingCommits, addPendingCommit } = usePendingCommits(client);
   const totalPages = blocks?.totalPages ?? 1;
-
-  const persistPending = (list: PendingCommit[]) => {
-    try {
-      localStorage.setItem(PENDING_COMMITS_KEY, JSON.stringify(list));
-    } catch {
-      // storage full or unavailable — the in-memory list still shows this session
-    }
-  };
-
-  // Restore user-submitted commitments across refreshes, then re-verify the
-  // still-pending ones so a sealed card upgrades to anchored with its block.
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    let cancelled = false;
-    let saved: PendingCommit[] = [];
-    try {
-      const raw = localStorage.getItem(PENDING_COMMITS_KEY);
-      if (raw) saved = JSON.parse(raw) as PendingCommit[];
-    } catch {
-      saved = [];
-    }
-    let restoreTimer = 0;
-    if (!cancelled) restoreTimer = window.setTimeout(() => { if (!cancelled) setPendingCommits(saved); }, 0);
-    void (async () => {
-      for (const commit of saved) {
-        if (commit.status !== "pending") continue;
-        try {
-          const result = await client.verifyByHash(commit.subjectHash);
-          if (!cancelled && result.found && result.anchor?.blockId) {
-            setPendingCommits((current) => {
-              const next = current.map((item) => item.anchorId === commit.anchorId ? { ...item, status: "anchored" as const, blockId: result.anchor?.blockId ?? null } : item);
-              persistPending(next);
-              return next;
-            });
-          }
-        } catch {
-          // network hiccup — keep it pending, it re-verifies on the next visit
-        }
-        await new Promise((resolveDelay) => setTimeout(resolveDelay, 300));
-      }
-    })();
-    return () => { cancelled = true; window.clearTimeout(restoreTimer); };
-  }, [client]);
 
   // Ticks only while a cool-down is pending so the buttons can count down.
   useEffect(() => {
@@ -297,11 +250,7 @@ export function ChainExplorer({ info, initialBlocks }: { info: ChainInfo | null;
         status: "pending",
         blockId: null,
       };
-      setPendingCommits((current) => {
-        const next = [...current, commit].slice(-PENDING_COMMITS_CAP);
-        persistPending(next);
-        return next;
-      });
+      addPendingCommit(commit);
       setPayload("");
       setLabel("");
       setAnchorUntil(Date.now() + ANCHOR_COOLDOWN_MS);
