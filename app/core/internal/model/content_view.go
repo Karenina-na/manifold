@@ -78,8 +78,25 @@ type PublicContent struct {
 // certificate for the row, nil when nothing has been anchored yet.
 type PublicContentDetail struct {
 	PublicContent
-	Body         string          `json:"body"`
-	LatestAnchor *AnchorSummary  `json:"latestAnchor"`
+	Body         string         `json:"body"`
+	LatestAnchor *AnchorSummary `json:"latestAnchor"`
+}
+
+// HomeTimeline is the bounded, lightweight projection used by the homepage
+// Updates rail. It intentionally excludes content body and derived metadata.
+type HomeTimeline struct {
+	Data       []HomeTimelineItem `json:"data"`
+	TotalItems int                `json:"totalItems"`
+	Truncated  bool               `json:"truncated"`
+}
+
+type HomeTimelineItem struct {
+	ID          string      `json:"id"`
+	Kind        ContentKind `json:"kind"`
+	Slug        string      `json:"slug"`
+	Title       *string     `json:"title"`
+	Summary     string      `json:"summary"`
+	PublishedAt string      `json:"publishedAt"`
 }
 
 // AnchorSummary is the wire shape of ContentDetail.latestAnchor.

@@ -12,6 +12,7 @@ import type {
   ChainAnchor,
   Collection,
   Comment,
+  HomeTimeline,
   Profile,
   SiteComposition,
   VerifyResponse,
@@ -19,6 +20,7 @@ import type {
 
 const wire = JSON.parse(readFileSync(fileURLToPath(new URL("./fixtures/wire.json", import.meta.url)), "utf8")) as {
   collection: Collection<CollectionFixture>;
+  homeTimeline: HomeTimeline;
   adminContent: AdminContent;
   comment: Comment;
   adminComment: AdminComment;
@@ -44,6 +46,8 @@ test("wire fixtures conform to contracts", () => {
     }
   }
   if (wire.adminContent.status !== "DRAFT") throw new Error("admin status");
+  if (wire.homeTimeline.totalItems !== 1 || wire.homeTimeline.truncated) throw new Error("home timeline bounds");
+  if (wire.homeTimeline.data[0]?.kind !== "THOUGHT" || wire.homeTimeline.data[0]?.summary !== "Summary text") throw new Error("home timeline content");
   if (typeof wire.adminContent.body !== "string") throw new Error("admin body");
   if (wire.comment.authorUrl !== null) throw new Error("comment authorUrl null");
   if (wire.comment.hidden !== false) throw new Error("comment hidden");

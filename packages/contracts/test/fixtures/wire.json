@@ -60,6 +60,20 @@
       "totalPages": 1
     }
   },
+  "homeTimeline": {
+    "data": [
+      {
+        "id": "content_1750000000000000000",
+        "kind": "THOUGHT",
+        "slug": "a-quiet-thought",
+        "title": null,
+        "summary": "Summary text",
+        "publishedAt": "2026-08-24T10:00:00Z"
+      }
+    ],
+    "totalItems": 1,
+    "truncated": false
+  },
   "adminContent": {
     "id": "content_1750000000000000002",
     "kind": "ARTICLE",

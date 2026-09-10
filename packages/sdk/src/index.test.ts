@@ -56,6 +56,20 @@ test("requests tag aggregation and encodes content page filters", async () => {
 	assert.equal(requests[2]?.url, "http://core.test/api/v1/content?kind=ARTICLE&tag=systems%2Cgo");
 });
 
+test("requests the bounded home timeline aggregate", async () => {
+	let captured: Request | undefined;
+	const client = new ManifoldClient({
+		baseUrl: "http://core.test",
+		fetch: async (input, init) => {
+			captured = new Request(input, init);
+			return new Response(JSON.stringify({ data: [], totalItems: 0, truncated: false }), { status: 200 });
+		},
+	});
+
+	await client.homeTimeline({ limit: 40 });
+	assert.equal(captured?.url, "http://core.test/api/v1/home/timeline?limit=40");
+});
+
 test("reads and updates the admin thought configuration", async () => {
 	const requests: Request[] = [];
 	const client = new ManifoldClient({

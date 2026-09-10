@@ -35,6 +35,28 @@ func (h *apiHandler) listContent(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusOK, collection(items, model.Pagination{Page: result.Page, PageSize: result.PageSize, TotalItems: result.TotalItems, TotalPages: result.TotalPages}))
 }
 
+func (h *apiHandler) homeTimeline(w http.ResponseWriter, r *http.Request) {
+	if err := rejectUnknownQuery(r.URL.Query(), "limit"); err != nil {
+		WriteError(w, http.StatusBadRequest, "INVALID_QUERY", err.Error())
+		return
+	}
+	limit := 1000
+	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 1 {
+			WriteError(w, http.StatusBadRequest, "INVALID_QUERY", "limit must be a positive integer")
+			return
+		}
+		limit = parsed
+	}
+	items, total, truncated, err := h.store.HomeTimeline(limit)
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, "CONTENT_UNAVAILABLE", "Content is unavailable.")
+		return
+	}
+	WriteJSON(w, http.StatusOK, model.HomeTimeline{Data: items, TotalItems: total, Truncated: truncated})
+}
+
 func (h *apiHandler) tags(w http.ResponseWriter, r *http.Request) {
 	if err := rejectUnknownQuery(r.URL.Query(), "kind"); err != nil {
 		WriteError(w, http.StatusBadRequest, "INVALID_QUERY", err.Error())

@@ -219,6 +219,62 @@ func TestPublicListContract(t *testing.T) {
 	}
 }
 
+func TestHomeTimelineContract(t *testing.T) {
+	router := newTestRouter(t)
+	type timelineItem struct {
+		ID          string `json:"id"`
+		Kind        string `json:"kind"`
+		PublishedAt string `json:"publishedAt"`
+	}
+	type timelinePayload struct {
+		Data       []timelineItem `json:"data"`
+		TotalItems int            `json:"totalItems"`
+		Truncated  bool           `json:"truncated"`
+	}
+
+	response := request(t, router, http.MethodGet, "/api/v1/home/timeline?limit=2", nil)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected home timeline 200, got %d %s", response.Code, response.Body.String())
+	}
+	var payload timelinePayload
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if len(payload.Data) != 2 || payload.TotalItems != 20 || !payload.Truncated {
+		t.Fatalf("unexpected bounded timeline: %s", response.Body.String())
+	}
+	if payload.Data[0].Kind == "" || payload.Data[1].Kind == "" || payload.Data[0].PublishedAt > payload.Data[1].PublishedAt {
+		t.Fatalf("expected published content in ascending order: %s", response.Body.String())
+	}
+	fullResponse := request(t, router, http.MethodGet, "/api/v1/home/timeline?limit=1000", nil)
+	if fullResponse.Code != http.StatusOK {
+		t.Fatalf("expected full home timeline 200, got %d %s", fullResponse.Code, fullResponse.Body.String())
+	}
+	var fullPayload timelinePayload
+	if err := json.Unmarshal(fullResponse.Body.Bytes(), &fullPayload); err != nil {
+		t.Fatal(err)
+	}
+	if len(fullPayload.Data) < len(payload.Data) {
+		t.Fatalf("expected full timeline to include bounded response: %s", fullResponse.Body.String())
+	}
+	latest := fullPayload.Data[len(fullPayload.Data)-2:]
+	if payload.Data[0].ID != latest[0].ID || payload.Data[1].ID != latest[1].ID {
+		t.Fatalf("expected bounded timeline to retain the latest items: %s", response.Body.String())
+	}
+	for _, field := range []string{`"excerpt"`, `"tags"`, `"metadata"`, `"viewCount"`, `"updatedAt"`} {
+		if strings.Contains(response.Body.String(), field) {
+			t.Fatalf("home timeline must not expose %s: %s", field, response.Body.String())
+		}
+	}
+
+	for _, query := range []string{"limit=0", "limit=nope", "page=1"} {
+		invalid := request(t, router, http.MethodGet, "/api/v1/home/timeline?"+query, nil)
+		if invalid.Code != http.StatusBadRequest || !strings.Contains(invalid.Body.String(), "INVALID_QUERY") {
+			t.Fatalf("expected invalid timeline query for %q, got %d %s", query, invalid.Code, invalid.Body.String())
+		}
+	}
+}
+
 func TestContentDetailContract(t *testing.T) {
 	router := newTestRouter(t)
 	response := request(t, router, http.MethodGet, "/api/v1/content/designing-boundaries?trackView=false", nil)

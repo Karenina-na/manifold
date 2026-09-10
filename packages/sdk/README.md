@@ -43,6 +43,7 @@ const page = await client.content({ kind: "ARTICLE", pageSize: 20 })
 | `health()` | GET | `/healthz` | `HealthStatus` |
 | `profile()` | GET | `/api/v1/profile` | `Profile` |
 | `site()` | GET | `/api/v1/site` | `SiteComposition`（站点设置 + `pinnedThoughts`/`pinnedWritings` 置顶内容数组） |
+| `homeTimeline(query?)` | GET | `/api/v1/home/timeline` | `HomeTimeline`，取最新 `limit` 条后按首发时间升序返回首页 Updates 的轻量项（仅 `id/kind/slug/title/summary/publishedAt`）；`limit` 默认和上限 1000，响应以 `totalItems`/`truncated` 标记截断 |
 | `content(query?)` | GET | `/api/v1/content` | `Collection<Content>`，唯一公共列表面；`query` 支持 `kind`（单值或多值 `string[]`，数组序列化为逗号分隔，多值按 OR 命中任一标签）、`tag`（同上）、`q`、`page`/`pageSize`（页码分页）、`sort`、`aiAssisted` |
 | `tags(query?)` | GET | `/api/v1/tags` | `Collection<TagSummary>` 标签聚合，`query` 支持 `kind = "THOUGHT" \| "ARTICLE"` |
 | `contentBySlug(slug, query?, visitorId?)` | GET | `/api/v1/content/:slug` | `ContentDetail`；`query: { trackView: false }` 关闭浏览计数（默认计入），`referrer` 传 origin 形式的来源供浏览事件分析；`visitorId` 附带 `X-Visitor-ID` 供 Core 按"同人同内容同 UTC 日"去重浏览事件 |

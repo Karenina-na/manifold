@@ -1,4 +1,4 @@
-import type { AdminComment, AdminCommentQuery, AdminContent, AdminContentQuery, AdminOverview, AdminSessionList, AdminStats, AnalyticsViews, AnalyticsViewsQuery, AnchorQuery, AuditEventCollection, AuditQuery, AuthMeResponse, ChainAnchor, ChainBlockDetail, ChainBlockSummary, ChainInfo, ChainPublicKey, ChangePasswordInput, Collection, Comment, CommentQuery, Content, ContentDetail, ContentDetailQuery, ContentInput, ContentQuery, CreateCommentInput, GitHubExchangeInput, GitHubExchangeResponse, HealthStatus, LikeSummary, LoginInput, LoginResponse, Media, MediaQuery, MediaReferenceList, PresenceStatus, Profile, ProfileInput, SiteComposition, SiteConfig, SiteConfigInput, Stats, SubmitAnchorInput, SubmitAnchorResponse, SystemStatus, TagQuery, TagSummary, ThoughtConfig, ThoughtConfigInput, UpdateCommentInput, UpdateContentInput, VerifyResponse, WritingConfig, WritingConfigInput } from "@manifold/contracts";
+import type { AdminComment, AdminCommentQuery, AdminContent, AdminContentQuery, AdminOverview, AdminSessionList, AdminStats, AnalyticsViews, AnalyticsViewsQuery, AnchorQuery, AuditEventCollection, AuditQuery, AuthMeResponse, ChainAnchor, ChainBlockDetail, ChainBlockSummary, ChainInfo, ChainPublicKey, ChangePasswordInput, Collection, Comment, CommentQuery, Content, ContentDetail, ContentDetailQuery, ContentInput, ContentQuery, CreateCommentInput, GitHubExchangeInput, GitHubExchangeResponse, HealthStatus, HomeTimeline, HomeTimelineQuery, LikeSummary, LoginInput, LoginResponse, Media, MediaQuery, MediaReferenceList, PresenceStatus, Profile, ProfileInput, SiteComposition, SiteConfig, SiteConfigInput, Stats, SubmitAnchorInput, SubmitAnchorResponse, SystemStatus, TagQuery, TagSummary, ThoughtConfig, ThoughtConfigInput, UpdateCommentInput, UpdateContentInput, VerifyResponse, WritingConfig, WritingConfigInput } from "@manifold/contracts";
 
 export class ApiError extends Error {
 	readonly status: number;
@@ -47,6 +47,7 @@ export class ManifoldClient {
 	health() { return this.request<HealthStatus>("/healthz"); }
 	profile() { return this.request<Profile>("/api/v1/profile"); }
 	site() { return this.request<SiteComposition>("/api/v1/site"); }
+	homeTimeline(query?: HomeTimelineQuery) { return this.request<HomeTimeline>(this.withQuery("/api/v1/home/timeline", query, ["limit"])); }
 	content(query?: ContentQuery) { return this.request<Collection<Content>>(this.withQuery("/api/v1/content", query, ["kind", "tag", "q", "page", "pageSize", "sort", "aiAssisted"])); }
 	tags(query?: TagQuery) { return this.request<Collection<TagSummary>>(this.withQuery("/api/v1/tags", query, ["kind"])); }
 	contentBySlug(slug: string, query?: ContentDetailQuery, visitorId?: string) {

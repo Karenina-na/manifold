@@ -43,7 +43,7 @@ export default async function Home() {
   const writings = data.feed?.filter((item) => item.kind === "ARTICLE").slice(0, 3) ?? [];
   const thoughts = data.feed?.filter((item) => item.kind === "THOUGHT").slice(0, 3) ?? [];
   const initials = profile?.displayName?.slice(0, 1).toUpperCase() ?? "M";
-  const updateTimeline = buildUpdateTimeline(data.feed ?? []);
+  const updateTimeline = buildUpdateTimeline(data.timeline);
   const contactLinks = [
 	    ...(profile?.websiteUrl ? [{ label: "Website", url: profile.websiteUrl, handle: null, icon: "globe" }] : []),
     ...(profile?.contacts ?? []),

@@ -154,6 +154,10 @@ export interface SiteComposition extends SiteConfig {
   pinnedWritings: Extract<Content, { kind: "ARTICLE" }>[];
 }
 
+export interface HomeTimelineQuery { limit?: number }
+export interface HomeTimelineItem { id: string; kind: ContentKind; slug: string; title: string | null; summary: string; publishedAt: string }
+export interface HomeTimeline { data: HomeTimelineItem[]; totalItems: number; truncated: boolean }
+
 export interface ThoughtConfig { pinnedIds: string[]; updatedAt: string }
 export interface ThoughtConfigInput { pinnedIds: string[] }
 export interface WritingConfig { pinnedIds: string[]; updatedAt: string }

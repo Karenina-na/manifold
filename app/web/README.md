@@ -8,7 +8,7 @@ Manifold 公开阅读端，负责 Home、Thoughts、Writings、Markdown 阅读�
 
 `/thoughts` 由 Server Component 读取 Core 的 Thoughts aggregate，翻页时请求 Core 的对应页；置顶有效性、最新回退、置顶排除、正文摘录和页数均由 Core 负责，Web 只把当前页按 UTC 年份/月份/日期组织成分块时间轴：年份为卡片 surface 之外的分节标题行，月份标签与日期节点在左栏和纵轴上，内容 surface 按年份框住卡片。Thoughts 与 Writings 归档都把星号灰色摘要和正文摘录分开，普通项限制两行正文、置顶项限制四行；归档页显示 Core 返回的点赞、观看和已审核评论数，不在 Web 端额外请求评论或计算统计。
 
-首页按 Profile/Introduction、Background、Recent Content、Updates、My Series、Contact 六段组织共同信息，区块顺序由站点设置的 `sections` 驱动；Recent Content 展示 Writings/Thoughts 双列与 Top tags，Updates 使用全部公开内容的 `publishedAt` 构建可缩放时间轨道；My Series 使用紧凑索引卡片，Contact 使用纯图标 rail，详情在 hover/focus 时通过脱离局部层叠上下文的浮层展示；页脚在线人数通过 Core presence 心跳返回，不使用 mock；页面数据、状态徽标和内容链接仍以 Core 返回值为准。
+首页按 Profile/Introduction、Background、Recent Content、Updates、My Series、Contact 六段组织共同信息，区块顺序由站点设置的 `sections` 驱动；Recent Content 通过公共内容列表展示 Writings/Thoughts 双列与 Top tags，Updates 使用 Core `homeTimeline()` 返回的轻量、有限且按首发时间排序的最新内容构建可缩放轨道；My Series 使用紧凑索引卡片，Contact 使用纯图标 rail，详情在 hover/focus 时通过脱离局部层叠上下文的浮层展示；页脚在线人数通过 Core presence 心跳返回，不使用 mock；页面数据、状态徽标和内容链接仍以 Core 返回值为准。
 
 源码按职责分层：`app/` 保存路由和 Server Component，`components/` 保存可复用界面，`features/` 保存单一交互域的客户端状态（当前为 chain 的待封块提交生命周期和 comments 的讨论分页），`lib/` 保存无界面的共享函数与 Core 客户端入口。业务数据和规则仍由 Core 与共享契约定义。
 

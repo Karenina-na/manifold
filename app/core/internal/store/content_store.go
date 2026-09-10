@@ -201,6 +201,48 @@ func (s *Store) ListContent(includeDrafts bool, options ContentListOptions) (Con
 	return ContentListResult{Items: items, Page: page, PageSize: pageSize, TotalItems: total, TotalPages: totalPages}, nil
 }
 
+// HomeTimeline returns the bounded public projection used by the homepage's
+// chronological Updates rail. The query is intentionally separate from the
+// general listing API so the homepage cannot request an unbounded history.
+func (s *Store) HomeTimeline(limit int) ([]model.HomeTimelineItem, int, bool, error) {
+	if limit <= 0 {
+		limit = 1000
+	}
+	if limit > 1000 {
+		limit = 1000
+	}
+	var total int
+	if err := s.DB.QueryRow(`SELECT COUNT(*) FROM content WHERE status = 'PUBLISHED'`).Scan(&total); err != nil {
+		return nil, 0, false, err
+	}
+	rows, err := s.DB.Query(`
+		SELECT id, kind, slug, title, summary, published_at
+		FROM (
+			SELECT id, kind, slug, title, summary, published_at
+			FROM content
+			WHERE status = 'PUBLISHED'
+			ORDER BY published_at DESC, id DESC
+			LIMIT ?
+		)
+		ORDER BY published_at ASC, id ASC`, limit)
+	if err != nil {
+		return nil, 0, false, err
+	}
+	defer rows.Close()
+	items := make([]model.HomeTimelineItem, 0, min(limit, total))
+	for rows.Next() {
+		var item model.HomeTimelineItem
+		if err := rows.Scan(&item.ID, &item.Kind, &item.Slug, &item.Title, &item.Summary, &item.PublishedAt); err != nil {
+			return nil, 0, false, err
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, false, err
+	}
+	return items, total, total > len(items), nil
+}
+
 func (s *Store) Tags(kind model.ContentKind) ([]model.TagSummary, error) {
 	query := `SELECT content_tags.tag, COUNT(*) FROM content_tags JOIN content ON content.id = content_tags.content_id WHERE content.status = 'PUBLISHED'`
 	args := []any{}

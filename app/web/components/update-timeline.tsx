@@ -105,7 +105,7 @@ export function UpdateTimelineView({ timeline, hint }: { timeline: UpdateTimelin
 
   const seasonBands = buildSeasonBands(windowMonths);
   const monthStep = computeLabelStep(windowMonths.length, trackWidth);
-  const windowLabel = zoom === 0 ? "All time" : windowDays >= 30 ? `Last ${Math.round(windowDays / 30.44)}mo` : `Last ${windowDays}d`;
+  const windowLabel = zoom === 0 ? (timeline.truncated ? `Latest ${timeline.itemCount}` : "All time") : windowDays >= 30 ? `Last ${Math.round(windowDays / 30.44)}mo` : `Last ${windowDays}d`;
 
   useEffect(() => {
     if (!trackRef.current) return;
@@ -175,7 +175,7 @@ export function UpdateTimelineView({ timeline, hint }: { timeline: UpdateTimelin
               />
             </div>
             <div className={styles.updateRangeRow}>
-              <span className={styles.updateRangeHint}>All history</span>
+              <span className={styles.updateRangeHint}>{timeline.truncated ? `Latest ${timeline.itemCount} of ${timeline.totalItems}` : "All history"}</span>
               <button className={styles.updateRangeReset} type="button" onClick={() => setZoom(100)}>Reset</button>
             </div>
           </div>}

@@ -3,7 +3,6 @@ import { ManifoldClient } from "@manifold/sdk";
 
 const coreUrl = process.env.NEXT_PUBLIC_CORE_URL ?? "http://localhost:8080";
 const noStoreFetch: typeof fetch = (input, init) => fetch(input, { ...init, cache: "no-store" });
-const MAX_CONTENT_HISTORY = 1000;
 
 export const fallbackSiteTitle = "Manifold";
 export const fallbackSiteDescription = "Profile, technical writings, short thoughts, and personal projects.";
@@ -46,40 +45,38 @@ export function getVisitorId() {
   return value;
 }
 
-async function fetchPublicContent(client: ManifoldClient, kind: Content["kind"], includeHistory: boolean) {
-  const items: Content[] = [];
-  let pageNumber = 1;
-  do {
-    try {
-      const page = await client.content({ kind, page: pageNumber, pageSize: includeHistory ? 50 : 10 });
-      items.push(...page.data);
-      if (!includeHistory || items.length >= MAX_CONTENT_HISTORY) break;
-      if (pageNumber >= page.pagination.totalPages) break;
-      pageNumber += 1;
-    } catch (error) {
-      if (!items.length) throw error;
-      break;
-    }
-  } while (items.length < MAX_CONTENT_HISTORY);
-  return items.slice(0, MAX_CONTENT_HISTORY);
+async function fetchRecentPublicContent(client: ManifoldClient, kind: Content["kind"]) {
+  const page = await client.content({ kind, page: 1, pageSize: 10 });
+  return page.data;
 }
 
-export async function loadHomeData({ includeHistory = true }: { includeHistory?: boolean } = {}) {
+export async function loadHomeData() {
   const client = createServerClient();
   try {
-    const fetchContent = (kind: Content["kind"]) => fetchPublicContent(client, kind, includeHistory);
     // tags feeds the home topic rail; a tags failure must never take the
     // whole homepage down, so it degrades to an empty list on its own.
-    const [profile, site, writings, thoughts, stats, tagsResult] = await Promise.all([
-      client.profile(), client.site(), fetchContent("ARTICLE"), fetchContent("THOUGHT"), client.stats(),
+    const [profile, site, writings, thoughts, timeline, stats, tagsResult] = await Promise.all([
+      client.profile(), client.site(), fetchRecentPublicContent(client, "ARTICLE"), fetchRecentPublicContent(client, "THOUGHT"), client.homeTimeline(), client.stats(),
       client.tags().catch(() => null),
     ]);
     const tags = tagsResult?.data ?? [];
-    const contentHistory = [...writings, ...thoughts].sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
-    const feed = [...contentHistory].sort((a, b) => Date.parse(b.publishedAt) - Date.parse(a.publishedAt));
-    return { profile, site, feed, contentHistory, stats, tags, error: null };
+    const feed = [...writings, ...thoughts].sort((a, b) => Date.parse(b.publishedAt) - Date.parse(a.publishedAt));
+    return { profile, site, feed, timeline, stats, tags, error: null };
   } catch {
-    return { profile: null, site: null, feed: null, contentHistory: [], stats: null, tags: [], error: "Core is unavailable right now. Please try again in a moment." };
+    return { profile: null, site: null, feed: null, timeline: { data: [], totalItems: 0, truncated: false }, stats: null, tags: [], error: "Core is unavailable right now. Please try again in a moment." };
+  }
+}
+
+export async function loadFeedData() {
+  const client = createServerClient();
+  try {
+    const [writings, thoughts] = await Promise.all([
+      fetchRecentPublicContent(client, "ARTICLE"),
+      fetchRecentPublicContent(client, "THOUGHT"),
+    ]);
+    return [...writings, ...thoughts].sort((a, b) => Date.parse(b.publishedAt) - Date.parse(a.publishedAt));
+  } catch {
+    return [];
   }
 }
 

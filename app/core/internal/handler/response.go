@@ -196,6 +196,7 @@ func newRouterWithMiner(cfg config.Config, database *store.Store, ledger *chain.
 		api.Get("/profile", h.profile)
 		api.Get("/site", h.site)
 		api.Get("/stats", h.stats)
+		api.Get("/home/timeline", h.homeTimeline)
 		api.With(publicLimiter.middleware(trustedProxies)).Post("/presence", h.presence)
 		api.Get("/content", h.listContent)
 		api.Get("/tags", h.tags)

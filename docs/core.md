@@ -155,6 +155,7 @@ Core 使用 `caarlos0/env` 读取 `CORE_` 前缀变量；启动时自动从工�
 | `GET` | `/healthz` | `{ status: "ok", version, startedAt }`，进程启动时间用于计算 uptime |
 | `GET` | `/api/v1/profile` | `Profile`，包含身份、教育/经历、个人 `series` 和 `contacts` |
 | `GET` | `/api/v1/site` | 站点组合：profile 引用、站点身份（`title`/`description`/`footer`/`social`）、`commentsEnabled`、导航和 `sections`（枚举见下）；归档 pin 由 `thoughts_config`/`writings_config` 独立承载 |
+| `GET` | `/api/v1/home/timeline` | 首页 Updates 的有限公开投影 `{ data, totalItems, truncated }`；`data` 项只含 `id/kind/slug/title/summary/publishedAt`，取最新 `limit` 条后按不可变首发时间升序；`limit` 默认 1000、上限 1000，超上限钳制，非法或未知参数返回 400 `INVALID_QUERY` |
 | `GET` | `/api/v1/content` | 已发布内容摘要集合，包含 Core 从 Markdown 正文派生的纯文本 `excerpt`、`viewCount`、`likeCount` 和可见线程口径的 `commentCount` 聚合值 |
 | `GET` | `/api/v1/tags` | 已发布内容的标签聚合 `Collection<TagSummary>`（`{ name, count }`，按 count 降序、name 升序），可用 `kind=THOUGHT|ARTICLE` 过滤 |
 | `GET` | `/api/v1/content/{slug}` | 通过 slug 或 ID 返回已发布详情和 Markdown body；默认记录一次 `content.viewed` 审计事件并写入浏览事件（识别访客按 `(content, visitor, UTC 日)` 去重，匿名浏览每次都记录），内部 metadata 请求可传 `trackView=false` 跳过计数；来源归一为 origin 供分析——优先读 `referrer` 查询参数（SDK 为服务端 fetch 转发浏览器原始 Referer），为空时回退 HTTP `Referer` 头 |
