@@ -4,6 +4,8 @@
 // Changes to this file or render.css must be verified against BOTH surfaces —
 // see packages/render/README.md before diverging.
 import "./render.css";
+import { remarkFootnotes } from "./footnotes";
+import type { MdNode } from "./mdast";
 import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, BadgeInfo, Check, Copy, ImageOff, Info, Lightbulb, Link as LinkIcon, ShieldAlert } from "lucide-react";
 import ReactMarkdown, { type Components } from "react-markdown";
@@ -100,14 +102,12 @@ function TableWrap({ children }: { children: React.ReactNode }) {
   return <div ref={wrapRef} className={classes}>{children}</div>;
 }
 
-type CalloutNode = { type: string; children?: CalloutNode[]; value?: string; data?: Record<string, unknown> };
-
 // GFM-style alerts: > [!NOTE] … maps the blockquote to a semantic callout card
 // and strips the tag from the first paragraph. Runs at the mdast layer so the
 // text edit and className land before hast conversion (no React-node surgery).
 function remarkCallouts() {
-  return (tree: CalloutNode) => {
-    const walk = (node: CalloutNode) => {
+  return (tree: MdNode) => {
+    const walk = (node: MdNode) => {
       if (node.type === "blockquote") {
         const first = node.children?.[0];
         if (first?.type === "paragraph") {
@@ -134,51 +134,6 @@ function remarkCallouts() {
       node.children?.forEach(walk);
     };
     walk(tree);
-  };
-}
-
-const escapeHtml = (value: string) => value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-
-const mdastText = (node: CalloutNode): string =>
-  node.type === "text" ? node.value ?? "" : (node.children ?? []).map(mdastText).join("");
-
-// GFM footnotes have no first-class component in react-markdown v10, so they
-// are rewritten at the mdast layer: each reference becomes an inline <sup>
-// capsule (with a CSS hover popover carrying the note text), and all
-// definitions are gathered into one quiet <section data-footnotes> at the end.
-// The generated HTML goes through the normal raw->sanitize pipeline.
-function remarkFootnotes() {
-  return (tree: CalloutNode) => {
-    const defs: Record<string, string> = {};
-    const refs: { id: string; label: string; node: CalloutNode }[] = [];
-    const walk = (node: CalloutNode, parent?: CalloutNode, index?: number) => {
-      if (node.type === "footnoteDefinition") {
-        defs[String((node as { identifier?: unknown }).identifier ?? "")] = mdastText(node);
-        if (parent && index != null) parent.children?.splice(index, 1);
-        return;
-      }
-      if (node.type === "footnoteReference") {
-        const identifier = String((node as { identifier?: unknown }).identifier ?? "");
-        refs.push({ id: identifier, label: String((node as { label?: unknown }).label ?? identifier), node });
-        return;
-      }
-      node.children?.forEach((child, childIndex) => walk(child, node, childIndex));
-    };
-    walk(tree);
-    for (const { id, label, node } of refs) {
-      const content = defs[id] ?? "";
-      const pop = content ? `<span class="mdrFootnotePop">${escapeHtml(content)}</span>` : "";
-      node.type = "html";
-      node.value = `<sup class="mdrFootnoteRef"><a href="#fn-${id}" id="fnref-${id}" data-footnote-ref>${escapeHtml(label)}${pop}</a></sup>`;
-      delete node.children;
-    }
-    const entries = Object.entries(defs);
-    if (entries.length > 0) {
-      const items = entries
-        .map(([id, text]) => `<li id="fn-${id}"><p>${escapeHtml(text)} <a href="#fnref-${id}" data-footnote-backref>↩</a></p></li>`)
-        .join("");
-      tree.children?.push({ type: "html", value: `<section data-footnotes><ol>${items}</ol></section>` });
-    }
   };
 }
 
