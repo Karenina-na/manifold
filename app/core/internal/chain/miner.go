@@ -23,24 +23,30 @@ const minerRestartDelay = 5 * time.Second
 // is the block actually mined in this pass, or the zero Block when nothing
 // was due — OnMined hooks fire only on real production. Exposed for tests.
 func (l *Ledger) MineOnce() (Block, error) {
+	return l.MineOnceContext(context.Background())
+}
+
+// MineOnceContext performs one mining decision and permits shutdown to cancel
+// an in-flight proof search or simulated delay.
+func (l *Ledger) MineOnceContext(ctx context.Context) (Block, error) {
 	if _, err := l.Tip(); err != nil {
 		if errors.Is(err, ErrEmptyChain) {
-			if block, err := l.InsertBlock(nil); err != nil {
+			if block, err := l.InsertBlockContext(ctx, nil); err != nil {
 				return Block{}, err
 			} else if block.Index == 0 {
 				// genesis minted — keep evaluating the buffer this round
-				return l.mineDuePending()
+				return l.mineDuePending(ctx)
 			}
 		} else {
 			return Block{}, err
 		}
 	}
-	return l.mineDuePending()
+	return l.mineDuePending(ctx)
 }
 
 // mineDuePending packs the buffered set only when the batch threshold or the
 // flush timeout is due; otherwise it returns the zero Block.
-func (l *Ledger) mineDuePending() (Block, error) {
+func (l *Ledger) mineDuePending(ctx context.Context) (Block, error) {
 	count, err := l.PendingCount()
 	if err != nil {
 		return Block{}, err
@@ -66,7 +72,7 @@ func (l *Ledger) mineDuePending() (Block, error) {
 	for _, anchor := range pending {
 		ids = append(ids, anchor.ID)
 	}
-	return l.InsertBlock(ids)
+	return l.InsertBlockContext(ctx, ids)
 }
 
 // RunOptions carries the production hooks the HTTP layer wires in: block-mined
@@ -85,6 +91,9 @@ func (l *Ledger) Run(ctx context.Context, opts RunOptions) error {
 			return err
 		}
 		if err := l.mineOnceRecovering(ctx, opts); err != nil {
+			if errors.Is(err, context.Canceled) {
+				return err
+			}
 			slog.Error("chain_miner_iteration_failed", "error", err)
 		}
 		select {
@@ -111,8 +120,11 @@ func (l *Ledger) mineOnceRecovering(ctx context.Context, opts RunOptions) (retur
 		}
 	}()
 	started := time.Now()
-	block, err := l.MineOnce()
+	block, err := l.MineOnceContext(ctx)
 	if err != nil {
+		if errors.Is(err, context.Canceled) {
+			return err
+		}
 		if errors.Is(err, ErrTipMoved) {
 			// Another writer produced a block mid-mining (only tests and
 			// external inserts race this single-miner setup); the next tick

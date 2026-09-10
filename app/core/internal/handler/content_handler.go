@@ -84,9 +84,11 @@ func (h *apiHandler) getContent(w http.ResponseWriter, r *http.Request) {
 		if source == "" {
 			source = r.Referer()
 		}
-		if err := h.store.RecordContentView(content.ID, viewerID, referrerOrigin(source)); err != nil {
+		viewCount, err := h.store.RecordContentView(content.ID, viewerID, referrerOrigin(source))
+		if err != nil {
 			slog.Error("content_view_count_failed", "contentId", content.ID, "error", err)
 		} else {
+			content.ViewCount = viewCount
 			h.overviewCache.Purge()
 		}
 	}

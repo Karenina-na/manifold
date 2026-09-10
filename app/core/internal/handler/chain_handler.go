@@ -81,7 +81,7 @@ func (h *apiHandler) enrichAnchorViews(views []anchorView) []anchorView {
 	}
 	commentContent := map[string]string{}
 	if len(commentIDs) > 0 {
-		rows, err := h.store.DB.Query(`SELECT id, content_id FROM comments WHERE id IN (` + placeholders(len(commentIDs)) + `)`, toAny(commentIDs)...)
+		rows, err := h.store.DB.Query(`SELECT id, content_id FROM comments WHERE id IN (`+placeholders(len(commentIDs))+`)`, toAny(commentIDs)...)
 		if err == nil {
 			for rows.Next() {
 				var id, contentID string
@@ -97,7 +97,7 @@ func (h *apiHandler) enrichAnchorViews(views []anchorView) []anchorView {
 	}
 	contentInfo := map[string]struct{ Slug, Kind string }{}
 	if len(contentIDs) > 0 {
-		rows, err := h.store.DB.Query(`SELECT id, slug, kind FROM content WHERE id IN (` + placeholders(len(contentIDs)) + `)`, toAny(contentIDs)...)
+		rows, err := h.store.DB.Query(`SELECT id, slug, kind FROM content WHERE id IN (`+placeholders(len(contentIDs))+`)`, toAny(contentIDs)...)
 		if err == nil {
 			for rows.Next() {
 				var id, slug, kind string
@@ -879,12 +879,18 @@ func (h *apiHandler) verifyAnchorComment(w http.ResponseWriter, r *http.Request)
 		WriteError(w, http.StatusNotFound, "COMMENT_NOT_FOUND", "Comment was not found.")
 		return
 	}
-	payload, _, _, _, err := CommentPayload(comment.Comment, "created")
+	payloadHashes, err := commentPayloadHashes(comment.Comment)
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, "CHAIN_UNAVAILABLE", "Payload could not be rebuilt.")
 		return
 	}
-	body, status := h.verifyResult(ledger, chain.SubjectHashHex(payload))
+	body, status := h.verifyResult(ledger, payloadHashes[0])
+	for _, payloadHash := range payloadHashes[1:] {
+		if status != http.StatusNotFound {
+			break
+		}
+		body, status = h.verifyResult(ledger, payloadHash)
+	}
 	if status != http.StatusOK {
 		if response, cast := body["error"].(map[string]any); cast {
 			WriteError(w, status, response["code"].(string), response["message"].(string))

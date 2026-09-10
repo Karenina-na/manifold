@@ -110,7 +110,7 @@ Core 使用 `caarlos0/env` 读取 `CORE_` 前缀变量；启动时自动从工�
 
 | 场景 | 行为 |
 | --- | --- |
-| 开发（默认，`CORE_ENV` 非 `production` 且未设 `CORE_SEED_FILE`） | 应用内置 `internal/seed/dev.json`：profile、site_config、3 篇 PUBLISHED 演示内容（`designing-boundaries`、`a-small-signal`、`reading-the-edge`）和归档配置单例 |
+| 开发（默认，`CORE_ENV` 非 `production` 且未设 `CORE_SEED_FILE`） | 应用内置 `internal/seed/dev.json`：profile、site_config、20 条 PUBLISHED 内容、1 条 DRAFT 内容和归档配置单例 |
 | 开发 + `CORE_SEED_FILE` | 应用自定义 JSON 文件；`profile`/`siteConfig` 缺省时回退内置 bootstrap 默认，`contents` 完全来自文件 |
 | 生产（`CORE_ENV=production`） | 只应用结构骨架（profile + site_config），内容库为空，由管理员创建全部内容；即使设置了 `CORE_SEED_FILE` 也只采用其骨架字段、忽略 `contents` |
 
@@ -286,11 +286,11 @@ Metadata：Thought 使用 `mood/question/context/source`；Article 使用 Core �
 ## 8. 缓存、审计和关闭
 
 - Core 启动时先解析种子计划（可能读取 `CORE_SEED_FILE`），再绑定 `CORE_ADDR`；成功后才打开 SQLite、执行 schema 初始化与空库种子应用；端口冲突会直接退出且不修改数据库。
-- 内容详情使用最多 256 项的 TTL LRU；Core 启动时预热归档置顶的 Writing 与 Thought（Thought 以公开 URL 的内容 ID 为 key，Writing 以 slug 为 key，无 slug 时跳过）。
+- 内容详情使用最多 256 项的 TTL LRU；Core 启动时预热归档置顶的 Writing 与 Thought（Thought 以公开 URL 的内容 ID 为 key，Writing 以 slug 为 key，无 slug 时跳过）。公开详情记录浏览量后使用事务返回的最新 `view_count` 更新响应和缓存，避免缓存命中延长旧计数的存活时间。
 - 缓存失效按内容可能被服务的全部 key 进行：内容 ID（Thought 详情 URL）与 slug（Writing 详情 URL 及 Thought 的可选 slug），不再整表清空；内容创建、更新、发布、撤回、删除、点赞变化与评论创建、隐藏/取消隐藏、软删/恢复和作者资料更新都会清理相关缓存。
 - Stats 与 Admin Overview 各使用单条 TTL 快照（共用 `CORE_STATS_CACHE_TTL`）。
 - 审计事件通过有界异步队列写入 `audit_events`；队列满会记录丢弃但不让业务请求失败。
-- `RouterWithLifecycle` 用于生产入口；监听失败会结束进程，正常关闭时最多等待 5 秒排空已接受事件；`Router` 仅用于同步内部调用/测试。公共 HTTP 契约不受启动生命周期影响。
+- `RouterWithLifecycle` 用于生产入口；监听失败会结束进程，正常关闭时先取消并等待矿工 goroutine，再最多等待 5 秒排空已接受的审计事件；`Router` 仅用于同步内部调用/测试。公共 HTTP 契约不受启动生命周期影响。
 - 发布包 supervisor 在 Web 子进程异常退出时按退避独立重启 Web，Core 和 Admin 保持运行；Core 异常退出或 Admin 监听失败时才向其余进程发送 SIGTERM。`stop` 等待正常退出，超时后才发送 SIGKILL。包内后台运行不包含开机自启、日志轮转、HTTPS 或反向代理。
 - Core 限流默认按 TCP 对端地址分桶。仅当对端位于 `CORE_TRUSTED_PROXY_CIDRS` 时才读取 `X-Real-IP`；反向代理必须覆盖并清洗该头，不能透传客户端输入。该配置只改变限流身份识别，不改变 HTTP 契约。
 

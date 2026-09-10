@@ -2,6 +2,7 @@ package chain
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -221,5 +222,29 @@ func TestRunStopsOnContextCancel(t *testing.T) {
 	cancel()
 	if err := ledger.Run(ctx, RunOptions{}); err == nil {
 		t.Fatal("cancelled context must stop the miner")
+	}
+}
+
+func TestRunCancelsAnInFlightProofSearch(t *testing.T) {
+	ledger := newLedgerWithKey(t, func(cfg *LedgerConfig) {
+		cfg.ProofMode = ProofModeProof
+		cfg.Difficulty = 64
+		cfg.FlushTimeout = 0
+	})
+	ctx, cancel := contextWithCancel()
+	done := make(chan error, 1)
+	go func() {
+		done <- ledger.Run(ctx, RunOptions{})
+	}()
+
+	time.Sleep(10 * time.Millisecond)
+	cancel()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("expected context cancellation, got %v", err)
+		}
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("in-flight proof search did not stop after context cancellation")
 	}
 }

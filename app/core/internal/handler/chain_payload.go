@@ -51,12 +51,12 @@ func ContentPayload(c model.Content) (payload []byte, label, subjectRef string, 
 	sort.Strings(tags)
 	canonical, err := chain.CanonicalJSON(map[string]any{
 		"kind":     string(c.Kind),
-		"slug":      c.Slug,
-		"title":     nullable(c.Title),
-		"summary":   c.Summary,
-		"body":      c.Body,
-		"tags":      tags,
-		"metadata":  editorial,
+		"slug":     c.Slug,
+		"title":    nullable(c.Title),
+		"summary":  c.Summary,
+		"body":     c.Body,
+		"tags":     tags,
+		"metadata": editorial,
 	})
 	if err != nil {
 		return nil, "", "", nil, err
@@ -70,7 +70,31 @@ func ContentPayload(c model.Content) (payload []byte, label, subjectRef string, 
 // taken from the post-write row (docs/chain.md §4.1 comment source). The
 // subject ref is the commentId — contentId stays in metadata only.
 func CommentPayload(c model.Comment, action string) (payload []byte, label, subjectRef string, metadata map[string]any, err error) {
-	canonical, err := chain.CanonicalJSON(map[string]any{
+	payload, err = commentPayload(c, true)
+	if err != nil {
+		return nil, "", "", nil, err
+	}
+	return payload, "", c.ID, map[string]any{"commentId": c.ID, "contentId": c.ContentID, "action": action}, nil
+}
+
+func legacyCommentPayload(c model.Comment) ([]byte, error) {
+	return commentPayload(c, false)
+}
+
+func commentPayloadHashes(c model.Comment) ([]string, error) {
+	current, _, _, _, err := CommentPayload(c, "created")
+	if err != nil {
+		return nil, err
+	}
+	legacy, err := legacyCommentPayload(c)
+	if err != nil {
+		return nil, err
+	}
+	return []string{chain.SubjectHashHex(current), chain.SubjectHashHex(legacy)}, nil
+}
+
+func commentPayload(c model.Comment, includeAvatar bool) ([]byte, error) {
+	fields := map[string]any{
 		"contentId":      c.ContentID,
 		"authorName":     c.AuthorName,
 		"authorUrl":      nullable(c.AuthorURL),
@@ -78,11 +102,12 @@ func CommentPayload(c model.Comment, action string) (payload []byte, label, subj
 		"body":           c.Body,
 		"replyToId":      nullable(c.ReplyToID),
 		"avatarSeed":     c.AvatarSeed,
-	})
-	if err != nil {
-		return nil, "", "", nil, err
 	}
-	return []byte(canonical), "", c.ID, map[string]any{"commentId": c.ID, "contentId": c.ContentID, "action": action}, nil
+	if includeAvatar {
+		fields["authorAvatarUrl"] = c.AuthorAvatarURL
+	}
+	canonical, err := chain.CanonicalJSON(fields)
+	return []byte(canonical), err
 }
 
 // ReactionActionPayload describes a like mutation. Likes have no durable

@@ -1,6 +1,7 @@
 package chain
 
 import (
+	"context"
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
@@ -108,10 +109,9 @@ var ErrEmptyChain = errors.New("chain has no blocks yet")
 // Ledger owns the three chain tables on the shared SQLite handle. It never
 // imports internal/store: business semantics stay at the caller (docs/chain.md §2).
 type Ledger struct {
-	db     *sql.DB
-	cfg    LedgerConfig
-	wake   chan struct{}
-	sleepF func(time.Duration)
+	db   *sql.DB
+	cfg  LedgerConfig
+	wake chan struct{}
 }
 
 func NewLedger(db *sql.DB, cfg LedgerConfig) *Ledger {
@@ -124,7 +124,7 @@ func NewLedger(db *sql.DB, cfg LedgerConfig) *Ledger {
 	if cfg.BatchSize < 1 {
 		cfg.BatchSize = 32
 	}
-	return &Ledger{db: db, cfg: cfg, wake: make(chan struct{}, 1), sleepF: time.Sleep}
+	return &Ledger{db: db, cfg: cfg, wake: make(chan struct{}, 1)}
 }
 
 // EnsureSiteKey returns the site_key_1 singleton, generating and persisting a
@@ -340,7 +340,7 @@ var ErrTipMoved = errors.New("chain tip moved during mining")
 // taken before mining starts. It holds no transaction: with the single SQLite
 // connection, mining inside the tx would hold the database busy for the sim
 // delay or the whole proof search, stalling every request (docs/chain.md §9).
-func (l *Ledger) mineHeader(certIDs []string) (BlockHeader, error) {
+func (l *Ledger) mineHeader(ctx context.Context, certIDs []string) (BlockHeader, error) {
 	difficulty := l.cfg.Difficulty
 	if l.cfg.ProofMode == ProofModeSim {
 		difficulty = 0
@@ -364,9 +364,20 @@ func (l *Ledger) mineHeader(certIDs []string) (BlockHeader, error) {
 	// for a real leading-zero collision.
 	switch l.cfg.ProofMode {
 	case ProofModeSim:
-		l.sleepF(l.cfg.SimDelay)
+		timer := time.NewTimer(l.cfg.SimDelay)
+		defer timer.Stop()
+		select {
+		case <-ctx.Done():
+			return BlockHeader{}, ctx.Err()
+		case <-timer.C:
+		}
 	default:
 		for header.Nonce = 0; ; header.Nonce++ {
+			if header.Nonce%1024 == 0 {
+				if err := ctx.Err(); err != nil {
+					return BlockHeader{}, err
+				}
+			}
 			if header.Satisfies() {
 				break
 			}
@@ -383,14 +394,23 @@ func (l *Ledger) mineHeader(certIDs []string) (BlockHeader, error) {
 // the block and backfills pending→anchored (the only legal UPDATE on the
 // chain tables). Genesis is mined by calling with nil certs on an empty chain.
 func (l *Ledger) InsertBlock(certIDs []string) (Block, error) {
+	return l.InsertBlockContext(context.Background(), certIDs)
+}
+
+// InsertBlockContext behaves like InsertBlock and allows an in-flight proof
+// search or simulated delay to stop when the caller is shutting down.
+func (l *Ledger) InsertBlockContext(ctx context.Context, certIDs []string) (Block, error) {
 	if certIDs == nil {
 		certIDs = []string{}
 	}
 	if len(certIDs) > l.cfg.MaxBlockAnchors {
 		certIDs = certIDs[:l.cfg.MaxBlockAnchors]
 	}
-	header, err := l.mineHeader(certIDs)
+	header, err := l.mineHeader(ctx, certIDs)
 	if err != nil {
+		return Block{}, err
+	}
+	if err := ctx.Err(); err != nil {
 		return Block{}, err
 	}
 

@@ -55,8 +55,27 @@ type apiHandler struct {
 	overviewCache *cache.OverviewCache
 	auditEvents   events.AuditPublisher
 	ledger        *chain.Ledger
-	minerCancel   context.CancelFunc
 	githubClient  *http.Client
+}
+
+type minerLifecycle struct {
+	cancel context.CancelFunc
+	done   <-chan struct{}
+}
+
+func startMiner(run func(context.Context)) *minerLifecycle {
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		run(ctx)
+	}()
+	return &minerLifecycle{cancel: cancel, done: done}
+}
+
+func (m *minerLifecycle) Close() {
+	m.cancel()
+	<-m.done
 }
 
 // coreVersion is the build version reported by /healthz and the admin system endpoint.
@@ -70,8 +89,7 @@ func Router(cfg config.Config, database *store.Store) http.Handler {
 
 // RouterWithLifecycle wires the production stack: the audit dispatcher and,
 // when a ledger is supplied, the anchoring-chain miner. The returned close
-// function stops the miner (finishing any in-flight block) before draining
-// audit events.
+// function cancels and waits for the miner before draining audit events.
 func RouterWithLifecycle(cfg config.Config, database *store.Store, ledger *chain.Ledger) (http.Handler, func()) {
 	auditEvents := events.NewAuditDispatcher(cfg.AuditEventBuffer, recordAuditEvent(database))
 	router, closeRouter := newRouterWithMiner(cfg, database, ledger, auditEvents)
@@ -99,18 +117,16 @@ func newRouter(cfg config.Config, database *store.Store, ledger *chain.Ledger, a
 // newRouterWithMiner builds the router and, for a non-nil ledger, starts the
 // miner goroutine whose OnMined hook invalidates content caches for every
 // content-source certificate that got anchored (docs/chain.md §9). The
-// returned close function cancels the miner and waits for it to finish the
-// in-flight block.
+// returned close function cancels the miner and waits for its goroutine.
 func newRouterWithMiner(cfg config.Config, database *store.Store, ledger *chain.Ledger, auditEvents events.AuditPublisher) (http.Handler, func()) {
 	authService, err := auth.New(cfg, database)
 	if err != nil {
 		panic(err)
 	}
 	h := &apiHandler{cfg: cfg, store: database, auth: authService, validate: validator.New(), contentCache: cache.NewContentCache(cfg.ContentCacheTTL), statsCache: cache.NewStatsCache(cfg.StatsCacheTTL), overviewCache: cache.NewOverviewCache(cfg.StatsCacheTTL), auditEvents: auditEvents, ledger: ledger, githubClient: &http.Client{Timeout: 12 * time.Second}}
+	var miner *minerLifecycle
 	if ledger != nil {
-		minerCtx, minerCancel := context.WithCancel(context.Background())
-		h.minerCancel = minerCancel
-		go func() {
+		miner = startMiner(func(minerCtx context.Context) {
 			if err := ledger.Run(minerCtx, chain.RunOptions{
 				OnMined: func(block chain.Block, minedFor time.Duration) {
 					// Audit chain.block.mined per docs/chain.md §9 (index, cert
@@ -151,11 +167,11 @@ func newRouterWithMiner(cfg config.Config, database *store.Store, ledger *chain.
 			}); err != nil && !errors.Is(err, context.Canceled) {
 				slog.Error("chain_miner_stopped", "error", err)
 			}
-		}()
+		})
 	}
 	closeMiner := func() {
-		if h.minerCancel != nil {
-			h.minerCancel()
+		if miner != nil {
+			miner.Close()
 		}
 	}
 	publicLimiter := newRateLimiter(cfg.RateLimitPerMin)

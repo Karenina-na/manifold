@@ -245,6 +245,31 @@ func TestContentDetailContract(t *testing.T) {
 	}
 }
 
+func TestContentDetailReturnsTheRecordedViewCountWhenCached(t *testing.T) {
+	router := newTestRouter(t)
+
+	prime := request(t, router, http.MethodGet, "/api/v1/content/designing-boundaries?trackView=false", nil)
+	if prime.Code != http.StatusOK {
+		t.Fatalf("expected cache-prime request 200, got %d", prime.Code)
+	}
+
+	for expected := 1; expected <= 2; expected++ {
+		response := request(t, router, http.MethodGet, "/api/v1/content/designing-boundaries", nil)
+		if response.Code != http.StatusOK {
+			t.Fatalf("expected tracked request 200, got %d", response.Code)
+		}
+		var detail struct {
+			ViewCount int `json:"viewCount"`
+		}
+		if err := json.Unmarshal(response.Body.Bytes(), &detail); err != nil {
+			t.Fatal(err)
+		}
+		if detail.ViewCount != expected {
+			t.Fatalf("expected recorded view count %d, got %d", expected, detail.ViewCount)
+		}
+	}
+}
+
 func TestContentListPageSortFilterAndTags(t *testing.T) {
 	router, database := newTestRouterWithConfig(t, func(cfg *config.Config) {})
 	token := adminToken(t, router)
@@ -1067,7 +1092,7 @@ func TestFeaturedContentLivesOnSiteComposition(t *testing.T) {
 		t.Fatalf("expected site 200, got %d", site.Code)
 	}
 	var composition struct {
-		Title          string                   `json:"title"`
+		Title          string                  `json:"title"`
 		PinnedThoughts []struct{ Slug string } `json:"pinnedThoughts"`
 		PinnedWritings []struct{ Slug string } `json:"pinnedWritings"`
 	}
@@ -1649,7 +1674,9 @@ func TestChainAnchorsContentLifecycle(t *testing.T) {
 	if created.Code != http.StatusCreated {
 		t.Fatalf("expected 201, got %d %s", created.Code, created.Body.String())
 	}
-	var item struct{ ID string `json:"id"` }
+	var item struct {
+		ID string `json:"id"`
+	}
 	_ = json.Unmarshal(created.Body.Bytes(), &item)
 
 	// create → content-source anchor recording DRAFT/v1
@@ -1834,7 +1861,9 @@ func TestChainPublicSubmitVerifyAndLatestAnchor(t *testing.T) {
 	if submit.Code != http.StatusAccepted {
 		t.Fatalf("expected 202, got %d %s", submit.Code, submit.Body.String())
 	}
-	var submitted struct{ AnchorID, SubjectHash string `json:"-"` }
+	var submitted struct {
+		AnchorID, SubjectHash string `json:"-"`
+	}
 	var raw map[string]any
 	if err := json.Unmarshal(submit.Body.Bytes(), &raw); err != nil {
 		t.Fatal(err)
@@ -1948,7 +1977,7 @@ func TestChainPublicSubmitVerifyAndLatestAnchor(t *testing.T) {
 			var parsed struct {
 				LatestAnchor *struct {
 					AnchorID string `json:"anchorId"`
-					Status  string `json:"status"`
+					Status   string `json:"status"`
 				} `json:"latestAnchor"`
 			}
 			_ = json.Unmarshal(detail.Body.Bytes(), &parsed)

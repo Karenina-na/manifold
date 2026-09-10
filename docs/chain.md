@@ -253,11 +253,11 @@ CREATE INDEX IF NOT EXISTS idx_chain_anchors_block ON chain_anchors(block_id);
 
 - **防饿死阀门是必须的**：只有「满才打包」会让个人站点的最后一次变更永远停在 pending。默认 30s 上限保证任何证书最迟约 30s + 挖矿时长内确认。
 - **超出单块上限**：剩余证书留在缓冲，下一轮 tick 缓冲仍满、立即连挖下一块；低于批量阈值且未超时的剩余量等待下一次触发。
-- **优雅关闭**：context 取消后完成当前正在挖的块再退出；pending 留在库里。
+- **优雅关闭**：context 取消会中止尚未提交的 sim 延迟或 proof 搜索，`RouterWithLifecycle` 等待矿工 goroutine 退出后再排空审计队列；未组块证书保留在持久 pending 集中，重启后续挖。
 - **故障自愈**：矿工 panic → recover → 审计 `chain.miner.crashed` → 5s 后重启循环。SQLite 单连接（`SetMaxOpenConns(1)`）已消除写竞争。
 - **审计事件**：`chain.anchor.submitted`（含 source）、`chain.block.mined`（index、证书数、nonce、模式、耗时 ms）、`chain.anchor.failed`（提交失败、含 source 与原因）、`chain.miner.crashed`。审计事件本身不上链（4.2 例外）。
 - **证书提交失败不阻塞业务**：`Submit()` 报错只记 `chain.anchor.failed`，原业务请求照常成功返回。
-- **实现事实**：矿工 goroutine 由 `handler.RouterWithLifecycle` 启动（main 构造 `chain.NewLedger` 后传入），其 `OnMined` 钩子（仅在本轮真正产出区块时触发——空转 tick 不触发）发布 `chain.block.mined` 审计并对本块 content 源证书按 metadata.slug 失效内容缓存；close 顺序为先停矿工、后 drain 审计队列。`main.go` 在启动矿工前调用 `seedAnchorsForDevContents`：链为空（新库或首次启用链）时为全部 PUBLISHED 内容补签 PUBLISHED 证书（payload 经 `handler.ContentPayload` 构造，不复制格式）。PoW（sim 延迟与 proof 碰撞）在**事务外**执行：头部组装先对 tip 快照挖矿，随后短事务复查 tip 未变再落块，tip 已移动则由下一轮 tick 重新评估——SQLite 单连接下把挖矿放进事务会冻结全部请求。`subject_ref` 是 `Submit()` 的显式参数（调用方按 §4.1 语义传入），不从 metadata 推导。
+- **实现事实**：矿工 goroutine 由 `handler.RouterWithLifecycle` 启动（main 构造 `chain.NewLedger` 后传入），其 `OnMined` 钩子（仅在本轮真正产出区块时触发——空转 tick 不触发）发布 `chain.block.mined` 审计并对本块 content 源证书按 metadata.slug 失效内容缓存；close 顺序为取消矿工、等待 goroutine 退出、再 drain 审计队列。`main.go` 在启动矿工前调用 `seedAnchorsForDevContents`：链为空（新库或首次启用链）时为全部 PUBLISHED 内容补签 PUBLISHED 证书（payload 经 `handler.ContentPayload` 构造，不复制格式）。PoW（sim 延迟与 proof 碰撞）在**事务外**执行：头部组装先对 tip 快照挖矿，随后短事务复查 tip 未变再落块，tip 已移动则由下一轮 tick 重新评估；context 取消发生在事务提交前时，本轮块不落库——SQLite 单连接下把挖矿放进事务会冻结全部请求。`subject_ref` 是 `Submit()` 的显式参数（调用方按 §4.1 语义传入），不从 metadata 推导。
 
 ## 10. 验证语义
 
@@ -266,6 +266,8 @@ CREATE INDEX IF NOT EXISTS idx_chain_anchors_block ON chain_anchors(block_id);
 ```text
 { found, anchor?, block?, signatureValid, chainIntegrity, steps, merkle?, context? }
 ```
+
+`verify/comment/{id}` 优先按当前评论投影（含 `authorAvatarUrl`）查证；对已有的不含该字段的评论证书回退到原投影哈希，确保历史证书仍可验证。新证书始终覆盖当前表格列出的完整 payload。
 
 - `signatureValid`：用证书自带的 `site_public_key` 对 `subject_hash` 验证 `site_signature`。
 - **限流**：verify 每请求全链重放，四个入口共用独立限流桶（`CORE_CHAIN_VERIFY_RATE_PER_MIN`，默认 20/min），命中 `429`；Web 端按钮同步冷却，防止按住不放打满 CPU/DB。

@@ -478,27 +478,34 @@ func (s *Store) DeleteLike(contentID, visitorID string) error {
 // RecordContentView increments the cumulative public view counter and appends
 // a per-day analytics event. Identified visitors dedupe to one event per
 // content per UTC day via the partial unique index.
-func (s *Store) RecordContentView(contentID, visitorID, referrer string) error {
+func (s *Store) RecordContentView(contentID, visitorID, referrer string) (int, error) {
 	tx, err := s.DB.Begin()
 	if err != nil {
-		return err
+		return 0, err
 	}
 	defer func() { _ = tx.Rollback() }()
 	if _, err := tx.Exec(`UPDATE content SET view_count = view_count + 1 WHERE id = ?`, contentID); err != nil {
-		return err
+		return 0, err
+	}
+	var viewCount int
+	if err := tx.QueryRow(`SELECT view_count FROM content WHERE id = ?`, contentID).Scan(&viewCount); err != nil {
+		return 0, err
 	}
 	now := timeNowUTC()
 	day := now.Format("2006-01-02")
 	if visitorID == "" {
 		if _, err := tx.Exec(`INSERT INTO content_view_events (content_id, visitor_id, referrer, day, created_at) VALUES (?, '', ?, ?, ?)`, contentID, referrer, day, now.Format(time.RFC3339)); err != nil {
-			return err
+			return 0, err
 		}
 	} else {
 		if _, err := tx.Exec(`INSERT OR IGNORE INTO content_view_events (content_id, visitor_id, referrer, day, created_at) VALUES (?, ?, ?, ?, ?)`, contentID, visitorID, referrer, day, now.Format(time.RFC3339)); err != nil {
-			return err
+			return 0, err
 		}
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return viewCount, nil
 }
 
 // GetCommentByID loads one comment with its moderation state and content
