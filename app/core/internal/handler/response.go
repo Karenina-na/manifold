@@ -18,7 +18,6 @@ import (
 	"github.com/manifold-space/manifold/app/core/internal/chain"
 	"github.com/manifold-space/manifold/app/core/internal/config"
 	"github.com/manifold-space/manifold/app/core/internal/events"
-	"github.com/manifold-space/manifold/app/core/internal/model"
 	"github.com/manifold-space/manifold/app/core/internal/store"
 )
 
@@ -242,41 +241,6 @@ func newRouterWithMiner(cfg config.Config, database *store.Store, ledger *chain.
 		})
 	})
 	return router, closeMiner
-}
-
-// systemResources samples host metrics via gopsutil. Individual metric failures
-// degrade to zero values: resource sampling is observational data and must not
-// fail the health query the way store reads do.
-func systemResources(databasePath string) (model.SystemResources, uint64) {
-	resources := model.SystemResources{}
-	if percents, err := systemCPUPercent(); err == nil {
-		resources.CPUPercent = percents
-	}
-	if counts, err := systemCPUCores(); err == nil {
-		resources.CPUCores = counts
-	}
-	if vm, err := systemMemory(); err == nil {
-		resources.MemTotalBytes = vm.Total
-		resources.MemUsedBytes = vm.Used
-		resources.MemUsedPercent = vm.UsedPercent
-	}
-	if avg, err := systemLoad(); err == nil {
-		resources.LoadAvg1 = avg.Load1
-		resources.LoadAvg5 = avg.Load5
-		resources.LoadAvg15 = avg.Load15
-	}
-	if usage, err := systemDisk(databasePath); err == nil {
-		resources.DiskTotalBytes = usage.Total
-		resources.DiskUsedBytes = usage.Used
-		resources.DiskUsedPercent = usage.UsedPercent
-	}
-	var rssBytes uint64
-	if proc, err := systemProcess(); err == nil {
-		if info, err := proc.MemoryInfo(); err == nil {
-			rssBytes = info.RSS
-		}
-	}
-	return resources, rssBytes
 }
 
 // invalidateContentBySlug drops the public cache key for a slug and purges the
