@@ -185,46 +185,6 @@ func (l *Ledger) tipTx(tx *sql.Tx) (*Block, error) {
 	return &block, nil
 }
 
-// ListAnchors pages anchors newest-first with optional source/ref filters.
-func (l *Ledger) ListAnchors(options AnchorListOptions) ([]Anchor, int, error) {
-	where := "1=1"
-	args := []any{}
-	if options.Source != "" {
-		where += " AND source = ?"
-		args = append(args, options.Source)
-	}
-	if options.Ref != "" {
-		where += " AND subject_ref = ?"
-		args = append(args, options.Ref)
-	}
-	var total int
-	if err := l.db.QueryRow(`SELECT COUNT(*) FROM chain_anchors WHERE `+where, args...).Scan(&total); err != nil {
-		return nil, 0, err
-	}
-	pageSize := options.PageSize
-	if pageSize < 1 {
-		pageSize = 20
-	}
-	if pageSize > 100 {
-		pageSize = 100
-	}
-	page := options.Page
-	if page < 1 {
-		page = 1
-	}
-	rows, err := l.db.Query(`SELECT `+anchorColumns+` FROM chain_anchors WHERE `+where+` ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`,
-		append(args, pageSize, (page-1)*pageSize)...)
-	if err != nil {
-		return nil, 0, err
-	}
-	defer rows.Close()
-	anchors, err := l.collectAnchors(rows)
-	if err != nil {
-		return nil, 0, err
-	}
-	return anchors, total, nil
-}
-
 // ListBlocks pages block summaries newest-first.
 func (l *Ledger) ListBlocks(page, pageSize int) ([]Block, int, error) {
 	var total int
@@ -344,12 +304,6 @@ func (l *Ledger) ChainInfo() (ChainInfoResult, error) {
 		info.SitePublicKey = key.PublicKey
 	}
 	return info, nil
-}
-
-func (l *Ledger) AnchorCount() (int, error) {
-	var count int
-	err := l.db.QueryRow(`SELECT COUNT(*) FROM chain_anchors`).Scan(&count)
-	return count, err
 }
 
 // Wake nudges the miner loop; never blocks, never drops work.
