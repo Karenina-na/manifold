@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -129,4 +130,146 @@ func (h *apiHandler) verifyAnchorComment(w http.ResponseWriter, r *http.Request)
 		}
 	}
 	WriteJSON(w, status, body)
+}
+
+// verifyResult assembles VerifyResponse from a subject hash lookup plus the
+// full-chain replay (docs/chain.md §10). signatureValid/chainIntegrity always
+// report the chain state even when the hash is unknown. The response also
+// carries the step-by-step process (steps/merkle/context) so the explorer can
+// render how the verification was computed, not just its verdict.
+func (h *apiHandler) verifyResult(ledger *chain.Ledger, subjectHash string) (map[string]any, int) {
+	report, err := ledger.ReplayVerify()
+	if err != nil {
+		return map[string]any{"error": map[string]any{"code": "CHAIN_UNAVAILABLE", "message": "Chain verification failed."}}, http.StatusInternalServerError
+	}
+	anchor, err := ledger.LatestAnchorByHash(subjectHash)
+	steps := []verifyStepView{
+		{ID: "lookup", Label: "Certificate lookup", Status: "failed", Detail: "No certificate found for this subject hash."},
+		{ID: "signature", Label: "Site signature", Status: "failed", Detail: "Not evaluated — no certificate."},
+		{ID: "merkle", Label: "Merkle root", Status: "failed", Detail: "Not evaluated — no certificate."},
+		{ID: "block-hash", Label: "Block hash", Status: "failed", Detail: "Not evaluated — no certificate."},
+	}
+	var anchorPayload any
+	var blockPayload any
+	var merklePayload *merkleProofView
+	var contextPayload *verifyChainContextView
+	if err == nil {
+		anchorPayload = h.enrichView(toAnchorView(anchor))
+		lookupInputs := []verifyStepInputView{
+			{Name: "subjectHash", Value: subjectHash},
+			{Name: "certificate", Value: anchor.ID},
+		}
+		lookupOutput := "found ✓"
+		if anchor.BlockID != "" {
+			lookupInputs = append(lookupInputs, verifyStepInputView{Name: "block", Value: anchor.BlockID})
+			lookupOutput = "cert sealed in " + anchor.BlockID + " ✓"
+		}
+		steps[0] = verifyStepView{ID: "lookup", Label: "Certificate lookup", Status: "passed",
+			Detail: shortID(anchor.ID) + " → " + shortID(anchor.BlockID),
+			Inputs: lookupInputs, Output: lookupOutput}
+		signatureOK := chain.VerifySubjectHash(anchor.SitePublicKey, anchor.SubjectHash, anchor.SiteSignature)
+		if signatureOK {
+			steps[1] = verifyStepView{ID: "signature", Label: "Site signature", Status: "passed",
+				Detail: "ed25519 verify",
+				Inputs: []verifyStepInputView{
+					{Name: "algorithm", Value: "ed25519"},
+					{Name: "publicKey", Value: anchor.SitePublicKey},
+					{Name: "message", Value: "sha256(subject) → " + anchor.SubjectHash},
+					{Name: "signature", Value: anchor.SiteSignature},
+				},
+				Output: "valid ✓"}
+		} else {
+			steps[1] = verifyStepView{ID: "signature", Label: "Site signature", Status: "failed",
+				Detail: "ed25519 verify",
+				Inputs: []verifyStepInputView{
+					{Name: "publicKey", Value: anchor.SitePublicKey},
+					{Name: "message", Value: "sha256(subject) → " + anchor.SubjectHash},
+					{Name: "signature", Value: anchor.SiteSignature},
+				},
+				Output: "invalid ✗"}
+		}
+		if anchor.BlockID != "" {
+			if block, _, blockErr := ledger.GetBlock(anchor.BlockID); blockErr == nil {
+				blockPayload = blockSummaryOf(block)
+				contextPayload = h.blockChainContext(ledger, block)
+				merklePayload = merkleProof(block.CertIDs, anchor.ID, block.CertRoot)
+				header := chain.BlockHeader{Index: block.Index, PrevHash: block.PrevHash, Timestamp: block.Timestamp,
+					CertRoot: block.CertRoot, ProofMode: block.ProofMode, Difficulty: block.Difficulty, Nonce: block.Nonce}
+				recomputed := header.Hash()
+				preimage := strconv.Itoa(block.Index) + "|" + block.PrevHash + "|" + block.Timestamp + "|" + block.CertRoot + "|" + string(block.ProofMode) + "|" + strconv.Itoa(block.Difficulty) + "|" + strconv.Itoa(block.Nonce)
+				if recomputed == block.Hash {
+					steps[3] = verifyStepView{ID: "block-hash", Label: "Block hash", Status: "passed",
+						Detail: "sha256(preimage) == stored",
+						Inputs: []verifyStepInputView{
+							{Name: "index", Value: strconv.Itoa(block.Index)},
+							{Name: "prevHash", Value: block.PrevHash},
+							{Name: "timestamp", Value: block.Timestamp},
+							{Name: "certRoot", Value: block.CertRoot},
+							{Name: "proofMode", Value: string(block.ProofMode)},
+							{Name: "difficulty", Value: strconv.Itoa(block.Difficulty)},
+							{Name: "nonce", Value: strconv.Itoa(block.Nonce)},
+						},
+						Computations: []verifyStepComputationView{{Expression: "sha256(\"" + preimage + "\")", Value: recomputed}},
+						Output:       "recomputed == stored ✓"}
+				} else {
+					steps[3] = verifyStepView{ID: "block-hash", Label: "Block hash", Status: "failed",
+						Detail: "sha256(preimage) != stored",
+						Inputs: []verifyStepInputView{
+							{Name: "preimage", Value: preimage},
+						},
+						Computations: []verifyStepComputationView{{Expression: "sha256(preimage)", Value: recomputed}},
+						Output:       "recomputed != stored ✗"}
+				}
+				if merklePayload != nil && merklePayload.Matches {
+					steps[2] = verifyStepView{ID: "merkle", Label: "Merkle root", Status: "passed",
+						Detail: "leaf + " + strconv.Itoa(len(merklePayload.Siblings)) + " sibling(s) → root",
+						Inputs: []verifyStepInputView{
+							{Name: "certIds", Value: strconv.Itoa(len(block.CertIDs)) + " in " + block.ID},
+							{Name: "leafIndex", Value: strconv.Itoa(merklePayload.LeafIndex)},
+							{Name: "leaf", Value: merklePayload.Leaf},
+						},
+						Computations: merklePayload.Computations,
+						Output:       "root == certRoot ✓"}
+				} else {
+					steps[2] = verifyStepView{ID: "merkle", Label: "Merkle root", Status: "failed", Detail: "root != certRoot",
+						Output: "root mismatch ✗"}
+				}
+			}
+		}
+	}
+	chainStatus := "passed"
+	chainDetail := strconv.Itoa(report.Height) + " blocks replayed"
+	if !report.Intact {
+		chainStatus = "failed"
+		chainDetail = strconv.Itoa(len(report.Problems)) + " problem(s)"
+	}
+	steps = append(steps, verifyStepView{ID: "chain", Label: "Chain replay", Status: chainStatus, Detail: chainDetail,
+		Inputs: []verifyStepInputView{
+			{Name: "height", Value: strconv.Itoa(report.Height)},
+			{Name: "indexChecks", Value: strconv.Itoa(report.IndexChecks)},
+			{Name: "prevLinks", Value: strconv.Itoa(report.PrevLinks)},
+			{Name: "merkleRoots", Value: strconv.Itoa(report.MerkleRoots)},
+			{Name: "signatures", Value: strconv.Itoa(report.Signatures)},
+		},
+		Output: map[bool]string{true: "intact ✓", false: "tampered ✗"}[report.Intact]})
+	return map[string]any{
+		"found": err == nil, "anchor": anchorPayload, "block": blockPayload,
+		"signatureValid": len(steps) > 1 && steps[1].Status == "passed", "chainIntegrity": report.Intact,
+		"steps": steps, "merkle": merklePayload, "context": contextPayload,
+	}, http.StatusOK
+}
+
+// blockChainContext resolves the block before/after a verified certificate so
+// the explorer can render the local chain structure around it.
+func (h *apiHandler) blockChainContext(ledger *chain.Ledger, block chain.Block) *verifyChainContextView {
+	view := &verifyChainContextView{Current: blockSummaryOf(block)}
+	if block.Index > 0 {
+		if prev, err := ledger.BlockByIndex(block.Index - 1); err == nil {
+			view.Prev = blockSummaryOf(prev)
+		}
+	}
+	if next, err := ledger.BlockByIndex(block.Index + 1); err == nil {
+		view.Next = blockSummaryOf(next)
+	}
+	return view
 }
