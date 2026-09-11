@@ -106,4 +106,9 @@ type Ledger struct {
 	db   *sql.DB
 	cfg  LedgerConfig
 	wake chan struct{}
+	// now is the ledger clock, read exactly once per block when the header is
+	// assembled. The header timestamp is part of the PoW pre-image, so it must
+	// be frozen before the collision search starts and never rewritten after
+	// (docs/chain.md §3.4). Injectable so tests can pin block time.
+	now func() time.Time
 }

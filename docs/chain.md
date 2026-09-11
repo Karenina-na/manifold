@@ -66,7 +66,7 @@ POST /api/v1/chain/anchors ─┼──> handler 构造 payload ──> chain.Su
 | `id` | `block_<block_index>`，确定性 ID |
 | `block_index` | 从 0（genesis）起连续递增，UNIQUE |
 | `prev_hash` | 前块 `hash`；genesis 为 64 个 `0` |
-| `timestamp` | 挖块完成时间，UTC RFC3339 |
+| `timestamp` | 区块头组装时间，UTC RFC3339。它是哈希预像的一部分，因此在 PoW 开始前取样一次，挖矿期间与落库时均不改写（见 3.4） |
 | `cert_root` | 本块 certId 列表的 Merkle root（见 3.4）；空列表时为 `sha256("")` |
 | `cert_ids_json` | 有序 certId 数组；排序为 `created_at ASC`，并列时 `id ASC` |
 | `nonce` | sim 恒为 0；proof 为满足难度时的碰撞值 |
@@ -87,6 +87,7 @@ POST /api/v1/chain/anchors ─┼──> handler 构造 payload ──> chain.Su
 - **结构化 payload**（content/comment/reaction/profile/site/media/auth 的内部提交）：构造为 JSON 对象后由 `chain.CanonicalJSON` 规范化——对象 key 按 UTF-8 字节序递归排序、无空白分隔符、UTF-8 编码——再取哈希。
 - **任意 payload**（visitor/admin 通道）：按提交字符串的 **UTF-8 原字节**直接哈希，不做任何规范化、不去空白。验证页贴回的文本必须与提交时逐字节一致（含换行）。
 - **区块哈希**：`hash = sha256("<index>|<prevHash>|<timestamp>|<certRoot>|<proofMode>|<difficulty>|<nonce>")`（十进制 index/nonce/difficulty、管道分隔的 UTF-8 串）。`proofMode` 和 `difficulty` **必须**参与哈希：否则事后把历史块从 `proof` 改成 `sim` 或调低难度，重算 hash 仍匹配，全链重放不会报警——那会破坏「防事后篡改」承诺。proof 块要求 `hash` 的 hex 表示前导 `0` 字符数 ≥ `difficulty`；sim 块不校验前导 0。
+- **时间戳在 PoW 前冻结**：`timestamp` 同样是哈希预像的一部分，因此**头部组装时取样一次，碰撞搜索期间与落库时都不得改写**。若在挖矿完成后重写时间戳，落库的 `hash` 就不再对应挖矿时搜索 nonce 所用的预像，`Satisfies()` 失败，全链重放会把**每个 proof 块**报为 `invalid`（难度 8 ≈ 2³² 次哈希，必然跨秒边界）。`Ledger` 通过可注入的时钟（`now`）取样，测试可钉死区块时间。
 - **Merkle root**：叶子 `leaf_i = sha256(certId_i 的 UTF-8 字节)`；父节点 `sha256(left ‖ right)`，奇数个时复制最后一个；空列表的 root 为 `sha256("")`。验证器从 `cert_ids_json` 的存储顺序重算。
 
 ## 4. 锚定清单
@@ -245,8 +246,10 @@ CREATE INDEX IF NOT EXISTS idx_chain_anchors_block ON chain_anchors(block_id);
   组块: index = tip+1, prevHash = tip.hash,
         certIds = pending 按 created_at ASC（并列 id ASC），截取 ≤ CORE_CHAIN_MAX_BLOCK_ANCHORS
         certRoot = merkle(certIds)
+        timestamp = 头部组装时取样一次（UTC RFC3339），此后冻结
   挖矿: sim → sleep(SIM_DELAY), nonce=0
         proof → 递增 nonce 直到 hash 前导 0 ≥ difficulty
+        （挖矿不得改写头部任何字段；时间戳参与预像，改写会使落库 hash 不满足难度）
   单事务: INSERT chain_blocks + UPDATE chain_anchors SET block_id（只允许 NULL → 值）
   后处理: 审计 chain.block.mined；对本块 content 源证书失效对应内容详情缓存
 ```
@@ -340,7 +343,7 @@ export interface AnchorQuery { source?: AnchorSource; ref?: string; page?: numbe
 
 关键测试期望：
 
-- chain 单测：canonical 确定性（key 乱序同哈希）、Merkle 与区块哈希公式、proof 低难度确定性碰撞、sim 1s 出块、genesis 结构、篡改任一历史块（hash/prev_hash/cert_root/证书行）→ 全链重放失败、验签对错公钥的行为。
+- chain 单测：canonical 确定性（key 乱序同哈希）、Merkle 与区块哈希公式、proof 低难度确定性碰撞、sim 1s 出块、genesis 结构、**proof 块时间戳在 PoW 前冻结（注入时钟，读一次/块，全链重放完整）**、篡改任一历史块（hash/prev_hash/cert_root/证书行）→ 全链重放失败、验签对错公钥的行为。
 - API 测试：公开提交 202 → pending → 矿工确认 → anchored 全流程；413 超限；Admin 通道无 JWT 401；verify 四种入口的往返（提交文本 → 按哈希/贴原文查证）；内容发布 → `verify/content/{slug}` 命中。
 - 迁移测试：`0005` 在 `userVersion=4` 旧库上增量升级成功。
 - Store 测试：dev seed 在新库补签 20 张 content 证书。

@@ -20,7 +20,20 @@ func NewLedger(db *sql.DB, cfg LedgerConfig) *Ledger {
 	if cfg.BatchSize < 1 {
 		cfg.BatchSize = 32
 	}
-	return &Ledger{db: db, cfg: cfg, wake: make(chan struct{}, 1)}
+	return &Ledger{db: db, cfg: cfg, wake: make(chan struct{}, 1), now: time.Now}
+}
+
+// blockTimestamp samples the ledger clock once, in UTC RFC3339. It is called
+// while assembling the header and never again: the timestamp is part of the
+// hash pre-image, so rewriting it after the PoW search would leave a stored
+// hash whose nonce no longer satisfies the block's difficulty, and replay
+// would report every proof block as tampered (docs/chain.md §3.4).
+func (l *Ledger) blockTimestamp() string {
+	now := l.now
+	if now == nil {
+		now = time.Now
+	}
+	return now().UTC().Format(time.RFC3339)
 }
 
 // Tip returns the highest block; ErrEmptyChain on a fresh database.
@@ -72,7 +85,7 @@ func (l *Ledger) mineHeader(ctx context.Context, certIDs []string) (BlockHeader,
 	if emptyChain && len(certIDs) > 0 {
 		return BlockHeader{}, errors.New("genesis must carry no certificates; mine it first, then pack")
 	}
-	header := BlockHeader{Index: 0, PrevHash: strings.Repeat("0", 64), Timestamp: time.Now().UTC().Format(time.RFC3339),
+	header := BlockHeader{Index: 0, PrevHash: strings.Repeat("0", 64), Timestamp: l.blockTimestamp(),
 		CertRoot: MerkleRoot(certIDs), ProofMode: l.cfg.ProofMode, Difficulty: difficulty}
 	if !emptyChain {
 		header.Index = tip.Index + 1
@@ -80,7 +93,8 @@ func (l *Ledger) mineHeader(ctx context.Context, certIDs []string) (BlockHeader,
 	}
 
 	// PoW: sim sleeps its configured delay and keeps nonce 0; proof searches
-	// for a real leading-zero collision.
+	// for a real leading-zero collision. The header — timestamp included — is
+	// frozen here; nothing may mutate it after the search (docs/chain.md §3.4).
 	switch l.cfg.ProofMode {
 	case ProofModeSim:
 		timer := time.NewTimer(l.cfg.SimDelay)
@@ -102,7 +116,6 @@ func (l *Ledger) mineHeader(ctx context.Context, certIDs []string) (BlockHeader,
 			}
 		}
 	}
-	header.Timestamp = time.Now().UTC().Format(time.RFC3339)
 	return header, nil
 }
 

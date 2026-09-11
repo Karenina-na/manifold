@@ -87,6 +87,56 @@ func TestReplayDetectsBrokenLinkage(t *testing.T) {
 	}
 }
 
+// TestProofBlockTimestampFrozenBeforePoW pins the C1 regression: the block
+// timestamp is part of the hash pre-image, so it is sampled exactly once while
+// the header is assembled and never rewritten after the collision search. The
+// injected clock advances one second per read, so a post-PoW rewrite would
+// both burn an extra read and leave a stored hash whose nonce no longer meets
+// the block's difficulty — which full-chain replay reports as a tampered block.
+func TestProofBlockTimestampFrozenBeforePoW(t *testing.T) {
+	ledger := newLedgerWithKey(t, func(cfg *LedgerConfig) {
+		cfg.ProofMode = ProofModeProof
+		cfg.Difficulty = 2
+		cfg.SimDelay = 0
+		cfg.FlushTimeout = 0
+	})
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	reads := 0
+	ledger.now = func() time.Time {
+		reads++
+		return base.Add(time.Duration(reads) * time.Second)
+	}
+
+	if _, err := ledger.InsertBlock(nil); err != nil {
+		t.Fatal(err)
+	}
+	anchor, err := ledger.Submit("visitor", []byte("pow-timestamp"), "", "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	block, err := ledger.InsertBlock([]string{anchor.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if reads != 2 {
+		t.Fatalf("clock must be read once per block (2 blocks mined), got %d reads", reads)
+	}
+	if want := base.Add(2 * time.Second).Format(time.RFC3339); block.Timestamp != want {
+		t.Fatalf("stored timestamp %q must be the pre-PoW sample %q", block.Timestamp, want)
+	}
+	if !HasLeadingZeros(block.Hash, 2) {
+		t.Fatalf("stored hash must still meet difficulty 2: %s", block.Hash)
+	}
+	report, err := ledger.ReplayVerify()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !report.Intact {
+		t.Fatalf("proof chain must replay intact, problems: %v", report.Problems)
+	}
+}
+
 func TestMinerPacksWhenBatchReached(t *testing.T) {
 	ledger := newLedgerWithKey(t, func(cfg *LedgerConfig) {
 		cfg.SimDelay = 0
