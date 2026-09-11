@@ -52,7 +52,8 @@ app/core/
 ├── internal/application/           # 写用例及 audit、anchor、cache 编排
 ├── internal/auth/auth.go           # bcrypt、JWT、Casbin
 ├── internal/model/content.go       # Core 领域 JSON model
-├── internal/store/store.go         # SQLite 初始化、seed 应用和 CRUD
+├── internal/store/bootstrap.go     # SQLite 初始化、迁移和 seed 应用
+├── internal/store/                 # 领域数据查询和写入
 ├── internal/seed/                  # 种子数据文件（bootstrap.json、dev.json）与解析校验
 ├── internal/cache/                 # 内容/统计缓存
 ├── internal/events/                # 审计发布器和 worker
@@ -62,7 +63,7 @@ app/core/
 └── Dockerfile
 ```
 
-运行时 schema 由 `app/core/db/migrations/` 下的迁移初始化，迁移按版本顺序应用（`store.go` 的 `migrate()`）。旧库（版本低于 binary）原地增量升级；只有版本高于 binary 的库才拒绝启动，提示升级 Core binary。
+运行时 schema 由 `app/core/db/migrations/` 下的迁移初始化，迁移按版本顺序应用（`bootstrap.go` 的 `migrate()`）。旧库（版本低于 binary）原地增量升级；只有版本高于 binary 的库才拒绝启动，提示升级 Core binary。
 
 ## 3. 运行配置
 
