@@ -1,11 +1,8 @@
 package handler
 
 import (
-	"context"
-	"errors"
 	"log/slog"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -33,26 +30,6 @@ type apiHandler struct {
 	ledger        *chain.Ledger
 	mutations     *application.Service
 	githubClient  *http.Client
-}
-
-type minerLifecycle struct {
-	cancel context.CancelFunc
-	done   <-chan struct{}
-}
-
-func startMiner(run func(context.Context)) *minerLifecycle {
-	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		run(ctx)
-	}()
-	return &minerLifecycle{cancel: cancel, done: done}
-}
-
-func (m *minerLifecycle) Close() {
-	m.cancel()
-	<-m.done
 }
 
 // coreVersion is the build version reported by /healthz and the admin system endpoint.
@@ -102,51 +79,7 @@ func newRouterWithMiner(cfg config.Config, database *store.Store, ledger *chain.
 	}
 	h := &apiHandler{cfg: cfg, store: database, auth: authService, validate: validator.New(), contentCache: cache.NewContentCache(cfg.ContentCacheTTL), statsCache: cache.NewStatsCache(cfg.StatsCacheTTL), overviewCache: cache.NewOverviewCache(cfg.StatsCacheTTL), auditEvents: auditEvents, ledger: ledger, githubClient: &http.Client{Timeout: 12 * time.Second}}
 	h.mutations = application.NewService(database, ledger, auditEvents, h.contentCache, h.statsCache, h.overviewCache)
-	var miner *minerLifecycle
-	if ledger != nil {
-		miner = startMiner(func(minerCtx context.Context) {
-			if err := ledger.Run(minerCtx, chain.RunOptions{
-				OnMined: func(block chain.Block, minedFor time.Duration) {
-					// Audit chain.block.mined per docs/chain.md §9 (index, cert
-					// count, nonce, mode, duration); the miner has no request
-					// context, so publish directly through the dispatcher.
-					if h.auditEvents != nil {
-						h.auditEvents.Publish(events.AuditEvent{
-							EventName: "chain.block.mined", ResourceType: "chain_block", ResourceID: block.ID,
-							Actor: "chain-miner",
-							Metadata: map[string]string{"index": strconv.Itoa(block.Index), "certCount": strconv.Itoa(len(block.CertIDs)),
-								"nonce": strconv.Itoa(block.Nonce), "proofMode": string(block.ProofMode), "durationMs": strconv.FormatInt(minedFor.Milliseconds(), 10)},
-						})
-					}
-					for _, certID := range block.CertIDs {
-						anchor, err := ledger.GetAnchor(certID)
-						if err != nil {
-							continue
-						}
-						if anchor.Source == chain.SourceContent {
-							if slug, ok := anchor.Metadata["slug"].(string); ok && slug != "" {
-								h.contentCache.Remove(slug)
-								if content, err := database.GetContentByID(anchor.SubjectRef, true); err == nil {
-									h.contentCache.Remove(content.Slug)
-								}
-							}
-						}
-					}
-				},
-				OnCrashed: func(err error) {
-					slog.Error("chain_miner_crashed", "error", err)
-					if h.auditEvents != nil {
-						h.auditEvents.Publish(events.AuditEvent{
-							EventName: "chain.miner.crashed", ResourceType: "chain_miner", ResourceID: "miner", Actor: "chain-miner",
-							Metadata: map[string]string{"error": err.Error()},
-						})
-					}
-				},
-			}); err != nil && !errors.Is(err, context.Canceled) {
-				slog.Error("chain_miner_stopped", "error", err)
-			}
-		})
-	}
+	miner := startChainMiner(h, database, ledger)
 	closeMiner := func() {
 		if miner != nil {
 			miner.Close()
