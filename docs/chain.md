@@ -166,8 +166,8 @@ POST /api/v1/chain/anchors ─┼──> handler 构造 payload ──> chain.Su
 | `GET` | `/chain/keys` | `{keys: [{keyId, publicKey, createdAt}]}` 站点公钥列表 |
 
 > **响应字段（anchorView）**：证书对象即 contracts 的 `ChainAnchor`。除存储直出字段（`id`/`subjectHash`/`source`/`subjectRef`/`label`/`metadata`/`siteSignature`/`createdAt`/`status`/`blockId`）外，handler 在 `listChainAnchors`/`getChainAnchor`/`getChainBlock`/`verify` 四处统一派生两个字段：
-> - `summary`：人类可读概述，由 source + metadata 生成（不读 payload，见第 2 节边界）：content → `Writing “<slug>” · published · v2`（kind=ARTICLE）/`Thought “<slug>” · …`；comment → `Comment created/hidden/unhidden/deleted/restored/author updated`；reaction → `Like added/removed`；media → `Media uploaded/deleted`；profile → `Profile updated`；site → `Site updated` 或 `Pinned content updated`；auth → `Sign-in/Sign-out/…`；visitor/admin → `Public/Admin commitment · “<label>”`。
-> - `target`（`AnchorTarget {kind, href, label}` 或 `null`）：可跳转目标。content → `/writing/<slug>` 或 `/thoughts/<slug>`（kind=ARTICLE）；comment → 所属内容页 `#comments` 锚点（Core 经 `comments.content_id` → `content.slug/kind` 解析，评论或内容已删则 `null`）；reaction → 所属内容页；media → `/api/v1/media/<id>`；其余 source 一律 `null`。客户端只渲染不派生。
+> - `summary`：人类可读概述，由 source + metadata 生成（不读 payload，见第 2 节边界）：content → `Writing “<slug>” · published · v2`（kind 决定路径）/`Thought “<slug>” · …`；comment → `Comment created/hidden/unhidden/deleted/restored/author updated`；reaction → `Like added/removed`；media → `Media uploaded/deleted`；profile → `Profile updated`；site → `Site updated` 或 `Pinned content updated`；auth → `Sign-in/Sign-out/…`；visitor/admin → `Public/Admin commitment · “<label>”`。
+> - `target`（`AnchorTarget {kind, href, label}` 或 `null`）：可跳转目标。content → `/writing/<slug>` 或 `/thoughts/<slug>`（kind 决定路径）；comment → 所属内容页 `#comments` 锚点（Core 经 `comments.content_id` → `content.slug/kind` 解析，评论或内容已删则 `null`）；reaction → 所属内容页；media → `/api/v1/media/<id>`；其余 source 一律 `null`。客户端只渲染不派生。
 
 四个 verify 入口（`/chain/verify` GET/POST、`verify/content/{slug}`、`verify/comment/{id}`）共用独立的 `verifyLimiter`（`CORE_CHAIN_VERIFY_RATE_PER_MIN`，默认 20/min）。每次验证都全链重放（见第 10 节），比写入更消耗 CPU/DB，因此配额远低于公开提交限流，命中返回 `429`。
 

@@ -1,6 +1,6 @@
 # `app/admin`
 
-Manifold 私有管理端，负责登录、Dashboard、Thought/Article 内容编辑、评论审核、Profile 和公开 composition 设置；Settings 通过 Core 的独立 Thoughts 配置接口选择公开 Thoughts 页的置顶内容。
+Manifold 私有管理端，负责登录、Dashboard、Thought/Article 内容编辑、评论管理、Profile 和公开 composition 设置；Settings 通过 Core 的独立 Thoughts 配置接口选择公开 Thoughts 页的置顶内容。
 
 当前详细契约见 [`docs/admin.md`](../../docs/admin.md)，其中记录 Vite + React 19、Mantine、TanStack Query、React Hook Form/Zod、Recharts、Lucide、vditor（Context tab 的 IR 编辑器，运行时资源由 `scripts/sync-vditor.mjs` 本地化到 `public/vditor/`，不依赖第三方 CDN）、PWA 架构与 `@manifold/render` 共享渲染包，以及 SDK 调用、会话、query key、表单字段和状态流。
 

@@ -5,19 +5,9 @@
 Yohaku 设计系统 · 给书写用的静态设计契约：一种主色，三档中性灰，剩下都是留白。网页、长文、信件、报告，凡是承载文字的地方都能用。
 
 - 在线 showcase: **[yohaku.innei.dev](https://yohaku.innei.dev)**
-- 使用这套契约的 iOS 客户端在 [`apps/mobile/`](../apps/mobile/)
+- 本地 showcase 源码见 [`showcase/`](showcase/)
 
-> 预览以对角线切分，左上为浅色，右下为深色。
-
-![设计预览 - 首页](../assets/preview-home.png)
-
-![设计预览 - 文章列表](../assets/preview-posts.png)
-
-![设计预览 - 手记](../assets/preview-notes.png)
-
-![设计预览 - 时光](../assets/preview-timeline.png)
-
-![设计预览 - 思考](../assets/preview-thinking.png)
+> showcase 预览以对角线切分，左上为浅色，右下为深色。
 
 ---
 
@@ -118,12 +108,6 @@ pnpm demo:pdf        # 把 demo 长文 / 简历 / 报告打成 PDF
 Yohaku 不是从零设计的，它是从我自己的博客 [Shiro](https://github.com/Innei/Shiro) 一点点磨出来的。最初只是想换一种排版风格——把模板感的卡片网格换成更像信纸的版面，让长文读起来有节奏。改着改着，发现真正在工作的是几条很简单的不变量：一种主色、三档中性灰、一套呼吸式动效，剩下都是留白。
 
 后来读到 [tw93/kami](https://github.com/tw93/kami)——同样是「约束语言、单一基调、为书写服务」，只是 kami 落在静态文档（PDF、幻灯片）上，Yohaku 落在网页与长文上。两边互为印证。把这些不变量从应用里抽出来，写成 token、模板和 AI skill，就成了现在的 design-system——一份可以交给 agent 也能交给人的设计契约。
-
----
-
-## 开发对话归档
-
-做 Yohaku 的过程中，和 AI 一起写的会话往往比最终代码更有用，所以把它们开源在 [archive/specstory-sessions](../archive/specstory-sessions/README.md) 里，按年份归档。
 
 ---
 

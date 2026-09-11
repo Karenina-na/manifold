@@ -5,19 +5,9 @@
 Yohaku design system: static design contract for the Yohaku monorepo — one accent, three neutral tiers, the rest is whitespace. Web pages, long-form, letters, reports — anywhere words live.
 
 - Live showcase: **[yohaku.innei.dev](https://yohaku.innei.dev)**
-- The iOS client that uses this contract lives in [`apps/mobile/`](../apps/mobile/)
+- Local showcase source: [`showcase/`](showcase/)
 
-> Each preview is split diagonally — light on the top-left, dark on the bottom-right.
-
-![Preview - Home](../assets/preview-home.en.png)
-
-![Preview - Posts](../assets/preview-posts.en.png)
-
-![Preview - Notes](../assets/preview-notes.en.png)
-
-![Preview - Timeline](../assets/preview-timeline.en.png)
-
-![Preview - Thinking](../assets/preview-thinking.en.png)
+> The showcase previews are split diagonally — light on the top-left, dark on the bottom-right.
 
 ---
 
@@ -118,12 +108,6 @@ More in [`CHEATSHEET.md`](./CHEATSHEET.md).
 Yohaku wasn't designed from scratch — it was filed down inside my own blog [Shiro](https://github.com/Innei/Shiro), one decision at a time. The original itch was just typography: replace the template-y card grid with something closer to letter paper, and let long-form text breathe. The longer I worked on it, the more obvious it became that the system was running on a few simple invariants — one accent, three neutral tiers, a breathing easing curve, and the rest is whitespace.
 
 Later I came across [tw93/kami](https://github.com/tw93/kami) — same instinct: a constraint language, a single tonal register, and a bias toward the written word. Kami lands in static documents (PDFs, slides); Yohaku lands in webpages and long-form. Each one was a sanity check on the other. Pulling those invariants out of the application — into tokens, templates, and an AI skill — is what the design-system became: a contract you can hand to an agent or to another human and trust the output.
-
----
-
-## Dev chats (open archive)
-
-While building Yohaku, the AI-assisted chats were often more useful than the final code, so I'm sharing them in [archive/specstory-sessions](../archive/specstory-sessions/README.md), grouped by year.
 
 ---
 

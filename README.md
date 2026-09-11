@@ -7,7 +7,7 @@ Manifold 是一个 API-first 的个人 digital garden：同一套内容和个人
 - Web 首页、写作归档、文章详情和 SEO 元数据。
 - `THOUGHT` 与 `ARTICLE` Markdown 内容，支持标签、搜索和页码分页；文稿支持数学公式、代码高亮和一键复制代码。
 - Thoughts 是轻量碎记；Articles 提供由 Core 派生的阅读时长和目录。
-- 匿名评论提交与 Admin 审核、`LIKE` 访客反应。
+- 匿名评论提交与 Admin 评论管理、`LIKE` 访客反应。
 - Admin 登录、可撤销会话（logout/logout-all）、在线改密码、内容发布生命周期、评论管理、Profile、Site 和首页 composition 管理。
 - Go Core、SQLite、JWT + Casbin 鉴权（DB 会话校验、可撤销）、请求/追踪 ID、审计事件和 TTL 缓存。
 - **锚定链**：Core 内嵌单写者 PoW 锚定链——每次业务数据变更自动锚定为可验证承诺（只存哈希、站点密钥签名），公开访客也可提交任意 payload 求锚定；sim/proof 双挖矿模式 + 缓冲成块，全链重放验证。`/chain` 提供链浏览器与验证页，详情页展示锚定徽标。契约见 [`docs/chain.md`](docs/chain.md)。
@@ -136,7 +136,7 @@ Admin 的 `VITE_CORE_URL` 必须指向 Core（默认 `http://localhost:8080`）�
 | `make test` | Go + workspace 测试 |
 | `make check` | `go vet ./...` + TypeScript 检查 |
 | `pnpm browser-install` | 安装 Chromium |
-| `pnpm browser-test` | 临时启动三端，回归 Web 评论/反应和 Admin 审核 |
+| `pnpm browser-test` | 临时启动三端，回归 Web 评论/反应和 Admin 评论管理 |
 | `pnpm --filter @manifold/web lint` | Web ESLint |
 | `pnpm --filter @manifold/admin lint` | Admin Oxlint |
 
