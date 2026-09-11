@@ -108,7 +108,7 @@ Web 承担 OAuth 的浏览器侧编排，认证逻辑仍在 Core（Web 不接触
 
 - `GET /api/v1/auth/github/login?return_to=…`（`app/api/v1/auth/github/login/route.ts`，Node runtime）发起流程：`return_to` 必须是站内相对路径（防开放重定向），生成随机 state 与回跳目标写入 10 分钟 HttpOnly cookie（`manifold_oauth_state`/`manifold_oauth_return`），302 到 GitHub 授权页；未配置 `GITHUB_CLIENT_ID`（Web 侧 `app/web/.env.local`）时返回 503。
 - 授权跑在弹窗里：Web 点击 GitHub 图标时 `window.open` 打开 `login` 路由（`popup=yes`），当前页面不导航、历史栈不动，浏览器 back 不会回到授权中间页；弹窗被拦截时降级为整页跳转（回调页用 `location.replace` 回跳，同样不污染历史栈）。
-- `GET /api/v1/auth/callback/github`（`app/api/v1/auth/callback/github/route.ts`）接收 `code`+`state`：校验 state 匹配后 POST Core `/api/v1/auth/github/exchange` 换发 visitor 会话 JWT，写入 90 天 `manifold-visitor` cookie（`sameSite=lax`、非 HttpOnly——浏览器 SDK 需读取它转 Bearer 直连 Core，因为浏览器直连跨端口时 cookie 域隔离）。随后返回一个极简 HTML：若存在 `window.opener`（弹窗场景）则向 opener `postMessage({ type: "manifold:github-auth", ok })`（targetOrigin 限定本站）并 `window.close()`，父窗口收到消息后失效 `auth/me` query 刷新登录态；无 opener（降级整页跳转）则 `location.replace` 回 `return_to`。state 不匹配或 Core 换发失败时同一 HTML 发送 `ok:false`（或回 `/?oauth=state|failed`），父窗口保持原状态。
+- `GET /api/v1/auth/callback/github`（`app/api/v1/auth/callback/github/route.ts`）接收 `code`+`state`：校验 state 匹配后 POST Core `/api/v1/auth/github/exchange` 换发 visitor 会话 JWT，写入 90 天 `manifold-visitor` cookie（`sameSite=lax`、非 HttpOnly——浏览器 SDK 需读取它转 Bearer 直连 Core，因为浏览器直连跨端口时 cookie 域隔离；TLS 下带 `Secure`，判定方式见第 6 节）。随后返回一个极简 HTML：若存在 `window.opener`（弹窗场景）则向 opener `postMessage({ type: "manifold:github-auth", ok })`（targetOrigin 限定本站）并 `window.close()`，父窗口收到消息后失效 `auth/me` query 刷新登录态；无 opener（降级整页跳转）则 `location.replace` 回 `return_to`。state 不匹配或 Core 换发失败时同一 HTML 发送 `ok:false`（或回 `/?oauth=state|failed`），父窗口保持原状态。该 HTML 由页面自行下发 `default-src 'none'` + sha256 脚本哈希的 CSP（见第 6 节）。
 - 登录态由客户端 `authMe()` 驱动（query key `auth/me`，5 分钟 staleTime）；`manifold-visitor` cookie 删除后重新加载即回到默认访客模式。GitHub 会话长期保持（90 天），无站内登出按钮。
 - 降级：Core 未配置 GitHub（`CORE_GITHUB_CLIENT_*` 为空）时 `authMe().providers` 为空，动作行只显示 Guest 图标，Web 不渲染 GitHub 图标；Core 侧对 `/auth/github/exchange` 返回 501。
 
@@ -127,6 +127,34 @@ Web 承担 OAuth 的浏览器侧编排，认证逻辑仍在 Core（Web 不接触
 - `app/error.tsx` 处理路由级异常，`global-error.tsx` 处理根级异常；错误页提供重试和 trace reference，不显示内部 stack。
 - SDK 每次请求发送 `X-Trace-ID`；客户端错误通过 `reportClientError` 记录 scope、错误名、消息、stack 和 trace ID。
 - Core unavailable 时优先显示可理解的恢复提示，不把网络异常转成空内容。
+
+### 安全边界：响应头、CSP 与 cookie 属性
+
+**CSP 由 `app/web/proxy.ts` 下发**（Next.js 16 的 proxy 文件约定，构建输出里显示为 `ƒ Proxy (Middleware)`）。每个请求生成一个 nonce（`crypto.randomUUID()` → base64），**同时写入请求头与响应头**：Next.js 从请求的 CSP 头里取回 nonce 并自动加到框架自身的 `<script>` 上，所以不需要逐标签手工标注。`script-src 'self' 'nonce-…' 'strict-dynamic'`；开发环境额外放行 `'unsafe-eval'`（React 需要它重建服务端错误栈），生产不放行。
+
+选择 nonce 而不是 `'unsafe-inline'` 的原因：访客会话是 90 天、不可撤销、**必须对 JS 可读**的 JWT（浏览器 SDK 读 `manifold-visitor` 转 Bearer），因此任何 XSS 都等于持久的身份劫持，而 `'unsafe-inline'` 恰好放行这种场景需要的注入式内联脚本。
+
+其余指令：
+
+| 指令 | 取值 | 理由 |
+| --- | --- | --- |
+| `style-src` | `'self' 'unsafe-inline'` | Radix Themes 与 KaTeX 在运行时注入 `<style>` 并输出内联 style 属性；内联样式不是脚本执行面 |
+| `img-src` | `'self' data: blob: https:` | Markdown 正文可引用任意远端图片、评论头像来自 GitHub；限定 https 方案而非放开任意来源 |
+| `connect-src` | `'self'` + `NEXT_PUBLIC_CORE_URL` 的 origin | 浏览器 SDK 直连 Core 是跨 origin 的 |
+| `object-src` / `base-uri` / `form-action` / `frame-ancestors` / `frame-src` | 全部收紧（`'none'` 或 `'self'`） | 站点不使用插件、`<base>`、站外表单或 iframe |
+| `X-Content-Type-Options` | `nosniff` | 与 Core 侧同名的响应头一致（Core 只服务自身响应） |
+
+matcher 排除 `/api`（该前缀只服务 JSON），因此**唯一返回 HTML 的 `/api/v1/auth/callback/github` 自行下发 CSP**：用 `sha256` 哈希钉住自己的内联脚本（`lib/security.ts` 的 `inlineScriptHash`），而不是依赖 nonce。nonce 要求页面动态渲染——本项目每个页面都已 `export const dynamic = "force-dynamic"`，因此没有静态优化损失。
+
+**cookie 属性**：
+
+- `manifold-visitor` 是 90 天、不可撤销、必须对 JS 可读的 JWT，所以不能 `httpOnly`，但必须 `Secure`；`manifold_oauth_state`/`manifold_oauth_return`（`login` 路由）同理。是否加 `Secure` 由 `lib/security.ts` 的 `requestIsSecure()` 判定——**优先 `x-forwarded-proto`，回退请求协议**——避免自托管纯 http 部署被浏览器静默丢弃 cookie 而导致登录失效。反向代理终止 TLS 时该头必须透传。
+- 客户端侧的 `manifold-vid` 分析镜像（`getVisitorId()`）在 `https:` 下同样追加 `secure`。
+
+**内联脚本不再直接拼接原始值**：回调页的 `fallback` 派生自 `manifold_oauth_return` cookie，而该 cookie 的源头是 `login` 的 `return_to` 查询参数，属攻击者可控。当前实现经 `new URL(returnTo, origin).toString()` 会把 `<`/`>` 百分号编码，因此原实现**未构成可达的注入**；但 `JSON.stringify` 本身不转义 `<`，所以现在统一经 `inlineScriptJSON()` 把 `<`、`>`、`&`、U+2028/U+2029 转成 `\uXXXX`。这既是纵深防御，也让哈希钉住的内联脚本在有人日后引入原始值时直接拒绝执行。
+
+**REPL 的 `calc` 不再使用 `Function()`**：无 `'unsafe-eval'` 的 CSP 会直接阻断它，因此改为 `lib/expression.ts` 的纯算术解析器（`+ - * / % ^`、`**`、括号、一元正负号，`^` 右结合，除零与非有限结果报错）；原有的字符白名单正则降级为友好提示，不再充当唯一防线。
+
 
 ## 7. 配置和依赖
 

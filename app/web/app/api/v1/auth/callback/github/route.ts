@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { inlineScriptHash, inlineScriptJSON, requestIsSecure } from "../../../../../../lib/security";
 
 export const runtime = "nodejs";
 
@@ -17,10 +18,15 @@ const VISITOR_TTL_SECONDS = 90 * 24 * 60 * 60;
 // composer fell back to a full-page navigation there is no opener, so the same
 // page redirects via location.replace — replace keeps the history stack clean
 // and the back button never lands on GitHub.
+//
+// Every value interpolated into the inline script goes through
+// inlineScriptJSON: `fallback` derives from the manifold_oauth_return cookie,
+// which an attacker can seed through the login query string, so a raw
+// "</script>" in it would otherwise end the script block and inject markup.
 function authHtml(origin: string, payload: { ok: boolean; fallback: string }) {
   const script = `
-    var origin = ${JSON.stringify(origin)};
-    var fallback = ${JSON.stringify(payload.fallback)};
+    var origin = ${inlineScriptJSON(origin)};
+    var fallback = ${inlineScriptJSON(payload.fallback)};
     if (window.opener) {
       window.opener.postMessage({ type: "manifold:github-auth", ok: ${payload.ok ? "true" : "false"} }, origin);
       window.close();
@@ -30,7 +36,14 @@ function authHtml(origin: string, payload: { ok: boolean; fallback: string }) {
   `;
   return new NextResponse(
     `<!doctype html><html lang="en"><head><meta charset="utf-8" /><title>Signing in…</title></head><body><script>${script}</script></body></html>`,
-    { headers: { "Content-Type": "text/html; charset=utf-8" } },
+    {
+      headers: {
+        "Content-Type": "text/html; charset=utf-8",
+        // This route lives under /api, which the proxy matcher skips, so it
+        // pins its own inline script by hash rather than a per-request nonce.
+        "Content-Security-Policy": `default-src 'none'; script-src ${inlineScriptHash(script)}; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`,
+      },
+    },
   );
 }
 
@@ -64,6 +77,15 @@ export async function GET(request: NextRequest) {
   }
   const target = new URL(returnTo, origin);
   const response = authHtml(origin, { ok: true, fallback: target.toString() });
-  response.cookies.set(VISITOR_COOKIE, payload.token, { sameSite: "lax", path: "/", maxAge: VISITOR_TTL_SECONDS });
+  response.cookies.set(VISITOR_COOKIE, payload.token, {
+    sameSite: "lax",
+    path: "/",
+    maxAge: VISITOR_TTL_SECONDS,
+    // The token is a 90-day, non-revocable HS256 JWT that JavaScript must be
+    // able to read (the SDK forwards it as a Bearer credential), so httpOnly is
+    // not available. Secure is: without it the credential travels in cleartext
+    // on any http hop.
+    secure: requestIsSecure(request.nextUrl.protocol, request.headers.get("x-forwarded-proto")),
+  });
   return response;
 }

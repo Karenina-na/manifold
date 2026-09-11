@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomBytes } from "node:crypto";
+import { requestIsSecure } from "../../../../../../lib/security";
 
 export const runtime = "nodejs";
 
@@ -26,7 +27,10 @@ export async function GET(request: NextRequest) {
   authorize.searchParams.set("state", state);
   authorize.searchParams.set("scope", "read:user");
   const response = NextResponse.redirect(authorize.toString());
-  response.cookies.set("manifold_oauth_state", state, { httpOnly: true, sameSite: "lax", path: "/", maxAge: 600 });
-  response.cookies.set("manifold_oauth_return", safeReturnTo, { httpOnly: true, sameSite: "lax", path: "/", maxAge: 600 });
+  // The state cookie is the CSRF guard for the round trip, so it carries Secure
+  // on the same terms as the session cookie (see lib/security.ts).
+  const secure = requestIsSecure(request.nextUrl.protocol, request.headers.get("x-forwarded-proto"));
+  response.cookies.set("manifold_oauth_state", state, { httpOnly: true, sameSite: "lax", path: "/", maxAge: 600, secure });
+  response.cookies.set("manifold_oauth_return", safeReturnTo, { httpOnly: true, sameSite: "lax", path: "/", maxAge: 600, secure });
   return response;
 }

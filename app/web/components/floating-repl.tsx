@@ -2,6 +2,7 @@
 
 import { Terminal, X, CornerDownLeft, ExternalLink, Circle } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { evaluateArithmetic } from "../lib/expression";
 import styles from "../app/site.module.css";
 
 export type Paper = { title: string; href: string };
@@ -357,14 +358,14 @@ async function executeCommand(
     case "calc": {
       const expr = args.join("");
       if (!expr) return [{ text: "Usage: calc <expression> (e.g. calc 1024 / 4)", type: "error" }];
-      // 安全简单的计算器正则校验
+      // The regex is a friendly pre-check, not the security boundary: the
+      // expression is parsed by lib/expression.ts instead of being handed to
+      // eval, so a CSP without 'unsafe-eval' does not break the command.
       if (!/^[0-9+\-*/().\s^%]+$/.test(expr)) {
         return [{ text: "Syntax Error: Only mathematical operators allowed.", type: "error" }];
       }
       try {
-        const sanitized = expr.replace(/\^/g, "**");
-        const result = Function(`"use strict"; return (${sanitized})`)();
-        return [{ text: `= ${result}`, type: "success" }];
+        return [{ text: `= ${evaluateArithmetic(expr)}`, type: "success" }];
       } catch {
         return [{ text: "Math Evaluation Error.", type: "error" }];
       }

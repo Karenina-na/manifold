@@ -41,7 +41,10 @@ export function getVisitorId() {
   if (!stored) window.localStorage.setItem(storageKey, value);
   // Server Components cannot read localStorage; mirroring the id into a cookie
   // lets detail pages attribute view events for per-visitor dedup analytics.
-  document.cookie = `manifold-vid=${value}; path=/; max-age=31536000; samesite=lax`;
+  // Secure is added only over TLS: browsers drop Secure cookies on plain http,
+  // and this mirror is an analytics convenience, not a credential.
+  const secure = window.location.protocol === "https:" ? "; secure" : "";
+  document.cookie = `manifold-vid=${value}; path=/; max-age=31536000; samesite=lax${secure}`;
   return value;
 }
 

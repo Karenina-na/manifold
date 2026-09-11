@@ -12,6 +12,8 @@ Manifold 公开阅读端，负责 Home、Thoughts、Writings、Markdown 阅读�
 
 源码按职责分层：`app/` 保存路由和 Server Component，`components/` 保存可复用界面，`features/` 保存单一交互域的客户端状态（当前为 chain 的待封块提交生命周期和 comments 的讨论分页），`lib/` 保存无界面的共享函数与 Core 客户端入口。业务数据和规则仍由 Core 与共享契约定义。
 
+安全边界同样按层放置：`proxy.ts` 是唯一的响应头与 CSP 出口（每请求 nonce），`lib/security.ts` 保存内联脚本序列化、CSP 脚本哈希和 cookie `Secure` 判定，两者都不参与业务逻辑；`lib/expression.ts` 提供 REPL 的无 `eval` 算术求值。契约见 [`docs/decisions/web.md`](../../docs/decisions/web.md) 第 6 节。
+
 ## 运行
 
 ```bash
