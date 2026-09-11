@@ -1,8 +1,8 @@
 # Manifold
 
-Manifold 是一个 API-first 的个人 digital garden：同一套内容和个人资料模型，同时服务公开阅读端、私有管理端和未来的研究/经历扩展。
+Manifold 是一个 API-first 的个人 digital garden：同一套内容和个人资料模型，同时服务公开阅读端与私有管理端。
 
-当前 MVP 已包含：
+当前产品包含：
 
 - Web 首页、写作归档、文章详情和 SEO 元数据。
 - `THOUGHT` 与 `ARTICLE` Markdown 内容，支持标签、搜索和页码分页；文稿支持数学公式、代码高亮和一键复制代码。
@@ -20,7 +20,8 @@ Browser
   +--> app/web (Next.js) ---|                      |
   +--> app/admin (Vite) ----| @manifold/sdk ------+--> app/core (Go REST)
                             | @manifold/contracts |          |
-                            +----------------------+          +--> SQLite
+                            | @manifold/render    |          +--> SQLite
+                            +----------------------+
 ```
 
 Core 是唯一拥有业务持久化的服务。Web/Admin 不导入 Go 代码、不读取 SQLite；跨端类型来自 `packages/contracts`，HTTP 调用集中在 `packages/sdk`。
@@ -34,6 +35,8 @@ Core 是唯一拥有业务持久化的服务。Web/Admin 不导入 Go 代码、�
 | [`app/admin`](app/admin/README.md) | React + Vite 私有管理端，默认端口 `5173` |
 | `packages/contracts` | 共享 TypeScript API 类型 |
 | `packages/sdk` | 基于原生 `fetch` 的强类型 API 客户端 |
+| `packages/render` | Web/Admin 共用的 Markdown 与内容阅读渲染器 |
+| `docs/design-system` | 设计 token、组件规范和校验工具 |
 | `scripts/browser-check.cjs` | Playwright Web/Admin 验收流程 |
 | `app/*/README.md` | 各项目的背景、架构、运行方式和边界 |
 
@@ -44,6 +47,8 @@ Core 是唯一拥有业务持久化的服务。Web/Admin 不导入 Go 代码、�
 - [`docs/chain.md`](docs/chain.md)：锚定链契约——证书/区块结构、哈希与签名、变更锚定清单、挖矿与验证。
 - [`docs/admin.md`](docs/admin.md)：Admin 工作区、API 调用和状态流。
 - [`docs/decisions/web.md`](docs/decisions/web.md)：Web 当前路由、数据流和阅读器架构。
+- [`docs/web.md`](docs/web.md)：Web 公共行为摘要和阅读能力索引。
+- [`docs/decisions/`](docs/decisions/)：架构决策与当前实现背景。
 - [`packages/contracts/README.md`](packages/contracts/README.md)：共享 TypeScript 契约。
 - [`packages/sdk/README.md`](packages/sdk/README.md)：Core SDK 方法和请求约定。
 
@@ -175,6 +180,8 @@ OpenResty 使用独立域名时，将 Web、Admin、Core 分别代理到 `http:/
 - `/`：Profile、统计和最近内容。
 - `/writing`：公开内容归档。
 - `/writing/:slug`：Markdown 详情、标签、评论和反应。
+- `/thoughts`：Thoughts 时间线归档。
+- `/thoughts/:slug`：Thought 详情、评论和反应。
 - `/chain`：锚定链浏览器与验证页——浏览区块/证书、按 payload/哈希/slug 三种模式查证、提交公开锚定、查看站点公钥。
 
 正文使用 `react-markdown` + `remark-gfm` + `rehype-sanitize`；评论无需注册，反应通过浏览器持久化的 `X-Visitor-ID` 区分访客。
@@ -226,7 +233,7 @@ OpenResty 使用独立域名时，将 Web、Admin、Core 分别代理到 `http:/
 
 ## 当前边界
 
-P0 聚焦首页、Profile、Site、Thoughts、Writings、Comments、Media、Likes 和 Stats。跨资源搜索、经历详情和 research series 不属于当前产品范围。
+当前产品范围聚焦首页、Profile、Site、Thoughts、Writings、Comments、Media、Likes 和 Stats。跨资源搜索、经历详情和 research series 不属于当前产品范围。
 
 ## 贡献
 

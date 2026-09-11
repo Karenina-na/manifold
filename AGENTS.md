@@ -4,13 +4,15 @@
 
 Manifold 是一个 API-first 的个人数字花园，当前产品只围绕三类公开入口构建：Home、Thoughts 和 Writings。内容底层使用 Core 的单表模型：`THOUGHT` 表示碎记、方法论、阅读笔记和阶段性反思；`ARTICLE` 表示深度技术文章、算法实验复盘和系统架构方案。
 
-仓库包含五个有明确边界的 workspace：
+仓库包含六个有明确边界的代码 workspace，另有一个只提供设计规范与校验工具的 workspace：
 
 - `app/core`：Go REST API、鉴权、SQLite 持久化、缓存、审计和业务规则的唯一所有者。
 - `app/web`：Next.js 公开阅读端，不持有业务数据。
 - `app/admin`：Vite/React 私有管理端，不直接访问 SQLite。
 - `packages/contracts`：跨端 TypeScript 请求/响应类型的唯一公共契约。
 - `packages/sdk`：基于 `fetch` 的 Core HTTP 客户端，统一认证、追踪 ID 和错误解析。
+- `packages/render`：Web/Admin 共用的 Markdown 与内容阅读渲染器及样式唯一来源。
+- `docs/design-system`：设计 token、组件规范和校验工具，不属于产品运行时代码。
 
 ## 架构约束
 
@@ -20,6 +22,8 @@ Web / Admin
      +--> packages/sdk --> app/core --> SQLite
      |        |
      +--------+--> packages/contracts
+     |
+     +--> packages/render
 ```
 
 1. Core 是业务规则、数据状态和 API 响应的最终权威。
@@ -36,10 +40,11 @@ Web / Admin
 | [`docs/core.md`](docs/core.md) | Core 架构、路由、请求/响应、数据模型、错误和运行配置 | Core 的 API、schema、校验、鉴权、缓存、审计、配置或生命周期变化 |
 | [`docs/chain.md`](docs/chain.md) | 锚定链：证书/区块结构、哈希与签名、锚定清单、挖矿、验证和 `CORE_CHAIN_*` 配置 | 锚定链行为、source 枚举、payload 格式、区块/哈希公式、挖矿触发、验证语义或链配置变化；**新增任何数据库写路径时必须在同一变更中登记锚定清单或说明例外** |
 | [`docs/admin.md`](docs/admin.md) | Admin 工作区、API 调用、query key、表单和状态流 | Admin 工作区、表单、Core API 调用、缓存失效、登录或构建边界变化 |
-| [`docs/decisions/web.md`](docs/decisions/web.md) | Web 当前页面、数据流、渲染器、交互和 SEO | Web 路由、页面数据、Markdown、评论/反应、SEO、设计或浏览器行为变化 |
-| [`docs/web.md`](docs/web.md) | Web 契约摘要和阅读能力 | Web 公共行为或渲染能力变化；内容与决策文档保持一致 |
+| [`docs/web.md`](docs/web.md) | Web 公共行为摘要和阅读能力索引 | Web 公共行为、路由或渲染能力变化 |
+| [`docs/decisions/web.md`](docs/decisions/web.md) | Web 当前架构细节、数据流、渲染器、交互和 SEO 决策 | Web 路由、页面数据、Markdown、评论/反应、SEO、设计或浏览器行为变化 |
 | [`packages/contracts/README.md`](packages/contracts/README.md) | TypeScript 类型、判别联合、请求输入和共享响应 | `packages/contracts/src/index.ts` 的任何导出变化 |
 | [`packages/sdk/README.md`](packages/sdk/README.md) | SDK 方法、URL、HTTP、认证、错误和测试约定 | `packages/sdk/src/index.ts` 的任何方法或请求行为变化 |
+| [`packages/render/README.md`](packages/render/README.md) | Web/Admin 共用内容渲染组件、样式和 sanitize 边界 | `packages/render/src/` 的任何导出、渲染行为或样式变化 |
 | `app/*/README.md` | 项目背景、运行和开发入口 | 对应项目结构、命令、边界或运行方式变化 |
 | [`docs/decisions/`](docs/decisions/) | 架构决策和历史背景 | 重大架构选择、依赖替换、数据模型或公共 API 决策 |
 

@@ -2,7 +2,7 @@
 
 ## Development setup
 
-Install Node.js, pnpm, and Go 1.22 or newer. Then run:
+Install Node.js `>=20.9`, pnpm `11.19.0`, and Go `>=1.26.5`. Then run:
 
 ```bash
 pnpm install
@@ -17,8 +17,9 @@ Run the Core API with `make core-run`. Run the TypeScript applications with thei
 - Contracts owns types crossing the HTTP boundary.
 - SDK owns TypeScript transport behavior.
 - Web and Admin consume the SDK rather than duplicating fetch logic.
+- Render owns shared Markdown/content rendering; Web and Admin must not fork its components or styles.
 
-Keep commits focused on one logical change. Database schema changes must include the corresponding query or migration update. Public API changes must update `docs/core.md` and the shared contracts in the same change.
+Keep commits focused on one logical change. Database schema changes must include the corresponding query or migration update. Public API changes must update `docs/core.md` and the shared contracts in the same change. Follow `contracts -> sdk -> core -> web/admin -> docs -> tests` for cross-workspace API changes. Any new database write path must be registered in `docs/chain.md` or explicitly classified as an existing exception.
 
 ## Verification
 
@@ -27,6 +28,9 @@ Before opening a change, run:
 ```bash
 make test
 make check
+pnpm build
+pnpm browser-test
+git diff --check
 ```
 
-For frontend-only changes, also run the affected workspace build and lint command.
+For frontend-only changes, also run the affected workspace build and lint command. Use Conventional Commits, for example `feat(core): add content endpoint` or `docs: align sdk contract`.
