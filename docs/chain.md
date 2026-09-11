@@ -181,7 +181,7 @@ Admin 本轮不新增链相关 workspace；管理员用公开浏览器与公开 
 
 ## 8. 数据模型
 
-迁移 `db/migrations/0005_init.sql`（编号取实现时下一个可用号；设计定稿时最新为 `0004`，`schemaVersion` 4 → 5）：
+迁移 `db/migrations/0005_init.sql` 引入锚定链三表（`chain_keys`、`chain_anchors`、`chain_blocks`）。当前 Core `schemaVersion` 为 6；后续迁移 `db/migrations/0006_init.sql` 引入第三方身份和评论 provider 字段：
 
 ```sql
 CREATE TABLE IF NOT EXISTS chain_keys (

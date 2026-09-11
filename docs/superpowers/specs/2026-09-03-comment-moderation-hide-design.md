@@ -1,7 +1,9 @@
 # Comment Moderation: Hide + Edit-Author
 
-Status: Draft
+Status: Implemented
 Date: 2026-09-03
+
+> 历史设计文档。评论隐藏与作者资料编辑已经实现，当前行为以 [`docs/core.md`](../../core.md)、[`docs/admin.md`](../../admin.md) 和 [`docs/decisions/web.md`](../../decisions/web.md) 为准。
 
 ## 问题
 

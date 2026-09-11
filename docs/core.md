@@ -48,7 +48,10 @@ chi Router
 app/core/
 ├── cmd/server/main.go              # 配置、seed 解析、数据库、HTTP server、优雅关闭
 ├── internal/config/config.go       # CORE_* 环境变量与 .env 自动加载
-├── internal/handler/response.go    # 路由、handler、错误、分页和校验
+├── internal/handler/                 # HTTP 路由、中间件、handler、错误和分页
+│   ├── routes.go                     # 路由注册
+│   ├── response.go                   # handler 依赖、生命周期和 Router
+│   └── response_helpers.go            # JSON、错误、集合和健康检查响应
 ├── internal/application/           # 写用例及 audit、anchor、cache 编排
 ├── internal/auth/auth.go           # bcrypt、JWT、Casbin
 ├── internal/model/content.go       # Core 领域 JSON model
@@ -281,6 +284,8 @@ Thoughts 归档参数为 `page`（默认 1）、`pageSize`（默认 8，范围 1
 | `view_count` | 公开详情读取时同步递增的持久化浏览量 |
 
 Metadata：Thought 使用 `mood/question/context/source`；Article 使用 Core 派生的 `readingMinutes/toc` 与可编辑的 `language/aiAssisted`。`excerpt` 在保存时由 Core 从正文生成并持久化。客户端不得提交派生字段，未知 metadata 字段和错误 null/type 直接拒绝。
+
+锚定链三表由迁移 `0005` 引入；当前 Core `schemaVersion` 为 6，迁移 `0006` 另行引入第三方身份和评论 provider 字段。
 
 其他表：`profile`、`site_config`、`thoughts_config`、`writings_config`、`pins`、`comments`、`likes`、`presence`、`audit_events`、`content_view_events`、`media`、`admin_credentials`、`admin_sessions`、`identities`、锚定链三表（`chain_keys`、`chain_anchors`、`chain_blocks`，迁移 `0005`，`schemaVersion` 6）。链表结构、只增不改不变量与全部链语义见 [`docs/chain.md`](chain.md)。`media`（`id`、`mime`、`size`、`sha256 UNIQUE`、`filename`、`data BLOB`、`created_at`）保存上传的媒体字节（图片与 PDF），按 SHA256 去重（相同字节复用同一行）；`mime` 只允许 png/jpeg/webp/gif/avif 与 `application/pdf`（上传时嗅探，SVG 永不入库）；公开访问 `GET /api/v1/media/{id}` 依赖该表，缓存语义见路由表。`admin_credentials`（`id`、`username`、`password_hash`、`updated_at`）保存管理员 bcrypt 凭据：首次启动用 `CORE_ADMIN_PASSWORD_HASH` 播种一行，之后以 DB 行为权威，`CORE_ADMIN_PASSWORD_HASH` 不再覆盖（改密码写入此行、重启保留）。`admin_sessions`（`id`（= JWT `jti`）、`subject`、`created_at`、`expires_at`、`revoked_at`）支持可撤销会话：登录时插入一行，`RequireAdmin` 每次校验 `revoked_at IS NULL AND expires_at > now`，`logout`/`logout-all`/改密码都会写 `revoked_at`。`content_view_events` 是浏览事件表（`content_id`、`visitor_id`、`referrer`（origin 或空）、`day`（UTC 日期）、`created_at`）：识别访客通过部分唯一索引 `(content_id, visitor_id, day) WHERE visitor_id != ''` 按"同人同内容同 UTC 日"去重，匿名浏览每次插入一条；该表驱动 `GET /admin/analytics/views`，与累计 `view_count` 并存——`view_count` 保持无条件递增，分析口径只统计去重事件，Admin 侧两处浏览量（Overview 的 `totalViews` 与 Analytics 的 `totalViews`）设计上不相等，差异即匿名与重复访问。`thoughts_config` 是 `thoughts_1` 单例，仅保留 `updated_at`；`writings_config` 是 `writings_1` 单例，同构。置顶由 `pins` 表承载：`pins`（`content_id` 主键、`content(id)` 外键 `ON DELETE CASCADE`、`kind`、`position`、`created_at`），每个 kind 按 `(kind, position)` 排序，置顶顺序即插入/替换顺序。Core 为归档查询维护 `(kind,status,published_at DESC)` 索引。`content.view_count` 在公开详情读取时同步原子递增，列表响应直接返回该持久化计数；`likeCount` 从 `likes` 聚合，`commentCount` 只统计未删除且未隐藏评论（隐藏只影响被选中的行，回复不级联），评论创建、隐藏/取消隐藏、软删除或恢复时 Core 会失效对应内容详情缓存并刷新 Admin Overview。详情读取同时写入 `audit_events(event_name = 'content.viewed', resource_type = 'content')` 供观测使用，审计队列丢弃不会影响浏览量统计。Profile 包含 `resume_url`、`interests_json`、`education_json`、`experience_json`、`series_json`、`contacts_json`；Series 项为 `{name,url,description,category}`（category 可为 null），联系方式为 `{label,url,handle,icon}`（handle/icon 可为 null）；`site_config` 是 `site_1` 单例，包含站点身份列（`title`、`description`、`footer_text`、`social_json`、`comments_enabled`）与首页组合列（`navigation_json`、`sections_json`）。评论创建即公开（无审核状态，`deleted_at` 软删标记，`hidden_at` 隐藏标记，二者正交，公开列表保留隐藏行但脱敏），可见性索引为 `idx_comments_content_visibility (content_id, created_at) WHERE deleted_at IS NULL`；`comments` 额外含 `author_provider`（`visitor`/`github`，默认 `visitor`）与 `author_avatar_url`（账号头像快照，匿名评论为空字符串）两列。`identities`（`id` 主键形如 `identity_github_<providerID>`、`provider`、`provider_id`、`display_name`、`avatar_url`、`created_at`、`updated_at`）以 `UNIQUE(provider, provider_id)` 记录第三方登录身份，OAuth 换发时 upsert 刷新展示名/头像；visitor 会话 JWT 只携带身份引用与展示信息，不接触 admin 凭据。点赞有 `(content_id, visitor_id)` 唯一约束；Presence 只保存匿名 visitor ID 的最近心跳时间，过期窗口为 5 分钟。
 
