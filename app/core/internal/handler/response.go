@@ -242,13 +242,3 @@ func newRouterWithMiner(cfg config.Config, database *store.Store, ledger *chain.
 	})
 	return router, closeMiner
 }
-
-// invalidateContentBySlug drops the public cache key for a slug and purges the
-// aggregate snapshots that include content data.
-func (h *apiHandler) invalidateContentBySlug(slug string) {
-	h.statsCache.Purge()
-	h.overviewCache.Purge()
-	if slug != "" {
-		h.contentCache.Remove(slug)
-	}
-}
