@@ -78,7 +78,7 @@ POST /api/v1/chain/anchors ─┼──> handler 构造 payload ──> chain.Su
 
 ### 3.3 站点密钥（chain_keys 一行，单例）
 
-- Core 首次启动生成 ed25519 密钥对：`key_id = "site_key_1"`，公钥/私钥 hex 存 `chain_keys`。密钥随 `data/manifold.db` 一起备份、迁移（见 README 发布包数据规则）。
+- Core 首次启动生成 ed25519 密钥对：`key_id = "site_key_1"`，公钥/私钥 hex 存 `chain_keys`。密钥随 `data/manifold.db` 一起备份、迁移（见 README 发布包数据规则）。创建只发生在两处：`cmd/server` 启动时的 `EnsureSiteKey`，以及 `Submit` 的幂等前置调用。**`GET /api/v1/chain` 是纯读**：它只查 `chain_keys`，缺失时返回空 `sitePublicKey` 而不会补建（读路径不写库）。
 - 每张证书记录签名时的 `site_key_id` + `site_public_key`，证书自包含；`chain_keys` 允许多行为未来的密钥轮换预留，**轮换管理本轮不做**。
 - 诚实边界：私钥与 SQLite 文件同级保护（`data/` 0700），不是 HSM/KMS 级。密钥泄露只影响**之后**新证书的可信度，历史区块与历史证书不受影响（区块哈希链与每张证书记录的公钥独立可验）。
 
@@ -124,6 +124,7 @@ POST /api/v1/chain/anchors ─┼──> handler 构造 payload ──> chain.Su
 | `content_view_events` 浏览事件 | 随流量无界增长、可再生；每多一次浏览多一张永久证书没有承诺意义 |
 | `audit_events` 写入 | 结构性不能上链：挖块产生审计事件 → 审计事件又要求上链 → 无限回归 |
 | `identities` upsert（OAuth 换发时刷新第三方账号资料） | 第三方账号资料镜像，可再生（下次 GitHub 登录重新拉取），非本站用户内容，无承诺价值 |
+| `chain_keys` 站点密钥创建 | 链自身的签名基础设施，不是被承诺的业务内容；对它的承诺会是循环的（证书由该密钥签名） |
 
 新增数据库写路径时，必须先在本清单登记（或说明归入哪条例外），再合并实现；见第 14 节。
 

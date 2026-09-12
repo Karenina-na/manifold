@@ -235,7 +235,6 @@ func (l *Ledger) ListBlocks(page, pageSize int) ([]Block, int, error) {
 	return blocks, total, rows.Err()
 }
 
-// GetBlock returns one block with its contained anchors.
 // BlockByIndex fetches a single block by its chain index (used to render the
 // block before/after a verified certificate in the explorer's chain context).
 func (l *Ledger) BlockByIndex(index int) (Block, error) {
@@ -249,6 +248,7 @@ func (l *Ledger) BlockByIndex(index int) (Block, error) {
 	return block, nil
 }
 
+// GetBlock returns one block with its contained anchors.
 func (l *Ledger) GetBlock(id string) (Block, []Anchor, error) {
 	block, err := l.scanBlock(l.db.QueryRow(`SELECT `+blockColumns+` FROM chain_blocks WHERE id = ?`, id))
 	if errors.Is(err, sql.ErrNoRows) {
@@ -319,8 +319,15 @@ func (l *Ledger) ChainInfo() (ChainInfoResult, error) {
 		info.GenesisHash = genesisHash
 		info.TipHash = tipHash
 	}
-	if key, err := l.EnsureSiteKey(); err == nil {
+	// Read-only. The site key is created once at startup (cmd/server) and, for a
+	// database that predates that call, by the first Submit. ChainInfo used to
+	// call EnsureSiteKey, which INSERTs when the row is missing — so a plain
+	// HTTP GET on a fresh database could create the key as a side effect, and
+	// the read path carried a write.
+	if key, err := l.siteKeyByID("site_key_1"); err == nil {
 		info.SitePublicKey = key.PublicKey
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return info, err
 	}
 	return info, nil
 }

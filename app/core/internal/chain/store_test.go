@@ -357,3 +357,43 @@ func TestNewLedgerLeavesSimDifficultyAlone(t *testing.T) {
 		t.Fatalf("sim difficulty = %d, want the configured 64", ledger.cfg.Difficulty)
 	}
 }
+
+// GET /api/v1/chain is a read. ChainInfo used to call EnsureSiteKey, which
+// INSERTs the site key when the row is missing, so the first GET on a fresh
+// database created chain_keys as a side effect of a read.
+func TestChainInfoDoesNotCreateTheSiteKey(t *testing.T) {
+	ledger, s := newLedgerDB(t)
+
+	info, err := ledger.ChainInfo()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.SitePublicKey != "" {
+		t.Fatalf("a database without a site key must report an empty one, got %q", info.SitePublicKey)
+	}
+	var rows int
+	if err := s.DB.QueryRow(`SELECT COUNT(*) FROM chain_keys`).Scan(&rows); err != nil {
+		t.Fatal(err)
+	}
+	if rows != 0 {
+		t.Fatalf("ChainInfo wrote %d chain_keys row(s) from a read path", rows)
+	}
+}
+
+// The counterpart: once the key exists, ChainInfo reports it. This is what the
+// production path sees, because cmd/server ensures the key before serving.
+func TestChainInfoReportsTheSiteKeyOnceItExists(t *testing.T) {
+	ledger := newLedgerWithKey(t, nil)
+	key, err := ledger.EnsureSiteKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	info, err := ledger.ChainInfo()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.SitePublicKey != key.PublicKey {
+		t.Fatalf("site public key = %q, want %q", info.SitePublicKey, key.PublicKey)
+	}
+}
