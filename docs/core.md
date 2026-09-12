@@ -181,6 +181,8 @@ Core 使用 `caarlos0/env` 读取 `CORE_` 前缀变量；启动时自动从工�
 | `GET` | `/api/v1/auth/me` | 评论访客会话：未带有效 `Authorization: Bearer` 时返回 `{authenticated:false, providers:[...]}`；带有效 visitor token 时返回 `{authenticated:true, provider, displayName, avatarUrl, providers}`。`providers` 枚举当前已配置的第三方登录（仅 `github`；未配置时为空数组，Web 端只显示访客入口） |
 | `POST` | `/api/v1/auth/github/exchange` | GitHub 授权码换发 visitor 会话：body `{code}`，成功后返回 `{token, provider, displayName, avatarUrl}`（JWT，90 天）；GitHub 未配置时返回 501 `GITHUB_AUTH_DISABLED`，缺少 `code` 时 422 `VALIDATION_ERROR`，`code` 无效或被 GitHub 拒绝时 502 `GITHUB_AUTH_FAILED`，拉取 GitHub profile 失败时 502 `GITHUB_PROFILE_FAILED`。受 `publicLimiter` 限流 |
 
+`/auth/github/exchange` 是无浏览器 cookie 上下文的服务端授权码交换边界，不签发或校验 OAuth `state`。浏览器调用方必须在调用该端点前自行完成 CSRF 往返绑定；当前 Web 的 login/callback 路由用 10 分钟 HttpOnly、SameSite=Lax cookie 保存并严格比对随机 `state`，只有比对成功才向 Core 交换 `code`。新增客户端不得绕过这一约束。
+
 内容列表参数：
 
 ```text
