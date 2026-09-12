@@ -25,7 +25,7 @@ func (h *apiHandler) login(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	token, err := h.auth.Login(input.Username, input.Password)
+	token, err := h.auth.Login(r.Context(), input.Username, input.Password)
 	if err != nil {
 		if !errors.Is(err, auth.ErrInvalidCredentials) {
 			// A store failure, a dead CSPRNG or a failed session insert is not a
@@ -40,7 +40,7 @@ func (h *apiHandler) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if claims, err := h.auth.Parse(token); err == nil {
-		h.mutations.RecordAuthChange(mutationRequest(r), input.Username, "login", claims.ID)
+		h.mutations.RecordAuthChange(r.Context(), mutationRequest(r), input.Username, "login", claims.ID)
 	}
 	WriteJSON(w, http.StatusOK, map[string]any{"accessToken": token, "tokenType": "Bearer", "expiresIn": auth.SessionTTLSeconds, "user": map[string]string{"username": input.Username, "role": "admin"}})
 }
@@ -51,11 +51,11 @@ func (h *apiHandler) adminLogoutSession(w http.ResponseWriter, r *http.Request) 
 		WriteError(w, http.StatusUnauthorized, apierror.Unauthorized, "A valid session is required.")
 		return
 	}
-	if err := h.store.RevokeSession(claims.ID, time.Now().UTC()); err != nil {
+	if err := h.store.RevokeSession(r.Context(), claims.ID, time.Now().UTC()); err != nil {
 		WriteError(w, http.StatusInternalServerError, apierror.SessionRevokeFailed, "Session could not be revoked.")
 		return
 	}
-	h.mutations.RecordAuthChange(mutationRequest(r), claims.Subject, "logout", claims.ID)
+	h.mutations.RecordAuthChange(r.Context(), mutationRequest(r), claims.Subject, "logout", claims.ID)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -69,7 +69,7 @@ func (h *apiHandler) adminLogoutSessionByID(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	targetID := chi.URLParam(r, "id")
-	target, err := h.store.GetSession(targetID)
+	target, err := h.store.GetSession(r.Context(), targetID)
 	if errors.Is(err, store.ErrSessionNotFound) {
 		WriteError(w, http.StatusNotFound, apierror.SessionNotFound, "Session was not found.")
 		return
@@ -84,11 +84,11 @@ func (h *apiHandler) adminLogoutSessionByID(w http.ResponseWriter, r *http.Reque
 		WriteError(w, http.StatusNotFound, apierror.SessionNotFound, "Session was not found.")
 		return
 	}
-	if err := h.store.RevokeSession(targetID, time.Now().UTC()); err != nil {
+	if err := h.store.RevokeSession(r.Context(), targetID, time.Now().UTC()); err != nil {
 		WriteError(w, http.StatusInternalServerError, apierror.SessionRevokeFailed, "Session could not be revoked.")
 		return
 	}
-	h.mutations.RecordAuthChange(mutationRequest(r), claims.Subject, "logout", targetID)
+	h.mutations.RecordAuthChange(r.Context(), mutationRequest(r), claims.Subject, "logout", targetID)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -98,11 +98,11 @@ func (h *apiHandler) adminLogoutSessions(w http.ResponseWriter, r *http.Request)
 		WriteError(w, http.StatusUnauthorized, apierror.Unauthorized, "A valid session is required.")
 		return
 	}
-	if err := h.store.RevokeSessions(claims.Subject, claims.ID, time.Now().UTC()); err != nil {
+	if err := h.store.RevokeSessions(r.Context(), claims.Subject, claims.ID, time.Now().UTC()); err != nil {
 		WriteError(w, http.StatusInternalServerError, apierror.SessionRevokeFailed, "Sessions could not be revoked.")
 		return
 	}
-	h.mutations.RecordAuthChange(mutationRequest(r), claims.Subject, "logout-all", claims.ID)
+	h.mutations.RecordAuthChange(r.Context(), mutationRequest(r), claims.Subject, "logout-all", claims.ID)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -112,7 +112,7 @@ func (h *apiHandler) adminListSessions(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusUnauthorized, apierror.Unauthorized, "A valid session is required.")
 		return
 	}
-	rows, err := h.store.AdminSessions(claims.Subject)
+	rows, err := h.store.AdminSessions(r.Context(), claims.Subject)
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, apierror.SessionsUnavailable, "Sessions could not be listed.")
 		return
@@ -163,7 +163,7 @@ func (h *apiHandler) adminChangePassword(w http.ResponseWriter, r *http.Request)
 		WriteError(w, http.StatusUnauthorized, apierror.Unauthorized, "A valid session is required.")
 		return
 	}
-	if err := h.auth.UpdateCredential(claims.Subject, input.CurrentPassword, input.NewPassword, claims.ID); err != nil {
+	if err := h.auth.UpdateCredential(r.Context(), claims.Subject, input.CurrentPassword, input.NewPassword, claims.ID); err != nil {
 		if errors.Is(err, auth.ErrInvalidCredentials) {
 			WriteError(w, http.StatusUnauthorized, apierror.InvalidCredentials, "Current password is incorrect.")
 			return
@@ -171,6 +171,6 @@ func (h *apiHandler) adminChangePassword(w http.ResponseWriter, r *http.Request)
 		WriteError(w, http.StatusInternalServerError, apierror.PasswordChangeFailed, "Password could not be updated.")
 		return
 	}
-	h.mutations.RecordAuthChange(mutationRequest(r), claims.Subject, "password-changed", claims.ID)
+	h.mutations.RecordAuthChange(r.Context(), mutationRequest(r), claims.Subject, "password-changed", claims.ID)
 	w.WriteHeader(http.StatusNoContent)
 }

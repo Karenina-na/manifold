@@ -41,7 +41,9 @@ func startChainMiner(h *apiHandler, database *store.Store, ledger *chain.Ledger)
 			OnMined: func(block chain.Block, minedFor time.Duration) {
 				// Audit chain.block.mined per docs/chain.md §9 (index, cert
 				// count, nonce, mode, duration); the miner has no request
-				// context, so publish directly through the dispatcher.
+				// context, so publish directly through the dispatcher and read
+				// the rows this callback needs under the miner's own lifetime
+				// context — a shutdown that cancels the miner also stops them.
 				if h.auditEvents != nil {
 					h.auditEvents.Publish(events.AuditEvent{
 						EventName: "chain.block.mined", ResourceType: "chain_block", ResourceID: block.ID,
@@ -51,14 +53,14 @@ func startChainMiner(h *apiHandler, database *store.Store, ledger *chain.Ledger)
 					})
 				}
 				for _, certID := range block.CertIDs {
-					anchor, err := ledger.GetAnchor(certID)
+					anchor, err := ledger.GetAnchor(minerCtx, certID)
 					if err != nil {
 						continue
 					}
 					if anchor.Source == chain.SourceContent {
 						if slug, ok := anchor.Metadata["slug"].(string); ok && slug != "" {
 							h.contentCache.Remove(slug)
-							if content, err := database.GetContentByID(anchor.SubjectRef, true); err == nil {
+							if content, err := database.GetContentByID(minerCtx, anchor.SubjectRef, true); err == nil {
 								h.contentCache.Remove(content.Slug)
 							}
 						}

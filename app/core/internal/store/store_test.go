@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -14,8 +15,36 @@ import (
 	"github.com/manifold-space/manifold/app/core/internal/model"
 )
 
+// A context cancelled before the call must stop the work at the database
+// boundary rather than run to completion. Every store method took no context
+// before this change, so a write whose client had already disconnected still
+// reached SQLite; this pins the guarantee that it no longer does.
+func TestCancelledContextStopsStoreWork(t *testing.T) {
+	database, err := Open(t.Context(), ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+
+	cancelled, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	if _, err := database.CreateContent(cancelled, model.ContentInput{Kind: model.ContentKindThought, Slug: "cancelled", Body: "Body"}); !errors.Is(err, context.Canceled) {
+		t.Fatalf("CreateContent with a cancelled context: got %v, want context.Canceled", err)
+	}
+	if _, err := database.Stats(cancelled); !errors.Is(err, context.Canceled) {
+		t.Fatalf("Stats with a cancelled context: got %v, want context.Canceled", err)
+	}
+	// migrate() is a store write path too, so a shutdown that lands during
+	// startup has to abort Open instead of finishing a database nobody waits for.
+	if _, err := Open(cancelled, filepath.Join(t.TempDir(), "cancelled.db")); !errors.Is(err, context.Canceled) {
+		t.Fatalf("Open with a cancelled context: got %v, want context.Canceled", err)
+	}
+}
+
 func TestOpenFreshDatabaseAppliesBaselineSchema(t *testing.T) {
-	database, err := Open(filepath.Join(t.TempDir(), "fresh.db"))
+	ctx := t.Context()
+	database, err := Open(ctx, filepath.Join(t.TempDir(), "fresh.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,24 +90,25 @@ func TestOpenFreshDatabaseAppliesBaselineSchema(t *testing.T) {
 }
 
 func TestSetContentStatusRejectsMissingAndDeletedRows(t *testing.T) {
-	database, err := Open(":memory:")
+	ctx := t.Context()
+	database, err := Open(ctx, ":memory:")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer database.Close()
 
-	if err := database.SetContentStatus("missing", model.StatusPublished); err != ErrContentNotFound {
+	if err := database.SetContentStatus(ctx, "missing", model.StatusPublished); err != ErrContentNotFound {
 		t.Fatalf("expected not found for missing id, got %v", err)
 	}
 
-	created, err := database.CreateContent(model.ContentInput{Kind: model.ContentKindThought, Slug: "lifecycle", Body: "Body"})
+	created, err := database.CreateContent(ctx, model.ContentInput{Kind: model.ContentKindThought, Slug: "lifecycle", Body: "Body"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := database.SetContentStatus(created.ID, model.StatusPublished); err != nil {
+	if err := database.SetContentStatus(ctx, created.ID, model.StatusPublished); err != nil {
 		t.Fatal(err)
 	}
-	published, err := database.GetContentByID(created.ID, true)
+	published, err := database.GetContentByID(ctx, created.ID, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,20 +119,20 @@ func TestSetContentStatusRejectsMissingAndDeletedRows(t *testing.T) {
 
 	// published_at is an immutable first-publication fact: unpublish keeps
 	// it and republishing does not restamp it.
-	if err := database.SetContentStatus(created.ID, model.StatusDraft); err != nil {
+	if err := database.SetContentStatus(ctx, created.ID, model.StatusDraft); err != nil {
 		t.Fatal(err)
 	}
-	draft, err := database.GetContentByID(created.ID, true)
+	draft, err := database.GetContentByID(ctx, created.ID, true)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if draft.PublishedAt == nil || *draft.PublishedAt != originalPublishedAt {
 		t.Fatalf("expected unpublish to keep original published_at %q, got %#v", originalPublishedAt, draft.PublishedAt)
 	}
-	if err := database.SetContentStatus(created.ID, model.StatusPublished); err != nil {
+	if err := database.SetContentStatus(ctx, created.ID, model.StatusPublished); err != nil {
 		t.Fatal(err)
 	}
-	republished, err := database.GetContentByID(created.ID, true)
+	republished, err := database.GetContentByID(ctx, created.ID, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,16 +142,16 @@ func TestSetContentStatusRejectsMissingAndDeletedRows(t *testing.T) {
 
 	// Soft-deleted rows cannot be revived through status transitions, but
 	// the dedicated restore endpoint returns them to DRAFT.
-	if _, err := database.DeleteContent(created.ID); err != nil {
+	if _, err := database.DeleteContent(ctx, created.ID); err != nil {
 		t.Fatal(err)
 	}
-	if err := database.SetContentStatus(created.ID, model.StatusPublished); err != ErrContentNotFound {
+	if err := database.SetContentStatus(ctx, created.ID, model.StatusPublished); err != ErrContentNotFound {
 		t.Fatalf("expected not found for deleted id, got %v", err)
 	}
-	if _, err := database.DeleteContent(created.ID); err != ErrContentNotFound {
+	if _, err := database.DeleteContent(ctx, created.ID); err != ErrContentNotFound {
 		t.Fatalf("expected double delete to be not found, got %v", err)
 	}
-	restored, err := database.RestoreContent(created.ID)
+	restored, err := database.RestoreContent(ctx, created.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,22 +161,23 @@ func TestSetContentStatusRejectsMissingAndDeletedRows(t *testing.T) {
 }
 
 func TestSlugIsRequiredAndUnique(t *testing.T) {
-	database, err := Open(":memory:")
+	ctx := t.Context()
+	database, err := Open(ctx, ":memory:")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer database.Close()
 
-	if _, err := database.CreateContent(model.ContentInput{Kind: model.ContentKindThought, Slug: "  ", Body: "Body"}); err == nil {
+	if _, err := database.CreateContent(ctx, model.ContentInput{Kind: model.ContentKindThought, Slug: "  ", Body: "Body"}); err == nil {
 		t.Fatal("expected empty slug to be rejected")
 	}
-	if _, err := database.CreateContent(model.ContentInput{Kind: model.ContentKindThought, Slug: "taken", Body: "Body"}); err != nil {
+	if _, err := database.CreateContent(ctx, model.ContentInput{Kind: model.ContentKindThought, Slug: "taken", Body: "Body"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := database.CreateContent(model.ContentInput{Kind: model.ContentKindArticle, Slug: "taken", Body: "Body"}); err != ErrSlugTaken {
+	if _, err := database.CreateContent(ctx, model.ContentInput{Kind: model.ContentKindArticle, Slug: "taken", Body: "Body"}); err != ErrSlugTaken {
 		t.Fatalf("expected duplicate slug to be ErrSlugTaken, got %v", err)
 	}
-	other, err := database.CreateContent(model.ContentInput{Kind: model.ContentKindThought, Slug: "other", Body: "Body"})
+	other, err := database.CreateContent(ctx, model.ContentInput{Kind: model.ContentKindThought, Slug: "other", Body: "Body"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -156,32 +187,33 @@ func TestSlugIsRequiredAndUnique(t *testing.T) {
 	summary := ""
 	body := "Body"
 	tags := []string{}
-	if err := database.UpdateContent(other.ID, ContentUpdate{Kind: &kind, Slug: &slug, Title: title, TitleSet: true, Summary: &summary, Body: &body, Tags: &tags, Metadata: json.RawMessage(`{"mood":null,"question":null,"context":null,"source":null}`), ExpectedVersion: other.Version}); err != ErrSlugTaken {
+	if err := database.UpdateContent(ctx, other.ID, ContentUpdate{Kind: &kind, Slug: &slug, Title: title, TitleSet: true, Summary: &summary, Body: &body, Tags: &tags, Metadata: json.RawMessage(`{"mood":null,"question":null,"context":null,"source":null}`), ExpectedVersion: other.Version}); err != ErrSlugTaken {
 		t.Fatalf("expected slug conflict on update, got %v", err)
 	}
 }
 
 func TestStatsWordCountIsCjkAware(t *testing.T) {
-	database, err := Open(":memory:")
+	ctx := t.Context()
+	database, err := Open(ctx, ":memory:")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer database.Close()
 
-	baseline, err := database.Stats()
+	baseline, err := database.Stats(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	created, err := database.CreateContent(model.ContentInput{Kind: model.ContentKindArticle, Slug: "cjk-stats", Title: stringPtr("CJK stats"), Body: "hello 世界 foo"})
+	created, err := database.CreateContent(ctx, model.ContentInput{Kind: model.ContentKindArticle, Slug: "cjk-stats", Title: stringPtr("CJK stats"), Body: "hello 世界 foo"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := database.SetContentStatus(created.ID, model.StatusPublished); err != nil {
+	if err := database.SetContentStatus(ctx, created.ID, model.StatusPublished); err != nil {
 		t.Fatal(err)
 	}
 
-	stats, err := database.Stats()
+	stats, err := database.Stats(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -205,27 +237,28 @@ func TestCountWordsTreatsEachCjkCharacterAsAWord(t *testing.T) {
 }
 
 func TestOverviewIgnoresDeletedContentTotals(t *testing.T) {
-	database, err := Open(":memory:")
+	ctx := t.Context()
+	database, err := Open(ctx, ":memory:")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer database.Close()
 
-	created, err := database.CreateContent(model.ContentInput{Kind: model.ContentKindThought, Slug: "totals", Body: "Body"})
+	created, err := database.CreateContent(ctx, model.ContentInput{Kind: model.ContentKindThought, Slug: "totals", Body: "Body"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := database.SetLike(created.ID, "visitor-a"); err != nil {
+	if err := database.SetLike(ctx, created.ID, "visitor-a"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := database.CreateComment(created.ID, "Reader", nil, "A note", nil, "", "visitor", ""); err != nil {
+	if _, err := database.CreateComment(ctx, created.ID, "Reader", nil, "A note", nil, "", "visitor", ""); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := database.DeleteContent(created.ID); err != nil {
+	if _, err := database.DeleteContent(ctx, created.ID); err != nil {
 		t.Fatal(err)
 	}
 
-	overview, err := database.Overview()
+	overview, err := database.Overview(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -235,32 +268,33 @@ func TestOverviewIgnoresDeletedContentTotals(t *testing.T) {
 }
 
 func TestLikeAndCommentCountersArePersisted(t *testing.T) {
-	database, err := Open(":memory:")
+	ctx := t.Context()
+	database, err := Open(ctx, ":memory:")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer database.Close()
 
-	created, err := database.CreateContent(model.ContentInput{Kind: model.ContentKindArticle, Slug: "counters", Body: "Body"})
+	created, err := database.CreateContent(ctx, model.ContentInput{Kind: model.ContentKindArticle, Slug: "counters", Body: "Body"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := database.SetContentStatus(created.ID, model.StatusPublished); err != nil {
+	if err := database.SetContentStatus(ctx, created.ID, model.StatusPublished); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := database.SetLike(created.ID, "visitor-a"); err != nil {
+	if err := database.SetLike(ctx, created.ID, "visitor-a"); err != nil {
 		t.Fatal(err)
 	}
 	// Idempotent re-like must not double the counter.
-	if err := database.SetLike(created.ID, "visitor-a"); err != nil {
+	if err := database.SetLike(ctx, created.ID, "visitor-a"); err != nil {
 		t.Fatal(err)
 	}
-	comment, err := database.CreateComment(created.ID, "Reader", nil, "A note", nil, "", "visitor", "")
+	comment, err := database.CreateComment(ctx, created.ID, "Reader", nil, "A note", nil, "", "visitor", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	listed, err := database.ListContent(false, ContentListOptions{Kinds: []model.ContentKind{model.ContentKindArticle}, Page: 1, PageSize: 50})
+	listed, err := database.ListContent(ctx, false, ContentListOptions{Kinds: []model.ContentKind{model.ContentKindArticle}, Page: 1, PageSize: 50})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -273,16 +307,16 @@ func TestLikeAndCommentCountersArePersisted(t *testing.T) {
 	if counters == nil || counters.LikeCount != 1 || counters.CommentCount != 1 {
 		t.Fatalf("expected persisted counters on the list row, got %+v", counters)
 	}
-	if _, err := database.SoftDeleteComment(comment.ID); err != nil {
+	if _, err := database.SoftDeleteComment(ctx, comment.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := database.RestoreComment(comment.ID); err != nil {
+	if _, err := database.RestoreComment(ctx, comment.ID); err != nil {
 		t.Fatal(err)
 	}
-	if err := database.DeleteLike(created.ID, "visitor-a"); err != nil {
+	if err := database.DeleteLike(ctx, created.ID, "visitor-a"); err != nil {
 		t.Fatal(err)
 	}
-	after, err := database.GetContentBySlug("counters", true)
+	after, err := database.GetContentBySlug(ctx, "counters", true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -292,35 +326,36 @@ func TestLikeAndCommentCountersArePersisted(t *testing.T) {
 }
 
 func TestCommentModerationLifecycleKeepsHiddenAndDeletedOrthogonal(t *testing.T) {
-	database, err := Open(":memory:")
+	ctx := t.Context()
+	database, err := Open(ctx, ":memory:")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer database.Close()
 
-	created, err := database.CreateContent(model.ContentInput{Kind: model.ContentKindArticle, Slug: "moderated-comments", Title: stringPtr("Moderated comments"), Body: "Body"})
+	created, err := database.CreateContent(ctx, model.ContentInput{Kind: model.ContentKindArticle, Slug: "moderated-comments", Title: stringPtr("Moderated comments"), Body: "Body"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	root, err := database.CreateComment(created.ID, "Reader", nil, "Root", nil, "root-seed", "visitor", "")
+	root, err := database.CreateComment(ctx, created.ID, "Reader", nil, "Root", nil, "root-seed", "visitor", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := database.CreateComment(created.ID, "Reply", nil, "Reply", &root.ID, "reply-seed", "visitor", ""); err != nil {
+	if _, err := database.CreateComment(ctx, created.ID, "Reply", nil, "Reply", &root.ID, "reply-seed", "visitor", ""); err != nil {
 		t.Fatal(err)
 	}
 
-	if _, err := database.HideComment(root.ID); err != nil {
+	if _, err := database.HideComment(ctx, root.ID); err != nil {
 		t.Fatal(err)
 	}
-	content, err := database.GetContentByID(created.ID, true)
+	content, err := database.GetContentByID(ctx, created.ID, true)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if content.CommentCount != 1 {
 		t.Fatalf("expected hidden root to leave visible reply counted, got %d", content.CommentCount)
 	}
-	public, err := database.ListComments(created.ID, CommentListOptions{Page: 1, PageSize: 10})
+	public, err := database.ListComments(ctx, created.ID, CommentListOptions{Page: 1, PageSize: 10})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -328,26 +363,26 @@ func TestCommentModerationLifecycleKeepsHiddenAndDeletedOrthogonal(t *testing.T)
 		t.Fatalf("expected only root hidden in public thread, got %+v", public.Comments)
 	}
 
-	if _, err := database.SoftDeleteComment(root.ID); err != nil {
+	if _, err := database.SoftDeleteComment(ctx, root.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := database.HideComment(root.ID); !errors.Is(err, ErrCommentDeleted) {
+	if _, err := database.HideComment(ctx, root.ID); !errors.Is(err, ErrCommentDeleted) {
 		t.Fatalf("expected deleted comment to reject hiding, got %v", err)
 	}
-	if _, err := database.RestoreComment(root.ID); err != nil {
+	if _, err := database.RestoreComment(ctx, root.ID); err != nil {
 		t.Fatal(err)
 	}
-	content, err = database.GetContentByID(created.ID, true)
+	content, err = database.GetContentByID(ctx, created.ID, true)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if content.CommentCount != 1 {
 		t.Fatalf("expected restore to retain hidden state and count reply, got %d", content.CommentCount)
 	}
-	if _, err := database.UnhideComment(root.ID); err != nil {
+	if _, err := database.UnhideComment(ctx, root.ID); err != nil {
 		t.Fatal(err)
 	}
-	content, err = database.GetContentByID(created.ID, true)
+	content, err = database.GetContentByID(ctx, created.ID, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -357,25 +392,26 @@ func TestCommentModerationLifecycleKeepsHiddenAndDeletedOrthogonal(t *testing.T)
 }
 
 func TestUpdateCommentAuthorDistinguishesOmittedAndExplicitNullURL(t *testing.T) {
-	database, err := Open(":memory:")
+	ctx := t.Context()
+	database, err := Open(ctx, ":memory:")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer database.Close()
-	created, err := database.CreateContent(model.ContentInput{Kind: model.ContentKindThought, Slug: "edited-comment", Body: "Body"})
+	created, err := database.CreateContent(ctx, model.ContentInput{Kind: model.ContentKindThought, Slug: "edited-comment", Body: "Body"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	comment, err := database.CreateComment(created.ID, "Original", stringPtr("https://original.example"), "Body", nil, "original-seed", "visitor", "")
+	comment, err := database.CreateComment(ctx, created.ID, "Original", stringPtr("https://original.example"), "Body", nil, "original-seed", "visitor", "")
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	name, url, seed := "Edited", "https://edited.example", "edited-seed"
-	if _, err := database.UpdateCommentAuthor(comment.ID, CommentAuthorUpdate{AuthorName: &name, AuthorURL: &url, HasAuthorURL: true, AvatarSeed: &seed}); err != nil {
+	if _, err := database.UpdateCommentAuthor(ctx, comment.ID, CommentAuthorUpdate{AuthorName: &name, AuthorURL: &url, HasAuthorURL: true, AvatarSeed: &seed}); err != nil {
 		t.Fatal(err)
 	}
-	listed, err := database.ListComments(created.ID, CommentListOptions{Page: 1, PageSize: 10})
+	listed, err := database.ListComments(ctx, created.ID, CommentListOptions{Page: 1, PageSize: 10})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -383,20 +419,20 @@ func TestUpdateCommentAuthorDistinguishesOmittedAndExplicitNullURL(t *testing.T)
 		t.Fatalf("expected updated public author fields, got %+v", listed.Comments)
 	}
 
-	if _, err := database.UpdateCommentAuthor(comment.ID, CommentAuthorUpdate{}); err != nil {
+	if _, err := database.UpdateCommentAuthor(ctx, comment.ID, CommentAuthorUpdate{}); err != nil {
 		t.Fatal(err)
 	}
-	listed, err = database.ListComments(created.ID, CommentListOptions{Page: 1, PageSize: 10})
+	listed, err = database.ListComments(ctx, created.ID, CommentListOptions{Page: 1, PageSize: 10})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if listed.Comments[0].AuthorURL == nil {
 		t.Fatal("expected omitted authorUrl to preserve the existing URL")
 	}
-	if _, err := database.UpdateCommentAuthor(comment.ID, CommentAuthorUpdate{AuthorURL: nil, HasAuthorURL: true}); err != nil {
+	if _, err := database.UpdateCommentAuthor(ctx, comment.ID, CommentAuthorUpdate{AuthorURL: nil, HasAuthorURL: true}); err != nil {
 		t.Fatal(err)
 	}
-	listed, err = database.ListComments(created.ID, CommentListOptions{Page: 1, PageSize: 10})
+	listed, err = database.ListComments(ctx, created.ID, CommentListOptions{Page: 1, PageSize: 10})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -406,6 +442,7 @@ func TestUpdateCommentAuthorDistinguishesOmittedAndExplicitNullURL(t *testing.T)
 }
 
 func TestIncrementalCommentMigrationFromSchemaV2(t *testing.T) {
+	ctx := t.Context()
 	path := filepath.Join(t.TempDir(), "schema-v2.db")
 	legacy, err := sql.Open("sqlite", path)
 	if err != nil {
@@ -430,7 +467,7 @@ func TestIncrementalCommentMigrationFromSchemaV2(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	database, err := Open(path)
+	database, err := Open(ctx, path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -479,6 +516,7 @@ func TestIncrementalCommentMigrationFromSchemaV2(t *testing.T) {
 }
 
 func TestIncrementalChainMigrationFromSchemaV4(t *testing.T) {
+	ctx := t.Context()
 	path := filepath.Join(t.TempDir(), "schema-v4.db")
 	legacy, err := sql.Open("sqlite", path)
 	if err != nil {
@@ -503,7 +541,7 @@ func TestIncrementalChainMigrationFromSchemaV4(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	database, err := Open(path)
+	database, err := Open(ctx, path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -531,12 +569,13 @@ func formatMigration(version int) string {
 }
 
 func TestListCommentsPaginatesRootsAndKeepsThreadsAttached(t *testing.T) {
-	database, err := Open(":memory:")
+	ctx := t.Context()
+	database, err := Open(ctx, ":memory:")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer database.Close()
-	created, err := database.CreateContent(model.ContentInput{Kind: model.ContentKindArticle, Slug: "paged-comments", Title: stringPtr("Paged comments"), Body: "Body"})
+	created, err := database.CreateContent(ctx, model.ContentInput{Kind: model.ContentKindArticle, Slug: "paged-comments", Title: stringPtr("Paged comments"), Body: "Body"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -559,7 +598,7 @@ func TestListCommentsPaginatesRootsAndKeepsThreadsAttached(t *testing.T) {
 		return strings.Join(values, ",")
 	}
 
-	first, err := database.ListComments(created.ID, CommentListOptions{Page: 1, PageSize: 2})
+	first, err := database.ListComments(ctx, created.ID, CommentListOptions{Page: 1, PageSize: 2})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -570,7 +609,7 @@ func TestListCommentsPaginatesRootsAndKeepsThreadsAttached(t *testing.T) {
 		t.Fatalf("unexpected meta: %+v", first)
 	}
 
-	last, err := database.ListComments(created.ID, CommentListOptions{Page: 99, PageSize: 2})
+	last, err := database.ListComments(ctx, created.ID, CommentListOptions{Page: 99, PageSize: 2})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -581,7 +620,7 @@ func TestListCommentsPaginatesRootsAndKeepsThreadsAttached(t *testing.T) {
 		t.Fatalf("expected page clamp to 2, got %d", last.Page)
 	}
 
-	searched, err := database.ListComments(created.ID, CommentListOptions{Page: 1, PageSize: 2, Query: "  NEEDLE "})
+	searched, err := database.ListComments(ctx, created.ID, CommentListOptions{Page: 1, PageSize: 2, Query: "  NEEDLE "})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -592,7 +631,7 @@ func TestListCommentsPaginatesRootsAndKeepsThreadsAttached(t *testing.T) {
 		t.Fatalf("unexpected search meta: %+v", searched)
 	}
 
-	empty, err := database.ListComments(created.ID, CommentListOptions{Page: 1, PageSize: 2, Query: "zzz"})
+	empty, err := database.ListComments(ctx, created.ID, CommentListOptions{Page: 1, PageSize: 2, Query: "zzz"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -602,14 +641,15 @@ func TestListCommentsPaginatesRootsAndKeepsThreadsAttached(t *testing.T) {
 }
 
 func TestArticleMetadataIsDerivedAndTypedOnRead(t *testing.T) {
-	database, err := Open(":memory:")
+	ctx := t.Context()
+	database, err := Open(ctx, ":memory:")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer database.Close()
 
 	// Client-sent derived fields are ignored in favor of body derivation.
-	created, err := database.CreateContent(model.ContentInput{
+	created, err := database.CreateContent(ctx, model.ContentInput{
 		Kind: model.ContentKindArticle, Slug: "derived-metadata", Title: stringPtr("Derived metadata"),
 		Body:              "## First section\n\nA short paragraph with several words.\n\n### Detail\n\n```md\n## Not a heading\n```\n\n## First section\n\nAnother paragraph.",
 		Tags:              []string{},
@@ -619,7 +659,7 @@ func TestArticleMetadataIsDerivedAndTypedOnRead(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	read, err := database.GetContentByID(created.ID, true)
+	read, err := database.GetContentByID(ctx, created.ID, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -647,10 +687,10 @@ func TestArticleMetadataIsDerivedAndTypedOnRead(t *testing.T) {
 	summary := created.Summary
 	body := "## Updated section\n\n" + strings.Repeat("word ", 450)
 	tags := []string{}
-	if err := database.UpdateContent(created.ID, ContentUpdate{Kind: &kind, Slug: &slug, Title: title, TitleSet: true, Summary: &summary, Body: &body, Tags: &tags, Metadata: update, ExpectedVersion: created.Version}); err != nil {
+	if err := database.UpdateContent(ctx, created.ID, ContentUpdate{Kind: &kind, Slug: &slug, Title: title, TitleSet: true, Summary: &summary, Body: &body, Tags: &tags, Metadata: update, ExpectedVersion: created.Version}); err != nil {
 		t.Fatal(err)
 	}
-	updated, err := database.GetContentByID(created.ID, true)
+	updated, err := database.GetContentByID(ctx, created.ID, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -661,14 +701,15 @@ func TestArticleMetadataIsDerivedAndTypedOnRead(t *testing.T) {
 }
 
 func TestThoughtMetadataRoundTripsNulls(t *testing.T) {
-	database, err := Open(":memory:")
+	ctx := t.Context()
+	database, err := Open(ctx, ":memory:")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer database.Close()
 
 	mood := "curious"
-	created, err := database.CreateContent(model.ContentInput{
+	created, err := database.CreateContent(ctx, model.ContentInput{
 		Kind: model.ContentKindThought, Slug: "nulls-metadata", Body: "Body",
 		Tags:              []string{},
 		EditorialMetadata: json.RawMessage(`{"mood":"` + mood + `"}`),
@@ -676,7 +717,7 @@ func TestThoughtMetadataRoundTripsNulls(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	read, err := database.GetContentByID(created.ID, true)
+	read, err := database.GetContentByID(ctx, created.ID, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -723,19 +764,20 @@ func TestContentExcerptPreservesOrdinaryPunctuation(t *testing.T) {
 }
 
 func TestTagRowsDriveTagFilters(t *testing.T) {
-	database, err := Open(":memory:")
+	ctx := t.Context()
+	database, err := Open(ctx, ":memory:")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer database.Close()
 
-	if _, err := database.CreateContent(model.ContentInput{Kind: model.ContentKindArticle, Slug: "tagged-a", Title: stringPtr("Tagged"), Body: "Body", Tags: []string{"go", "design"}}); err != nil {
+	if _, err := database.CreateContent(ctx, model.ContentInput{Kind: model.ContentKindArticle, Slug: "tagged-a", Title: stringPtr("Tagged"), Body: "Body", Tags: []string{"go", "design"}}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := database.CreateContent(model.ContentInput{Kind: model.ContentKindArticle, Slug: "tagged-b", Title: stringPtr("Tagged"), Body: "Body", Tags: []string{"go"}}); err != nil {
+	if _, err := database.CreateContent(ctx, model.ContentInput{Kind: model.ContentKindArticle, Slug: "tagged-b", Title: stringPtr("Tagged"), Body: "Body", Tags: []string{"go"}}); err != nil {
 		t.Fatal(err)
 	}
-	tags, err := database.Tags("")
+	tags, err := database.Tags(ctx, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -749,7 +791,7 @@ func TestTagRowsDriveTagFilters(t *testing.T) {
 	if len(tags) == 0 || byName["systems"] != 8 || byName["design"] != 7 {
 		t.Fatalf("unexpected tag aggregation: %+v", tags)
 	}
-	filtered, err := database.ListContent(true, ContentListOptions{Tags: []string{"design"}, Page: 1, PageSize: 100})
+	filtered, err := database.ListContent(ctx, true, ContentListOptions{Tags: []string{"design"}, Page: 1, PageSize: 100})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -770,7 +812,8 @@ func stringPtr(value string) *string { return &value }
 // wildcards. Passing them straight into LIKE made a search for `50%` match any
 // body containing `50`, and `under_score` match `underXscore`.
 func TestContentSearchTreatsLikeMetacharactersLiterally(t *testing.T) {
-	database, err := Open(":memory:")
+	ctx := t.Context()
+	database, err := Open(ctx, ":memory:")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -780,7 +823,7 @@ func TestContentSearchTreatsLikeMetacharactersLiterally(t *testing.T) {
 		"literal-search": "A 50% discount and an under_score marker.",
 		"decoy-search":   "A 50 percent discount and an underXscore marker.",
 	} {
-		if _, err := database.CreateContent(model.ContentInput{
+		if _, err := database.CreateContent(ctx, model.ContentInput{
 			Kind: model.ContentKindArticle, Slug: slug, Title: stringPtr(slug), Body: body,
 		}); err != nil {
 			t.Fatal(err)
@@ -789,7 +832,7 @@ func TestContentSearchTreatsLikeMetacharactersLiterally(t *testing.T) {
 
 	search := func(query string) map[string]bool {
 		t.Helper()
-		result, err := database.ListContent(true, ContentListOptions{Query: query, Page: 1, PageSize: 100})
+		result, err := database.ListContent(ctx, true, ContentListOptions{Query: query, Page: 1, PageSize: 100})
 		if err != nil {
 			t.Fatal(err)
 		}

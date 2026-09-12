@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"strconv"
 	"strings"
 
@@ -56,7 +57,7 @@ func toAnchorView(anchor chain.Anchor) anchorView {
 // enrichAnchorViews fills Summary/Target for every view. The chain package is
 // deliberately payload-agnostic; the handler owns the business semantics here
 // (docs/chain.md §2 boundary rule 1), reading only what a live row can answer.
-func (h *apiHandler) enrichAnchorViews(views []anchorView) []anchorView {
+func (h *apiHandler) enrichAnchorViews(ctx context.Context, views []anchorView) []anchorView {
 	if len(views) == 0 {
 		return views
 	}
@@ -72,7 +73,7 @@ func (h *apiHandler) enrichAnchorViews(views []anchorView) []anchorView {
 	}
 	commentContent := map[string]string{}
 	if len(commentIDs) > 0 {
-		if resolved, err := h.store.CommentContentIDs(commentIDs); err == nil {
+		if resolved, err := h.store.CommentContentIDs(ctx, commentIDs); err == nil {
 			commentContent = resolved
 			for _, contentID := range resolved {
 				contentIDs = append(contentIDs, contentID)
@@ -81,7 +82,7 @@ func (h *apiHandler) enrichAnchorViews(views []anchorView) []anchorView {
 	}
 	contentInfo := map[string]struct{ Slug, Kind string }{}
 	if len(contentIDs) > 0 {
-		if resolved, err := h.store.ChainContentTargets(contentIDs); err == nil {
+		if resolved, err := h.store.ChainContentTargets(ctx, contentIDs); err == nil {
 			for id, target := range resolved {
 				contentInfo[id] = struct{ Slug, Kind string }{Slug: target.Slug, Kind: string(target.Kind)}
 			}

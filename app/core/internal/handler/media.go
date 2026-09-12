@@ -13,7 +13,7 @@ import (
 )
 
 func (h *apiHandler) getMedia(w http.ResponseWriter, r *http.Request) {
-	media, data, err := h.store.GetMedia(chi.URLParam(r, "id"))
+	media, data, err := h.store.GetMedia(r.Context(), chi.URLParam(r, "id"))
 	if err != nil {
 		if errors.Is(err, store.ErrMediaNotFound) {
 			WriteError(w, http.StatusNotFound, apierror.MediaNotFound, "Media was not found.")

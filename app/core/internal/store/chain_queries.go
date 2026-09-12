@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"strings"
 
 	"github.com/manifold-space/manifold/app/core/internal/model"
@@ -12,12 +13,12 @@ type ChainContentTarget struct {
 	Kind model.ContentKind
 }
 
-func (s *Store) CommentContentIDs(ids []string) (map[string]string, error) {
+func (s *Store) CommentContentIDs(ctx context.Context, ids []string) (map[string]string, error) {
 	result := make(map[string]string, len(ids))
 	if len(ids) == 0 {
 		return result, nil
 	}
-	rows, err := s.DB.Query(`SELECT id, content_id FROM comments WHERE id IN (`+queryPlaceholders(len(ids))+`)`, stringsToAny(ids)...)
+	rows, err := s.DB.QueryContext(ctx, `SELECT id, content_id FROM comments WHERE id IN (`+queryPlaceholders(len(ids))+`)`, stringsToAny(ids)...)
 	if err != nil {
 		return nil, err
 	}
@@ -32,12 +33,12 @@ func (s *Store) CommentContentIDs(ids []string) (map[string]string, error) {
 	return result, rows.Err()
 }
 
-func (s *Store) ChainContentTargets(ids []string) (map[string]ChainContentTarget, error) {
+func (s *Store) ChainContentTargets(ctx context.Context, ids []string) (map[string]ChainContentTarget, error) {
 	result := make(map[string]ChainContentTarget, len(ids))
 	if len(ids) == 0 {
 		return result, nil
 	}
-	rows, err := s.DB.Query(`SELECT id, slug, kind FROM content WHERE id IN (`+queryPlaceholders(len(ids))+`)`, stringsToAny(ids)...)
+	rows, err := s.DB.QueryContext(ctx, `SELECT id, slug, kind FROM content WHERE id IN (`+queryPlaceholders(len(ids))+`)`, stringsToAny(ids)...)
 	if err != nil {
 		return nil, err
 	}
@@ -52,8 +53,8 @@ func (s *Store) ChainContentTargets(ids []string) (map[string]ChainContentTarget
 	return result, rows.Err()
 }
 
-func (s *Store) PublishedContents() ([]model.Content, error) {
-	return s.scanContents(`SELECT ` + contentColumns + ` FROM content WHERE status = 'PUBLISHED' ORDER BY id ASC`)
+func (s *Store) PublishedContents(ctx context.Context) ([]model.Content, error) {
+	return s.scanContents(ctx, `SELECT `+contentColumns+` FROM content WHERE status = 'PUBLISHED' ORDER BY id ASC`)
 }
 
 func queryPlaceholders(count int) string {

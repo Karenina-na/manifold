@@ -1,17 +1,18 @@
 package store
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 
 	"github.com/manifold-space/manifold/app/core/internal/model"
 )
 
-func (s *Store) GetProfile() (model.Profile, error) {
+func (s *Store) GetProfile(ctx context.Context) (model.Profile, error) {
 	var p model.Profile
 	var resume sql.NullString
 	var interests, education, experience, series, contacts string
-	err := s.DB.QueryRow(`SELECT id, display_name, handle, headline, bio, avatar_url, location, organization, website_url, resume_url, interests_json, education_json, experience_json, series_json, contacts_json, updated_at FROM profile WHERE id = 'profile_1'`).Scan(&p.ID, &p.DisplayName, &p.Handle, &p.Headline, &p.Bio, &p.AvatarURL, &p.Location, &p.Organization, &p.WebsiteURL, &resume, &interests, &education, &experience, &series, &contacts, &p.UpdatedAt)
+	err := s.DB.QueryRowContext(ctx, `SELECT id, display_name, handle, headline, bio, avatar_url, location, organization, website_url, resume_url, interests_json, education_json, experience_json, series_json, contacts_json, updated_at FROM profile WHERE id = 'profile_1'`).Scan(&p.ID, &p.DisplayName, &p.Handle, &p.Headline, &p.Bio, &p.AvatarURL, &p.Location, &p.Organization, &p.WebsiteURL, &resume, &interests, &education, &experience, &series, &contacts, &p.UpdatedAt)
 	if err != nil {
 		return model.Profile{}, err
 	}
@@ -41,7 +42,7 @@ func (s *Store) GetProfile() (model.Profile, error) {
 	return p, nil
 }
 
-func (s *Store) UpdateProfile(p model.Profile) error {
-	_, err := s.DB.Exec(`UPDATE profile SET display_name = ?, handle = ?, headline = ?, bio = ?, avatar_url = ?, location = ?, organization = ?, website_url = ?, resume_url = ?, interests_json = ?, education_json = ?, experience_json = ?, series_json = ?, contacts_json = ?, updated_at = ? WHERE id = 'profile_1'`, p.DisplayName, p.Handle, p.Headline, p.Bio, p.AvatarURL, p.Location, p.Organization, p.WebsiteURL, p.ResumeURL, encodeJSON(p.Interests), encodeJSON(p.Education), encodeJSON(p.Experience), encodeJSON(p.Series), encodeJSON(p.Contacts), nowRFC3339())
+func (s *Store) UpdateProfile(ctx context.Context, p model.Profile) error {
+	_, err := s.DB.ExecContext(ctx, `UPDATE profile SET display_name = ?, handle = ?, headline = ?, bio = ?, avatar_url = ?, location = ?, organization = ?, website_url = ?, resume_url = ?, interests_json = ?, education_json = ?, experience_json = ?, series_json = ?, contacts_json = ?, updated_at = ? WHERE id = 'profile_1'`, p.DisplayName, p.Handle, p.Headline, p.Bio, p.AvatarURL, p.Location, p.Organization, p.WebsiteURL, p.ResumeURL, encodeJSON(p.Interests), encodeJSON(p.Education), encodeJSON(p.Experience), encodeJSON(p.Series), encodeJSON(p.Contacts), nowRFC3339())
 	return err
 }

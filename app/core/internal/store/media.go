@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
@@ -20,13 +21,13 @@ var ErrMediaNotFound = errors.New("media not found")
 // same bytes would both miss the lookup and the loser would then fail the
 // UNIQUE(sha256) index with a 500, which is precisely the case deduplication
 // exists to absorb. The loser now reads back the winner's row instead.
-func (s *Store) InsertMedia(mime, filename, sha256Hex string, data []byte) (model.Media, bool, error) {
+func (s *Store) InsertMedia(ctx context.Context, mime, filename, sha256Hex string, data []byte) (model.Media, bool, error) {
 	id, err := newMediaID()
 	if err != nil {
 		return model.Media{}, false, err
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
-	result, err := s.DB.Exec(`INSERT INTO media (id, mime, size, sha256, filename, data, created_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(sha256) DO NOTHING`,
+	result, err := s.DB.ExecContext(ctx, `INSERT INTO media (id, mime, size, sha256, filename, data, created_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(sha256) DO NOTHING`,
 		id, mime, len(data), sha256Hex, filename, data, now)
 	if err != nil {
 		return model.Media{}, false, err
@@ -36,7 +37,7 @@ func (s *Store) InsertMedia(mime, filename, sha256Hex string, data []byte) (mode
 		return model.Media{}, false, err
 	}
 	if inserted == 0 {
-		existing, err := s.findMediaBySHA(sha256Hex)
+		existing, err := s.findMediaBySHA(ctx, sha256Hex)
 		if err != nil {
 			return model.Media{}, false, err
 		}
@@ -58,9 +59,9 @@ func newMediaID() (string, error) {
 	return "media_" + hex.EncodeToString(random[:]), nil
 }
 
-func (s *Store) findMediaBySHA(sha256Hex string) (model.Media, error) {
+func (s *Store) findMediaBySHA(ctx context.Context, sha256Hex string) (model.Media, error) {
 	var media model.Media
-	err := s.DB.QueryRow(`SELECT id, mime, size, sha256, filename, created_at FROM media WHERE sha256 = ?`, sha256Hex).Scan(&media.ID, &media.Mime, &media.Size, &media.SHA256, &media.Filename, &media.CreatedAt)
+	err := s.DB.QueryRowContext(ctx, `SELECT id, mime, size, sha256, filename, created_at FROM media WHERE sha256 = ?`, sha256Hex).Scan(&media.ID, &media.Mime, &media.Size, &media.SHA256, &media.Filename, &media.CreatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return model.Media{}, ErrMediaNotFound
 	}
@@ -70,10 +71,10 @@ func (s *Store) findMediaBySHA(sha256Hex string) (model.Media, error) {
 	return media, nil
 }
 
-func (s *Store) GetMedia(id string) (model.Media, []byte, error) {
+func (s *Store) GetMedia(ctx context.Context, id string) (model.Media, []byte, error) {
 	var media model.Media
 	var data []byte
-	err := s.DB.QueryRow(`SELECT id, mime, size, sha256, filename, created_at, data FROM media WHERE id = ?`, id).Scan(&media.ID, &media.Mime, &media.Size, &media.SHA256, &media.Filename, &media.CreatedAt, &data)
+	err := s.DB.QueryRowContext(ctx, `SELECT id, mime, size, sha256, filename, created_at, data FROM media WHERE id = ?`, id).Scan(&media.ID, &media.Mime, &media.Size, &media.SHA256, &media.Filename, &media.CreatedAt, &data)
 	if errors.Is(err, sql.ErrNoRows) {
 		return model.Media{}, nil, ErrMediaNotFound
 	}
@@ -83,7 +84,7 @@ func (s *Store) GetMedia(id string) (model.Media, []byte, error) {
 	return media, data, nil
 }
 
-func (s *Store) ListMedia(page, pageSize int, needle string) ([]model.Media, int, error) {
+func (s *Store) ListMedia(ctx context.Context, page, pageSize int, needle string) ([]model.Media, int, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -96,7 +97,7 @@ func (s *Store) ListMedia(page, pageSize int, needle string) ([]model.Media, int
 	filter := `WHERE (? = '' OR filename LIKE ? ESCAPE '\' OR id LIKE ? ESCAPE '\')`
 	args := []any{needle, likePattern(needle), likePattern(needle)}
 	var total int
-	if err := s.DB.QueryRow(`SELECT COUNT(*) FROM media `+filter, args...).Scan(&total); err != nil {
+	if err := s.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM media `+filter, args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 	offset := (page - 1) * pageSize
@@ -104,7 +105,7 @@ func (s *Store) ListMedia(page, pageSize int, needle string) ([]model.Media, int
 		page = (total + pageSize - 1) / pageSize
 		offset = (page - 1) * pageSize
 	}
-	rows, err := s.DB.Query(`SELECT id, mime, size, sha256, filename, created_at FROM media `+filter+` ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`, append(args, pageSize, offset)...)
+	rows, err := s.DB.QueryContext(ctx, `SELECT id, mime, size, sha256, filename, created_at FROM media `+filter+` ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`, append(args, pageSize, offset)...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -122,11 +123,11 @@ func (s *Store) ListMedia(page, pageSize int, needle string) ([]model.Media, int
 
 // MediaReferences lists non-deleted content whose body embeds this media URL.
 // The query excludes DELETED rows, so status is always DRAFT or PUBLISHED.
-func (s *Store) MediaReferences(id string) ([]model.MediaReference, error) {
+func (s *Store) MediaReferences(ctx context.Context, id string) ([]model.MediaReference, error) {
 	needle := "/api/v1/media/" + id
 	// Media ids are `media_<hex>`, so the underscore is a real LIKE wildcard
 	// here: without the escape, `media_ab` would also match `mediaXab`.
-	rows, err := s.DB.Query(`SELECT id, kind, slug, title, status FROM content WHERE status != 'DELETED' AND body LIKE ? ESCAPE '\'`, likePattern(needle))
+	rows, err := s.DB.QueryContext(ctx, `SELECT id, kind, slug, title, status FROM content WHERE status != 'DELETED' AND body LIKE ? ESCAPE '\'`, likePattern(needle))
 	if err != nil {
 		return nil, err
 	}
@@ -146,8 +147,8 @@ func (s *Store) MediaReferences(id string) ([]model.MediaReference, error) {
 	return refs, rows.Err()
 }
 
-func (s *Store) DeleteMedia(id string) error {
-	result, err := s.DB.Exec(`DELETE FROM media WHERE id = ?`, id)
+func (s *Store) DeleteMedia(ctx context.Context, id string) error {
+	result, err := s.DB.ExecContext(ctx, `DELETE FROM media WHERE id = ?`, id)
 	if err != nil {
 		return err
 	}

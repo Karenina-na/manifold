@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -23,7 +24,7 @@ type fakeStore struct {
 	sessions      map[string]bool
 }
 
-func (f *fakeStore) GetAdminCredential(username string) (string, bool, error) {
+func (f *fakeStore) GetAdminCredential(ctx context.Context, username string) (string, bool, error) {
 	if f.credentialErr != nil {
 		return "", false, f.credentialErr
 	}
@@ -32,17 +33,21 @@ func (f *fakeStore) GetAdminCredential(username string) (string, bool, error) {
 	}
 	return f.hash, true, nil
 }
-func (f *fakeStore) UpdateAdminCredential(username, passwordHash string) error {
+func (f *fakeStore) UpdateAdminCredential(ctx context.Context, username, passwordHash string) error {
 	f.hash = passwordHash
 	return nil
 }
-func (f *fakeStore) CreateSession(id, subject string, now, expiresAt time.Time) error { return nil }
-func (f *fakeStore) SessionLive(id string, now time.Time) (bool, error)               { return f.sessions[id], nil }
-func (f *fakeStore) RevokeSession(id string, now time.Time) error {
+func (f *fakeStore) CreateSession(ctx context.Context, id, subject string, now, expiresAt time.Time) error {
+	return nil
+}
+func (f *fakeStore) SessionLive(ctx context.Context, id string, now time.Time) (bool, error) {
+	return f.sessions[id], nil
+}
+func (f *fakeStore) RevokeSession(ctx context.Context, id string, now time.Time) error {
 	delete(f.sessions, id)
 	return nil
 }
-func (f *fakeStore) RevokeSessions(subject, exceptCurrentID string, now time.Time) error {
+func (f *fakeStore) RevokeSessions(ctx context.Context, subject, exceptCurrentID string, now time.Time) error {
 	for id := range f.sessions {
 		if id != exceptCurrentID {
 			delete(f.sessions, id)
@@ -94,8 +99,9 @@ func mintAdminToken(t *testing.T, id string) string {
 }
 
 func TestLoginAndAdminAuthorization(t *testing.T) {
+	ctx := t.Context()
 	service, store := testService(t, testPasswordHash(t), map[string]bool{})
-	tokens, err := service.Login("admin", "password")
+	tokens, err := service.Login(ctx, "admin", "password")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -151,25 +157,28 @@ func TestExpiredTokenIsRejected(t *testing.T) {
 }
 
 func TestInvalidPasswordIsRejected(t *testing.T) {
+	ctx := t.Context()
 	hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.MinCost)
 	service, _ := testService(t, string(hash), map[string]bool{})
-	if _, err := service.Login("admin", "wrong"); err != ErrInvalidCredentials {
+	if _, err := service.Login(ctx, "admin", "wrong"); err != ErrInvalidCredentials {
 		t.Fatalf("expected invalid credentials, got %v", err)
 	}
 }
 
 func TestDefaultCredentialsAcceptDocumentedPassword(t *testing.T) {
+	ctx := t.Context()
 	// The env-seeded hash now lives in the credential store instead of config.
 	service, _ := testService(t, "$2a$10$tT6zviyM5ANs0OHmn18g4eqtgsvaprMNl9n4CTkccoZW9N/aTcd8W", map[string]bool{})
-	if _, err := service.Login("admin", "password"); err != nil {
+	if _, err := service.Login(ctx, "admin", "password"); err != nil {
 		t.Fatalf("documented default credentials should authenticate: %v", err)
 	}
 }
 
 func TestUpdateCredentialRevokesOtherSessions(t *testing.T) {
+	ctx := t.Context()
 	hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.MinCost)
 	service, store := testService(t, string(hash), map[string]bool{"ses_cur": true, "ses_other": true})
-	if err := service.UpdateCredential("admin", "password", "newsecret9x", "ses_cur"); err != nil {
+	if err := service.UpdateCredential(ctx, "admin", "password", "newsecret9x", "ses_cur"); err != nil {
 		t.Fatal(err)
 	}
 	if !store.sessions["ses_cur"] {
@@ -178,7 +187,7 @@ func TestUpdateCredentialRevokesOtherSessions(t *testing.T) {
 	if store.sessions["ses_other"] {
 		t.Fatal("expected other session to be revoked")
 	}
-	if err := service.UpdateCredential("admin", "wrong", "newsecret9x", "ses_cur"); err != ErrInvalidCredentials {
+	if err := service.UpdateCredential(ctx, "admin", "wrong", "newsecret9x", "ses_cur"); err != ErrInvalidCredentials {
 		t.Fatalf("expected invalid current password, got %v", err)
 	}
 }
@@ -198,9 +207,10 @@ func spyComparisons(t *testing.T) func() [][]byte {
 }
 
 func TestLoginDoesNotReportAStoreFailureAsBadCredentials(t *testing.T) {
+	ctx := t.Context()
 	service, store := testService(t, testPasswordHash(t), map[string]bool{})
 	store.credentialErr = errors.New("database is locked")
-	_, err := service.Login("admin", "password")
+	_, err := service.Login(ctx, "admin", "password")
 	if err == nil {
 		t.Fatal("expected an error")
 	}
@@ -213,10 +223,11 @@ func TestLoginDoesNotReportAStoreFailureAsBadCredentials(t *testing.T) {
 }
 
 func TestLoginStillComparesAPasswordForAnUnknownUsername(t *testing.T) {
+	ctx := t.Context()
 	service, store := testService(t, testPasswordHash(t), map[string]bool{})
 	store.missing = true
 	seen := spyComparisons(t)
-	if _, err := service.Login("nobody", "password"); !errors.Is(err, ErrInvalidCredentials) {
+	if _, err := service.Login(ctx, "nobody", "password"); !errors.Is(err, ErrInvalidCredentials) {
 		t.Fatalf("expected invalid credentials, got %v", err)
 	}
 	hashes := seen()
@@ -232,10 +243,11 @@ func TestLoginStillComparesAPasswordForAnUnknownUsername(t *testing.T) {
 }
 
 func TestLoginComparesTheStoredHashForAKnownUsername(t *testing.T) {
+	ctx := t.Context()
 	hash := testPasswordHash(t)
 	service, _ := testService(t, hash, map[string]bool{})
 	seen := spyComparisons(t)
-	if _, err := service.Login("admin", "wrong"); !errors.Is(err, ErrInvalidCredentials) {
+	if _, err := service.Login(ctx, "admin", "wrong"); !errors.Is(err, ErrInvalidCredentials) {
 		t.Fatalf("expected invalid credentials, got %v", err)
 	}
 	hashes := seen()
@@ -245,9 +257,10 @@ func TestLoginComparesTheStoredHashForAKnownUsername(t *testing.T) {
 }
 
 func TestUpdateCredentialDoesNotReportAStoreFailureAsABadPassword(t *testing.T) {
+	ctx := t.Context()
 	service, store := testService(t, testPasswordHash(t), map[string]bool{"ses_cur": true})
 	store.credentialErr = errors.New("database is locked")
-	err := service.UpdateCredential("admin", "password", "newsecret9x", "ses_cur")
+	err := service.UpdateCredential(ctx, "admin", "password", "newsecret9x", "ses_cur")
 	if errors.Is(err, ErrInvalidCredentials) {
 		t.Fatalf("a failing database must not be reported as a wrong password: %v", err)
 	}
@@ -257,6 +270,7 @@ func TestUpdateCredentialDoesNotReportAStoreFailureAsABadPassword(t *testing.T) 
 }
 
 func TestNewSessionIDFailsClosedWhenTheCSPRNGIsUnavailable(t *testing.T) {
+	ctx := t.Context()
 	original := readRandom
 	readRandom = func([]byte) (int, error) { return 0, errors.New("entropy unavailable") }
 	t.Cleanup(func() { readRandom = original })
@@ -267,7 +281,7 @@ func TestNewSessionIDFailsClosedWhenTheCSPRNGIsUnavailable(t *testing.T) {
 	// The failure has to reach the caller: a session that cannot be named
 	// unpredictably must not be issued at all.
 	service, _ := testService(t, testPasswordHash(t), map[string]bool{})
-	if _, err := service.Login("admin", "password"); err == nil || errors.Is(err, ErrInvalidCredentials) {
+	if _, err := service.Login(ctx, "admin", "password"); err == nil || errors.Is(err, ErrInvalidCredentials) {
 		t.Fatalf("expected Login to surface the session-id failure, got %v", err)
 	}
 }

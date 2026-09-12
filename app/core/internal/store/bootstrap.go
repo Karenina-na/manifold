@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"io/fs"
@@ -15,7 +16,10 @@ import (
 	"github.com/manifold-space/manifold/app/core/internal/seed"
 )
 
-func Open(path string, options ...Option) (*Store, error) {
+// Open migrates and seeds on the way up, so it takes a context: a shutdown that
+// lands during startup has to be able to abort that work rather than run it to
+// completion against a database nobody is waiting for any more.
+func Open(ctx context.Context, path string, options ...Option) (*Store, error) {
 	oo := openOptions{}
 	for _, apply := range options {
 		apply(&oo)
@@ -37,15 +41,15 @@ func Open(path string, options ...Option) (*Store, error) {
 	// also makes transactions trivially serializable without busy retries.
 	database.SetMaxOpenConns(1)
 	s := &Store{DB: database}
-	if err := s.migrate(); err != nil {
+	if err := s.migrate(ctx); err != nil {
 		_ = database.Close()
 		return nil, err
 	}
-	if err := s.applySeed(plan); err != nil {
+	if err := s.applySeed(ctx, plan); err != nil {
 		_ = database.Close()
 		return nil, err
 	}
-	if err := s.ensureAdminCredential(oo.adminUsername, oo.adminPasswordHash); err != nil {
+	if err := s.ensureAdminCredential(ctx, oo.adminUsername, oo.adminPasswordHash); err != nil {
 		_ = database.Close()
 		return nil, err
 	}
@@ -117,23 +121,23 @@ func databaseDSN(path string) string {
 // migrate applies every embedded migration below the schema's known version.
 // A database from a newer binary refuses to open rather than being silently
 // downgraded.
-func (s *Store) migrate() error {
+func (s *Store) migrate(ctx context.Context) error {
 	var userVersion int
-	if err := s.DB.QueryRow(`PRAGMA user_version`).Scan(&userVersion); err != nil {
+	if err := s.DB.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&userVersion); err != nil {
 		return err
 	}
 	var existingTables int
-	if err := s.DB.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name != 'schema_migrations'`).Scan(&existingTables); err != nil {
+	if err := s.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name != 'schema_migrations'`).Scan(&existingTables); err != nil {
 		return err
 	}
 	if existingTables > 0 && userVersion > schemaVersion {
 		return fmt.Errorf("%w: database at %d, binary knows %d; upgrade the Core binary", ErrSchemaMismatch, userVersion, schemaVersion)
 	}
-	if _, err := s.DB.Exec(`CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`); err != nil {
+	if _, err := s.DB.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`); err != nil {
 		return err
 	}
 	var current int
-	if err := s.DB.QueryRow(`SELECT COALESCE(MAX(version), 0) FROM schema_migrations`).Scan(&current); err != nil {
+	if err := s.DB.QueryRowContext(ctx, `SELECT COALESCE(MAX(version), 0) FROM schema_migrations`).Scan(&current); err != nil {
 		return err
 	}
 	if current > schemaVersion {
@@ -144,15 +148,15 @@ func (s *Store) migrate() error {
 		if err != nil {
 			return fmt.Errorf("read migration %d: %w", version, err)
 		}
-		tx, err := s.DB.Begin()
+		tx, err := s.DB.BeginTx(ctx, nil)
 		if err != nil {
 			return err
 		}
-		if _, err := tx.Exec(string(script)); err != nil {
+		if _, err := tx.ExecContext(ctx, string(script)); err != nil {
 			_ = tx.Rollback()
 			return fmt.Errorf("apply migration %d: %w", version, err)
 		}
-		if _, err := tx.Exec(`INSERT INTO schema_migrations (version) VALUES (?)`, version); err != nil {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO schema_migrations (version) VALUES (?)`, version); err != nil {
 			_ = tx.Rollback()
 			return err
 		}
@@ -160,7 +164,7 @@ func (s *Store) migrate() error {
 			return err
 		}
 	}
-	if _, err := s.DB.Exec(fmt.Sprintf("PRAGMA user_version = %d", schemaVersion)); err != nil {
+	if _, err := s.DB.ExecContext(ctx, fmt.Sprintf("PRAGMA user_version = %d", schemaVersion)); err != nil {
 		return err
 	}
 	return nil
@@ -169,9 +173,9 @@ func (s *Store) migrate() error {
 // applySeed populates a fresh database from the plan resolved at Open time.
 // The gate counts profile rows instead of content rows so an admin who deletes
 // every seeded article does not resurrect starter data on restart.
-func (s *Store) applySeed(plan seed.Plan) error {
+func (s *Store) applySeed(ctx context.Context, plan seed.Plan) error {
 	var seeded int
-	if err := s.DB.QueryRow(`SELECT COUNT(*) FROM profile`).Scan(&seeded); err != nil {
+	if err := s.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM profile`).Scan(&seeded); err != nil {
 		return err
 	}
 	if seeded > 0 {
@@ -179,23 +183,23 @@ func (s *Store) applySeed(plan seed.Plan) error {
 	}
 	now := nowRFC3339()
 	profile := plan.Profile
-	if _, err := s.DB.Exec(`INSERT INTO profile (id, display_name, handle, headline, bio, location, avatar_url, organization, website_url, resume_url, interests_json, education_json, experience_json, series_json, contacts_json, updated_at) VALUES ('profile_1', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+	if _, err := s.DB.ExecContext(ctx, `INSERT INTO profile (id, display_name, handle, headline, bio, location, avatar_url, organization, website_url, resume_url, interests_json, education_json, experience_json, series_json, contacts_json, updated_at) VALUES ('profile_1', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		profile.DisplayName, profile.Handle, profile.Headline, profile.Bio, profile.Location, profile.AvatarURL, profile.Organization, profile.WebsiteURL, profile.ResumeURL,
 		encodeJSON(profile.Interests), encodeJSON(profile.Education), encodeJSON(profile.Experience), encodeJSON(profile.Series), encodeJSON(profile.Contacts), now); err != nil {
 		return err
 	}
-	if err := s.seedSiteConfig(plan.SiteConfig, now); err != nil {
+	if err := s.seedSiteConfig(ctx, plan.SiteConfig, now); err != nil {
 		return err
 	}
 	for index, item := range plan.Contents {
-		if err := s.seedContent(item, index, now); err != nil {
+		if err := s.seedContent(ctx, item, index, now); err != nil {
 			return err
 		}
 	}
-	if _, err := s.DB.Exec(`INSERT OR IGNORE INTO thoughts_config (id, updated_at) VALUES ('thoughts_1', ?)`, now); err != nil {
+	if _, err := s.DB.ExecContext(ctx, `INSERT OR IGNORE INTO thoughts_config (id, updated_at) VALUES ('thoughts_1', ?)`, now); err != nil {
 		return err
 	}
-	if _, err := s.DB.Exec(`INSERT OR IGNORE INTO writings_config (id, updated_at) VALUES ('writings_1', ?)`, now); err != nil {
+	if _, err := s.DB.ExecContext(ctx, `INSERT OR IGNORE INTO writings_config (id, updated_at) VALUES ('writings_1', ?)`, now); err != nil {
 		return err
 	}
 	return nil
@@ -204,7 +208,7 @@ func (s *Store) applySeed(plan seed.Plan) error {
 // seedSiteConfig inserts the site_config singleton. Site identity fields are
 // optional in the plan; omitted ones defer to the schema column defaults via
 // a dynamic column list rather than duplicating those defaults here.
-func (s *Store) seedSiteConfig(siteConfig seed.SiteConfigSeed, now string) error {
+func (s *Store) seedSiteConfig(ctx context.Context, siteConfig seed.SiteConfigSeed, now string) error {
 	commentsEnabled := true
 	if siteConfig.CommentsEnabled != nil {
 		commentsEnabled = *siteConfig.CommentsEnabled
@@ -234,7 +238,7 @@ func (s *Store) seedSiteConfig(siteConfig seed.SiteConfigSeed, now string) error
 	}
 	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(columns)), ",")
 	query := fmt.Sprintf(`INSERT INTO site_config (%s) VALUES (%s)`, strings.Join(columns, ", "), placeholders)
-	_, err := s.DB.Exec(query, values...)
+	_, err := s.DB.ExecContext(ctx, query, values...)
 	return err
 }
 
@@ -245,7 +249,7 @@ func orDefault[T any](values []T, fallback []T) []T {
 	return values
 }
 
-func (s *Store) seedContent(item seed.ContentSeed, index int, now string) error {
+func (s *Store) seedContent(ctx context.Context, item seed.ContentSeed, index int, now string) error {
 	status := item.Status
 	if status == "" {
 		status = model.StatusPublished
@@ -271,12 +275,12 @@ func (s *Store) seedContent(item seed.ContentSeed, index int, now string) error 
 	if item.Title != "" {
 		title = item.Title
 	}
-	if _, err := s.DB.Exec(`INSERT INTO content (id, kind, status, slug, title, summary, body, excerpt, metadata_json, published_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+	if _, err := s.DB.ExecContext(ctx, `INSERT INTO content (id, kind, status, slug, title, summary, body, excerpt, metadata_json, published_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		id, item.Kind, status, item.Slug, title, item.Summary, item.Body, contentExcerpt(item.Body), encodeJSON(metadata), publishedAt, createdAt, now); err != nil {
 		return err
 	}
 	for _, tag := range normalizeTags(item.Tags) {
-		if _, err := s.DB.Exec(`INSERT INTO content_tags (content_id, tag) VALUES (?, ?)`, id, tag); err != nil {
+		if _, err := s.DB.ExecContext(ctx, `INSERT INTO content_tags (content_id, tag) VALUES (?, ?)`, id, tag); err != nil {
 			return err
 		}
 	}

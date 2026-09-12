@@ -14,8 +14,9 @@ func contextWithCancel() (context.Context, context.CancelFunc) {
 }
 
 func TestReplayDetectsTamperedBlockHash(t *testing.T) {
+	ctx := t.Context()
 	ledger := newLedgerWithKey(t, func(cfg *LedgerConfig) { cfg.SimDelay = 0; cfg.FlushTimeout = 0 })
-	a1, err := ledger.Submit("content", []byte("p1"), "", "", nil)
+	a1, err := ledger.Submit(ctx, "content", []byte("p1"), "", "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -31,7 +32,7 @@ func TestReplayDetectsTamperedBlockHash(t *testing.T) {
 	if _, err := ledger.db.Exec(`UPDATE chain_blocks SET difficulty = 5 WHERE block_index = 1`); err != nil {
 		t.Fatal(err)
 	}
-	report, err := ledger.ReplayVerify()
+	report, err := ledger.ReplayVerify(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,8 +42,9 @@ func TestReplayDetectsTamperedBlockHash(t *testing.T) {
 }
 
 func TestReplayDetectsTamperedCertificate(t *testing.T) {
+	ctx := t.Context()
 	ledger := newLedgerWithKey(t, func(cfg *LedgerConfig) { cfg.SimDelay = 0; cfg.FlushTimeout = 0 })
-	a1, err := ledger.Submit("content", []byte("p1"), "", "", nil)
+	a1, err := ledger.Submit(ctx, "content", []byte("p1"), "", "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +57,7 @@ func TestReplayDetectsTamperedCertificate(t *testing.T) {
 	if _, err := ledger.db.Exec(`UPDATE chain_anchors SET subject_hash = ? WHERE id = ?`, SubjectHashHex([]byte("evil")), a1.ID); err != nil {
 		t.Fatal(err)
 	}
-	report, err := ledger.ReplayVerify()
+	report, err := ledger.ReplayVerify(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,8 +67,9 @@ func TestReplayDetectsTamperedCertificate(t *testing.T) {
 }
 
 func TestReplayDetectsBrokenLinkage(t *testing.T) {
+	ctx := t.Context()
 	ledger := newLedgerWithKey(t, func(cfg *LedgerConfig) { cfg.SimDelay = 0; cfg.FlushTimeout = 0 })
-	if _, err := ledger.Submit("visitor", []byte("x"), "", "", nil); err != nil {
+	if _, err := ledger.Submit(ctx, "visitor", []byte("x"), "", "", nil); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := ledger.MineOnce(); err != nil {
@@ -79,7 +82,7 @@ func TestReplayDetectsBrokenLinkage(t *testing.T) {
 	if _, err := ledger.db.Exec(`UPDATE chain_blocks SET prev_hash = ? WHERE block_index = 1`, SubjectHashHex([]byte("fake"))); err != nil {
 		t.Fatal(err)
 	}
-	report, err := ledger.ReplayVerify()
+	report, err := ledger.ReplayVerify(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,6 +98,7 @@ func TestReplayDetectsBrokenLinkage(t *testing.T) {
 // both burn an extra read and leave a stored hash whose nonce no longer meets
 // the block's difficulty — which full-chain replay reports as a tampered block.
 func TestProofBlockTimestampFrozenBeforePoW(t *testing.T) {
+	ctx := t.Context()
 	ledger := newLedgerWithKey(t, func(cfg *LedgerConfig) {
 		cfg.ProofMode = ProofModeProof
 		cfg.Difficulty = 2
@@ -111,7 +115,7 @@ func TestProofBlockTimestampFrozenBeforePoW(t *testing.T) {
 	if _, err := ledger.InsertBlock(nil); err != nil {
 		t.Fatal(err)
 	}
-	anchor, err := ledger.Submit("visitor", []byte("pow-timestamp"), "", "", nil)
+	anchor, err := ledger.Submit(ctx, "visitor", []byte("pow-timestamp"), "", "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,7 +133,7 @@ func TestProofBlockTimestampFrozenBeforePoW(t *testing.T) {
 	if !HasLeadingZeros(block.Hash, 2) {
 		t.Fatalf("stored hash must still meet difficulty 2: %s", block.Hash)
 	}
-	report, err := ledger.ReplayVerify()
+	report, err := ledger.ReplayVerify(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,20 +143,21 @@ func TestProofBlockTimestampFrozenBeforePoW(t *testing.T) {
 }
 
 func TestMinerPacksWhenBatchReached(t *testing.T) {
+	ctx := t.Context()
 	ledger := newLedgerWithKey(t, func(cfg *LedgerConfig) {
 		cfg.SimDelay = 0
 		cfg.BatchSize = 3
 		cfg.FlushTimeout = time.Hour
 	})
 	for i := 0; i < 3; i++ {
-		if _, err := ledger.Submit("visitor", []byte(fmt.Sprintf("p%d", i)), "", "", nil); err != nil {
+		if _, err := ledger.Submit(ctx, "visitor", []byte(fmt.Sprintf("p%d", i)), "", "", nil); err != nil {
 			t.Fatal(err)
 		}
 	}
 	if _, err := ledger.MineOnce(); err != nil {
 		t.Fatal(err)
 	}
-	pending, err := ledger.PendingCount()
+	pending, err := ledger.PendingCount(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,19 +167,20 @@ func TestMinerPacksWhenBatchReached(t *testing.T) {
 }
 
 func TestMinerRespectsFlushTimeout(t *testing.T) {
+	ctx := t.Context()
 	// FlushTimeout 0 → the oldest pending is always overdue → immediate pack.
 	ledger := newLedgerWithKey(t, func(cfg *LedgerConfig) {
 		cfg.SimDelay = 0
 		cfg.BatchSize = 100
 		cfg.FlushTimeout = 0
 	})
-	if _, err := ledger.Submit("visitor", []byte("lone"), "", "", nil); err != nil {
+	if _, err := ledger.Submit(ctx, "visitor", []byte("lone"), "", "", nil); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := ledger.MineOnce(); err != nil {
 		t.Fatal(err)
 	}
-	pending, err := ledger.PendingCount()
+	pending, err := ledger.PendingCount(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -184,18 +190,19 @@ func TestMinerRespectsFlushTimeout(t *testing.T) {
 }
 
 func TestMinerHoldsBelowThresholdAndNotDue(t *testing.T) {
+	ctx := t.Context()
 	ledger := newLedgerWithKey(t, func(cfg *LedgerConfig) {
 		cfg.SimDelay = 0
 		cfg.BatchSize = 100
 		cfg.FlushTimeout = time.Hour
 	})
-	if _, err := ledger.Submit("visitor", []byte("early"), "", "", nil); err != nil {
+	if _, err := ledger.Submit(ctx, "visitor", []byte("early"), "", "", nil); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := ledger.MineOnce(); err != nil {
 		t.Fatal(err)
 	}
-	pending, err := ledger.PendingCount()
+	pending, err := ledger.PendingCount(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -205,12 +212,13 @@ func TestMinerHoldsBelowThresholdAndNotDue(t *testing.T) {
 }
 
 func TestMinerMintsGenesisOnEmptyChain(t *testing.T) {
+	ctx := t.Context()
 	ledger := newLedgerWithKey(t, func(cfg *LedgerConfig) { cfg.SimDelay = 0; cfg.FlushTimeout = time.Hour })
 	// Empty buffer: MineOnce still mints genesis (docs/chain.md §9).
 	if _, err := ledger.MineOnce(); err != nil {
 		t.Fatal(err)
 	}
-	info, err := ledger.ChainInfo()
+	info, err := ledger.ChainInfo(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -220,6 +228,7 @@ func TestMinerMintsGenesisOnEmptyChain(t *testing.T) {
 }
 
 func TestMinerPacksRemainderBeyondMaxBlockAnchors(t *testing.T) {
+	ctx := t.Context()
 	ledger := newLedgerWithKey(t, func(cfg *LedgerConfig) {
 		cfg.SimDelay = 0
 		cfg.BatchSize = 3
@@ -227,7 +236,7 @@ func TestMinerPacksRemainderBeyondMaxBlockAnchors(t *testing.T) {
 		cfg.FlushTimeout = time.Hour
 	})
 	for i := 0; i < 3; i++ {
-		if _, err := ledger.Submit("visitor", []byte(fmt.Sprintf("p%d", i)), "", "", nil); err != nil {
+		if _, err := ledger.Submit(ctx, "visitor", []byte(fmt.Sprintf("p%d", i)), "", "", nil); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -237,7 +246,7 @@ func TestMinerPacksRemainderBeyondMaxBlockAnchors(t *testing.T) {
 	if _, err := ledger.MineOnce(); err != nil {
 		t.Fatal(err)
 	}
-	pending, err := ledger.PendingCount()
+	pending, err := ledger.PendingCount(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -247,7 +256,7 @@ func TestMinerPacksRemainderBeyondMaxBlockAnchors(t *testing.T) {
 	if _, err := ledger.MineOnce(); err != nil {
 		t.Fatal(err)
 	}
-	if pending, _ = ledger.PendingCount(); pending != 1 {
+	if pending, _ = ledger.PendingCount(ctx); pending != 1 {
 		t.Fatalf("below-batch remainder must wait for flush timeout, got %d", pending)
 	}
 	// Once the oldest pending is overdue, the next pass packs it.
@@ -255,10 +264,10 @@ func TestMinerPacksRemainderBeyondMaxBlockAnchors(t *testing.T) {
 	if _, err := ledger.MineOnce(); err != nil {
 		t.Fatal(err)
 	}
-	if pending, _ = ledger.PendingCount(); pending != 0 {
+	if pending, _ = ledger.PendingCount(ctx); pending != 0 {
 		t.Fatalf("overdue remainder must pack, got %d", pending)
 	}
-	report, err := ledger.ReplayVerify()
+	report, err := ledger.ReplayVerify(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -268,6 +277,7 @@ func TestMinerPacksRemainderBeyondMaxBlockAnchors(t *testing.T) {
 }
 
 func TestRunStopsOnContextCancel(t *testing.T) {
+	ctx := t.Context()
 	ledger := newLedgerWithKey(t, func(cfg *LedgerConfig) { cfg.SimDelay = 0; cfg.FlushTimeout = 0 })
 	ctx, cancel := contextWithCancel()
 	cancel()
@@ -286,6 +296,7 @@ func TestRunStopsOnContextCancel(t *testing.T) {
 // asserting nothing beyond what the other test already covers. The wait is now
 // on the miner's own signal that the loop started.
 func TestRunCancelsAnInFlightProofSearch(t *testing.T) {
+	ctx := t.Context()
 	started := make(chan struct{})
 	var once sync.Once
 	ledger := newLedgerWithKey(t, func(cfg *LedgerConfig) {
@@ -320,5 +331,29 @@ func TestRunCancelsAnInFlightProofSearch(t *testing.T) {
 		}
 	case <-time.After(10 * time.Second):
 		t.Fatal("in-flight proof search did not stop after context cancellation")
+	}
+}
+
+// ReplayVerify is the expensive path: it walks every block and re-verifies every
+// certificate signature. Threading the caller's context through it means a
+// verify request whose client has gone away stops at the transaction boundary
+// instead of replaying the whole chain for nobody.
+func TestReplayVerifyStopsOnCancelledContext(t *testing.T) {
+	ctx := t.Context()
+	ledger := newLedgerWithKey(t, func(cfg *LedgerConfig) { cfg.SimDelay = 0; cfg.FlushTimeout = 0 })
+	if _, err := ledger.Submit(ctx, "content", []byte("p1"), "", "", nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ledger.MineOnce(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ledger.MineOnce(); err != nil {
+		t.Fatal(err)
+	}
+
+	cancelled, cancel := context.WithCancel(ctx)
+	cancel()
+	if _, err := ledger.ReplayVerify(cancelled); !errors.Is(err, context.Canceled) {
+		t.Fatalf("ReplayVerify with a cancelled context: got %v, want context.Canceled", err)
 	}
 }

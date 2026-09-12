@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -10,12 +11,12 @@ import (
 	"github.com/manifold-space/manifold/app/core/internal/model"
 )
 
-func (s *Store) replaceTags(tx *sql.Tx, contentID string, tags []string) error {
-	if _, err := tx.Exec(`DELETE FROM content_tags WHERE content_id = ?`, contentID); err != nil {
+func (s *Store) replaceTags(ctx context.Context, tx *sql.Tx, contentID string, tags []string) error {
+	if _, err := tx.ExecContext(ctx, `DELETE FROM content_tags WHERE content_id = ?`, contentID); err != nil {
 		return err
 	}
 	for _, tag := range tags {
-		if _, err := tx.Exec(`INSERT INTO content_tags (content_id, tag) VALUES (?, ?)`, contentID, tag); err != nil {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO content_tags (content_id, tag) VALUES (?, ?)`, contentID, tag); err != nil {
 			return err
 		}
 	}
@@ -52,7 +53,7 @@ func validateTags(tags []string) error {
 	return nil
 }
 
-func (s *Store) CreateContent(input model.ContentInput) (model.Content, error) {
+func (s *Store) CreateContent(ctx context.Context, input model.ContentInput) (model.Content, error) {
 	if strings.TrimSpace(input.Slug) == "" {
 		return model.Content{}, fmt.Errorf("slug is required")
 	}
@@ -74,12 +75,12 @@ func (s *Store) CreateContent(input model.ContentInput) (model.Content, error) {
 		return model.Content{}, err
 	}
 	c.Metadata = metadata
-	tx, err := s.DB.Begin()
+	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return model.Content{}, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	if _, err := tx.Exec(`INSERT INTO content (id, kind, status, slug, title, summary, body, excerpt, metadata_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+	if _, err := tx.ExecContext(ctx, `INSERT INTO content (id, kind, status, slug, title, summary, body, excerpt, metadata_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		c.ID, c.Kind, c.Status, c.Slug, c.Title, c.Summary, c.Body, c.Excerpt, encodeJSON(c.Metadata), now, now); err != nil {
 		if isUniqueViolation(err) {
 			return model.Content{}, ErrSlugTaken
@@ -87,7 +88,7 @@ func (s *Store) CreateContent(input model.ContentInput) (model.Content, error) {
 		return model.Content{}, err
 	}
 	c.Tags = normalizeTags(c.Tags)
-	if err := s.replaceTags(tx, c.ID, c.Tags); err != nil {
+	if err := s.replaceTags(ctx, tx, c.ID, c.Tags); err != nil {
 		return model.Content{}, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -100,7 +101,7 @@ func isUniqueViolation(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "UNIQUE constraint failed")
 }
 
-func (s *Store) UpdateContent(id string, update ContentUpdate) error {
+func (s *Store) UpdateContent(ctx context.Context, id string, update ContentUpdate) error {
 	if update.Kind == nil || update.Slug == nil || update.Body == nil || update.Summary == nil || update.Tags == nil || !update.TitleSet {
 		return errors.New("complete content update is required")
 	}
@@ -117,12 +118,12 @@ func (s *Store) UpdateContent(id string, update ContentUpdate) error {
 	tags := normalizeTags(*update.Tags)
 	sets := []string{"kind = ?", "slug = ?", "title = ?", "summary = ?", "body = ?", "excerpt = ?", "metadata_json = ?", "version = version + 1", "updated_at = ?"}
 	args := []any{*update.Kind, *update.Slug, update.Title, *update.Summary, *update.Body, contentExcerpt(*update.Body), encodeJSON(metadata), nowRFC3339(), id, update.ExpectedVersion}
-	tx, err := s.DB.Begin()
+	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	result, err := tx.Exec(`UPDATE content SET `+strings.Join(sets, ", ")+` WHERE id = ? AND status != 'DELETED' AND version = ?`, args...)
+	result, err := tx.ExecContext(ctx, `UPDATE content SET `+strings.Join(sets, ", ")+` WHERE id = ? AND status != 'DELETED' AND version = ?`, args...)
 	if err != nil {
 		if isUniqueViolation(err) {
 			return ErrSlugTaken
@@ -136,15 +137,15 @@ func (s *Store) UpdateContent(id string, update ContentUpdate) error {
 	if count == 0 {
 		return ErrVersionConflict
 	}
-	if err := s.replaceTags(tx, id, tags); err != nil {
+	if err := s.replaceTags(ctx, tx, id, tags); err != nil {
 		return err
 	}
 	return tx.Commit()
 }
 
-func (s *Store) SetContentStatus(id string, status model.ContentStatus) error {
+func (s *Store) SetContentStatus(ctx context.Context, id string, status model.ContentStatus) error {
 	now := nowRFC3339()
-	result, err := s.DB.Exec(`UPDATE content
+	result, err := s.DB.ExecContext(ctx, `UPDATE content
 		SET status = ?,
 			published_at = CASE WHEN ? = 'PUBLISHED' AND published_at IS NULL THEN ? ELSE published_at END,
 			version = version + 1,
@@ -161,22 +162,22 @@ func (s *Store) SetContentStatus(id string, status model.ContentStatus) error {
 		return nil
 	}
 	var exists int
-	err = s.DB.QueryRow(`SELECT 1 FROM content WHERE id = ?`, id).Scan(&exists)
+	err = s.DB.QueryRowContext(ctx, `SELECT 1 FROM content WHERE id = ?`, id).Scan(&exists)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return err
 	}
 	return ErrContentNotFound
 }
 
-func (s *Store) DeleteContent(id string) (model.Content, error) {
-	if err := s.SetContentStatus(id, model.StatusDeleted); err != nil {
+func (s *Store) DeleteContent(ctx context.Context, id string) (model.Content, error) {
+	if err := s.SetContentStatus(ctx, id, model.StatusDeleted); err != nil {
 		return model.Content{}, err
 	}
-	return s.getContentByID(id, true)
+	return s.getContentByID(ctx, id, true)
 }
 
-func (s *Store) RestoreContent(id string) (model.Content, error) {
-	result, err := s.DB.Exec(`UPDATE content SET status = 'DRAFT', version = version + 1, updated_at = ? WHERE id = ? AND status = 'DELETED'`, nowRFC3339(), id)
+func (s *Store) RestoreContent(ctx context.Context, id string) (model.Content, error) {
+	result, err := s.DB.ExecContext(ctx, `UPDATE content SET status = 'DRAFT', version = version + 1, updated_at = ? WHERE id = ? AND status = 'DELETED'`, nowRFC3339(), id)
 	if err != nil {
 		return model.Content{}, err
 	}
@@ -185,21 +186,21 @@ func (s *Store) RestoreContent(id string) (model.Content, error) {
 		return model.Content{}, err
 	}
 	if count == 0 {
-		if _, err := s.GetContentByID(id, true); errors.Is(err, ErrContentNotFound) {
+		if _, err := s.GetContentByID(ctx, id, true); errors.Is(err, ErrContentNotFound) {
 			return model.Content{}, ErrContentNotFound
 		}
 		return model.Content{}, ErrVersionConflict
 	}
-	return s.GetContentByID(id, true)
+	return s.GetContentByID(ctx, id, true)
 }
 
-func (s *Store) Stats() (model.Stats, error) {
+func (s *Store) Stats(ctx context.Context) (model.Stats, error) {
 	var stats model.Stats
-	err := s.DB.QueryRow(`SELECT COUNT(*), COALESCE(SUM(kind = 'ARTICLE'), 0), COALESCE(SUM(kind = 'THOUGHT'), 0) FROM content WHERE status = 'PUBLISHED'`).Scan(&stats.ContentCount, &stats.ArticleCount, &stats.ThoughtCount)
+	err := s.DB.QueryRowContext(ctx, `SELECT COUNT(*), COALESCE(SUM(kind = 'ARTICLE'), 0), COALESCE(SUM(kind = 'THOUGHT'), 0) FROM content WHERE status = 'PUBLISHED'`).Scan(&stats.ContentCount, &stats.ArticleCount, &stats.ThoughtCount)
 	if err != nil {
 		return stats, err
 	}
-	rows, err := s.DB.Query(`SELECT body FROM content WHERE status = 'PUBLISHED'`)
+	rows, err := s.DB.QueryContext(ctx, `SELECT body FROM content WHERE status = 'PUBLISHED'`)
 	if err != nil {
 		return stats, err
 	}

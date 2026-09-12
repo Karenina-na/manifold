@@ -147,7 +147,7 @@ func (h *apiHandler) githubExchange(w http.ResponseWriter, r *http.Request) {
 	if displayName == "" {
 		displayName = profile.Login
 	}
-	identity, err := h.store.UpsertIdentity("github", strconv.FormatInt(profile.ID, 10), displayName, profile.AvatarURL, profile.Email)
+	identity, err := h.store.UpsertIdentity(r.Context(), "github", strconv.FormatInt(profile.ID, 10), displayName, profile.AvatarURL, profile.Email)
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, apierror.IdentityUnavailable, "Sign-in could not be recorded.")
 		return
@@ -175,7 +175,7 @@ func (h *apiHandler) authMe(w http.ResponseWriter, r *http.Request) {
 		WriteJSON(w, http.StatusOK, map[string]any{"authenticated": false, "providers": providers})
 		return
 	}
-	identity, err := h.store.GetIdentity(claims.Subject)
+	identity, err := h.store.GetIdentity(r.Context(), claims.Subject)
 	if err != nil || identity.Provider == "" {
 		WriteJSON(w, http.StatusOK, map[string]any{"authenticated": false, "providers": providers})
 		return
@@ -196,7 +196,7 @@ func (h *apiHandler) visitorIdentity(r *http.Request) (*storeIdentity, error) {
 		}
 		return nil, nil
 	}
-	identity, err := h.store.GetIdentity(claims.Subject)
+	identity, err := h.store.GetIdentity(r.Context(), claims.Subject)
 	if err != nil || identity.Provider == "" {
 		return nil, errors.New("invalid visitor session")
 	}

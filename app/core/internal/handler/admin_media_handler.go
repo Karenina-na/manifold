@@ -71,7 +71,7 @@ func (h *apiHandler) adminUploadMedia(w http.ResponseWriter, r *http.Request) {
 	}
 	digest := sha256.Sum256(data)
 	shaHex := hex.EncodeToString(digest[:])
-	media, _, err := h.mutations.InsertMedia(mutationRequest(r), mime, filename, shaHex, data)
+	media, _, err := h.mutations.InsertMedia(r.Context(), mutationRequest(r), mime, filename, shaHex, data)
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, apierror.MediaUnavailable, "Media could not be stored.")
 		return
@@ -89,7 +89,7 @@ func (h *apiHandler) adminListMedia(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	items, total, err := h.store.ListMedia(page, pageSize, needle)
+	items, total, err := h.store.ListMedia(r.Context(), page, pageSize, needle)
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, apierror.MediaUnavailable, "Media list is unavailable.")
 		return
@@ -109,7 +109,7 @@ func (h *apiHandler) adminListMedia(w http.ResponseWriter, r *http.Request) {
 
 func (h *apiHandler) adminDeleteMedia(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	refs, err := h.store.MediaReferences(id)
+	refs, err := h.store.MediaReferences(r.Context(), id)
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, apierror.MediaUnavailable, "Media references could not be checked.")
 		return
@@ -118,7 +118,7 @@ func (h *apiHandler) adminDeleteMedia(w http.ResponseWriter, r *http.Request) {
 		WriteJSON(w, http.StatusConflict, map[string]any{"error": map[string]any{"code": apierror.MediaInUse, "message": "This media is referenced by published or draft content and cannot be deleted.", "details": map[string]any{"references": refs}}})
 		return
 	}
-	if err := h.mutations.DeleteMedia(mutationRequest(r), id); err != nil {
+	if err := h.mutations.DeleteMedia(r.Context(), mutationRequest(r), id); err != nil {
 		if errors.Is(err, store.ErrMediaNotFound) {
 			WriteError(w, http.StatusNotFound, apierror.MediaNotFound, "Media was not found.")
 			return
@@ -133,7 +133,7 @@ func (h *apiHandler) adminDeleteMedia(w http.ResponseWriter, r *http.Request) {
 // this media URL. The store query already excludes deleted content, so unknown
 // ids resolve to an empty list rather than an error.
 func (h *apiHandler) adminListMediaReferences(w http.ResponseWriter, r *http.Request) {
-	refs, err := h.store.MediaReferences(chi.URLParam(r, "id"))
+	refs, err := h.store.MediaReferences(r.Context(), chi.URLParam(r, "id"))
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, apierror.MediaUnavailable, "Media references could not be checked.")
 		return

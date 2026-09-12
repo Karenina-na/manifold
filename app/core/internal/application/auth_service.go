@@ -1,14 +1,16 @@
 package application
 
 import (
+	"context"
+
 	"github.com/manifold-space/manifold/app/core/internal/chain"
 )
 
-func (s *Service) RecordAuthChange(request Request, username, action, sessionID string) {
+func (s *Service) RecordAuthChange(ctx context.Context, request Request, username, action, sessionID string) {
 	eventName, resourceType, resourceID := authAudit(action, username, sessionID)
 	s.audit(request, eventName, resourceType, resourceID, nil)
 	if payload, label, ref, metadata, err := AuthActionPayload(username, action, sessionID); err == nil {
-		s.anchor(request, chain.SourceAuth, payload, label, ref, metadata)
+		s.anchor(ctx, request, chain.SourceAuth, payload, label, ref, metadata)
 	}
 }
 

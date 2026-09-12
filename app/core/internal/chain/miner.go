@@ -29,7 +29,7 @@ func (l *Ledger) MineOnce() (Block, error) {
 // MineOnceContext performs one mining decision and permits shutdown to cancel
 // an in-flight proof search or simulated delay.
 func (l *Ledger) MineOnceContext(ctx context.Context) (Block, error) {
-	if _, err := l.Tip(); err != nil {
+	if _, err := l.Tip(ctx); err != nil {
 		if errors.Is(err, ErrEmptyChain) {
 			if block, err := l.InsertBlockContext(ctx, nil); err != nil {
 				return Block{}, err
@@ -47,21 +47,21 @@ func (l *Ledger) MineOnceContext(ctx context.Context) (Block, error) {
 // mineDuePending packs the buffered set only when the batch threshold or the
 // flush timeout is due; otherwise it returns the zero Block.
 func (l *Ledger) mineDuePending(ctx context.Context) (Block, error) {
-	count, err := l.PendingCount()
+	count, err := l.PendingCount(ctx)
 	if err != nil {
 		return Block{}, err
 	}
 	if count == 0 {
 		return Block{}, nil
 	}
-	oldest, err := l.OldestPendingAge()
+	oldest, err := l.OldestPendingAge(ctx)
 	if err != nil {
 		return Block{}, err
 	}
 	if count < l.cfg.BatchSize && oldest < l.cfg.FlushTimeout {
 		return Block{}, nil
 	}
-	pending, err := l.PendingAnchors()
+	pending, err := l.PendingAnchors(ctx)
 	if err != nil {
 		return Block{}, err
 	}

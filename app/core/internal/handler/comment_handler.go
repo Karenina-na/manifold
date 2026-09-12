@@ -24,7 +24,7 @@ type commentInput struct {
 }
 
 func (h *apiHandler) resolvePublicContent(w http.ResponseWriter, r *http.Request) (model.Content, bool) {
-	content, err := h.store.GetContentBySlug(chi.URLParam(r, "slug"), false)
+	content, err := h.store.GetContentBySlug(r.Context(), chi.URLParam(r, "slug"), false)
 	if errors.Is(err, store.ErrContentNotFound) || errors.Is(err, sql.ErrNoRows) {
 		WriteError(w, http.StatusNotFound, apierror.ContentNotFound, "Content was not found.")
 		return model.Content{}, false
@@ -46,7 +46,7 @@ func (h *apiHandler) listPublicComments(w http.ResponseWriter, r *http.Request) 
 		WriteError(w, http.StatusBadRequest, apierror.InvalidQuery, err.Error())
 		return
 	}
-	result, err := h.store.ListComments(content.ID, options)
+	result, err := h.store.ListComments(r.Context(), content.ID, options)
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, apierror.CommentsUnavailable, "Comments are unavailable.")
 		return
@@ -55,7 +55,7 @@ func (h *apiHandler) listPublicComments(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *apiHandler) createComment(w http.ResponseWriter, r *http.Request) {
-	config, err := h.store.GetSiteConfig()
+	config, err := h.store.GetSiteConfig(r.Context())
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, apierror.SiteUnavailable, "Site configuration is unavailable.")
 		return
@@ -116,7 +116,7 @@ func (h *apiHandler) createCommentOnContent(w http.ResponseWriter, r *http.Reque
 	if input.ReplyToID != nil && strings.TrimSpace(*input.ReplyToID) != "" {
 		replyToID = input.ReplyToID
 	}
-	comment, err := h.mutations.CreateComment(mutationRequest(r), content, application.CommentInput{
+	comment, err := h.mutations.CreateComment(r.Context(), mutationRequest(r), content, application.CommentInput{
 		AuthorName: authorName, AuthorURL: authorURL, Body: strings.TrimSpace(input.Body), ReplyToID: replyToID,
 		AvatarSeed: avatarSeed, AuthorProvider: authorProvider, AuthorAvatarURL: authorAvatarURL,
 	})

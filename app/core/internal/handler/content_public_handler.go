@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"log/slog"
@@ -23,7 +24,7 @@ func (h *apiHandler) listContent(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusBadRequest, apierror.InvalidQuery, err.Error())
 		return
 	}
-	result, err := h.store.ListContent(false, options)
+	result, err := h.store.ListContent(r.Context(), false, options)
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, apierror.ContentUnavailable, "Content is unavailable.")
 		return
@@ -49,7 +50,7 @@ func (h *apiHandler) homeTimeline(w http.ResponseWriter, r *http.Request) {
 		}
 		limit = parsed
 	}
-	items, total, truncated, err := h.store.HomeTimeline(limit)
+	items, total, truncated, err := h.store.HomeTimeline(r.Context(), limit)
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, apierror.ContentUnavailable, "Content is unavailable.")
 		return
@@ -67,7 +68,7 @@ func (h *apiHandler) tags(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusBadRequest, apierror.InvalidQuery, "kind is invalid")
 		return
 	}
-	tags, err := h.store.Tags(kind)
+	tags, err := h.store.Tags(r.Context(), kind)
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, apierror.TagsUnavailable, "Tags are unavailable.")
 		return
@@ -84,7 +85,7 @@ func (h *apiHandler) getContent(w http.ResponseWriter, r *http.Request) {
 	content, ok := h.contentCache.Get(slug)
 	if !ok {
 		var err error
-		content, err = h.store.GetContentBySlug(slug, false)
+		content, err = h.store.GetContentBySlug(r.Context(), slug, false)
 		if errors.Is(err, store.ErrContentNotFound) || errors.Is(err, sql.ErrNoRows) {
 			WriteError(w, http.StatusNotFound, apierror.ContentNotFound, "Content was not found.")
 			return
@@ -106,7 +107,7 @@ func (h *apiHandler) getContent(w http.ResponseWriter, r *http.Request) {
 		if source == "" {
 			source = r.Referer()
 		}
-		viewCount, err := h.store.RecordContentView(content.ID, viewerID, referrerOrigin(source))
+		viewCount, err := h.store.RecordContentView(r.Context(), content.ID, viewerID, referrerOrigin(source))
 		if err != nil {
 			slog.Error("content_view_count_failed", "contentId", content.ID, "error", err)
 		} else {
@@ -119,17 +120,17 @@ func (h *apiHandler) getContent(w http.ResponseWriter, r *http.Request) {
 	detail := model.ToPublicDetail(content)
 	// ContentDetail carries the anchoring summary: latest content-source
 	// certificate for this row, null before any write is anchored.
-	detail.LatestAnchor = h.latestAnchorFor(content.ID)
+	detail.LatestAnchor = h.latestAnchorFor(r.Context(), content.ID)
 	WriteJSON(w, http.StatusOK, detail)
 }
 
 // latestAnchorFor projects the newest content certificate into the public
 // detail shape; nil ledger or no certificate → nil (omitted as null in JSON).
-func (h *apiHandler) latestAnchorFor(contentID string) *model.AnchorSummary {
+func (h *apiHandler) latestAnchorFor(ctx context.Context, contentID string) *model.AnchorSummary {
 	if h.ledger == nil {
 		return nil
 	}
-	anchor, err := h.ledger.LatestContentAnchor(contentID)
+	anchor, err := h.ledger.LatestContentAnchor(ctx, contentID)
 	if err != nil {
 		return nil
 	}
@@ -175,12 +176,12 @@ func visitorID(r *http.Request, required bool) (string, error) {
 	return value, nil
 }
 
-func (h *apiHandler) stats(w http.ResponseWriter, _ *http.Request) {
+func (h *apiHandler) stats(w http.ResponseWriter, r *http.Request) {
 	if stats, ok := h.statsCache.Get(); ok {
 		WriteJSON(w, http.StatusOK, stats)
 		return
 	}
-	stats, err := h.store.Stats()
+	stats, err := h.store.Stats(r.Context())
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, apierror.StatsUnavailable, "Stats are unavailable.")
 		return
@@ -195,7 +196,7 @@ func (h *apiHandler) presence(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusBadRequest, apierror.VisitorIDInvalid, "Visitor ID is required and invalid.")
 		return
 	}
-	activeVisitors, err := h.store.TouchPresence(visitorID)
+	activeVisitors, err := h.store.TouchPresence(r.Context(), visitorID)
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, apierror.PresenceUnavailable, "Presence is unavailable.")
 		return

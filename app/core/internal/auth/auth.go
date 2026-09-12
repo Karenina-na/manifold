@@ -48,12 +48,12 @@ type Service struct {
 // so a missing username stays distinguishable from a failing database without
 // the two packages having to share a sentinel value.
 type SessionStore interface {
-	GetAdminCredential(username string) (hash string, found bool, err error)
-	UpdateAdminCredential(username, passwordHash string) error
-	CreateSession(id, subject string, now, expiresAt time.Time) error
-	SessionLive(id string, now time.Time) (bool, error)
-	RevokeSession(id string, now time.Time) error
-	RevokeSessions(subject string, exceptCurrentID string, now time.Time) error
+	GetAdminCredential(ctx context.Context, username string) (hash string, found bool, err error)
+	UpdateAdminCredential(ctx context.Context, username, passwordHash string) error
+	CreateSession(ctx context.Context, id, subject string, now, expiresAt time.Time) error
+	SessionLive(ctx context.Context, id string, now time.Time) (bool, error)
+	RevokeSession(ctx context.Context, id string, now time.Time) error
+	RevokeSessions(ctx context.Context, subject string, exceptCurrentID string, now time.Time) error
 }
 
 // Seams for the two operations whose failure modes are security-relevant and
@@ -106,8 +106,8 @@ m = r.sub == p.sub && keyMatch(r.obj, p.obj) && (p.act == "*" || r.act == p.act)
 	return &Service{config: cfg, enforcer: enforcer, store: db, now: time.Now}, nil
 }
 
-func (s *Service) Login(username, password string) (string, error) {
-	hash, found, err := s.store.GetAdminCredential(username)
+func (s *Service) Login(ctx context.Context, username, password string) (string, error) {
+	hash, found, err := s.store.GetAdminCredential(ctx, username)
 	if err != nil {
 		// A store failure is not a wrong password: collapsing it into
 		// ErrInvalidCredentials told the operator "your password is wrong"
@@ -139,7 +139,7 @@ func (s *Service) Login(username, password string) (string, error) {
 		},
 	}
 	claims.ID = sessionID
-	if err := s.store.CreateSession(sessionID, username, now, now.Add(SessionTTL)); err != nil {
+	if err := s.store.CreateSession(ctx, sessionID, username, now, now.Add(SessionTTL)); err != nil {
 		return "", err
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
@@ -172,7 +172,7 @@ func (s *Service) RequireAdmin(next http.Handler) http.Handler {
 			apierror.WriteError(w, http.StatusUnauthorized, apierror.Unauthorized, "A valid session is required.")
 			return
 		}
-		live, err := s.store.SessionLive(claims.ID, s.now())
+		live, err := s.store.SessionLive(r.Context(), claims.ID, s.now())
 		if err != nil {
 			apierror.WriteError(w, http.StatusInternalServerError, apierror.SessionUnavailable, "Session state is unavailable.")
 			return
@@ -192,8 +192,8 @@ func (s *Service) RequireAdmin(next http.Handler) http.Handler {
 
 // UpdateCredential verifies the current password, replaces the stored hash, and
 // revokes every other active session for the subject.
-func (s *Service) UpdateCredential(username, currentPassword, newPassword string, currentSessionID string) error {
-	hash, found, err := s.store.GetAdminCredential(username)
+func (s *Service) UpdateCredential(ctx context.Context, username, currentPassword, newPassword string, currentSessionID string) error {
+	hash, found, err := s.store.GetAdminCredential(ctx, username)
 	if err != nil {
 		// Same split as Login: an unreachable database must not be reported as a
 		// wrong current password.
@@ -209,10 +209,10 @@ func (s *Service) UpdateCredential(username, currentPassword, newPassword string
 	if err != nil {
 		return err
 	}
-	if err := s.store.UpdateAdminCredential(username, string(nextHash)); err != nil {
+	if err := s.store.UpdateAdminCredential(ctx, username, string(nextHash)); err != nil {
 		return err
 	}
-	return s.store.RevokeSessions(username, currentSessionID, s.now())
+	return s.store.RevokeSessions(ctx, username, currentSessionID, s.now())
 }
 
 type claimsKey struct{}

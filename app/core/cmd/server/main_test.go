@@ -39,37 +39,38 @@ func TestRunDoesNotOpenDatabaseWhenAddressIsInUse(t *testing.T) {
 // PUBLISHED contents with content certificates (subject_ref = contentId),
 // drafts are left out, and a non-empty chain is never re-seeded.
 func TestSeedAnchorsForDevContents(t *testing.T) {
+	ctx := t.Context()
 	// An explicit empty plan keeps the anchor count deterministic (the store
 	// would otherwise default to the 20-item built-in dev seed).
-	database, err := store.Open(":memory:", store.WithSeedPlan(seed.Plan{}), store.WithAdminCredential("admin", "$2a$10$minimalhashvaluethatisvalid0000000000000000000000"))
+	database, err := store.Open(ctx, ":memory:", store.WithSeedPlan(seed.Plan{}), store.WithAdminCredential("admin", "$2a$10$minimalhashvaluethatisvalid0000000000000000000000"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer database.Close()
 
-	published1, err := database.CreateContent(model.ContentInput{Kind: model.ContentKindArticle, Slug: "seed-a", Body: "Body A"})
+	published1, err := database.CreateContent(ctx, model.ContentInput{Kind: model.ContentKindArticle, Slug: "seed-a", Body: "Body A"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	published2, err := database.CreateContent(model.ContentInput{Kind: model.ContentKindThought, Slug: "seed-b", Body: "Body B"})
+	published2, err := database.CreateContent(ctx, model.ContentInput{Kind: model.ContentKindThought, Slug: "seed-b", Body: "Body B"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	draft, err := database.CreateContent(model.ContentInput{Kind: model.ContentKindArticle, Slug: "seed-draft", Body: "Draft body"})
+	draft, err := database.CreateContent(ctx, model.ContentInput{Kind: model.ContentKindArticle, Slug: "seed-draft", Body: "Draft body"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, id := range []string{published1.ID, published2.ID} {
-		if err := database.SetContentStatus(id, model.StatusPublished); err != nil {
+		if err := database.SetContentStatus(ctx, id, model.StatusPublished); err != nil {
 			t.Fatal(err)
 		}
 	}
 
 	ledger := chain.NewLedger(database.DB, chain.LedgerConfig{ProofMode: chain.ProofModeSim, BatchSize: 32, MaxBlockAnchors: 500, FlushTimeout: 30 * time.Second, AnchorMaxBytes: 1 << 16})
-	if _, err := ledger.EnsureSiteKey(); err != nil {
+	if _, err := ledger.EnsureSiteKey(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if err := seedAnchorsForDevContents(ledger, database); err != nil {
+	if err := seedAnchorsForDevContents(ctx, ledger, database); err != nil {
 		t.Fatal(err)
 	}
 
@@ -98,7 +99,7 @@ func TestSeedAnchorsForDevContents(t *testing.T) {
 	}
 
 	// A second pass over a now non-empty chain must be a no-op.
-	if err := seedAnchorsForDevContents(ledger, database); err != nil {
+	if err := seedAnchorsForDevContents(ctx, ledger, database); err != nil {
 		t.Fatal(err)
 	}
 	if err := database.DB.QueryRow(`SELECT COUNT(*) FROM chain_anchors`).Scan(&count); err != nil {

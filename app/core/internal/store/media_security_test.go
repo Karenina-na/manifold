@@ -7,16 +7,17 @@ import (
 )
 
 func TestMediaReferences(t *testing.T) {
-	database, err := Open(":memory:")
+	ctx := t.Context()
+	database, err := Open(ctx, ":memory:")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer database.Close()
-	created, err := database.CreateContent(model.ContentInput{Kind: model.ContentKindArticle, Slug: "uses-media", Body: "See ![alt](/api/v1/media/media_1)"})
+	created, err := database.CreateContent(ctx, model.ContentInput{Kind: model.ContentKindArticle, Slug: "uses-media", Body: "See ![alt](/api/v1/media/media_1)"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	refs, err := database.MediaReferences("media_1")
+	refs, err := database.MediaReferences(ctx, "media_1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -29,7 +30,7 @@ func TestMediaReferences(t *testing.T) {
 	if refs[0].Status != model.StatusDraft {
 		t.Fatalf("expected draft reference, got %q", refs[0].Status)
 	}
-	none, err := database.MediaReferences("media_missing")
+	none, err := database.MediaReferences(ctx, "media_missing")
 	if err != nil {
 		t.Fatal(err)
 	}

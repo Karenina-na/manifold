@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"net/http"
@@ -29,7 +30,7 @@ func (h *apiHandler) verifyAnchorByHash(w http.ResponseWriter, r *http.Request) 
 		WriteError(w, http.StatusBadRequest, apierror.InvalidQuery, "hash must be a 64-character sha256 hex string.")
 		return
 	}
-	body, status := h.verifyResult(ledger, strings.ToLower(hash))
+	body, status := h.verifyResult(r.Context(), ledger, strings.ToLower(hash))
 	if status != http.StatusOK && writeVerifyFailure(w, status, body) {
 		return
 	}
@@ -48,7 +49,7 @@ func (h *apiHandler) verifyAnchorPayload(w http.ResponseWriter, r *http.Request)
 		}
 		return
 	}
-	body, status := h.verifyResult(ledger, chain.SubjectHashHex([]byte(input.Payload)))
+	body, status := h.verifyResult(r.Context(), ledger, chain.SubjectHashHex([]byte(input.Payload)))
 	if status != http.StatusOK && writeVerifyFailure(w, status, body) {
 		return
 	}
@@ -62,7 +63,7 @@ func (h *apiHandler) verifyAnchorContent(w http.ResponseWriter, r *http.Request)
 	if !ok {
 		return
 	}
-	content, err := h.store.GetContentBySlug(chi.URLParam(r, "slug"), false)
+	content, err := h.store.GetContentBySlug(r.Context(), chi.URLParam(r, "slug"), false)
 	if errors.Is(err, store.ErrContentNotFound) || errors.Is(err, sql.ErrNoRows) {
 		WriteError(w, http.StatusNotFound, apierror.ContentNotFound, "Content was not found.")
 		return
@@ -76,7 +77,7 @@ func (h *apiHandler) verifyAnchorContent(w http.ResponseWriter, r *http.Request)
 		WriteError(w, http.StatusInternalServerError, apierror.ChainUnavailable, "Payload could not be rebuilt.")
 		return
 	}
-	body, status := h.verifyResult(ledger, chain.SubjectHashHex(payload))
+	body, status := h.verifyResult(r.Context(), ledger, chain.SubjectHashHex(payload))
 	if status != http.StatusOK && writeVerifyFailure(w, status, body) {
 		return
 	}
@@ -92,7 +93,7 @@ func (h *apiHandler) verifyAnchorComment(w http.ResponseWriter, r *http.Request)
 	if !ok {
 		return
 	}
-	comment, err := h.store.GetCommentByID(chi.URLParam(r, "id"))
+	comment, err := h.store.GetCommentByID(r.Context(), chi.URLParam(r, "id"))
 	if errors.Is(err, sql.ErrNoRows) {
 		WriteError(w, http.StatusNotFound, apierror.CommentNotFound, "Comment was not found.")
 		return
@@ -110,12 +111,12 @@ func (h *apiHandler) verifyAnchorComment(w http.ResponseWriter, r *http.Request)
 		WriteError(w, http.StatusInternalServerError, apierror.ChainUnavailable, "Payload could not be rebuilt.")
 		return
 	}
-	body, status := h.verifyResult(ledger, payloadHashes[0])
+	body, status := h.verifyResult(r.Context(), ledger, payloadHashes[0])
 	for _, payloadHash := range payloadHashes[1:] {
 		if status != http.StatusNotFound {
 			break
 		}
-		body, status = h.verifyResult(ledger, payloadHash)
+		body, status = h.verifyResult(r.Context(), ledger, payloadHash)
 	}
 	if status != http.StatusOK && writeVerifyFailure(w, status, body) {
 		return
@@ -152,12 +153,12 @@ func writeVerifyFailure(w http.ResponseWriter, status int, body map[string]any) 
 // report the chain state even when the hash is unknown. The response also
 // carries the step-by-step process (steps/merkle/context) so the explorer can
 // render how the verification was computed, not just its verdict.
-func (h *apiHandler) verifyResult(ledger *chain.Ledger, subjectHash string) (map[string]any, int) {
-	report, err := ledger.ReplayVerify()
+func (h *apiHandler) verifyResult(ctx context.Context, ledger *chain.Ledger, subjectHash string) (map[string]any, int) {
+	report, err := ledger.ReplayVerify(ctx)
 	if err != nil {
 		return map[string]any{"error": map[string]any{"code": apierror.ChainUnavailable, "message": "Chain verification failed."}}, http.StatusInternalServerError
 	}
-	anchor, err := ledger.LatestAnchorByHash(subjectHash)
+	anchor, err := ledger.LatestAnchorByHash(ctx, subjectHash)
 	steps := []verifyStepView{
 		{ID: "lookup", Label: "Certificate lookup", Status: "failed", Detail: "No certificate found for this subject hash."},
 		{ID: "signature", Label: "Site signature", Status: "failed", Detail: "Not evaluated — no certificate."},
@@ -169,7 +170,7 @@ func (h *apiHandler) verifyResult(ledger *chain.Ledger, subjectHash string) (map
 	var merklePayload *merkleProofView
 	var contextPayload *verifyChainContextView
 	if err == nil {
-		anchorPayload = h.enrichView(toAnchorView(anchor))
+		anchorPayload = h.enrichView(ctx, toAnchorView(anchor))
 		lookupInputs := []verifyStepInputView{
 			{Name: "subjectHash", Value: subjectHash},
 			{Name: "certificate", Value: anchor.ID},
@@ -204,9 +205,9 @@ func (h *apiHandler) verifyResult(ledger *chain.Ledger, subjectHash string) (map
 				Output: "invalid ✗"}
 		}
 		if anchor.BlockID != "" {
-			if block, _, blockErr := ledger.GetBlock(anchor.BlockID); blockErr == nil {
+			if block, _, blockErr := ledger.GetBlock(ctx, anchor.BlockID); blockErr == nil {
 				blockPayload = blockSummaryOf(block)
-				contextPayload = h.blockChainContext(ledger, block)
+				contextPayload = h.blockChainContext(ctx, ledger, block)
 				merklePayload = merkleProof(block.CertIDs, anchor.ID, block.CertRoot)
 				header := chain.BlockHeader{Index: block.Index, PrevHash: block.PrevHash, Timestamp: block.Timestamp,
 					CertRoot: block.CertRoot, ProofMode: block.ProofMode, Difficulty: block.Difficulty, Nonce: block.Nonce}
@@ -276,14 +277,14 @@ func (h *apiHandler) verifyResult(ledger *chain.Ledger, subjectHash string) (map
 
 // blockChainContext resolves the block before/after a verified certificate so
 // the explorer can render the local chain structure around it.
-func (h *apiHandler) blockChainContext(ledger *chain.Ledger, block chain.Block) *verifyChainContextView {
+func (h *apiHandler) blockChainContext(ctx context.Context, ledger *chain.Ledger, block chain.Block) *verifyChainContextView {
 	view := &verifyChainContextView{Current: blockSummaryOf(block)}
 	if block.Index > 0 {
-		if prev, err := ledger.BlockByIndex(block.Index - 1); err == nil {
+		if prev, err := ledger.BlockByIndex(ctx, block.Index-1); err == nil {
 			view.Prev = blockSummaryOf(prev)
 		}
 	}
-	if next, err := ledger.BlockByIndex(block.Index + 1); err == nil {
+	if next, err := ledger.BlockByIndex(ctx, block.Index+1); err == nil {
 		view.Next = blockSummaryOf(next)
 	}
 	return view

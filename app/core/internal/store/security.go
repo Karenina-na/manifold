@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"time"
@@ -11,26 +12,26 @@ var ErrSessionNotFound = errors.New("admin session not found")
 // ensureAdminCredential seeds the bootstrap credential into an empty table.
 // It is a no-op when the table already has a row or either value is empty, so
 // upgraded databases (which skip content seeding) still get a way to log in.
-func (s *Store) ensureAdminCredential(username, passwordHash string) error {
+func (s *Store) ensureAdminCredential(ctx context.Context, username, passwordHash string) error {
 	if username == "" || passwordHash == "" {
 		return nil
 	}
 	var count int
-	if err := s.DB.QueryRow(`SELECT COUNT(*) FROM admin_credentials`).Scan(&count); err != nil {
+	if err := s.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM admin_credentials`).Scan(&count); err != nil {
 		return err
 	}
 	if count > 0 {
 		return nil
 	}
-	_, err := s.DB.Exec(`INSERT INTO admin_credentials (id, username, password_hash, updated_at) VALUES (?, ?, ?, ?)`, "admin_1", username, passwordHash, nowRFC3339())
+	_, err := s.DB.ExecContext(ctx, `INSERT INTO admin_credentials (id, username, password_hash, updated_at) VALUES (?, ?, ?, ?)`, "admin_1", username, passwordHash, nowRFC3339())
 	return err
 }
 
 // GetAdminCredential returns the bcrypt hash for a username. A missing username
 // is reported as found=false rather than as an error, so the caller can tell it
 // apart from a database failure.
-func (s *Store) GetAdminCredential(username string) (hash string, found bool, err error) {
-	err = s.DB.QueryRow(`SELECT password_hash FROM admin_credentials WHERE username = ? LIMIT 1`, username).Scan(&hash)
+func (s *Store) GetAdminCredential(ctx context.Context, username string) (hash string, found bool, err error) {
+	err = s.DB.QueryRowContext(ctx, `SELECT password_hash FROM admin_credentials WHERE username = ? LIMIT 1`, username).Scan(&hash)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", false, nil
 	}
@@ -41,24 +42,24 @@ func (s *Store) GetAdminCredential(username string) (hash string, found bool, er
 }
 
 // UpdateAdminCredential replaces the hash for a username.
-func (s *Store) UpdateAdminCredential(username, passwordHash string) error {
-	_, err := s.DB.Exec(`UPDATE admin_credentials SET password_hash = ?, updated_at = ? WHERE username = ?`, passwordHash, nowRFC3339(), username)
+func (s *Store) UpdateAdminCredential(ctx context.Context, username, passwordHash string) error {
+	_, err := s.DB.ExecContext(ctx, `UPDATE admin_credentials SET password_hash = ?, updated_at = ? WHERE username = ?`, passwordHash, nowRFC3339(), username)
 	return err
 }
 
 // CreateSession records a fresh session keyed by its JWT jti.
-func (s *Store) CreateSession(id, subject string, now, expiresAt time.Time) error {
-	_, err := s.DB.Exec(`INSERT INTO admin_sessions (id, subject, created_at, expires_at, revoked_at) VALUES (?, ?, ?, ?, NULL)`, id, subject, now.UTC().Format(time.RFC3339), expiresAt.UTC().Format(time.RFC3339))
+func (s *Store) CreateSession(ctx context.Context, id, subject string, now, expiresAt time.Time) error {
+	_, err := s.DB.ExecContext(ctx, `INSERT INTO admin_sessions (id, subject, created_at, expires_at, revoked_at) VALUES (?, ?, ?, ?, NULL)`, id, subject, now.UTC().Format(time.RFC3339), expiresAt.UTC().Format(time.RFC3339))
 	return err
 }
 
 // SessionLive reports whether a session is still active: it must exist, not be
 // revoked, and not have expired.
-func (s *Store) SessionLive(id string, now time.Time) (bool, error) {
+func (s *Store) SessionLive(ctx context.Context, id string, now time.Time) (bool, error) {
 	var exists bool
 	var expiresAt string
 	var revokedAt sql.NullString
-	err := s.DB.QueryRow(`SELECT 1, expires_at, revoked_at FROM admin_sessions WHERE id = ?`, id).Scan(&exists, &expiresAt, &revokedAt)
+	err := s.DB.QueryRowContext(ctx, `SELECT 1, expires_at, revoked_at FROM admin_sessions WHERE id = ?`, id).Scan(&exists, &expiresAt, &revokedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
 	}
@@ -77,18 +78,18 @@ func (s *Store) SessionLive(id string, now time.Time) (bool, error) {
 
 // RevokeSession redacts one session. Idempotent: revoking an already-revoked
 // or missing id is not an error.
-func (s *Store) RevokeSession(id string, now time.Time) error {
-	_, err := s.DB.Exec(`UPDATE admin_sessions SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL`, now.UTC().Format(time.RFC3339), id)
+func (s *Store) RevokeSession(ctx context.Context, id string, now time.Time) error {
+	_, err := s.DB.ExecContext(ctx, `UPDATE admin_sessions SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL`, now.UTC().Format(time.RFC3339), id)
 	return err
 }
 
 // GetSession loads one session row regardless of state; ownership checks and
 // revocation happen in the handler layer.
-func (s *Store) GetSession(id string) (AdminSessionRow, error) {
+func (s *Store) GetSession(ctx context.Context, id string) (AdminSessionRow, error) {
 	var row AdminSessionRow
 	var createdAt, expiresAt string
 	var revokedAt sql.NullString
-	err := s.DB.QueryRow(`SELECT id, subject, created_at, expires_at, revoked_at FROM admin_sessions WHERE id = ?`, id).Scan(&row.ID, &row.Subject, &createdAt, &expiresAt, &revokedAt)
+	err := s.DB.QueryRowContext(ctx, `SELECT id, subject, created_at, expires_at, revoked_at FROM admin_sessions WHERE id = ?`, id).Scan(&row.ID, &row.Subject, &createdAt, &expiresAt, &revokedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return AdminSessionRow{}, ErrSessionNotFound
 	}
@@ -112,8 +113,8 @@ func (s *Store) GetSession(id string) (AdminSessionRow, error) {
 }
 
 // RevokeSessions redacts every active session for a subject except one id.
-func (s *Store) RevokeSessions(subject string, exceptCurrentID string, now time.Time) error {
-	_, err := s.DB.Exec(`UPDATE admin_sessions SET revoked_at = ? WHERE subject = ? AND id != ? AND revoked_at IS NULL`, now.UTC().Format(time.RFC3339), subject, exceptCurrentID)
+func (s *Store) RevokeSessions(ctx context.Context, subject string, exceptCurrentID string, now time.Time) error {
+	_, err := s.DB.ExecContext(ctx, `UPDATE admin_sessions SET revoked_at = ? WHERE subject = ? AND id != ? AND revoked_at IS NULL`, now.UTC().Format(time.RFC3339), subject, exceptCurrentID)
 	return err
 }
 
@@ -129,8 +130,8 @@ type AdminSessionRow struct {
 // AdminSessions lists the live (not revoked, not expired) session rows for a
 // subject, newest first. Revoked sessions are soft-deleted history: they stay
 // in the table for audit but leave the admin list.
-func (s *Store) AdminSessions(subject string) ([]AdminSessionRow, error) {
-	rows, err := s.DB.Query(`SELECT id, created_at, expires_at, revoked_at FROM admin_sessions WHERE subject = ? AND revoked_at IS NULL AND expires_at > ? ORDER BY created_at DESC`, subject, nowRFC3339())
+func (s *Store) AdminSessions(ctx context.Context, subject string) ([]AdminSessionRow, error) {
+	rows, err := s.DB.QueryContext(ctx, `SELECT id, created_at, expires_at, revoked_at FROM admin_sessions WHERE subject = ? AND revoked_at IS NULL AND expires_at > ? ORDER BY created_at DESC`, subject, nowRFC3339())
 	if err != nil {
 		return nil, err
 	}

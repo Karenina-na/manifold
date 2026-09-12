@@ -11,11 +11,11 @@ import (
 	"github.com/manifold-space/manifold/app/core/internal/model"
 )
 
-func (h *apiHandler) adminStats(w http.ResponseWriter, _ *http.Request) {
+func (h *apiHandler) adminStats(w http.ResponseWriter, r *http.Request) {
 	stats, ok := h.statsCache.Get()
 	if !ok {
 		var err error
-		stats, err = h.store.Stats()
+		stats, err = h.store.Stats(r.Context())
 		if err != nil {
 			WriteError(w, http.StatusInternalServerError, apierror.StatsUnavailable, "Stats are unavailable.")
 			return
@@ -27,11 +27,11 @@ func (h *apiHandler) adminStats(w http.ResponseWriter, _ *http.Request) {
 	}{Content: stats})
 }
 
-func (h *apiHandler) adminOverview(w http.ResponseWriter, _ *http.Request) {
+func (h *apiHandler) adminOverview(w http.ResponseWriter, r *http.Request) {
 	overview, ok := h.overviewCache.Get()
 	if !ok {
 		var err error
-		overview, err = h.store.Overview()
+		overview, err = h.store.Overview(r.Context())
 		if err != nil {
 			WriteError(w, http.StatusInternalServerError, apierror.OverviewUnavailable, "Overview is unavailable.")
 			return
@@ -55,7 +55,7 @@ func (h *apiHandler) adminAnalyticsViews(w http.ResponseWriter, r *http.Request)
 		}
 		days = value
 	}
-	views, err := h.store.AnalyticsViews(days)
+	views, err := h.store.AnalyticsViews(r.Context(), days)
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, apierror.AnalyticsUnavailable, "Analytics are unavailable.")
 		return
@@ -63,13 +63,13 @@ func (h *apiHandler) adminAnalyticsViews(w http.ResponseWriter, r *http.Request)
 	WriteJSON(w, http.StatusOK, views)
 }
 
-func (h *apiHandler) adminSystem(w http.ResponseWriter, _ *http.Request) {
-	sizeBytes, err := h.store.DatabaseSizeBytes()
+func (h *apiHandler) adminSystem(w http.ResponseWriter, r *http.Request) {
+	sizeBytes, err := h.store.DatabaseSizeBytes(r.Context())
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, apierror.SystemUnavailable, "System status is unavailable.")
 		return
 	}
-	auditEventCount, err := h.store.AuditEventCount()
+	auditEventCount, err := h.store.AuditEventCount(r.Context())
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, apierror.SystemUnavailable, "System status is unavailable.")
 		return
@@ -118,7 +118,7 @@ func (h *apiHandler) adminAudit(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusBadRequest, apierror.InvalidQuery, "q is too long")
 		return
 	}
-	events, total, err := h.store.ListAuditEvents(page, pageSize, needle)
+	events, total, err := h.store.ListAuditEvents(r.Context(), page, pageSize, needle)
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, apierror.AuditUnavailable, "Audit events are unavailable.")
 		return

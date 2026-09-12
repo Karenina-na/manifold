@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"time"
@@ -53,9 +54,12 @@ func RouterWithLifecycle(cfg config.Config, database *store.Store, ledger *chain
 	}
 }
 
+// recordAuditEvent is the dispatcher's sink. It runs on the dispatcher's
+// own goroutine, after the request that produced the event has finished, so
+// it has no request context to inherit and starts a detached one.
 func recordAuditEvent(database *store.Store) func(events.AuditEvent) {
 	return func(event events.AuditEvent) {
-		if err := database.RecordAuditEvent(event.EventName, event.ResourceType, event.ResourceID, event.Actor, event.RequestID, event.TraceID, event.Metadata); err != nil {
+		if err := database.RecordAuditEvent(context.Background(), event.EventName, event.ResourceType, event.ResourceID, event.Actor, event.RequestID, event.TraceID, event.Metadata); err != nil {
 			slog.Error("audit_event_failed", "eventName", event.EventName, "resourceType", event.ResourceType, "resourceId", event.ResourceID, "error", err)
 		}
 	}

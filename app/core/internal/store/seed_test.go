@@ -18,11 +18,12 @@ func countContent(t *testing.T, database *Store) int {
 }
 
 func TestBootstrapPlanLeavesContentEmpty(t *testing.T) {
+	ctx := t.Context()
 	plan, err := seed.Bootstrap()
 	if err != nil {
 		t.Fatal(err)
 	}
-	database, err := Open(filepath.Join(t.TempDir(), "manifold.db"), WithSeedPlan(plan))
+	database, err := Open(ctx, filepath.Join(t.TempDir(), "manifold.db"), WithSeedPlan(plan))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -31,14 +32,14 @@ func TestBootstrapPlanLeavesContentEmpty(t *testing.T) {
 	if count := countContent(t, database); count != 0 {
 		t.Fatalf("bootstrap plan must not create content, got %d rows", count)
 	}
-	profile, err := database.GetProfile()
+	profile, err := database.GetProfile(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if profile.DisplayName == "" {
 		t.Fatal("bootstrap plan must still create the profile singleton")
 	}
-	siteConfig, err := database.GetSiteConfig()
+	siteConfig, err := database.GetSiteConfig(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,17 +49,18 @@ func TestBootstrapPlanLeavesContentEmpty(t *testing.T) {
 	if siteConfig.Title != "Manifold" {
 		t.Fatalf("site title should defer to the schema default, got %q", siteConfig.Title)
 	}
-	if _, err := database.GetThoughtConfig(); err != nil {
+	if _, err := database.GetThoughtConfig(ctx); err != nil {
 		t.Fatalf("thoughts_config singleton must exist: %v", err)
 	}
-	if _, err := database.GetWritingConfig(); err != nil {
+	if _, err := database.GetWritingConfig(ctx); err != nil {
 		t.Fatalf("writings_config singleton must exist: %v", err)
 	}
 }
 
 func TestSeedDoesNotResurrectDeletedContent(t *testing.T) {
+	ctx := t.Context()
 	path := filepath.Join(t.TempDir(), "manifold.db")
-	database, err := Open(path)
+	database, err := Open(ctx, path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,7 +71,7 @@ func TestSeedDoesNotResurrectDeletedContent(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	reopened, err := Open(path)
+	reopened, err := Open(ctx, path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +83,7 @@ func TestSeedDoesNotResurrectDeletedContent(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	third, err := Open(path)
+	third, err := Open(ctx, path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,6 +94,7 @@ func TestSeedDoesNotResurrectDeletedContent(t *testing.T) {
 }
 
 func TestWithSeedPlanAppliesCustomContents(t *testing.T) {
+	ctx := t.Context()
 	plan, err := seed.Dev()
 	if err != nil {
 		t.Fatal(err)
@@ -99,13 +102,13 @@ func TestWithSeedPlanAppliesCustomContents(t *testing.T) {
 	plan.Contents = []seed.ContentSeed{
 		{ID: "custom_1", Kind: model.ContentKindThought, Slug: "custom-draft", Title: "Custom Draft", Body: "Custom body.", Status: model.StatusDraft},
 	}
-	database, err := Open(":memory:", WithSeedPlan(plan))
+	database, err := Open(ctx, ":memory:", WithSeedPlan(plan))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer database.Close()
 
-	items, err := database.ListContent(true, ContentListOptions{Page: 1, PageSize: 10})
+	items, err := database.ListContent(ctx, true, ContentListOptions{Page: 1, PageSize: 10})
 	if err != nil {
 		t.Fatal(err)
 	}

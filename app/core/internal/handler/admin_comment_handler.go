@@ -16,7 +16,7 @@ import (
 )
 
 func (h *apiHandler) adminCreateComment(w http.ResponseWriter, r *http.Request) {
-	content, err := h.store.GetContentByID(chi.URLParam(r, "id"), true)
+	content, err := h.store.GetContentByID(r.Context(), chi.URLParam(r, "id"), true)
 	if errors.Is(err, store.ErrContentNotFound) || errors.Is(err, sql.ErrNoRows) {
 		WriteError(w, http.StatusNotFound, apierror.ContentNotFound, "Content was not found.")
 		return
@@ -37,7 +37,7 @@ func (h *apiHandler) adminListComments(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if options.ContentID != "" {
-		if _, err := h.store.GetContentByID(options.ContentID, true); errors.Is(err, store.ErrContentNotFound) {
+		if _, err := h.store.GetContentByID(r.Context(), options.ContentID, true); errors.Is(err, store.ErrContentNotFound) {
 			WriteError(w, http.StatusNotFound, apierror.ContentNotFound, "Content was not found.")
 			return
 		} else if err != nil {
@@ -45,7 +45,7 @@ func (h *apiHandler) adminListComments(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	result, err := h.store.ListAdminComments(options)
+	result, err := h.store.ListAdminComments(r.Context(), options)
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, apierror.CommentsUnavailable, "Comments are unavailable.")
 		return
@@ -70,7 +70,7 @@ func (h *apiHandler) adminUnhideComment(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *apiHandler) setCommentHidden(w http.ResponseWriter, r *http.Request, hidden bool) {
-	err := h.mutations.SetCommentHidden(mutationRequest(r), chi.URLParam(r, "id"), hidden)
+	err := h.mutations.SetCommentHidden(r.Context(), mutationRequest(r), chi.URLParam(r, "id"), hidden)
 	if errors.Is(err, sql.ErrNoRows) {
 		WriteError(w, http.StatusNotFound, apierror.CommentNotFound, "Comment was not found.")
 		return
@@ -105,7 +105,7 @@ func (h *apiHandler) adminUpdateCommentAuthor(w http.ResponseWriter, r *http.Req
 		WriteError(w, http.StatusUnprocessableEntity, apierror.ValidationError, err.Error())
 		return
 	}
-	err = h.mutations.UpdateCommentAuthor(mutationRequest(r), chi.URLParam(r, "id"), update)
+	err = h.mutations.UpdateCommentAuthor(r.Context(), mutationRequest(r), chi.URLParam(r, "id"), update)
 	if errors.Is(err, sql.ErrNoRows) {
 		WriteError(w, http.StatusNotFound, apierror.CommentNotFound, "Comment was not found.")
 		return
@@ -174,7 +174,7 @@ func parseCommentAuthorUpdate(input updateCommentAuthorInput) (store.CommentAuth
 }
 
 func (h *apiHandler) setCommentDeleted(w http.ResponseWriter, r *http.Request, deleted bool) {
-	err := h.mutations.SetCommentDeleted(mutationRequest(r), chi.URLParam(r, "id"), deleted)
+	err := h.mutations.SetCommentDeleted(r.Context(), mutationRequest(r), chi.URLParam(r, "id"), deleted)
 	if err != nil {
 		WriteError(w, http.StatusNotFound, apierror.CommentNotFound, "Comment was not found.")
 		return

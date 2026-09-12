@@ -54,7 +54,7 @@ func (h *apiHandler) submitAnchor(w http.ResponseWriter, r *http.Request, source
 	}
 	// Arbitrary payloads hash the exact UTF-8 bytes as submitted; nothing is
 	// canonicalized or stored (docs/chain.md §3.4).
-	anchor, err := ledger.Submit(source, []byte(input.Payload), input.Label, "", nil)
+	anchor, err := ledger.Submit(r.Context(), source, []byte(input.Payload), input.Label, "", nil)
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, apierror.AnchorSubmitFailed, "The anchor could not be submitted.")
 		return

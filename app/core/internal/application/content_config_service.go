@@ -1,12 +1,14 @@
 package application
 
 import (
+	"context"
+
 	"github.com/manifold-space/manifold/app/core/internal/chain"
 	"github.com/manifold-space/manifold/app/core/internal/model"
 )
 
-func (s *Service) SetPinnedIDs(request Request, kind model.ContentKind, ids []string) error {
-	if err := s.store.SetPinnedIds(kind, ids); err != nil {
+func (s *Service) SetPinnedIDs(ctx context.Context, request Request, kind model.ContentKind, ids []string) error {
+	if err := s.store.SetPinnedIds(ctx, kind, ids); err != nil {
 		return err
 	}
 	resourceType, resourceID, eventName := "thoughts_config", "thoughts_1", "thoughts.config.updated"
@@ -15,7 +17,7 @@ func (s *Service) SetPinnedIDs(request Request, kind model.ContentKind, ids []st
 	}
 	s.audit(request, eventName, resourceType, resourceID, nil)
 	if payload, label, ref, metadata, err := PinsPayload(kind, ids); err == nil {
-		s.anchor(request, chain.SourceSite, payload, label, ref, metadata)
+		s.anchor(ctx, request, chain.SourceSite, payload, label, ref, metadata)
 	}
 	return nil
 }

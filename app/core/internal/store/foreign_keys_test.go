@@ -12,9 +12,10 @@ import (
 // comments.reply_to_id, pins.content_id and chain_anchors.block_id foreign keys
 // would silently stop being enforced (docs/core.md).
 func TestForeignKeysSurviveConnectionRecycling(t *testing.T) {
+	ctx := t.Context()
 	// A file database rather than ":memory:", because dropping the only
 	// connection also drops an in-memory schema.
-	database, err := Open(filepath.Join(t.TempDir(), "foreign-keys.db"))
+	database, err := Open(ctx, filepath.Join(t.TempDir(), "foreign-keys.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

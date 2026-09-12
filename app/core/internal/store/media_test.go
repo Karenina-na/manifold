@@ -15,7 +15,8 @@ import (
 // deduplication exists to absorb into a 500. The loser now reads back the
 // winner's row.
 func TestInsertMediaDeduplicatesConcurrentUploads(t *testing.T) {
-	database, err := Open(":memory:")
+	ctx := t.Context()
+	database, err := Open(ctx, ":memory:")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,7 +39,7 @@ func TestInsertMediaDeduplicatesConcurrentUploads(t *testing.T) {
 		go func(index int) {
 			defer wait.Done()
 			<-start
-			media, created, err := database.InsertMedia("image/png", "logo.png", sha, data)
+			media, created, err := database.InsertMedia(ctx, "image/png", "logo.png", sha, data)
 			outcomes[index] = outcome{media: media, created: created, err: err}
 		}(index)
 	}
@@ -76,17 +77,18 @@ func TestInsertMediaDeduplicatesConcurrentUploads(t *testing.T) {
 // Re-uploading known bytes still returns the first row, including its filename:
 // the second upload must not rewrite the stored metadata.
 func TestInsertMediaReturnsTheExistingRowOnReUpload(t *testing.T) {
-	database, err := Open(":memory:")
+	ctx := t.Context()
+	database, err := Open(ctx, ":memory:")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer database.Close()
 
-	first, created, err := database.InsertMedia("image/png", "first.png", "aa11", []byte("bytes"))
+	first, created, err := database.InsertMedia(ctx, "image/png", "first.png", "aa11", []byte("bytes"))
 	if err != nil || !created {
 		t.Fatalf("first upload: created=%v err=%v", created, err)
 	}
-	second, created, err := database.InsertMedia("image/png", "second.png", "aa11", []byte("bytes"))
+	second, created, err := database.InsertMedia(ctx, "image/png", "second.png", "aa11", []byte("bytes"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,7 +103,8 @@ func TestInsertMediaReturnsTheExistingRowOnReUpload(t *testing.T) {
 // Media ids are random, not timestamp-derived: a clock-derived id is only as
 // unique as the clock, so uploads inside one tick collided on the primary key.
 func TestInsertMediaIDsAreRandom(t *testing.T) {
-	database, err := Open(":memory:")
+	ctx := t.Context()
+	database, err := Open(ctx, ":memory:")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,7 +112,7 @@ func TestInsertMediaIDsAreRandom(t *testing.T) {
 
 	seen := make(map[string]bool, 64)
 	for index := 0; index < 64; index++ {
-		media, _, err := database.InsertMedia("image/png", "x.png", fmt.Sprintf("digest-%d", index), []byte{byte(index)})
+		media, _, err := database.InsertMedia(ctx, "image/png", "x.png", fmt.Sprintf("digest-%d", index), []byte{byte(index)})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -130,13 +133,14 @@ func TestInsertMediaIDsAreRandom(t *testing.T) {
 // clause the reference lookup for `media_ab12` also matched a body embedding
 // `mediaXab12`, so the admin UI could list content that does not use the file.
 func TestMediaReferencesMatchTheIDLiterally(t *testing.T) {
-	database, err := Open(":memory:")
+	ctx := t.Context()
+	database, err := Open(ctx, ":memory:")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer database.Close()
 
-	media, _, err := database.InsertMedia("image/png", "probe.png", "digest-literal", []byte{1, 2, 3})
+	media, _, err := database.InsertMedia(ctx, "image/png", "probe.png", "digest-literal", []byte{1, 2, 3})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,21 +148,21 @@ func TestMediaReferencesMatchTheIDLiterally(t *testing.T) {
 	if decoyID == media.ID {
 		t.Fatalf("expected the underscore position in %q", media.ID)
 	}
-	real, err := database.CreateContent(model.ContentInput{
+	real, err := database.CreateContent(ctx, model.ContentInput{
 		Kind: model.ContentKindArticle, Slug: "uses-the-media", Title: stringPtr("Uses the media"),
 		Body: "![probe](/api/v1/media/" + media.ID + ")",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := database.CreateContent(model.ContentInput{
+	if _, err := database.CreateContent(ctx, model.ContentInput{
 		Kind: model.ContentKindArticle, Slug: "decoy-media", Title: stringPtr("Decoy"),
 		Body: "![probe](/api/v1/media/" + decoyID + ")",
 	}); err != nil {
 		t.Fatal(err)
 	}
 
-	refs, err := database.MediaReferences(media.ID)
+	refs, err := database.MediaReferences(ctx, media.ID)
 	if err != nil {
 		t.Fatal(err)
 	}

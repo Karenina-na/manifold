@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -38,8 +39,8 @@ func scanContent(scanner interface{ Scan(dest ...any) error }) (model.Content, e
 	return c, nil
 }
 
-func (s *Store) scanContents(query string, args ...any) ([]model.Content, error) {
-	rows, err := s.DB.Query(query, args...)
+func (s *Store) scanContents(ctx context.Context, query string, args ...any) ([]model.Content, error) {
+	rows, err := s.DB.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -126,7 +127,7 @@ func clampPagination(page, pageSize, totalItems int) (int, int) {
 // ListContent is the single listing query behind both the public and admin
 // surfaces. includeDrafts selects the admin projection (all statuses unless a
 // status filter narrows it).
-func (s *Store) ListContent(includeDrafts bool, options ContentListOptions) (ContentListResult, error) {
+func (s *Store) ListContent(ctx context.Context, includeDrafts bool, options ContentListOptions) (ContentListResult, error) {
 	pageSize := options.PageSize
 	if pageSize <= 0 {
 		pageSize = 20
@@ -140,11 +141,11 @@ func (s *Store) ListContent(includeDrafts bool, options ContentListOptions) (Con
 	}
 	where, args := contentListWhere(includeDrafts, options)
 	var total int
-	if err := s.DB.QueryRow(`SELECT COUNT(*) FROM content `+where, args...).Scan(&total); err != nil {
+	if err := s.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM content `+where, args...).Scan(&total); err != nil {
 		return ContentListResult{}, err
 	}
 	page, totalPages := clampPagination(page, pageSize, total)
-	items, err := s.scanContents(`SELECT `+contentColumns+` FROM content `+where+contentSortClause(options.Sort)+` LIMIT ? OFFSET ?`, append(args, pageSize, (page-1)*pageSize)...)
+	items, err := s.scanContents(ctx, `SELECT `+contentColumns+` FROM content `+where+contentSortClause(options.Sort)+` LIMIT ? OFFSET ?`, append(args, pageSize, (page-1)*pageSize)...)
 	if err != nil {
 		return ContentListResult{}, err
 	}
@@ -159,7 +160,7 @@ func (s *Store) ListContent(includeDrafts bool, options ContentListOptions) (Con
 // HomeTimeline returns the bounded public projection used by the homepage's
 // chronological Updates rail. The query is intentionally separate from the
 // general listing API so the homepage cannot request an unbounded history.
-func (s *Store) HomeTimeline(limit int) ([]model.HomeTimelineItem, int, bool, error) {
+func (s *Store) HomeTimeline(ctx context.Context, limit int) ([]model.HomeTimelineItem, int, bool, error) {
 	if limit <= 0 {
 		limit = 1000
 	}
@@ -167,10 +168,10 @@ func (s *Store) HomeTimeline(limit int) ([]model.HomeTimelineItem, int, bool, er
 		limit = 1000
 	}
 	var total int
-	if err := s.DB.QueryRow(`SELECT COUNT(*) FROM content WHERE status = 'PUBLISHED'`).Scan(&total); err != nil {
+	if err := s.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM content WHERE status = 'PUBLISHED'`).Scan(&total); err != nil {
 		return nil, 0, false, err
 	}
-	rows, err := s.DB.Query(`
+	rows, err := s.DB.QueryContext(ctx, `
 		SELECT id, kind, slug, title, summary, published_at
 		FROM (
 			SELECT id, kind, slug, title, summary, published_at
@@ -198,7 +199,7 @@ func (s *Store) HomeTimeline(limit int) ([]model.HomeTimelineItem, int, bool, er
 	return items, total, total > len(items), nil
 }
 
-func (s *Store) Tags(kind model.ContentKind) ([]model.TagSummary, error) {
+func (s *Store) Tags(ctx context.Context, kind model.ContentKind) ([]model.TagSummary, error) {
 	query := `SELECT content_tags.tag, COUNT(*) FROM content_tags JOIN content ON content.id = content_tags.content_id WHERE content.status = 'PUBLISHED'`
 	args := []any{}
 	if kind != "" {
@@ -206,7 +207,7 @@ func (s *Store) Tags(kind model.ContentKind) ([]model.TagSummary, error) {
 		args = append(args, kind)
 	}
 	query += ` GROUP BY content_tags.tag ORDER BY COUNT(*) DESC, content_tags.tag ASC`
-	rows, err := s.DB.Query(query, args...)
+	rows, err := s.DB.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -224,12 +225,12 @@ func (s *Store) Tags(kind model.ContentKind) ([]model.TagSummary, error) {
 
 // GetContentBySlug resolves a single published-or-draft (per includeDrafts)
 // row strictly by slug.
-func (s *Store) GetContentBySlug(slug string, includeDrafts bool) (model.Content, error) {
+func (s *Store) GetContentBySlug(ctx context.Context, slug string, includeDrafts bool) (model.Content, error) {
 	query := `SELECT ` + contentColumns + ` FROM content WHERE slug = ? AND status != 'DELETED'`
 	if !includeDrafts {
 		query += ` AND status = 'PUBLISHED'`
 	}
-	row := s.DB.QueryRow(query, slug)
+	row := s.DB.QueryRowContext(ctx, query, slug)
 	content, err := scanContent(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return model.Content{}, ErrContentNotFound
@@ -238,12 +239,12 @@ func (s *Store) GetContentBySlug(slug string, includeDrafts bool) (model.Content
 }
 
 // GetContentByID serves admin reads and pin resolution.
-func (s *Store) GetContentByID(id string, includeDrafts bool) (model.Content, error) {
+func (s *Store) GetContentByID(ctx context.Context, id string, includeDrafts bool) (model.Content, error) {
 	query := `SELECT ` + contentColumns + ` FROM content WHERE id = ? AND status != 'DELETED'`
 	if !includeDrafts {
 		query += ` AND status = 'PUBLISHED'`
 	}
-	row := s.DB.QueryRow(query, id)
+	row := s.DB.QueryRowContext(ctx, query, id)
 	content, err := scanContent(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return model.Content{}, ErrContentNotFound
@@ -251,12 +252,12 @@ func (s *Store) GetContentByID(id string, includeDrafts bool) (model.Content, er
 	return content, err
 }
 
-func (s *Store) getContentByID(id string, includeDeleted bool) (model.Content, error) {
+func (s *Store) getContentByID(ctx context.Context, id string, includeDeleted bool) (model.Content, error) {
 	query := `SELECT ` + contentColumns + ` FROM content WHERE id = ?`
 	if !includeDeleted {
 		query += ` AND status != 'DELETED'`
 	}
-	content, err := scanContent(s.DB.QueryRow(query, id))
+	content, err := scanContent(s.DB.QueryRowContext(ctx, query, id))
 	if errors.Is(err, sql.ErrNoRows) {
 		return model.Content{}, ErrContentNotFound
 	}
@@ -265,14 +266,14 @@ func (s *Store) getContentByID(id string, includeDeleted bool) (model.Content, e
 
 // PinnedContent resolves the configured pins for a kind in display order
 // (position, then pin time). Pins are explicit: an empty pin set returns nil.
-func (s *Store) PinnedContent(kind model.ContentKind) ([]model.Content, error) {
-	ids, err := s.GetPinnedIds(kind)
+func (s *Store) PinnedContent(ctx context.Context, kind model.ContentKind) ([]model.Content, error) {
+	ids, err := s.GetPinnedIds(ctx, kind)
 	if err != nil {
 		return nil, err
 	}
 	items := make([]model.Content, 0, len(ids))
 	for _, id := range ids {
-		item, err := s.GetContentByID(id, false)
+		item, err := s.GetContentByID(ctx, id, false)
 		if err != nil {
 			if errors.Is(err, ErrContentNotFound) {
 				continue

@@ -59,10 +59,11 @@ func TestAuthMeProvidersWhenConfigured(t *testing.T) {
 }
 
 func TestAuthMeWithVisitorSession(t *testing.T) {
+	ctx := t.Context()
 	router, database := newTestRouterWithConfig(t, func(cfg *config.Config) {
 		*cfg = *enabledConfig()
 	})
-	identity, err := database.UpsertIdentity("github", "1001", "Octo Cat", "https://avatars.example/u/1001", "octo@example.com")
+	identity, err := database.UpsertIdentity(ctx, "github", "1001", "Octo Cat", "https://avatars.example/u/1001", "octo@example.com")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,11 +96,12 @@ func TestGithubExchangeDisabled(t *testing.T) {
 // TestCreateCommentWithVisitorSession verifies the session is authoritative:
 // the GitHub display name and avatar replace the client-submitted identity.
 func TestCreateCommentWithVisitorSession(t *testing.T) {
+	ctx := t.Context()
 	router, database := newTestRouterWithConfig(t, func(cfg *config.Config) {
 		*cfg = *enabledConfig()
 	})
 	slug := seededContentSlug(t, database)
-	identity, err := database.UpsertIdentity("github", "2002", "Signed Reader", "https://avatars.example/u/2002", "")
+	identity, err := database.UpsertIdentity(ctx, "github", "2002", "Signed Reader", "https://avatars.example/u/2002", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -156,12 +158,13 @@ func TestCreateCommentAnonymousUnaffected(t *testing.T) {
 // comment endpoints have a target; the in-memory router DB carries no seed.
 func seededContentSlug(t *testing.T, database *store.Store) string {
 	t.Helper()
+	ctx := t.Context()
 	title := "OAuth test article"
-	content, err := database.CreateContent(model.ContentInput{Kind: model.ContentKindArticle, Slug: "oauth-test-article", Title: &title, Body: "Body"})
+	content, err := database.CreateContent(ctx, model.ContentInput{Kind: model.ContentKindArticle, Slug: "oauth-test-article", Title: &title, Body: "Body"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := database.SetContentStatus(content.ID, model.StatusPublished); err != nil {
+	if err := database.SetContentStatus(ctx, content.ID, model.StatusPublished); err != nil {
 		t.Fatal(err)
 	}
 	return content.Slug

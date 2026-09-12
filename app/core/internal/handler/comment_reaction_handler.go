@@ -16,7 +16,7 @@ func (h *apiHandler) getLikes(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusBadRequest, apierror.VisitorIDInvalid, "Visitor ID is invalid.")
 		return
 	}
-	summary, err := h.store.GetLikeSummary(content.ID, visitorID)
+	summary, err := h.store.GetLikeSummary(r.Context(), content.ID, visitorID)
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, apierror.LikesUnavailable, "Likes are unavailable.")
 		return
@@ -42,11 +42,11 @@ func (h *apiHandler) mutateLike(w http.ResponseWriter, r *http.Request, enabled 
 		WriteError(w, http.StatusBadRequest, apierror.VisitorIDInvalid, "Visitor ID is required and invalid.")
 		return
 	}
-	if err := h.mutations.SetLike(mutationRequest(r), content, visitorID, enabled); err != nil {
+	if err := h.mutations.SetLike(r.Context(), mutationRequest(r), content, visitorID, enabled); err != nil {
 		WriteError(w, http.StatusInternalServerError, apierror.LikeUpdateFailed, "Like could not be updated.")
 		return
 	}
-	summary, err := h.store.GetLikeSummary(content.ID, visitorID)
+	summary, err := h.store.GetLikeSummary(r.Context(), content.ID, visitorID)
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, apierror.LikesUnavailable, "Likes are unavailable.")
 		return

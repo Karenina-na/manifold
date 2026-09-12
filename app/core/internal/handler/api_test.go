@@ -24,8 +24,9 @@ import (
 
 func newTestRouter(t *testing.T) http.Handler {
 	t.Helper()
+	ctx := t.Context()
 	hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.MinCost)
-	database, err := store.Open(":memory:", store.WithAdminCredential("admin", string(hash)))
+	database, err := store.Open(ctx, ":memory:", store.WithAdminCredential("admin", string(hash)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,8 +39,9 @@ func newTestRouter(t *testing.T) http.Handler {
 
 func newTestRouterWithConfig(t *testing.T, mutate func(*config.Config)) (http.Handler, *store.Store) {
 	t.Helper()
+	ctx := t.Context()
 	hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.MinCost)
-	database, err := store.Open(":memory:", store.WithAdminCredential("admin", string(hash)))
+	database, err := store.Open(ctx, ":memory:", store.WithAdminCredential("admin", string(hash)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,8 +58,9 @@ func newTestRouterWithConfig(t *testing.T, mutate func(*config.Config)) (http.Ha
 // mines within the same MineOnce pass the miner loop runs each tick.
 func newTestRouterWithChain(t *testing.T, mutate func(*config.Config)) (http.Handler, *store.Store) {
 	t.Helper()
+	ctx := t.Context()
 	hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.MinCost)
-	database, err := store.Open(":memory:", store.WithAdminCredential("admin", string(hash)))
+	database, err := store.Open(ctx, ":memory:", store.WithAdminCredential("admin", string(hash)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +74,7 @@ func newTestRouterWithChain(t *testing.T, mutate func(*config.Config)) (http.Han
 		ProofMode: chain.ProofModeSim, Difficulty: 0, SimDelay: time.Millisecond,
 		BatchSize: 1, MaxBlockAnchors: 500, FlushTimeout: time.Millisecond, AnchorMaxBytes: 1 << 16,
 	})
-	if _, err := ledger.EnsureSiteKey(); err != nil {
+	if _, err := ledger.EnsureSiteKey(ctx); err != nil {
 		t.Fatal(err)
 	}
 	router, closeRouter := handler.RouterWithLifecycle(cfg, database, ledger)
@@ -609,13 +612,14 @@ func TestPublicCommentsPaginationAndSearch(t *testing.T) {
 }
 
 func TestCommentModerationEndpointsAndPublicHiddenSearch(t *testing.T) {
+	ctx := t.Context()
 	router, database := newTestRouterWithConfig(t, func(cfg *config.Config) {})
 	title := "Moderation endpoints"
-	content, err := database.CreateContent(model.ContentInput{Kind: model.ContentKindArticle, Slug: "moderation-endpoints", Title: &title, Body: "Body"})
+	content, err := database.CreateContent(ctx, model.ContentInput{Kind: model.ContentKindArticle, Slug: "moderation-endpoints", Title: &title, Body: "Body"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := database.SetContentStatus(content.ID, model.StatusPublished); err != nil {
+	if err := database.SetContentStatus(ctx, content.ID, model.StatusPublished); err != nil {
 		t.Fatal(err)
 	}
 	token := adminToken(t, router)

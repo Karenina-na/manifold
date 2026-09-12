@@ -18,7 +18,7 @@ func (h *apiHandler) adminListContent(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusBadRequest, apierror.InvalidQuery, err.Error())
 		return
 	}
-	result, err := h.store.ListContent(true, options)
+	result, err := h.store.ListContent(r.Context(), true, options)
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, apierror.ContentUnavailable, "Content is unavailable.")
 		return
@@ -35,7 +35,7 @@ func (h *apiHandler) adminGetContent(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *apiHandler) writeAdminContent(w http.ResponseWriter, r *http.Request) {
-	content, err := h.store.GetContentByID(chi.URLParam(r, "id"), true)
+	content, err := h.store.GetContentByID(r.Context(), chi.URLParam(r, "id"), true)
 	if err != nil {
 		WriteError(w, http.StatusNotFound, apierror.ContentNotFound, "Content was not found.")
 		return
@@ -46,7 +46,7 @@ func (h *apiHandler) writeAdminContent(w http.ResponseWriter, r *http.Request) {
 // resolveAdminContent loads the target row for admin mutations (all statuses
 // except DELETED, which only restore can touch).
 func (h *apiHandler) resolveAdminContent(w http.ResponseWriter, r *http.Request) (model.Content, bool) {
-	content, err := h.store.GetContentByID(chi.URLParam(r, "id"), true)
+	content, err := h.store.GetContentByID(r.Context(), chi.URLParam(r, "id"), true)
 	if errors.Is(err, store.ErrContentNotFound) || errors.Is(err, sql.ErrNoRows) {
 		WriteError(w, http.StatusNotFound, apierror.ContentNotFound, "Content was not found.")
 		return model.Content{}, false
@@ -74,7 +74,7 @@ func (h *apiHandler) adminCreateContent(w http.ResponseWriter, r *http.Request) 
 		WriteError(w, http.StatusUnprocessableEntity, apierror.ValidationError, err.Error())
 		return
 	}
-	created, err := h.mutations.CreateContent(mutationRequest(r), input)
+	created, err := h.mutations.CreateContent(r.Context(), mutationRequest(r), input)
 	if errors.Is(err, store.ErrSlugTaken) {
 		WriteError(w, http.StatusConflict, apierror.SlugTaken, "Another piece already uses this slug.")
 		return
@@ -102,7 +102,7 @@ func (h *apiHandler) adminUpdateContent(w http.ResponseWriter, r *http.Request) 
 		WriteError(w, http.StatusUnprocessableEntity, apierror.ValidationError, err.Error())
 		return
 	}
-	updated, err := h.mutations.UpdateContent(mutationRequest(r), current, input)
+	updated, err := h.mutations.UpdateContent(r.Context(), mutationRequest(r), current, input)
 	if errors.Is(err, store.ErrContentNotFound) {
 		WriteError(w, http.StatusNotFound, apierror.ContentNotFound, "Content was not found.")
 		return
@@ -135,7 +135,7 @@ func (h *apiHandler) setContentStatus(w http.ResponseWriter, r *http.Request, st
 	if !ok {
 		return
 	}
-	updated, err := h.mutations.SetContentStatus(mutationRequest(r), current, status)
+	updated, err := h.mutations.SetContentStatus(r.Context(), mutationRequest(r), current, status)
 	if err != nil {
 		WriteError(w, http.StatusNotFound, apierror.ContentNotFound, "Content was not found.")
 		return
@@ -148,7 +148,7 @@ func (h *apiHandler) adminDeleteContent(w http.ResponseWriter, r *http.Request) 
 	if !ok {
 		return
 	}
-	if err := h.mutations.DeleteContent(mutationRequest(r), current); err != nil {
+	if err := h.mutations.DeleteContent(r.Context(), mutationRequest(r), current); err != nil {
 		WriteError(w, http.StatusNotFound, apierror.ContentNotFound, "Content was not found.")
 		return
 	}
@@ -156,7 +156,7 @@ func (h *apiHandler) adminDeleteContent(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *apiHandler) adminRestoreContent(w http.ResponseWriter, r *http.Request) {
-	restored, err := h.mutations.RestoreContent(mutationRequest(r), chi.URLParam(r, "id"))
+	restored, err := h.mutations.RestoreContent(r.Context(), mutationRequest(r), chi.URLParam(r, "id"))
 	if errors.Is(err, store.ErrContentNotFound) {
 		WriteError(w, http.StatusNotFound, apierror.ContentNotFound, "Content was not found.")
 		return

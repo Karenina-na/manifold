@@ -10,8 +10,8 @@ import (
 	"github.com/manifold-space/manifold/app/core/internal/model"
 )
 
-func (h *apiHandler) profile(w http.ResponseWriter, _ *http.Request) {
-	profile, err := h.store.GetProfile()
+func (h *apiHandler) profile(w http.ResponseWriter, r *http.Request) {
+	profile, err := h.store.GetProfile(r.Context())
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, apierror.ProfileUnavailable, "Profile is unavailable.")
 		return
@@ -27,19 +27,19 @@ type SiteCompositionResponse struct {
 	PinnedWritings []model.PublicContent `json:"pinnedWritings"`
 }
 
-func (h *apiHandler) site(w http.ResponseWriter, _ *http.Request) {
-	config, err := h.store.GetSiteConfig()
+func (h *apiHandler) site(w http.ResponseWriter, r *http.Request) {
+	config, err := h.store.GetSiteConfig(r.Context())
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, apierror.SiteUnavailable, "Site configuration is unavailable.")
 		return
 	}
 	response := SiteCompositionResponse{SiteConfig: config, PinnedThoughts: []model.PublicContent{}, PinnedWritings: []model.PublicContent{}}
-	if pinned, err := h.store.PinnedContent(model.ContentKindThought); err == nil {
+	if pinned, err := h.store.PinnedContent(r.Context(), model.ContentKindThought); err == nil {
 		for _, item := range pinned {
 			response.PinnedThoughts = append(response.PinnedThoughts, model.ToPublicContent(item))
 		}
 	}
-	if pinned, err := h.store.PinnedContent(model.ContentKindArticle); err == nil {
+	if pinned, err := h.store.PinnedContent(r.Context(), model.ContentKindArticle); err == nil {
 		for _, item := range pinned {
 			response.PinnedWritings = append(response.PinnedWritings, model.ToPublicContent(item))
 		}
@@ -47,8 +47,8 @@ func (h *apiHandler) site(w http.ResponseWriter, _ *http.Request) {
 	WriteJSON(w, http.StatusOK, response)
 }
 
-func (h *apiHandler) adminProfile(w http.ResponseWriter, _ *http.Request) {
-	h.profile(w, nil)
+func (h *apiHandler) adminProfile(w http.ResponseWriter, r *http.Request) {
+	h.profile(w, r)
 }
 
 func (h *apiHandler) adminUpdateProfile(w http.ResponseWriter, r *http.Request) {
@@ -88,7 +88,7 @@ func (h *apiHandler) adminUpdateProfile(w http.ResponseWriter, r *http.Request) 
 		WriteError(w, http.StatusUnprocessableEntity, apierror.ValidationError, err.Error())
 		return
 	}
-	if err := h.mutations.UpdateProfile(mutationRequest(r), profile); err != nil {
+	if err := h.mutations.UpdateProfile(r.Context(), mutationRequest(r), profile); err != nil {
 		WriteError(w, http.StatusInternalServerError, apierror.ProfileUpdateFailed, "Profile could not be updated.")
 		return
 	}

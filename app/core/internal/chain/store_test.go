@@ -21,7 +21,8 @@ func testConfig(mutate func(*LedgerConfig)) LedgerConfig {
 // the same migration set, so the shared *sql.DB is handed straight to Ledger.
 func newLedgerDB(t *testing.T) (*Ledger, *store.Store) {
 	t.Helper()
-	s, err := store.Open(":memory:")
+	ctx := t.Context()
+	s, err := store.Open(ctx, ":memory:")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -31,23 +32,25 @@ func newLedgerDB(t *testing.T) (*Ledger, *store.Store) {
 
 func newLedgerWithKey(t *testing.T, mutate func(*LedgerConfig)) *Ledger {
 	t.Helper()
+	ctx := t.Context()
 	ledger, _ := newLedgerDB(t)
 	if mutate != nil {
 		ledger.cfg = testConfig(mutate)
 	}
-	if _, err := ledger.EnsureSiteKey(); err != nil {
+	if _, err := ledger.EnsureSiteKey(ctx); err != nil {
 		t.Fatal(err)
 	}
 	return ledger
 }
 
 func TestEnsureSiteKeyIsIdempotent(t *testing.T) {
+	ctx := t.Context()
 	ledger := newLedgerWithKey(t, nil)
-	key1, err := ledger.EnsureSiteKey()
+	key1, err := ledger.EnsureSiteKey(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	key2, err := ledger.EnsureSiteKey()
+	key2, err := ledger.EnsureSiteKey(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,8 +69,9 @@ func TestEnsureSiteKeyIsIdempotent(t *testing.T) {
 }
 
 func TestSubmitPersistsPendingAnchor(t *testing.T) {
+	ctx := t.Context()
 	ledger := newLedgerWithKey(t, nil)
-	anchor, err := ledger.Submit("content", []byte(`{"slug":"a"}`), "", "", map[string]any{"contentId": "content_1", "status": "PUBLISHED"})
+	anchor, err := ledger.Submit(ctx, "content", []byte(`{"slug":"a"}`), "", "", map[string]any{"contentId": "content_1", "status": "PUBLISHED"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +87,7 @@ func TestSubmitPersistsPendingAnchor(t *testing.T) {
 	if !VerifySubjectHash(anchor.SitePublicKey, anchor.SubjectHash, anchor.SiteSignature) {
 		t.Fatal("site signature must verify")
 	}
-	pending, err := ledger.PendingAnchors()
+	pending, err := ledger.PendingAnchors(ctx)
 	if err != nil || len(pending) != 1 {
 		t.Fatalf("pending: %v %v", pending, err)
 	}
@@ -93,19 +97,21 @@ func TestSubmitPersistsPendingAnchor(t *testing.T) {
 }
 
 func TestSubmitRejectsUnknownSource(t *testing.T) {
+	ctx := t.Context()
 	ledger := newLedgerWithKey(t, nil)
-	if _, err := ledger.Submit("nonsense", []byte("x"), "", "", nil); err == nil {
+	if _, err := ledger.Submit(ctx, "nonsense", []byte("x"), "", "", nil); err == nil {
 		t.Fatal("unknown source must be rejected")
 	}
 }
 
 func TestInsertBlockCreatesGenesisThenBackfills(t *testing.T) {
+	ctx := t.Context()
 	ledger := newLedgerWithKey(t, func(cfg *LedgerConfig) { cfg.SimDelay = 0 })
-	a1, err := ledger.Submit("content", []byte("p1"), "", "", nil)
+	a1, err := ledger.Submit(ctx, "content", []byte("p1"), "", "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	a2, err := ledger.Submit("visitor", []byte("p2"), "hello", "", nil)
+	a2, err := ledger.Submit(ctx, "visitor", []byte("p2"), "hello", "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +143,7 @@ func TestInsertBlockCreatesGenesisThenBackfills(t *testing.T) {
 		t.Fatalf("block id must be derived from index, got %s", block.ID)
 	}
 	for _, id := range []string{a1.ID, a2.ID} {
-		anchor, err := ledger.GetAnchor(id)
+		anchor, err := ledger.GetAnchor(ctx, id)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -145,7 +151,7 @@ func TestInsertBlockCreatesGenesisThenBackfills(t *testing.T) {
 			t.Fatalf("anchor %s not backfilled", id)
 		}
 	}
-	report, err := ledger.ReplayVerify()
+	report, err := ledger.ReplayVerify(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -172,6 +178,7 @@ func TestInsertBlockGenesisStructure(t *testing.T) {
 }
 
 func TestInsertBlockHandlesProofMode(t *testing.T) {
+	ctx := t.Context()
 	ledger := newLedgerWithKey(t, func(cfg *LedgerConfig) {
 		cfg.ProofMode = ProofModeProof
 		cfg.Difficulty = 1
@@ -180,7 +187,7 @@ func TestInsertBlockHandlesProofMode(t *testing.T) {
 	if _, err := ledger.InsertBlock(nil); err != nil {
 		t.Fatal(err)
 	}
-	a, err := ledger.Submit("visitor", []byte("pow"), "", "", nil)
+	a, err := ledger.Submit(ctx, "visitor", []byte("pow"), "", "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -197,17 +204,18 @@ func TestInsertBlockHandlesProofMode(t *testing.T) {
 }
 
 func TestListAnchorsFiltersAndPaginates(t *testing.T) {
+	ctx := t.Context()
 	ledger := newLedgerWithKey(t, nil)
-	if _, err := ledger.Submit("content", []byte("c1"), "", "content_1", map[string]any{"contentId": "content_1"}); err != nil {
+	if _, err := ledger.Submit(ctx, "content", []byte("c1"), "", "content_1", map[string]any{"contentId": "content_1"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ledger.Submit("visitor", []byte("v1"), "", "", nil); err != nil {
+	if _, err := ledger.Submit(ctx, "visitor", []byte("v1"), "", "", nil); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ledger.Submit("content", []byte("c2"), "", "content_2", map[string]any{"contentId": "content_2"}); err != nil {
+	if _, err := ledger.Submit(ctx, "content", []byte("c2"), "", "content_2", map[string]any{"contentId": "content_2"}); err != nil {
 		t.Fatal(err)
 	}
-	items, total, err := ledger.ListAnchors(AnchorListOptions{Source: "content", Page: 1, PageSize: 10})
+	items, total, err := ledger.ListAnchors(ctx, AnchorListOptions{Source: "content", Page: 1, PageSize: 10})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -217,18 +225,19 @@ func TestListAnchorsFiltersAndPaginates(t *testing.T) {
 	if items[0].SubjectRef != "content_2" && items[0].SubjectRef != "content_1" {
 		t.Fatalf("unexpected ref: %s", items[0].SubjectRef)
 	}
-	refItems, total, err := ledger.ListAnchors(AnchorListOptions{Ref: "content_1", Page: 1, PageSize: 10})
+	refItems, total, err := ledger.ListAnchors(ctx, AnchorListOptions{Ref: "content_1", Page: 1, PageSize: 10})
 	if err != nil || total != 1 || len(refItems) != 1 {
 		t.Fatalf("ref filter: %v %d %v", refItems, total, err)
 	}
 }
 
 func TestChainInfoCounts(t *testing.T) {
+	ctx := t.Context()
 	ledger := newLedgerWithKey(t, func(cfg *LedgerConfig) { cfg.SimDelay = 0; cfg.FlushTimeout = 0 })
-	if _, err := ledger.Submit("visitor", []byte("x"), "", "", nil); err != nil {
+	if _, err := ledger.Submit(ctx, "visitor", []byte("x"), "", "", nil); err != nil {
 		t.Fatal(err)
 	}
-	info, err := ledger.ChainInfo()
+	info, err := ledger.ChainInfo(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -238,7 +247,7 @@ func TestChainInfoCounts(t *testing.T) {
 	if _, err := ledger.MineOnce(); err != nil {
 		t.Fatal(err)
 	}
-	info, err = ledger.ChainInfo()
+	info, err = ledger.ChainInfo(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -248,12 +257,13 @@ func TestChainInfoCounts(t *testing.T) {
 }
 
 func TestMetadataJSONRoundTrip(t *testing.T) {
+	ctx := t.Context()
 	ledger := newLedgerWithKey(t, nil)
-	anchor, err := ledger.Submit("comment", []byte("m"), "", "", map[string]any{"commentId": "comment_1", "action": "created", "version": 2})
+	anchor, err := ledger.Submit(ctx, "comment", []byte("m"), "", "", map[string]any{"commentId": "comment_1", "action": "created", "version": 2})
 	if err != nil {
 		t.Fatal(err)
 	}
-	stored, err := ledger.GetAnchor(anchor.ID)
+	stored, err := ledger.GetAnchor(ctx, anchor.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -277,9 +287,10 @@ func TestMetadataJSONRoundTrip(t *testing.T) {
 // references the commentId even though its metadata also carries a
 // contentId, and sources without stable refs store the empty string.
 func TestSubmitStoresExplicitSubjectRef(t *testing.T) {
+	ctx := t.Context()
 	ledger := newLedgerWithKey(t, nil)
 
-	comment, err := ledger.Submit("comment", []byte("m"), "", "comment_1", map[string]any{"commentId": "comment_1", "contentId": "content_9", "action": "created"})
+	comment, err := ledger.Submit(ctx, "comment", []byte("m"), "", "comment_1", map[string]any{"commentId": "comment_1", "contentId": "content_9", "action": "created"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -287,7 +298,7 @@ func TestSubmitStoresExplicitSubjectRef(t *testing.T) {
 		t.Fatalf("comment ref must be the commentId, got %q", comment.SubjectRef)
 	}
 
-	reaction, err := ledger.Submit("reaction", []byte("r"), "", "", map[string]any{"contentId": "content_9", "action": "added"})
+	reaction, err := ledger.Submit(ctx, "reaction", []byte("r"), "", "", map[string]any{"contentId": "content_9", "action": "added"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -295,7 +306,7 @@ func TestSubmitStoresExplicitSubjectRef(t *testing.T) {
 		t.Fatalf("reaction ref must be empty, got %q", reaction.SubjectRef)
 	}
 
-	profile, err := ledger.Submit("profile", []byte("p"), "", "profile_1", map[string]any{})
+	profile, err := ledger.Submit(ctx, "profile", []byte("p"), "", "profile_1", map[string]any{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -303,7 +314,7 @@ func TestSubmitStoresExplicitSubjectRef(t *testing.T) {
 		t.Fatalf("profile ref must be profile_1, got %q", profile.SubjectRef)
 	}
 
-	stored, err := ledger.GetAnchor(comment.ID)
+	stored, err := ledger.GetAnchor(ctx, comment.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -317,7 +328,8 @@ func TestSubmitStoresExplicitSubjectRef(t *testing.T) {
 // (docs/chain.md §5). Without it the miner goroutine would run a collision
 // search that only ends when the process shuts down.
 func TestNewLedgerClampsProofDifficulty(t *testing.T) {
-	s, err := store.Open(":memory:")
+	ctx := t.Context()
+	s, err := store.Open(ctx, ":memory:")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -346,7 +358,8 @@ func TestNewLedgerClampsProofDifficulty(t *testing.T) {
 // NewLedger must leave the value alone instead of clamping a setting the miner
 // does not consult.
 func TestNewLedgerLeavesSimDifficultyAlone(t *testing.T) {
-	s, err := store.Open(":memory:")
+	ctx := t.Context()
+	s, err := store.Open(ctx, ":memory:")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -362,9 +375,10 @@ func TestNewLedgerLeavesSimDifficultyAlone(t *testing.T) {
 // INSERTs the site key when the row is missing, so the first GET on a fresh
 // database created chain_keys as a side effect of a read.
 func TestChainInfoDoesNotCreateTheSiteKey(t *testing.T) {
+	ctx := t.Context()
 	ledger, s := newLedgerDB(t)
 
-	info, err := ledger.ChainInfo()
+	info, err := ledger.ChainInfo(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -383,13 +397,14 @@ func TestChainInfoDoesNotCreateTheSiteKey(t *testing.T) {
 // The counterpart: once the key exists, ChainInfo reports it. This is what the
 // production path sees, because cmd/server ensures the key before serving.
 func TestChainInfoReportsTheSiteKeyOnceItExists(t *testing.T) {
+	ctx := t.Context()
 	ledger := newLedgerWithKey(t, nil)
-	key, err := ledger.EnsureSiteKey()
+	key, err := ledger.EnsureSiteKey(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	info, err := ledger.ChainInfo()
+	info, err := ledger.ChainInfo(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}

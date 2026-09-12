@@ -1,6 +1,7 @@
 package chain
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 )
@@ -10,13 +11,13 @@ import (
 // or signatures — surfaces as a located problem. The counts let the explorer
 // show exactly what a chain replay evaluated.
 type ReplayReport struct {
-	Intact       bool
-	Height       int
-	IndexChecks  int
-	PrevLinks    int
-	MerkleRoots  int
-	Signatures   int
-	Problems     []string
+	Intact      bool
+	Height      int
+	IndexChecks int
+	PrevLinks   int
+	MerkleRoots int
+	Signatures  int
+	Problems    []string
 }
 
 // ReplayVerify walks genesis→tip: recomputes each block hash (proofMode and
@@ -29,22 +30,22 @@ type ReplayReport struct {
 // commit a block mid-replay, and without a snapshot the orphan scan could
 // observe an anchor whose containing block the block query never saw — a
 // phantom tamper report under concurrency, not a real one.
-func (l *Ledger) ReplayVerify() (ReplayReport, error) {
-	tx, err := l.db.Begin()
+func (l *Ledger) ReplayVerify(ctx context.Context) (ReplayReport, error) {
+	tx, err := l.db.BeginTx(ctx, nil)
 	if err != nil {
 		return ReplayReport{}, err
 	}
 	// Read-only intent: every statement is a SELECT; rollback is enough.
 	defer func() { _ = tx.Rollback() }()
-	report, err := l.replayTx(tx)
+	report, err := l.replayTx(ctx, tx)
 	if err != nil {
 		return report, err
 	}
 	return report, tx.Commit()
 }
 
-func (l *Ledger) replayTx(tx *sql.Tx) (ReplayReport, error) {
-	blocks, err := l.blocksTx(tx)
+func (l *Ledger) replayTx(ctx context.Context, tx *sql.Tx) (ReplayReport, error) {
+	blocks, err := l.blocksTx(ctx, tx)
 	if err != nil {
 		return ReplayReport{}, err
 	}
@@ -79,7 +80,7 @@ func (l *Ledger) replayTx(tx *sql.Tx) (ReplayReport, error) {
 			add("block %s: cert_root %s does not match merkle root %s", block.ID, block.CertRoot, root)
 		}
 		if len(block.CertIDs) > 0 {
-			anchors, err := l.anchorsByIDsTx(tx, block.CertIDs)
+			anchors, err := l.anchorsByIDsTx(ctx, tx, block.CertIDs)
 			if err != nil {
 				return report, err
 			}
@@ -103,7 +104,7 @@ func (l *Ledger) replayTx(tx *sql.Tx) (ReplayReport, error) {
 		}
 	}
 	// Anchors claiming a block seat that no block claims back — same snapshot.
-	rows, err := tx.Query(`SELECT id, block_id FROM chain_anchors WHERE block_id IS NOT NULL`)
+	rows, err := tx.QueryContext(ctx, `SELECT id, block_id FROM chain_anchors WHERE block_id IS NOT NULL`)
 	if err != nil {
 		return report, err
 	}
@@ -126,8 +127,8 @@ func (l *Ledger) replayTx(tx *sql.Tx) (ReplayReport, error) {
 
 const genesisPrevHash = "0000000000000000000000000000000000000000000000000000000000000000"
 
-func (l *Ledger) blocksTx(tx *sql.Tx) ([]Block, error) {
-	rows, err := tx.Query(`SELECT ` + blockColumns + ` FROM chain_blocks ORDER BY block_index ASC`)
+func (l *Ledger) blocksTx(ctx context.Context, tx *sql.Tx) ([]Block, error) {
+	rows, err := tx.QueryContext(ctx, `SELECT `+blockColumns+` FROM chain_blocks ORDER BY block_index ASC`)
 	if err != nil {
 		return nil, err
 	}
@@ -143,7 +144,7 @@ func (l *Ledger) blocksTx(tx *sql.Tx) ([]Block, error) {
 	return blocks, rows.Err()
 }
 
-func (l *Ledger) anchorsByIDsTx(tx *sql.Tx, ids []string) ([]Anchor, error) {
+func (l *Ledger) anchorsByIDsTx(ctx context.Context, tx *sql.Tx, ids []string) ([]Anchor, error) {
 	if len(ids) == 0 {
 		return nil, nil
 	}
@@ -156,7 +157,7 @@ func (l *Ledger) anchorsByIDsTx(tx *sql.Tx, ids []string) ([]Anchor, error) {
 		placeholders += "?"
 		args = append(args, id)
 	}
-	rows, err := tx.Query(`SELECT `+anchorColumns+` FROM chain_anchors WHERE id IN (`+placeholders+`)`, args...)
+	rows, err := tx.QueryContext(ctx, `SELECT `+anchorColumns+` FROM chain_anchors WHERE id IN (`+placeholders+`)`, args...)
 	if err != nil {
 		return nil, err
 	}

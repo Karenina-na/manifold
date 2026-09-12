@@ -322,6 +322,7 @@ Metadata：Thought 使用 `mood/question/context/source`；Article 使用 Core �
 - `RouterWithLifecycle` 用于生产入口；监听失败会结束进程，正常关闭时先取消并等待矿工 goroutine，再最多等待 5 秒排空已接受的审计事件；`Router` 仅用于同步内部调用/测试。分层现状：HTTP handler 负责协议边界，**读路径直接调用 `internal/store`**，不经过 `internal/application`；`internal/application` 只承载写用例，以及随写发生的 audit、anchor 和 cache 失效编排；`internal/store` 隐藏 SQLite 查询。依赖方向因此是 handler → store（读）与 handler → application → store（写）两条无环路径，读路径不做二次封装是当前的分层选择而非缺失。公共 HTTP 契约不受启动生命周期影响。
 - 发布包 supervisor 在 Web 子进程异常退出时按退避独立重启 Web，Core 和 Admin 保持运行；连续 5 次立即失败后停止重启并记录 `service_restart_limit_reached`（此时 Core/Admin 仍在运行、`status` 报告 Web unhealthy），Web 连续运行满 60 秒后失败计数清零；Core 异常退出或 Admin 监听失败时才向其余进程发送 SIGTERM。`stop` 等待正常退出，超时后才发送 SIGKILL。包内后台运行不包含开机自启、日志轮转、HTTPS 或反向代理。
 - Core 限流默认按 TCP 对端地址分桶。仅当对端位于 `CORE_TRUSTED_PROXY_CIDRS` 时才读取 `X-Real-IP`；反向代理必须覆盖并清洗该头，不能透传客户端输入。该配置只改变限流身份识别，不改变 HTTP 契约。
+- 请求取消沿调用链传播：`internal/store` 与 `internal/chain` 的每个方法都以 `context.Context` 为首参，SQL 一律走 `QueryContext`/`QueryRowContext`/`ExecContext` 和 `BeginTx(ctx, nil)`，handler 传入 `r.Context()`。因此客户端断开或进程关闭会中止在途查询与整链回放，而不是让一个已经没人等待的请求跑完。三处各自持有 context 来源：矿工 `OnMined` 回调用矿工自身的 lifetime context（关闭矿工即取消），审计 dispatcher 的落库 sink 用 detached context（事件在产生它的请求结束之后才被排空），`store.Open` 用启动 context，使关闭能中断迁移与种子应用。仅测试调用的 `MineOnce`/`InsertBlock` 包装仍用 `context.Background()`，生产路径不经过它们。本次未新增数据库写路径，`docs/chain.md` §4 锚定清单无需登记新 source。**公共 HTTP 契约、路由、字段、枚举与状态码均未变化。**
 
 ### 依赖记录：github.com/shirou/gopsutil/v4
 

@@ -43,8 +43,8 @@ func (l *Ledger) blockTimestamp() string {
 }
 
 // Tip returns the highest block; ErrEmptyChain on a fresh database.
-func (l *Ledger) Tip() (Block, error) {
-	block, err := l.scanBlock(l.db.QueryRow(`SELECT ` + blockColumns + ` FROM chain_blocks ORDER BY block_index DESC LIMIT 1`))
+func (l *Ledger) Tip(ctx context.Context) (Block, error) {
+	block, err := l.scanBlock(l.db.QueryRowContext(ctx, `SELECT `+blockColumns+` FROM chain_blocks ORDER BY block_index DESC LIMIT 1`))
 	if errors.Is(err, sql.ErrNoRows) {
 		return Block{}, ErrEmptyChain
 	}
@@ -83,7 +83,7 @@ func (l *Ledger) mineHeader(ctx context.Context, certIDs []string) (BlockHeader,
 	if l.cfg.ProofMode == ProofModeSim {
 		difficulty = 0
 	}
-	tip, err := l.Tip()
+	tip, err := l.Tip(ctx)
 	if err != nil && !errors.Is(err, ErrEmptyChain) {
 		return BlockHeader{}, err
 	}
@@ -155,13 +155,13 @@ func (l *Ledger) InsertBlockContext(ctx context.Context, certIDs []string) (Bloc
 		return Block{}, err
 	}
 
-	tx, err := l.db.Begin()
+	tx, err := l.db.BeginTx(ctx, nil)
 	if err != nil {
 		return Block{}, err
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	tip, err := l.tipTx(tx)
+	tip, err := l.tipTx(ctx, tx)
 	if err != nil {
 		return Block{}, err
 	}
@@ -172,7 +172,7 @@ func (l *Ledger) InsertBlockContext(ctx context.Context, certIDs []string) (Bloc
 	if err != nil {
 		return Block{}, err
 	}
-	if _, err := tx.Exec(`INSERT INTO chain_blocks (id, block_index, prev_hash, timestamp, cert_root, cert_ids_json, nonce, proof_mode, difficulty, hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+	if _, err := tx.ExecContext(ctx, `INSERT INTO chain_blocks (id, block_index, prev_hash, timestamp, cert_root, cert_ids_json, nonce, proof_mode, difficulty, hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		fmt.Sprintf("block_%d", header.Index), header.Index, header.PrevHash, header.Timestamp, header.CertRoot, string(certIDsJSON),
 		header.Nonce, string(header.ProofMode), header.Difficulty, header.Hash()); err != nil {
 		return Block{}, err
@@ -184,7 +184,7 @@ func (l *Ledger) InsertBlockContext(ctx context.Context, certIDs []string) (Bloc
 		for _, id := range certIDs {
 			args = append(args, id)
 		}
-		if _, err := tx.Exec(`UPDATE chain_anchors SET block_id = ? WHERE id IN (`+placeholders+`) AND block_id IS NULL`, args...); err != nil {
+		if _, err := tx.ExecContext(ctx, `UPDATE chain_anchors SET block_id = ? WHERE id IN (`+placeholders+`) AND block_id IS NULL`, args...); err != nil {
 			return Block{}, err
 		}
 	}
@@ -196,8 +196,8 @@ func (l *Ledger) InsertBlockContext(ctx context.Context, certIDs []string) (Bloc
 		Difficulty: header.Difficulty, Hash: header.Hash()}, nil
 }
 
-func (l *Ledger) tipTx(tx *sql.Tx) (*Block, error) {
-	block, err := l.scanBlock(tx.QueryRow(`SELECT ` + blockColumns + ` FROM chain_blocks ORDER BY block_index DESC LIMIT 1`))
+func (l *Ledger) tipTx(ctx context.Context, tx *sql.Tx) (*Block, error) {
+	block, err := l.scanBlock(tx.QueryRowContext(ctx, `SELECT `+blockColumns+` FROM chain_blocks ORDER BY block_index DESC LIMIT 1`))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -208,9 +208,9 @@ func (l *Ledger) tipTx(tx *sql.Tx) (*Block, error) {
 }
 
 // ListBlocks pages block summaries newest-first.
-func (l *Ledger) ListBlocks(page, pageSize int) ([]Block, int, error) {
+func (l *Ledger) ListBlocks(ctx context.Context, page, pageSize int) ([]Block, int, error) {
 	var total int
-	if err := l.db.QueryRow(`SELECT COUNT(*) FROM chain_blocks`).Scan(&total); err != nil {
+	if err := l.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM chain_blocks`).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 	if pageSize < 1 {
@@ -222,7 +222,7 @@ func (l *Ledger) ListBlocks(page, pageSize int) ([]Block, int, error) {
 	if page < 1 {
 		page = 1
 	}
-	rows, err := l.db.Query(`SELECT `+blockColumns+` FROM chain_blocks ORDER BY block_index DESC LIMIT ? OFFSET ?`, pageSize, (page-1)*pageSize)
+	rows, err := l.db.QueryContext(ctx, `SELECT `+blockColumns+` FROM chain_blocks ORDER BY block_index DESC LIMIT ? OFFSET ?`, pageSize, (page-1)*pageSize)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -240,8 +240,8 @@ func (l *Ledger) ListBlocks(page, pageSize int) ([]Block, int, error) {
 
 // BlockByIndex fetches a single block by its chain index (used to render the
 // block before/after a verified certificate in the explorer's chain context).
-func (l *Ledger) BlockByIndex(index int) (Block, error) {
-	block, err := l.scanBlock(l.db.QueryRow(`SELECT `+blockColumns+` FROM chain_blocks WHERE block_index = ?`, index))
+func (l *Ledger) BlockByIndex(ctx context.Context, index int) (Block, error) {
+	block, err := l.scanBlock(l.db.QueryRowContext(ctx, `SELECT `+blockColumns+` FROM chain_blocks WHERE block_index = ?`, index))
 	if errors.Is(err, sql.ErrNoRows) {
 		return Block{}, sql.ErrNoRows
 	}
@@ -252,8 +252,8 @@ func (l *Ledger) BlockByIndex(index int) (Block, error) {
 }
 
 // GetBlock returns one block with its contained anchors.
-func (l *Ledger) GetBlock(id string) (Block, []Anchor, error) {
-	block, err := l.scanBlock(l.db.QueryRow(`SELECT `+blockColumns+` FROM chain_blocks WHERE id = ?`, id))
+func (l *Ledger) GetBlock(ctx context.Context, id string) (Block, []Anchor, error) {
+	block, err := l.scanBlock(l.db.QueryRowContext(ctx, `SELECT `+blockColumns+` FROM chain_blocks WHERE id = ?`, id))
 	if errors.Is(err, sql.ErrNoRows) {
 		return Block{}, nil, sql.ErrNoRows
 	}
@@ -267,7 +267,7 @@ func (l *Ledger) GetBlock(id string) (Block, []Anchor, error) {
 		for _, id := range block.CertIDs {
 			args = append(args, id)
 		}
-		rows, err := l.db.Query(`SELECT `+anchorColumns+` FROM chain_anchors WHERE id IN (`+placeholders+`)`, args...)
+		rows, err := l.db.QueryContext(ctx, `SELECT `+anchorColumns+` FROM chain_anchors WHERE id IN (`+placeholders+`)`, args...)
 		if err != nil {
 			return Block{}, nil, err
 		}
@@ -280,8 +280,8 @@ func (l *Ledger) GetBlock(id string) (Block, []Anchor, error) {
 }
 
 // AllBlocks streams the whole chain in index order for replay verification.
-func (l *Ledger) AllBlocks() ([]Block, error) {
-	rows, err := l.db.Query(`SELECT ` + blockColumns + ` FROM chain_blocks ORDER BY block_index ASC`)
+func (l *Ledger) AllBlocks(ctx context.Context) ([]Block, error) {
+	rows, err := l.db.QueryContext(ctx, `SELECT `+blockColumns+` FROM chain_blocks ORDER BY block_index ASC`)
 	if err != nil {
 		return nil, err
 	}
@@ -297,26 +297,26 @@ func (l *Ledger) AllBlocks() ([]Block, error) {
 	return blocks, rows.Err()
 }
 
-func (l *Ledger) ChainInfo() (ChainInfoResult, error) {
+func (l *Ledger) ChainInfo(ctx context.Context) (ChainInfoResult, error) {
 	info := ChainInfoResult{ProofMode: l.cfg.ProofMode, Difficulty: l.cfg.Difficulty}
 	if l.cfg.ProofMode == ProofModeSim {
 		info.Difficulty = 0
 	}
-	if err := l.db.QueryRow(`SELECT COUNT(*) FROM chain_blocks`).Scan(&info.Height); err != nil {
+	if err := l.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM chain_blocks`).Scan(&info.Height); err != nil {
 		return info, err
 	}
-	if err := l.db.QueryRow(`SELECT COUNT(*) FROM chain_anchors`).Scan(&info.TotalAnchors); err != nil {
+	if err := l.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM chain_anchors`).Scan(&info.TotalAnchors); err != nil {
 		return info, err
 	}
-	if err := l.db.QueryRow(`SELECT COUNT(*) FROM chain_anchors WHERE block_id IS NULL`).Scan(&info.PendingAnchors); err != nil {
+	if err := l.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM chain_anchors WHERE block_id IS NULL`).Scan(&info.PendingAnchors); err != nil {
 		return info, err
 	}
 	if info.Height > 0 {
 		var genesisHash, tipHash string
-		if err := l.db.QueryRow(`SELECT hash FROM chain_blocks WHERE block_index = 0`).Scan(&genesisHash); err != nil {
+		if err := l.db.QueryRowContext(ctx, `SELECT hash FROM chain_blocks WHERE block_index = 0`).Scan(&genesisHash); err != nil {
 			return info, err
 		}
-		if err := l.db.QueryRow(`SELECT hash FROM chain_blocks ORDER BY block_index DESC LIMIT 1`).Scan(&tipHash); err != nil {
+		if err := l.db.QueryRowContext(ctx, `SELECT hash FROM chain_blocks ORDER BY block_index DESC LIMIT 1`).Scan(&tipHash); err != nil {
 			return info, err
 		}
 		info.GenesisHash = genesisHash
@@ -327,7 +327,7 @@ func (l *Ledger) ChainInfo() (ChainInfoResult, error) {
 	// call EnsureSiteKey, which INSERTs when the row is missing — so a plain
 	// HTTP GET on a fresh database could create the key as a side effect, and
 	// the read path carried a write.
-	if key, err := l.siteKeyByID("site_key_1"); err == nil {
+	if key, err := l.siteKeyByID(ctx, "site_key_1"); err == nil {
 		info.SitePublicKey = key.PublicKey
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return info, err

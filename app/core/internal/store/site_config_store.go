@@ -1,15 +1,16 @@
 package store
 
 import (
+	"context"
 	"encoding/json"
 
 	"github.com/manifold-space/manifold/app/core/internal/model"
 )
 
-func (s *Store) GetSiteConfig() (model.SiteConfig, error) {
+func (s *Store) GetSiteConfig(ctx context.Context) (model.SiteConfig, error) {
 	var title, description, footerText, rawSocial, rawNavigation, rawSections string
 	var commentsEnabled int
-	if err := s.DB.QueryRow(`SELECT title, description, footer_text, social_json, comments_enabled, navigation_json, sections_json FROM site_config WHERE id = 'site_1'`).Scan(&title, &description, &footerText, &rawSocial, &commentsEnabled, &rawNavigation, &rawSections); err != nil {
+	if err := s.DB.QueryRowContext(ctx, `SELECT title, description, footer_text, social_json, comments_enabled, navigation_json, sections_json FROM site_config WHERE id = 'site_1'`).Scan(&title, &description, &footerText, &rawSocial, &commentsEnabled, &rawNavigation, &rawSections); err != nil {
 		return model.SiteConfig{}, err
 	}
 	var config model.SiteConfig
@@ -29,7 +30,7 @@ func (s *Store) GetSiteConfig() (model.SiteConfig, error) {
 	return config, nil
 }
 
-func (s *Store) UpdateSiteConfig(config model.SiteConfig) error {
-	_, err := s.DB.Exec(`UPDATE site_config SET title = ?, description = ?, footer_text = ?, social_json = ?, comments_enabled = ?, navigation_json = ?, sections_json = ?, updated_at = ? WHERE id = 'site_1'`, config.Title, config.Description, config.Footer, encodeJSON(config.Social), boolToInt(config.CommentsEnabled), encodeJSON(config.Navigation), encodeJSON(config.Sections), nowRFC3339())
+func (s *Store) UpdateSiteConfig(ctx context.Context, config model.SiteConfig) error {
+	_, err := s.DB.ExecContext(ctx, `UPDATE site_config SET title = ?, description = ?, footer_text = ?, social_json = ?, comments_enabled = ?, navigation_json = ?, sections_json = ?, updated_at = ? WHERE id = 'site_1'`, config.Title, config.Description, config.Footer, encodeJSON(config.Social), boolToInt(config.CommentsEnabled), encodeJSON(config.Navigation), encodeJSON(config.Sections), nowRFC3339())
 	return err
 }

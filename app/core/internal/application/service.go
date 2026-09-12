@@ -1,6 +1,7 @@
 package application
 
 import (
+	"context"
 	"log/slog"
 
 	"github.com/manifold-space/manifold/app/core/internal/cache"
@@ -37,11 +38,11 @@ func (s *Service) audit(request Request, eventName, resourceType, resourceID str
 	}
 }
 
-func (s *Service) anchor(request Request, source string, payload []byte, label, subjectRef string, metadata map[string]any) {
+func (s *Service) anchor(ctx context.Context, request Request, source string, payload []byte, label, subjectRef string, metadata map[string]any) {
 	if s.ledger == nil {
 		return
 	}
-	anchor, err := s.ledger.Submit(source, payload, label, subjectRef, metadata)
+	anchor, err := s.ledger.Submit(ctx, source, payload, label, subjectRef, metadata)
 	if err != nil {
 		slog.Error("chain_anchor_failed", "source", source, "error", err)
 		s.audit(request, "chain.anchor.failed", source, "", map[string]string{"error": err.Error()})

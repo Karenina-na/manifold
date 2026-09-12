@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strings"
@@ -9,8 +10,8 @@ import (
 	"github.com/manifold-space/manifold/app/core/internal/model"
 )
 
-func (h *apiHandler) adminSite(w http.ResponseWriter, _ *http.Request) {
-	config, err := h.store.GetSiteConfig()
+func (h *apiHandler) adminSite(w http.ResponseWriter, r *http.Request) {
+	config, err := h.store.GetSiteConfig(r.Context())
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, apierror.SiteUnavailable, "Site configuration is unavailable.")
 		return
@@ -39,15 +40,15 @@ func (h *apiHandler) adminUpdateSite(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusUnprocessableEntity, apierror.ValidationError, "Title, navigation, and sections are required.")
 		return
 	}
-	if err := h.mutations.UpdateSite(mutationRequest(r), input); err != nil {
+	if err := h.mutations.UpdateSite(r.Context(), mutationRequest(r), input); err != nil {
 		WriteError(w, http.StatusInternalServerError, apierror.SiteUpdateFailed, "Site configuration could not be updated.")
 		return
 	}
 	h.adminSite(w, r)
 }
 
-func (h *apiHandler) adminThoughtConfig(w http.ResponseWriter, _ *http.Request) {
-	config, err := h.store.GetThoughtConfig()
+func (h *apiHandler) adminThoughtConfig(w http.ResponseWriter, r *http.Request) {
+	config, err := h.store.GetThoughtConfig(r.Context())
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, apierror.ThoughtConfigUnavailable, "Thought configuration is unavailable.")
 		return
@@ -65,19 +66,19 @@ func (h *apiHandler) adminUpdateThoughtConfig(w http.ResponseWriter, r *http.Req
 		}
 		return
 	}
-	if err := h.validatePinnedIds(*input.PinnedIds, model.ContentKindThought); err != nil {
+	if err := h.validatePinnedIds(r.Context(), *input.PinnedIds, model.ContentKindThought); err != nil {
 		WriteError(w, http.StatusUnprocessableEntity, apierror.ValidationError, err.Error())
 		return
 	}
-	if err := h.mutations.SetPinnedIDs(mutationRequest(r), model.ContentKindThought, *input.PinnedIds); err != nil {
+	if err := h.mutations.SetPinnedIDs(r.Context(), mutationRequest(r), model.ContentKindThought, *input.PinnedIds); err != nil {
 		WriteError(w, http.StatusInternalServerError, apierror.ThoughtConfigUpdateFailed, "Thought configuration could not be updated.")
 		return
 	}
 	h.adminThoughtConfig(w, r)
 }
 
-func (h *apiHandler) adminWritingConfig(w http.ResponseWriter, _ *http.Request) {
-	config, err := h.store.GetWritingConfig()
+func (h *apiHandler) adminWritingConfig(w http.ResponseWriter, r *http.Request) {
+	config, err := h.store.GetWritingConfig(r.Context())
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, apierror.WritingConfigUnavailable, "Writing configuration is unavailable.")
 		return
@@ -95,11 +96,11 @@ func (h *apiHandler) adminUpdateWritingConfig(w http.ResponseWriter, r *http.Req
 		}
 		return
 	}
-	if err := h.validatePinnedIds(*input.PinnedIds, model.ContentKindArticle); err != nil {
+	if err := h.validatePinnedIds(r.Context(), *input.PinnedIds, model.ContentKindArticle); err != nil {
 		WriteError(w, http.StatusUnprocessableEntity, apierror.ValidationError, err.Error())
 		return
 	}
-	if err := h.mutations.SetPinnedIDs(mutationRequest(r), model.ContentKindArticle, *input.PinnedIds); err != nil {
+	if err := h.mutations.SetPinnedIDs(r.Context(), mutationRequest(r), model.ContentKindArticle, *input.PinnedIds); err != nil {
 		WriteError(w, http.StatusInternalServerError, apierror.WritingConfigUpdateFailed, "Writing configuration could not be updated.")
 		return
 	}
@@ -109,7 +110,7 @@ func (h *apiHandler) adminUpdateWritingConfig(w http.ResponseWriter, r *http.Req
 // validatePinnedIds enforces the admin pin contract: every id must reference
 // currently-published content of the expected kind, with no duplicates.
 // The pins table is a whole-set replacement, so the empty slice clears pins.
-func (h *apiHandler) validatePinnedIds(ids []string, kind model.ContentKind) error {
+func (h *apiHandler) validatePinnedIds(ctx context.Context, ids []string, kind model.ContentKind) error {
 	label := "Thought"
 	if kind == model.ContentKindArticle {
 		label = "Writing"
@@ -127,7 +128,7 @@ func (h *apiHandler) validatePinnedIds(ids []string, kind model.ContentKind) err
 			return errors.New("pinnedIds contains duplicates")
 		}
 		seen[id] = struct{}{}
-		content, err := h.store.GetContentByID(id, false)
+		content, err := h.store.GetContentByID(ctx, id, false)
 		if err != nil || content.Kind != kind {
 			return errors.New("Featured " + label + " must reference published " + strings.ToLower(label) + " content.")
 		}

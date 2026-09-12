@@ -48,7 +48,7 @@ func run(ctx context.Context, cfg config.Config) error {
 	}
 	defer listener.Close()
 
-	database, err := store.Open(cfg.DatabasePath, store.WithSeedPlan(plan), store.WithAdminCredential(cfg.AdminUsername, cfg.AdminPasswordHash))
+	database, err := store.Open(ctx, cfg.DatabasePath, store.WithSeedPlan(plan), store.WithAdminCredential(cfg.AdminUsername, cfg.AdminPasswordHash))
 	if err != nil {
 		return fmt.Errorf("open database: %w", err)
 	}
@@ -65,10 +65,10 @@ func run(ctx context.Context, cfg config.Config) error {
 		FlushTimeout:    cfg.ChainFlushTimeout,
 		AnchorMaxBytes:  cfg.ChainAnchorMaxBytes,
 	})
-	if _, err := ledger.EnsureSiteKey(); err != nil {
+	if _, err := ledger.EnsureSiteKey(ctx); err != nil {
 		return fmt.Errorf("ensure chain site key: %w", err)
 	}
-	if err := seedAnchorsForDevContents(ledger, database); err != nil {
+	if err := seedAnchorsForDevContents(ctx, ledger, database); err != nil {
 		return fmt.Errorf("seed content anchors: %w", err)
 	}
 
@@ -109,15 +109,15 @@ func run(ctx context.Context, cfg config.Config) error {
 // published row gets its opening certificate; rows written later carry
 // certificates from their own write paths. Production skeletons have no
 // content rows, making this a no-op there.
-func seedAnchorsForDevContents(ledger *chain.Ledger, database *store.Store) error {
-	existing, err := ledger.AnchorCount()
+func seedAnchorsForDevContents(ctx context.Context, ledger *chain.Ledger, database *store.Store) error {
+	existing, err := ledger.AnchorCount(ctx)
 	if err != nil {
 		return err
 	}
 	if existing > 0 {
 		return nil
 	}
-	contents, err := database.PublishedContents()
+	contents, err := database.PublishedContents(ctx)
 	if err != nil {
 		return err
 	}
@@ -128,7 +128,7 @@ func seedAnchorsForDevContents(ledger *chain.Ledger, database *store.Store) erro
 		if err != nil {
 			return err
 		}
-		if _, err := ledger.Submit(chain.SourceContent, payload, "", subjectRef, metadata); err != nil {
+		if _, err := ledger.Submit(ctx, chain.SourceContent, payload, "", subjectRef, metadata); err != nil {
 			return err
 		}
 	}
