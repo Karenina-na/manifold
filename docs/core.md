@@ -276,6 +276,8 @@ Thoughts 归档参数为 `page`（默认 1）、`pageSize`（默认 8，范围 1
 
 更新 Thoughts 配置时，`pinnedIds` 整体替换置顶集合：每个 ID 必须引用当前已发布的 `THOUGHT` 且不重复；Article、草稿、软删除或不存在的 ID 返回 `422 VALIDATION_ERROR`。传 `[]` 表示清除所有置顶。Writings 配置同构。Admin 列表可用 `pinned=true` 仅过滤已置顶内容。
 
+`PUT /admin/profile` 是全量替换，字段约束由 Core 校验，Admin 表单的 zod schema 只是同一组规则的即时反馈、不是权威：`displayName` 必填且 ≤160 字符；`handle` ≤80、`headline` ≤240、`bio` ≤4000、`location` ≤160、`organization` ≤160；`avatarUrl`、`websiteUrl`、`resumeUrl` 允许为空，非空时必须是 `http(s)://` 绝对地址；`interests` 每项非空且 ≤60；`education`/`experience` 每项的机构、项目/职位名非空且 ≤160、`period` 非空且 ≤80；`series` 每项 `name` 非空 ≤160、`url` 必填且为 `http(s)` 或 `mailto`、`description` ≤400、`category` ≤80；`contacts` 每项 `label` 非空 ≤80、`url` 必填且为 `http(s)` 或 `mailto`、`handle` ≤120、`icon` ≤40。长度按字符（Unicode code point）计而非字节，CJK 内容因此不会被提前拒绝。任一字段不合规返回 `422 VALIDATION_ERROR` 且不写入任何字段；URL scheme 白名单是公开站点把这些值直接渲染进 `href` 时的边界，`javascript:`、`data:` 等一律拒绝。
+
 ## 7. 数据模型
 
 `content` 是统一内容表：

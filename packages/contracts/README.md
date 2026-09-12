@@ -51,7 +51,7 @@ app/core JSON <--> packages/contracts <--> packages/sdk <--> Web / Admin
 
 ### 其他公共资源
 
-- `Profile` / `ProfileInput`：身份、简介、网站、简历、兴趣、教育（`ProfileEducationItem`）、经历（`ProfileExperienceItem`）、个人 Series（`ProfileSeriesItem`）和联系方式（`ProfileContact`）。数组字段全部必填键（可为空数组），`resumeUrl: string | null`。
+- `Profile` / `ProfileInput`：身份、简介、网站、简历、兴趣、教育（`ProfileEducationItem`）、经历（`ProfileExperienceItem`）、个人 Series（`ProfileSeriesItem`）和联系方式（`ProfileContact`）。数组字段全部必填键（可为空数组），`resumeUrl: string | null`。字段长度与 URL scheme 约束不是类型的一部分，而是 Core 在 `PUT /admin/profile` 上执行的运行期规则，清单见 `docs/core.md` §6。
 - `SiteConfig` / `SiteConfigInput`：站点设置（Admin 读写），含 `title`（必填 ≤80）/`description`（≤200）/`footer`（≤200）/`social`（≤6 项）/`commentsEnabled`/`navigation`（1..10 项）/`sections`（1..10 项，`HomepageSection` 枚举）。
 - `SiteComposition extends SiteConfig`：公开 `GET /api/v1/site` 响应，追加按 kind 限定的 `pinnedThoughts` 与 `pinnedWritings`（置顶内容数组，按置顶顺序下发）。
 - `HomeTimelineItem` / `HomeTimeline` / `HomeTimelineQuery`：公开首页 Updates 聚合。`GET /api/v1/home/timeline` 取最新 `limit` 条后按 `publishedAt` 升序返回轻量项（仅 `id/kind/slug/title/summary/publishedAt`，默认和上限 1000），并以 `totalItems`/`truncated` 明确结果是否被上限截断。

@@ -68,7 +68,7 @@ Refresh 按钮同时 refetch 四个 query。
 - education/experience/series/contacts 为可增删、上下排序的行编辑器，不再手写 JSON；
 - education/experience 的 period 用两个日历月选择器（`@mantine/dates` `MonthPickerInput`，月份粒度、`valueFormat="YYYY-MM"`、上限今天）分别选 From/To；To 留空 = `Now`（开始已填时为开放区间 `… - Now`，此时 To 禁用，提示可补结束月），产物为 `2020 - 2024` / `2020 - Now` 文本；旧自由文本（如 `Ongoing`）只读展示并提供 Edit/Clear 切换（解析/格式化见 `@manifold/render` 的 `period.ts`）；
 - contacts 每行带图标网格 picker（品牌图标用 react-icons 的 si/fa6，如 GitHub/QQ/微信/WhatsApp/Telegram/YouTube/Bilibili/LinkedIn/掘金/知乎/小红书…；通用图标仍用 lucide；空 = globe 兜底），行内实时提示公开渲染结果；图标词汇表与 `resolveContactKey` 启发式统一收在 `@manifold/render` 的 `contact-icon.ts`/`contact-icon-ui.tsx`，Admin 与 Web 渲染端共用同一份，不再各自维护；
-- URL 校验：avatar/website/resume 允许空或 http(s)，contacts/series URL 必填且为 http(s) 或 mailto；headline/bio 显示字符计数；
+- 校验分工：zod schema 是 UX 层的即时反馈，不是权威——同一组长度与 URL scheme 规则由 Core 在 `PUT /admin/profile` 上独立执行（字段清单与上限见 `docs/core.md` §6），绕过表单的调用方同样被约束，Core 返回的 422 消息直接落位到表单；avatar/website/resume 允许空或 http(s)，contacts/series URL 必填且为 http(s) 或 mailto；headline/bio 显示字符计数；
 - Avatar URL 与 Resume PDF URL 支持直接上传：Avatar 接受图片（png/jpeg/webp/gif/avif），Resume 接受 PDF，上传后把 Core 返回的 `media.url` 写回表单并短暂提示“已上传”；有值时可点眼睛在新标签页预览；
 - 表单脏状态（isDirty）出现底部 sticky 保存条（Unsaved changes · Save/Discard），保存成功后按钮短暂显示 Saved。
 

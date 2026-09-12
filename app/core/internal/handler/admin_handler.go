@@ -84,6 +84,10 @@ func (h *apiHandler) adminUpdateProfile(w http.ResponseWriter, r *http.Request) 
 		resumeURL = &value
 	}
 	profile := model.Profile{ID: "profile_1", DisplayName: *input.DisplayName, Handle: *input.Handle, Headline: *input.Headline, Bio: *input.Bio, AvatarURL: *input.AvatarURL, Location: *input.Location, Organization: *input.Organization, WebsiteURL: *input.WebsiteURL, ResumeURL: resumeURL, Interests: *input.Interests, Education: *input.Education, Experience: *input.Experience, Series: *input.Series, Contacts: *input.Contacts}
+	if err := validateProfileInput(profile); err != nil {
+		WriteError(w, http.StatusUnprocessableEntity, apierror.ValidationError, err.Error())
+		return
+	}
 	if err := h.mutations.UpdateProfile(mutationRequest(r), profile); err != nil {
 		WriteError(w, http.StatusInternalServerError, apierror.ProfileUpdateFailed, "Profile could not be updated.")
 		return
