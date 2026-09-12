@@ -68,7 +68,7 @@ pnpm install
 make core-run
 ```
 
-另开终端启动两个前端（开发 supervisor 会分别托管 Web/Admin；任一前端异常退出后按退避自动重启）：
+另开终端启动两个前端（开发 supervisor 会分别托管 Web/Admin；任一前端异常退出后按退避自动重启，同一服务连续 5 次立即失败后停止重启并提示原因，运行满 60 秒后失败计数清零）：
 
 ```bash
 pnpm dev
