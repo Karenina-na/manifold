@@ -6,7 +6,6 @@ import (
 	"time"
 )
 
-var ErrCredentialNotFound = errors.New("admin credential not found")
 var ErrSessionNotFound = errors.New("admin session not found")
 
 // ensureAdminCredential seeds the bootstrap credential into an empty table.
@@ -27,17 +26,18 @@ func (s *Store) ensureAdminCredential(username, passwordHash string) error {
 	return err
 }
 
-// GetAdminCredential returns the bcrypt hash for a username.
-func (s *Store) GetAdminCredential(username string) (string, error) {
-	var hash string
-	err := s.DB.QueryRow(`SELECT password_hash FROM admin_credentials WHERE username = ? LIMIT 1`, username).Scan(&hash)
+// GetAdminCredential returns the bcrypt hash for a username. A missing username
+// is reported as found=false rather than as an error, so the caller can tell it
+// apart from a database failure.
+func (s *Store) GetAdminCredential(username string) (hash string, found bool, err error) {
+	err = s.DB.QueryRow(`SELECT password_hash FROM admin_credentials WHERE username = ? LIMIT 1`, username).Scan(&hash)
 	if errors.Is(err, sql.ErrNoRows) {
-		return "", ErrCredentialNotFound
+		return "", false, nil
 	}
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
-	return hash, nil
+	return hash, true, nil
 }
 
 // UpdateAdminCredential replaces the hash for a username.

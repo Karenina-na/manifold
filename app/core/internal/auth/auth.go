@@ -45,8 +45,11 @@ type Service struct {
 }
 
 // SessionStore is the persistence surface auth needs. *store.Store satisfies it.
+// GetAdminCredential reports "no such credential" as a flag rather than an error
+// so a missing username stays distinguishable from a failing database without
+// the two packages having to share a sentinel value.
 type SessionStore interface {
-	GetAdminCredential(username string) (string, error)
+	GetAdminCredential(username string) (hash string, found bool, err error)
 	UpdateAdminCredential(username, passwordHash string) error
 	CreateSession(id, subject string, now, expiresAt time.Time) error
 	SessionLive(id string, now time.Time) (bool, error)
@@ -54,12 +57,29 @@ type SessionStore interface {
 	RevokeSessions(subject string, exceptCurrentID string, now time.Time) error
 }
 
-func newSessionID() string {
+// Seams for the two operations whose failure modes are security-relevant and
+// otherwise unreachable from a test: a broken CSPRNG and the bcrypt comparison.
+// Production never reassigns them.
+var (
+	readRandom      = rand.Read
+	comparePassword = bcrypt.CompareHashAndPassword
+)
+
+// A valid bcrypt hash whose pre-image is a random string generated for this
+// purpose and never stored anywhere. It exists only so that an unknown username
+// costs the same as a known one; see Login.
+var dummyPasswordHash = []byte("$2a$10$dmmb3CjY/IzLR8l7Pgvt8.urDgxsmuPt40QYkES.WDFQ.oIQ.Z5kq")
+
+// newSessionID returns a fresh session id. It fails closed: the id is the JWT
+// `jti` and the key of the admin_sessions row, so a predictable fallback would
+// be a guessable session handle. The previous version silently substituted a
+// nanosecond timestamp when the CSPRNG failed.
+func newSessionID() (string, error) {
 	var b [16]byte
-	if _, err := rand.Read(b[:]); err != nil {
-		return fmt.Sprintf("ses_%d", time.Now().UnixNano())
+	if _, err := readRandom(b[:]); err != nil {
+		return "", fmt.Errorf("generate session id: %w", err)
 	}
-	return fmt.Sprintf("ses_%x", b)
+	return fmt.Sprintf("ses_%x", b), nil
 }
 
 func New(cfg config.Config, db SessionStore) (*Service, error) {
@@ -88,15 +108,29 @@ m = r.sub == p.sub && keyMatch(r.obj, p.obj) && (p.act == "*" || r.act == p.act)
 }
 
 func (s *Service) Login(username, password string) (string, error) {
-	hash, err := s.store.GetAdminCredential(username)
+	hash, found, err := s.store.GetAdminCredential(username)
 	if err != nil {
+		// A store failure is not a wrong password: collapsing it into
+		// ErrInvalidCredentials told the operator "your password is wrong"
+		// while the database was actually unreachable.
+		return "", fmt.Errorf("read admin credential: %w", err)
+	}
+	if !found {
+		// Unknown username. Comparing against a dummy hash keeps the work — and
+		// therefore the response time — the same as the wrong-password path;
+		// returning here directly was a timing oracle that revealed which
+		// usernames exist. The result is discarded either way.
+		_ = comparePassword(dummyPasswordHash, []byte(password))
 		return "", ErrInvalidCredentials
 	}
-	if bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)) != nil {
+	if comparePassword([]byte(hash), []byte(password)) != nil {
 		return "", ErrInvalidCredentials
 	}
 	now := s.now()
-	sessionID := newSessionID()
+	sessionID, err := newSessionID()
+	if err != nil {
+		return "", err
+	}
 	claims := Claims{
 		Role: "admin",
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -160,11 +194,16 @@ func (s *Service) RequireAdmin(next http.Handler) http.Handler {
 // UpdateCredential verifies the current password, replaces the stored hash, and
 // revokes every other active session for the subject.
 func (s *Service) UpdateCredential(username, currentPassword, newPassword string, currentSessionID string) error {
-	hash, err := s.store.GetAdminCredential(username)
+	hash, found, err := s.store.GetAdminCredential(username)
 	if err != nil {
+		// Same split as Login: an unreachable database must not be reported as a
+		// wrong current password.
+		return fmt.Errorf("read admin credential: %w", err)
+	}
+	if !found {
 		return ErrInvalidCredentials
 	}
-	if bcrypt.CompareHashAndPassword([]byte(hash), []byte(currentPassword)) != nil {
+	if comparePassword([]byte(hash), []byte(currentPassword)) != nil {
 		return ErrInvalidCredentials
 	}
 	nextHash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)

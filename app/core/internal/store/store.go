@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"strings"
 	"time"
 	"unicode"
 
@@ -11,6 +12,16 @@ import (
 )
 
 const schemaVersion = 6
+
+// likePattern wraps a literal search value in a LIKE pattern and neutralises the
+// metacharacters inside it. SQLite's LIKE has no default escape character, so
+// every caller must also declare `ESCAPE '\'` — without both halves `_` matches
+// any single character and `%` matches any run, which silently turns a search
+// for `media_ab` or `50%` into a wildcard.
+func likePattern(value string) string {
+	escaped := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(value)
+	return "%" + escaped + "%"
+}
 
 var (
 	ErrContentNotFound     = errors.New("content not found")

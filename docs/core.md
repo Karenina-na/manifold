@@ -135,7 +135,7 @@ Core 使用 `caarlos0/env` 读取 `CORE_` 前缀变量；启动时自动从工�
 
 - 基础路径为 `/api/v1`，媒体类型为 JSON。
 - 时间为 UTC RFC3339 字符串，ID 为不透明字符串。
-- 每个请求都有 `X-Request-ID` 和 `X-Trace-ID`；客户端可传入 `X-Trace-ID`，Core 会校验/生成并回传。
+- 每个请求都有 `X-Request-ID` 和 `X-Trace-ID`；客户端可传入 `X-Trace-ID`，Core 会校验/生成并回传。生成侧不使用 CSPRNG，回退形态为 `req_<UnixNano>` / `trace_<UnixNano>`，并追加一个进程内单调递增的序号，使同一纳秒内的并发请求不会拿到相同的 ID。
 - CORS 允许 `GET/POST/PUT/DELETE/OPTIONS`，请求头包括 `Authorization`、`Content-Type`、`X-Trace-ID`、`X-Visitor-ID`。
 - 集合响应统一为 `{ data, pagination }`；分页统一使用 `page/pageSize/totalItems/totalPages`，默认页码为 1。
 - 错误统一为：
@@ -195,6 +195,8 @@ pageSize=1..50
 
 `pagination` 始终返回 `page/pageSize/totalItems/totalPages`。置顶内容由 `/api/v1/site` 的 `pinnedThoughts/pinnedWritings` 按置顶顺序提供（显式置顶，空数组表示无置顶），归档列表通过 `/api/v1/content` 的 `kind`、`tag`、`q`、`sort` 和 `aiAssisted` 查询。
 
+所有 `q` 过滤（公开内容与 Thoughts 搜索、Admin 内容/评论/媒体列表、审计列表、`MediaReferences` 的正文引用扫描）都是**字面包含**匹配：`%`、`_` 和 `\` 在进入 SQL 前被转义，并统一使用 `ESCAPE '\'`。因此输入 `50%` 只匹配含字面 `50%` 的记录，`under_score` 不会匹配 `underXscore`。
+
 Thoughts 归档参数为 `page`（默认 1）、`pageSize`（默认 8，范围 1..50）、`tag`（单个最长 80，可重复或逗号分隔多值，最多 10 个，OR 语义）和 `q`（最长 200，标题/摘要/正文搜索）。响应为 `{ data, pagination }`。置顶项由 `/api/v1/site` 的 `pinnedThoughts` 单独下发并仍保留在 `data` 中；`tag`/`q` 只过滤时间轴；超出范围的页码会夹紧到最后一页。
 
 公开列表的 `excerpt` 是 Core 从 `body` 派生的最多 360 个 Unicode 字符的纯文本：移除 Markdown 标题、列表、链接目标、强调、行内代码、HTML 标签与代码围栏，并压缩空白。`summary` 仍是独立的编辑字段；列表响应不暴露完整 Markdown `body`，详情接口继续返回完整正文。
@@ -233,7 +235,16 @@ Thoughts 归档参数为 `page`（默认 1）、`pageSize`（默认 8，范围 1
 
 ## 6. Admin API
 
-`POST /api/v1/admin/session` 使用用户名和 bcrypt 密码登录，返回 12 小时 HS256 JWT（claims 携带 `jti`，对应 `admin_sessions` 一行）。除登录接口外，所有 Admin 请求都需要 `Authorization: Bearer <token>`，且服务端逐请求校验 session 未吊销、未过期。登录失败会写入 `admin.session.failed` 审计（含 username 与源 IP，**绝不记录明文密码**）。
+`POST /api/v1/admin/session` 使用用户名和 bcrypt 密码登录，返回 12 小时 HS256 JWT（claims 携带 `jti`，对应 `admin_sessions` 一行）。除登录接口外，所有 Admin 请求都需要 `Authorization: Bearer <token>`，且服务端逐请求校验 session 未吊销、未过期。
+
+登录失败的响应按失败原因分流，不把服务端故障伪装成密码错误：
+
+| 情形 | 状态码 | 错误码 | 审计 |
+| --- | --- | --- | --- |
+| 用户名不存在或密码不匹配 | 401 | `INVALID_CREDENTIALS` | `admin.session.failed`（含 username 与源 IP，**绝不记录明文密码**） |
+| 凭据存储不可读、会话 ID 生成失败或 `admin_sessions` 写入失败 | 500 | `SESSION_UNAVAILABLE` | 不写 `admin.session.failed` |
+
+用户名不存在时仍会对一个固定的哑元 hash 执行一次 bcrypt 比较，使"用户名不存在"和"密码错误"的响应耗时一致，避免通过响应时间枚举用户名。
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |

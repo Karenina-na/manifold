@@ -30,11 +30,8 @@ func (h *apiHandler) verifyAnchorByHash(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	body, status := h.verifyResult(ledger, strings.ToLower(hash))
-	if status != http.StatusOK {
-		if payload, cast := body["error"].(map[string]any); cast {
-			WriteError(w, status, payload["code"].(string), payload["message"].(string))
-			return
-		}
+	if status != http.StatusOK && writeVerifyFailure(w, status, body) {
+		return
 	}
 	WriteJSON(w, status, body)
 }
@@ -52,11 +49,8 @@ func (h *apiHandler) verifyAnchorPayload(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	body, status := h.verifyResult(ledger, chain.SubjectHashHex([]byte(input.Payload)))
-	if status != http.StatusOK {
-		if payload, cast := body["error"].(map[string]any); cast {
-			WriteError(w, status, payload["code"].(string), payload["message"].(string))
-			return
-		}
+	if status != http.StatusOK && writeVerifyFailure(w, status, body) {
+		return
 	}
 	WriteJSON(w, status, body)
 }
@@ -83,11 +77,8 @@ func (h *apiHandler) verifyAnchorContent(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	body, status := h.verifyResult(ledger, chain.SubjectHashHex(payload))
-	if status != http.StatusOK {
-		if response, cast := body["error"].(map[string]any); cast {
-			WriteError(w, status, response["code"].(string), response["message"].(string))
-			return
-		}
+	if status != http.StatusOK && writeVerifyFailure(w, status, body) {
+		return
 	}
 	WriteJSON(w, status, body)
 }
@@ -126,13 +117,34 @@ func (h *apiHandler) verifyAnchorComment(w http.ResponseWriter, r *http.Request)
 		}
 		body, status = h.verifyResult(ledger, payloadHash)
 	}
-	if status != http.StatusOK {
-		if response, cast := body["error"].(map[string]any); cast {
-			WriteError(w, status, response["code"].(string), response["message"].(string))
-			return
-		}
+	if status != http.StatusOK && writeVerifyFailure(w, status, body) {
+		return
 	}
 	WriteJSON(w, status, body)
+}
+
+// writeVerifyFailure forwards the error envelope verifyResult puts in the body
+// when the lookup or replay failed, and reports whether it wrote a response.
+//
+// Today the only non-OK status verifyResult produces is a 500 carrying
+// apierror.ChainUnavailable, so the unchecked `payload["code"].(string)` this
+// replaced could not panic. It still asserted a shape no one had promised: any
+// future change that returns a differently shaped body would turn a routine
+// failure response into a panic for the whole process. When the envelope does
+// not match, this reports false and the caller falls back to writing the body
+// as-is rather than dropping the response.
+func writeVerifyFailure(w http.ResponseWriter, status int, body map[string]any) bool {
+	payload, ok := body["error"].(map[string]any)
+	if !ok {
+		return false
+	}
+	code, ok := payload["code"].(string)
+	if !ok || code == "" {
+		return false
+	}
+	message, _ := payload["message"].(string)
+	WriteError(w, status, code, message)
+	return true
 }
 
 // verifyResult assembles VerifyResponse from a subject hash lookup plus the

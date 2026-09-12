@@ -27,6 +27,14 @@ func (h *apiHandler) login(w http.ResponseWriter, r *http.Request) {
 	}
 	token, err := h.auth.Login(input.Username, input.Password)
 	if err != nil {
+		if !errors.Is(err, auth.ErrInvalidCredentials) {
+			// A store failure, a dead CSPRNG or a failed session insert is not a
+			// wrong password. Answering 401 here sent the operator hunting for a
+			// credential problem while Core was actually unable to issue sessions,
+			// and wrote a bogus admin.session.failed row into the audit trail.
+			WriteError(w, http.StatusInternalServerError, apierror.SessionUnavailable, "A session could not be issued.")
+			return
+		}
 		h.audit(r, "admin.session.failed", "session", input.Username, map[string]string{"ip": clientAddress(r, trustedProxyNetworks(h.cfg.TrustedProxyCIDRs))})
 		WriteError(w, http.StatusUnauthorized, apierror.InvalidCredentials, "Username or password is incorrect.")
 		return

@@ -15,9 +15,12 @@ func TestEnsureAdminCredentialSeedsOnce(t *testing.T) {
 	if err := database.ensureAdminCredential("admin", hash); err != nil {
 		t.Fatal(err)
 	}
-	got, err := database.GetAdminCredential("admin")
+	got, found, err := database.GetAdminCredential("admin")
 	if err != nil {
 		t.Fatal(err)
+	}
+	if !found {
+		t.Fatal("expected the seeded credential to be found")
 	}
 	if got != hash {
 		t.Fatalf("expected hash %q, got %q", hash, got)
@@ -26,12 +29,37 @@ func TestEnsureAdminCredentialSeedsOnce(t *testing.T) {
 	if err := database.ensureAdminCredential("admin", "different"); err != nil {
 		t.Fatal(err)
 	}
-	got, err = database.GetAdminCredential("admin")
+	got, found, err = database.GetAdminCredential("admin")
 	if err != nil {
 		t.Fatal(err)
 	}
+	if !found {
+		t.Fatal("expected the seeded credential to be found")
+	}
 	if got != hash {
 		t.Fatalf("expected original hash preserved, got %q", got)
+	}
+}
+
+func TestGetAdminCredentialReportsAMissingUsernameWithoutAnError(t *testing.T) {
+	database, err := Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if err := database.ensureAdminCredential("admin", "$2a$10$abcdefghijklmnopqrstuv"); err != nil {
+		t.Fatal(err)
+	}
+	// "No such username" has to stay distinguishable from "the query failed":
+	// auth maps the first to invalid credentials and the second to a 500, and
+	// collapsing them was what made an unreachable database look like a wrong
+	// password.
+	hash, found, err := database.GetAdminCredential("nobody")
+	if err != nil {
+		t.Fatalf("a missing username must not be an error, got %v", err)
+	}
+	if found || hash != "" {
+		t.Fatalf("expected found=false and an empty hash, got %q %v", hash, found)
 	}
 }
 

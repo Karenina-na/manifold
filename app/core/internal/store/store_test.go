@@ -765,3 +765,45 @@ func TestTagRowsDriveTagFilters(t *testing.T) {
 }
 
 func stringPtr(value string) *string { return &value }
+
+// The search box is free text, so `%` and `_` are user input rather than
+// wildcards. Passing them straight into LIKE made a search for `50%` match any
+// body containing `50`, and `under_score` match `underXscore`.
+func TestContentSearchTreatsLikeMetacharactersLiterally(t *testing.T) {
+	database, err := Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+
+	for slug, body := range map[string]string{
+		"literal-search": "A 50% discount and an under_score marker.",
+		"decoy-search":   "A 50 percent discount and an underXscore marker.",
+	} {
+		if _, err := database.CreateContent(model.ContentInput{
+			Kind: model.ContentKindArticle, Slug: slug, Title: stringPtr(slug), Body: body,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	search := func(query string) map[string]bool {
+		t.Helper()
+		result, err := database.ListContent(true, ContentListOptions{Query: query, Page: 1, PageSize: 100})
+		if err != nil {
+			t.Fatal(err)
+		}
+		hits := map[string]bool{}
+		for _, item := range result.Items {
+			hits[item.Slug] = true
+		}
+		return hits
+	}
+
+	if hits := search("50%"); !hits["literal-search"] || hits["decoy-search"] {
+		t.Fatalf("a literal %% search must not behave as a wildcard: %+v", hits)
+	}
+	if hits := search("under_score"); !hits["literal-search"] || hits["decoy-search"] {
+		t.Fatalf("a literal _ search must not match any character: %+v", hits)
+	}
+}

@@ -125,3 +125,44 @@ func TestInsertMediaIDsAreRandom(t *testing.T) {
 		seen[media.ID] = true
 	}
 }
+
+// Media ids are `media_<hex>`, and `_` is a LIKE wildcard. Without the ESCAPE
+// clause the reference lookup for `media_ab12` also matched a body embedding
+// `mediaXab12`, so the admin UI could list content that does not use the file.
+func TestMediaReferencesMatchTheIDLiterally(t *testing.T) {
+	database, err := Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+
+	media, _, err := database.InsertMedia("image/png", "probe.png", "digest-literal", []byte{1, 2, 3})
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoyID := strings.Replace(media.ID, "media_", "mediaX", 1)
+	if decoyID == media.ID {
+		t.Fatalf("expected the underscore position in %q", media.ID)
+	}
+	real, err := database.CreateContent(model.ContentInput{
+		Kind: model.ContentKindArticle, Slug: "uses-the-media", Title: stringPtr("Uses the media"),
+		Body: "![probe](/api/v1/media/" + media.ID + ")",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.CreateContent(model.ContentInput{
+		Kind: model.ContentKindArticle, Slug: "decoy-media", Title: stringPtr("Decoy"),
+		Body: "![probe](/api/v1/media/" + decoyID + ")",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	refs, err := database.MediaReferences(media.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(refs) != 1 || refs[0].ContentID != real.ID {
+		t.Fatalf("expected exactly the real reference, got %+v", refs)
+	}
+}

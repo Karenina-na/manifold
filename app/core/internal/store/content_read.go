@@ -84,8 +84,8 @@ func contentListWhere(includeDrafts bool, options ContentListOptions) (string, [
 		query += ` AND EXISTS (SELECT 1 FROM content_tags WHERE content_tags.content_id = content.id AND content_tags.tag IN (` + strings.Join(placeholders, ",") + `))`
 	}
 	if options.Query != "" {
-		query += ` AND (LOWER(title) LIKE ? OR LOWER(summary) LIKE ? OR LOWER(body) LIKE ?)`
-		term := "%" + strings.ToLower(options.Query) + "%"
+		query += ` AND (LOWER(title) LIKE ? ESCAPE '\' OR LOWER(summary) LIKE ? ESCAPE '\' OR LOWER(body) LIKE ? ESCAPE '\')`
+		term := likePattern(strings.ToLower(options.Query))
 		args = append(args, term, term, term)
 	}
 	if options.AiAssisted != nil {

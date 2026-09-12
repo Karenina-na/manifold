@@ -93,8 +93,8 @@ func (s *Store) ListMedia(page, pageSize int, needle string) ([]model.Media, int
 	if pageSize > 50 {
 		pageSize = 50
 	}
-	filter := `WHERE (? = '' OR filename LIKE '%' || ? || '%' OR id LIKE '%' || ? || '%')`
-	args := []any{needle, needle, needle}
+	filter := `WHERE (? = '' OR filename LIKE ? ESCAPE '\' OR id LIKE ? ESCAPE '\')`
+	args := []any{needle, likePattern(needle), likePattern(needle)}
 	var total int
 	if err := s.DB.QueryRow(`SELECT COUNT(*) FROM media `+filter, args...).Scan(&total); err != nil {
 		return nil, 0, err
@@ -124,7 +124,9 @@ func (s *Store) ListMedia(page, pageSize int, needle string) ([]model.Media, int
 // The query excludes DELETED rows, so status is always DRAFT or PUBLISHED.
 func (s *Store) MediaReferences(id string) ([]model.MediaReference, error) {
 	needle := "/api/v1/media/" + id
-	rows, err := s.DB.Query(`SELECT id, kind, slug, title, status FROM content WHERE status != 'DELETED' AND body LIKE '%' || ? || '%'`, needle)
+	// Media ids are `media_<hex>`, so the underscore is a real LIKE wildcard
+	// here: without the escape, `media_ab` would also match `mediaXab`.
+	rows, err := s.DB.Query(`SELECT id, kind, slug, title, status FROM content WHERE status != 'DELETED' AND body LIKE ? ESCAPE '\'`, likePattern(needle))
 	if err != nil {
 		return nil, err
 	}

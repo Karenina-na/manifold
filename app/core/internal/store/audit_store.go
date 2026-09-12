@@ -37,8 +37,8 @@ func (s *Store) ListAuditEvents(page, pageSize int, needle string) ([]model.Audi
 	if pageSize > 50 {
 		pageSize = 50
 	}
-	filter := `WHERE (? = '' OR event_name LIKE '%' || ? || '%' OR actor LIKE '%' || ? || '%' OR resource_id LIKE '%' || ? || '%')`
-	args := []any{needle, needle, needle, needle}
+	filter := `WHERE (? = '' OR event_name LIKE ? ESCAPE '\' OR actor LIKE ? ESCAPE '\' OR resource_id LIKE ? ESCAPE '\')`
+	args := []any{needle, likePattern(needle), likePattern(needle), likePattern(needle)}
 	var total int
 	if err := s.DB.QueryRow(`SELECT COUNT(*) FROM audit_events `+filter, args...).Scan(&total); err != nil {
 		return nil, 0, err
