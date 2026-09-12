@@ -37,7 +37,12 @@ async function contentSecurityPolicyNonce() {
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const [site, nonce] = await Promise.all([loadSiteData(), contentSecurityPolicyNonce()]);
   return (
-    <html lang="en">
+    // `themeInitScript` below writes `data-theme` on this element before React
+    // hydrates, and the server cannot know a reader's stored preference, so the
+    // attribute is always "unexpected" to the client render. Suppressing it here
+    // is the supported way to keep the pre-paint script: it covers this element's
+    // own attributes only, not the subtree.
+    <html lang="en" suppressHydrationWarning>
       <body>
         <script nonce={nonce} dangerouslySetInnerHTML={{ __html: themeInitScript }} />
         <Providers>
