@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -67,8 +68,10 @@ func (h *apiHandler) adminUpdateProfile(w http.ResponseWriter, r *http.Request) 
 		Series       *[]model.ProfileSeriesItem     `json:"series"`
 		Contacts     *[]model.ProfileContact        `json:"contacts"`
 	}
-	if err := decodeJSON(r, &input); err != nil || input.DisplayName == nil || strings.TrimSpace(*input.DisplayName) == "" || input.Handle == nil || input.Headline == nil || input.Bio == nil || input.AvatarURL == nil || input.Location == nil || input.Organization == nil || input.WebsiteURL == nil || len(input.ResumeURL) == 0 || input.Interests == nil || input.Education == nil || input.Experience == nil || input.Series == nil || input.Contacts == nil {
-		WriteError(w, http.StatusUnprocessableEntity, apierror.ValidationError, "Display name is required.")
+	if err := decodeJSON(w, r, &input); err != nil || input.DisplayName == nil || strings.TrimSpace(*input.DisplayName) == "" || input.Handle == nil || input.Headline == nil || input.Bio == nil || input.AvatarURL == nil || input.Location == nil || input.Organization == nil || input.WebsiteURL == nil || len(input.ResumeURL) == 0 || input.Interests == nil || input.Education == nil || input.Experience == nil || input.Series == nil || input.Contacts == nil {
+		if !errors.Is(err, errBodyTooLarge) {
+			WriteError(w, http.StatusUnprocessableEntity, apierror.ValidationError, "Display name is required.")
+		}
 		return
 	}
 	var resumeURL *string

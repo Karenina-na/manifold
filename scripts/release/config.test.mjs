@@ -139,10 +139,15 @@ test('validateReleaseConfig checks anchoring chain settings', () => {
     () => validateReleaseConfig({ ...validEnvironment, CORE_CHAIN_PROOF_MODE: 'ultra' }),
     /CORE_CHAIN_PROOF_MODE must be sim or proof/,
   )
-  // Proof mode demands at least difficulty 1.
+  // Proof mode demands a difficulty inside the range Core accepts: below 1 the
+  // target is trivial, above 6 the collision search is effectively unbounded.
   assert.throws(
     () => validateReleaseConfig({ ...validEnvironment, CORE_CHAIN_PROOF_MODE: 'proof', CORE_CHAIN_DIFFICULTY: '0' }),
-    /CORE_CHAIN_DIFFICULTY must be >= 1 in proof mode/,
+    /CORE_CHAIN_DIFFICULTY must be between 1 and 6 in proof mode/,
+  )
+  assert.throws(
+    () => validateReleaseConfig({ ...validEnvironment, CORE_CHAIN_PROOF_MODE: 'proof', CORE_CHAIN_DIFFICULTY: '7' }),
+    /CORE_CHAIN_DIFFICULTY must be between 1 and 6 in proof mode/,
   )
   // Valid proof configuration passes.
   validateReleaseConfig({ ...validEnvironment, CORE_CHAIN_PROOF_MODE: 'proof', CORE_CHAIN_DIFFICULTY: '4' })

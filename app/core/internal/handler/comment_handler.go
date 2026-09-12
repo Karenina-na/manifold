@@ -76,8 +76,10 @@ func (h *apiHandler) createComment(w http.ResponseWriter, r *http.Request) {
 // endpoint (false: admin tokens are admin JWTs, not visitor sessions).
 func (h *apiHandler) createCommentOnContent(w http.ResponseWriter, r *http.Request, content model.Content, withVisitor bool) {
 	var input commentInput
-	if err := decodeJSON(r, &input); err != nil || h.validate.Struct(input) != nil {
-		WriteError(w, http.StatusUnprocessableEntity, apierror.ValidationError, "Comment body is required.")
+	if err := decodeJSON(w, r, &input); err != nil || h.validate.Struct(input) != nil {
+		if !errors.Is(err, errBodyTooLarge) {
+			WriteError(w, http.StatusUnprocessableEntity, apierror.ValidationError, "Comment body is required.")
+		}
 		return
 	}
 	authorName := strings.TrimSpace(input.AuthorName)

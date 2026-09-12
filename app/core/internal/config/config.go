@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/caarlos0/env/v11"
+
+	"github.com/manifold-space/manifold/app/core/internal/chain"
 )
 
 type Config struct {
@@ -26,9 +28,10 @@ type Config struct {
 	LoginRatePerMin   int           `env:"LOGIN_RATE_LIMIT_PER_MIN" envDefault:"5"`
 	TrustedProxyCIDRs []string      `env:"TRUSTED_PROXY_CIDRS" envDefault:"" envSeparator:","`
 	SeedFile          string        `env:"SEED_FILE" envDefault:""`
-	// 锚定链配置（docs/chain.md §5）。proofMode 由 chain.NewLedger 校验枚举。
+	// 锚定链配置（docs/chain.md §5）。proofMode 的枚举由 chain.NewLedger 兜底，
+	// difficulty 的区间在 proof 模式下由 Validate 强制。
 	ChainProofMode       string        `env:"CHAIN_PROOF_MODE" envDefault:"sim"`
-	ChainDifficulty      int           `env:"CHAIN_DIFFICULTY" envDefault:"8"`
+	ChainDifficulty      int           `env:"CHAIN_DIFFICULTY" envDefault:"6"`
 	ChainSimDelay        time.Duration `env:"CHAIN_SIM_DELAY" envDefault:"1s"`
 	ChainBatchSize       int           `env:"CHAIN_BATCH_SIZE" envDefault:"32"`
 	ChainMaxBlockAnchors int           `env:"CHAIN_MAX_BLOCK_ANCHORS" envDefault:"500"`
@@ -49,12 +52,30 @@ type Config struct {
 
 const devJWTSecret = "manifold-dev-secret-change-me"
 
-// Validate enforces the production contract: dev defaults for secrets are a
-// convenience for local runs only, never for a deployment.
+// Validate enforces the configuration contract. The chain difficulty bound is
+// checked in every environment rather than only in production: an out-of-range
+// value is a resource fault (an effectively unbounded hash search inside the
+// miner goroutine), not a deployment-secret mistake, and it must fail at
+// startup even on a developer machine. The secret checks stay
+// production-only, where the dev defaults are a convenience for local runs and
+// never a deployment.
 func (c Config) Validate() error {
-	if c.Env != "production" {
-		return nil
+	var problems []string
+	if c.ChainProofMode == string(chain.ProofModeProof) && (c.ChainDifficulty < chain.MinProofDifficulty || c.ChainDifficulty > chain.MaxProofDifficulty) {
+		problems = append(problems, fmt.Sprintf("CORE_CHAIN_DIFFICULTY must be between %d and %d in proof mode, got %d", chain.MinProofDifficulty, chain.MaxProofDifficulty, c.ChainDifficulty))
 	}
+	if c.Env == "production" {
+		problems = append(problems, c.productionProblems()...)
+	}
+	if len(problems) > 0 {
+		return fmt.Errorf("configuration refused: %s", strings.Join(problems, "; "))
+	}
+	return nil
+}
+
+// productionProblems lists the deployment contract violations: dev defaults for
+// secrets are never acceptable outside a local run.
+func (c Config) productionProblems() []string {
 	var problems []string
 	if c.JWTSecret == "" || c.JWTSecret == devJWTSecret || len(c.JWTSecret) < 16 {
 		problems = append(problems, "CORE_JWT_SECRET must be set to a non-default secret of at least 16 characters")
@@ -71,10 +92,7 @@ func (c Config) Validate() error {
 			problems = append(problems, fmt.Sprintf("CORE_TRUSTED_PROXY_CIDRS contains invalid CIDR %q", value))
 		}
 	}
-	if len(problems) > 0 {
-		return fmt.Errorf("production configuration refused: %s", strings.Join(problems, "; "))
-	}
-	return nil
+	return problems
 }
 
 func (c Config) IsProduction() bool { return c.Env == "production" }

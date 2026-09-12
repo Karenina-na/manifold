@@ -19,8 +19,10 @@ type loginInput struct {
 
 func (h *apiHandler) login(w http.ResponseWriter, r *http.Request) {
 	var input loginInput
-	if err := decodeJSON(r, &input); err != nil || h.validate.Struct(input) != nil {
-		WriteError(w, http.StatusUnprocessableEntity, apierror.ValidationError, "Username and password are required.")
+	if err := decodeJSON(w, r, &input); err != nil || h.validate.Struct(input) != nil {
+		if !errors.Is(err, errBodyTooLarge) {
+			WriteError(w, http.StatusUnprocessableEntity, apierror.ValidationError, "Username and password are required.")
+		}
 		return
 	}
 	token, err := h.auth.Login(input.Username, input.Password)
@@ -142,8 +144,10 @@ type changePasswordInput struct {
 
 func (h *apiHandler) adminChangePassword(w http.ResponseWriter, r *http.Request) {
 	var input changePasswordInput
-	if err := decodeJSON(r, &input); err != nil || h.validate.Struct(input) != nil {
-		WriteError(w, http.StatusUnprocessableEntity, apierror.ValidationError, "currentPassword and newPassword are required; newPassword must be at least 8 characters.")
+	if err := decodeJSON(w, r, &input); err != nil || h.validate.Struct(input) != nil {
+		if !errors.Is(err, errBodyTooLarge) {
+			WriteError(w, http.StatusUnprocessableEntity, apierror.ValidationError, "currentPassword and newPassword are required; newPassword must be at least 8 characters.")
+		}
 		return
 	}
 	claims := auth.ClaimsFromContext(r.Context())

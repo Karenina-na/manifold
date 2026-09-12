@@ -108,7 +108,7 @@ Admin 的 `VITE_CORE_URL` 必须指向 Core（默认 `http://localhost:8080`）�
 | `CORE_AUDIT_EVENT_BUFFER` | `256` | 审计队列容量 |
 | `CORE_SEED_FILE` | 空 | 自定义种子 JSON；留空时开发环境用内置演示数据，生产环境只初始化骨架、内容库为空（详见 `docs/core.md` 种子数据章节） |
 | `CORE_CHAIN_PROOF_MODE` | `sim` | 锚定链挖矿模式：`sim` 固定延迟出块，`proof` 真跑 SHA-256 碰撞（详见 `docs/chain.md`） |
-| `CORE_CHAIN_DIFFICULTY` | `8` | proof 模式前导 0 十六进制位数；sim 下忽略 |
+| `CORE_CHAIN_DIFFICULTY` | `6` | proof 模式前导 0 十六进制位数，合法区间 `[1, 6]`，越界拒绝启动；sim 下忽略 |
 | `CORE_CHAIN_SIM_DELAY` | `1s` | sim 模式模拟挖矿延迟 |
 | `CORE_CHAIN_BATCH_SIZE` | `32` | 缓冲满阈值：pending 证书达到该数量立即打包 |
 | `CORE_CHAIN_MAX_BLOCK_ANCHORS` | `500` | 单块证书上限 |

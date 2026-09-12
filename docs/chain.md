@@ -138,7 +138,7 @@ POST /api/v1/chain/anchors ─┼──> handler 构造 payload ──> chain.Su
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
 | `CORE_CHAIN_PROOF_MODE` | `sim` | `sim` 固定延迟出块；`proof` 真跑 SHA-256 碰撞 |
-| `CORE_CHAIN_DIFFICULTY` | `8` | proof 模式前导 0 十六进制位数；sim 下忽略（存 0）。默认 8 位 ≈ 平均 2^32 次哈希，仅供演示，生产慎用高位 |
+| `CORE_CHAIN_DIFFICULTY` | `6` | proof 模式前导 0 十六进制位数；sim 下忽略（存 0）。合法区间是 `[1, 6]`，由 `chain.MinProofDifficulty` / `chain.MaxProofDifficulty` 定义：目标代价是 16^difficulty 次哈希，6 位约 1.7e7 次（单核数秒），8 位约 4.3e9 次（十几分钟），12 位以年计，而 `InsertBlock` 只在进程关闭时才收到取消信号。`config.Validate()` 在 proof 模式下越界即拒绝启动（所有环境，不只 production），`NewLedger` 另外对直接调用方做一次 clamp 兜底 |
 | `CORE_CHAIN_SIM_DELAY` | `1s` | sim 模式模拟挖矿延迟 |
 | `CORE_CHAIN_BATCH_SIZE` | `32` | 缓冲满阈值：pending 达到该数量立即打包 |
 | `CORE_CHAIN_MAX_BLOCK_ANCHORS` | `500` | 单块证书上限，超出分多块连挖 |
@@ -146,7 +146,7 @@ POST /api/v1/chain/anchors ─┼──> handler 构造 payload ──> chain.Su
 | `CORE_CHAIN_ANCHOR_MAX_BYTES` | `65536` | 公开/Admin 提交 payload 上限（64KB），超限 413 |
 | `CORE_CHAIN_VERIFY_RATE_PER_MIN` | `20` | 四个 verify 入口共用的独立限流配额（每分钟）；每个验证请求都会全链重放（见第 10 节），比公开提交更昂贵，故配额更紧 |
 
-发布打包脚本校验：`CORE_CHAIN_PROOF_MODE ∈ {sim, proof}`；`proof` 模式下 `CORE_CHAIN_DIFFICULTY ≥ 1`。sim 模式可在生产运行（这是学习特性站点，链延迟出块不影响业务正确性）。
+发布打包脚本校验：`CORE_CHAIN_PROOF_MODE ∈ {sim, proof}`；`proof` 模式下 `CORE_CHAIN_DIFFICULTY ∈ [1, 6]`（与 Core 的 `config.Validate()` 同一区间，避免打包通过而启动被拒）。sim 模式可在生产运行（这是学习特性站点，链延迟出块不影响业务正确性）。
 
 ## 6. 公开 API
 

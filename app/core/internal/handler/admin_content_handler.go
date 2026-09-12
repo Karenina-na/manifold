@@ -59,9 +59,11 @@ func (h *apiHandler) resolveAdminContent(w http.ResponseWriter, r *http.Request)
 }
 
 func (h *apiHandler) adminCreateContent(w http.ResponseWriter, r *http.Request) {
-	input, err := h.decodeContentInput(r)
+	input, err := h.decodeContentInput(w, r)
 	if err != nil {
-		WriteError(w, http.StatusUnprocessableEntity, apierror.ValidationError, err.Error())
+		if !errors.Is(err, errBodyTooLarge) {
+			WriteError(w, http.StatusUnprocessableEntity, apierror.ValidationError, err.Error())
+		}
 		return
 	}
 	if err := validateContentSemantics(input.Kind, input.Title, input.Slug); err != nil {
@@ -85,9 +87,11 @@ func (h *apiHandler) adminCreateContent(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *apiHandler) adminUpdateContent(w http.ResponseWriter, r *http.Request) {
-	input, err := h.decodeContentUpdateInput(r)
+	input, err := h.decodeContentUpdateInput(w, r)
 	if err != nil {
-		WriteError(w, http.StatusUnprocessableEntity, apierror.ValidationError, "Invalid content input.")
+		if !errors.Is(err, errBodyTooLarge) {
+			WriteError(w, http.StatusUnprocessableEntity, apierror.ValidationError, "Invalid content input.")
+		}
 		return
 	}
 	current, ok := h.resolveAdminContent(w, r)

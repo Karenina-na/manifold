@@ -111,8 +111,9 @@ export function validateReleaseConfig(environment) {
     && !['sim', 'proof'].includes(environment.CORE_CHAIN_PROOF_MODE)) {
     throw new Error('CORE_CHAIN_PROOF_MODE must be sim or proof')
   }
-  if (environment.CORE_CHAIN_PROOF_MODE === 'proof' && Number(environment.CORE_CHAIN_DIFFICULTY) < 1) {
-    throw new Error('CORE_CHAIN_DIFFICULTY must be >= 1 in proof mode')
+  if (environment.CORE_CHAIN_PROOF_MODE === 'proof'
+    && (Number(environment.CORE_CHAIN_DIFFICULTY) < 1 || Number(environment.CORE_CHAIN_DIFFICULTY) > 6)) {
+    throw new Error('CORE_CHAIN_DIFFICULTY must be between 1 and 6 in proof mode')
   }
   if (environment.CORE_ADMIN_PASSWORD_HASH === DEV_PASSWORD_HASH
     || !/^\$2[aby]\$(?:0[4-9]|[12]\d|3[01])\$[./A-Za-z0-9]{53}$/.test(environment.CORE_ADMIN_PASSWORD_HASH)) {

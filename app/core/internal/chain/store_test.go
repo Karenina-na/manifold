@@ -311,3 +311,49 @@ func TestSubmitStoresExplicitSubjectRef(t *testing.T) {
 		t.Fatalf("persisted comment ref must be commentId, got %q", stored.SubjectRef)
 	}
 }
+
+// NewLedger is the boundary every caller goes through, so an out-of-range proof
+// difficulty must be clamped there even when a caller skipped config.Validate
+// (docs/chain.md §5). Without it the miner goroutine would run a collision
+// search that only ends when the process shuts down.
+func TestNewLedgerClampsProofDifficulty(t *testing.T) {
+	s, err := store.Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	for _, testCase := range []struct {
+		name       string
+		difficulty int
+		want       int
+	}{
+		{"above the cap", 64, MaxProofDifficulty},
+		{"below the floor", 0, MinProofDifficulty},
+		{"inside the range", 3, 3},
+	} {
+		ledger := NewLedger(s.DB, testConfig(func(cfg *LedgerConfig) {
+			cfg.ProofMode = ProofModeProof
+			cfg.Difficulty = testCase.difficulty
+		}))
+		if ledger.cfg.Difficulty != testCase.want {
+			t.Fatalf("%s: difficulty = %d, want %d", testCase.name, ledger.cfg.Difficulty, testCase.want)
+		}
+	}
+}
+
+// Sim mode never reads difficulty — mineHeader forces the target to 0 — so
+// NewLedger must leave the value alone instead of clamping a setting the miner
+// does not consult.
+func TestNewLedgerLeavesSimDifficultyAlone(t *testing.T) {
+	s, err := store.Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	ledger := NewLedger(s.DB, testConfig(func(cfg *LedgerConfig) { cfg.Difficulty = 64 }))
+	if ledger.cfg.Difficulty != 64 {
+		t.Fatalf("sim difficulty = %d, want the configured 64", ledger.cfg.Difficulty)
+	}
+}

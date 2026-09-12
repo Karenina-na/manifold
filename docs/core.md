@@ -91,7 +91,7 @@ Core 使用 `caarlos0/env` 读取 `CORE_` 前缀变量；启动时自动从工�
 | `CORE_PUBLIC_URL` | 空 | 构建媒体绝对 URL 的公开基地址；为空时用请求的 Host（`X-Forwarded-Proto` 场景仅取 `r.TLS`/http） |
 | `CORE_SEED_FILE` | 空 | 自定义种子文件路径，语义见“种子数据”章节 |
 | `CORE_CHAIN_PROOF_MODE` | `sim` | 锚定链挖矿模式：`sim` 固定延迟出块，`proof` 真跑 SHA-256 碰撞；语义见 [`docs/chain.md`](chain.md) |
-| `CORE_CHAIN_DIFFICULTY` | `8` | proof 模式前导 0 十六进制位数；sim 下存 0 |
+| `CORE_CHAIN_DIFFICULTY` | `6` | proof 模式前导 0 十六进制位数，取值必须落在 `[1, 6]`（`chain.MinProofDifficulty`…`chain.MaxProofDifficulty`），越界时进程拒绝启动；sim 下存 0 |
 | `CORE_CHAIN_SIM_DELAY` | `1s` | sim 模式模拟挖矿延迟 |
 | `CORE_CHAIN_BATCH_SIZE` | `32` | 缓冲满阈值：pending 证书达到该数量立即打包 |
 | `CORE_CHAIN_MAX_BLOCK_ANCHORS` | `500` | 单块证书上限 |
@@ -151,7 +151,9 @@ Core 使用 `caarlos0/env` 读取 `CORE_` 前缀变量；启动时自动从工�
 }
 ```
 
-常见状态码：`400` 查询/访客参数无效，`401` JWT 缺失或无效，`403` 角色无权限，`404` 不存在或对调用者不可见，`409` 唯一键/版本冲突，`422` 输入校验失败，`500` 服务端故障。
+常见状态码：`400` 查询/访客参数无效，`401` JWT 缺失或无效，`403` 角色无权限，`404` 不存在或对调用者不可见，`409` 唯一键/版本冲突，`413` 请求体超过上限，`422` 输入校验失败，`500` 服务端故障。
+
+所有 JSON 请求体都在统一的解码边界（`internal/handler` 的 `decodeJSON`）套一层 `http.MaxBytesReader`，上限 **1 MiB**；超限一律返回 `413 PAYLOAD_TOO_LARGE`，而不是先缓冲整个请求体再报成校验失败。媒体上传（`CORE_MEDIA_MAX_BYTES`）与锚定提交（`CORE_CHAIN_ANCHOR_MAX_BYTES`）有各自更小的上限，各自返回 `413 MEDIA_TOO_LARGE` / `413 PAYLOAD_TOO_LARGE`。
 
 `code` 的完整枚举是 `ApiErrorCode`（`packages/contracts/src/index.ts` 的 `API_ERROR_CODES`），Core 侧的常量集中在 `app/core/internal/apierror/codes.go`。两侧由 `packages/contracts/test/error-codes.test.ts` 强制逐项相等，因此新增或改名一个错误码必须同时改两处，否则测试失败——客户端可以放心地对 `code` 做穷尽 `switch`。
 
@@ -265,7 +267,7 @@ Thoughts 归档参数为 `page`（默认 1）、`pageSize`（默认 8，范围 1
 | `GET` | `/api/v1/admin/session/list` | `AdminSessionList`：该 subject 的活跃会话（未吊销、未过期），按 `createdAt` 降序；吊销的会话即软删除，不再出现在列表中（`revoked_at` 仍保留在 `admin_sessions` 表供审计） |
 | `POST` | `/api/v1/admin/password` | `ChangePasswordInput{currentPassword,newPassword}`，校验旧密码 → 写新 bcrypt hash → 吊销当前外所有会话，204；审计 `admin.password.changed`。旧密码错误返回 401 `INVALID_CREDENTIALS` |
 | `GET` | `/api/v1/admin/media` | `Collection<Media>`：媒体库服务端分页，`page`（默认 1）、`pageSize`（默认 20，上限 50）、`q`（按文件名/ID 过滤，≤200 字符）；`url` 为绝对地址，按 `createdAt` 降序 |
-| `POST` | `/api/v1/admin/media` | 上传媒体：raw bytes（非 multipart）+ `?filename=`；`http.DetectContentType` 嗅探并仅接受 png/jpeg/webp/gif/avif 图片与 `application/pdf`（拒绝 SVG 与其他类型，415）；超过 `CORE_MEDIA_MAX_BYTES` 返回 413；按 SHA256 去重幂等（重复上传返回已有记录）；响应 201 `Media`（含绝对 `url`，图片写进 Markdown 正文使用，PDF 用于 Profile resume 链接）；审计 `media.uploaded` |
+| `POST` | `/api/v1/admin/media` | 上传媒体：raw bytes（非 multipart）+ `?filename=`；`http.DetectContentType` 嗅探并仅接受 png/jpeg/webp/gif/avif 图片与 `application/pdf`（拒绝 SVG 与其他类型，415）；超过 `CORE_MEDIA_MAX_BYTES` 返回 413；按 SHA256 去重幂等（重复上传返回已有记录，包括并发重复上传——去重是单条 `INSERT ... ON CONFLICT(sha256) DO NOTHING` 加回读，不是先查后插，因此抢输的一方返回既有行而不是 500）；媒体 id 为 `crypto/rand` 生成的随机值；响应 201 `Media`（含绝对 `url`，图片写进 Markdown 正文使用，PDF 用于 Profile resume 链接）；审计 `media.uploaded` |
 | `DELETE` | `/api/v1/admin/media/{id}` | 物理删除媒体，204；删除前检查非删除内容正文是否引用该媒体，被引用则返回 409 `MEDIA_IN_USE`（`details.references` 列出引用内容），否则删除；审计 `media.deleted` |
 | `GET` | `/api/v1/admin/media/{id}/references` | `{ references: [...] }`：非删除内容（DRAFT/PUBLISHED）正文中引用该媒体的列表，每项为 `MediaReference{ contentId, kind, title, slug, status }`；`status` 只可能是 `DRAFT`/`PUBLISHED`；未知 id 返回空列表 |
 | `POST` | `/api/v1/admin/chain/anchors` | 管理员锚定提交：请求体与响应同公开通道（source = `admin`），无独立限流；语义见 [`docs/chain.md`](chain.md) |

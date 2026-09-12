@@ -28,8 +28,10 @@ func (h *apiHandler) adminUpdateSite(w http.ResponseWriter, r *http.Request) {
 		Navigation      *[]model.SiteNavigationItem `json:"navigation"`
 		Sections        *[]string                   `json:"sections"`
 	}
-	if err := decodeJSON(r, &raw); err != nil || raw.Title == nil || raw.Description == nil || raw.Footer == nil || raw.Social == nil || raw.CommentsEnabled == nil || raw.Navigation == nil || raw.Sections == nil {
-		WriteError(w, http.StatusUnprocessableEntity, apierror.ValidationError, "Title, navigation, and sections are required.")
+	if err := decodeJSON(w, r, &raw); err != nil || raw.Title == nil || raw.Description == nil || raw.Footer == nil || raw.Social == nil || raw.CommentsEnabled == nil || raw.Navigation == nil || raw.Sections == nil {
+		if !errors.Is(err, errBodyTooLarge) {
+			WriteError(w, http.StatusUnprocessableEntity, apierror.ValidationError, "Title, navigation, and sections are required.")
+		}
 		return
 	}
 	input := model.SiteConfig{Title: *raw.Title, Description: *raw.Description, Footer: *raw.Footer, Social: *raw.Social, CommentsEnabled: *raw.CommentsEnabled, Navigation: *raw.Navigation, Sections: *raw.Sections}
@@ -57,8 +59,10 @@ func (h *apiHandler) adminUpdateThoughtConfig(w http.ResponseWriter, r *http.Req
 	var input struct {
 		PinnedIds *[]string `json:"pinnedIds"`
 	}
-	if err := decodeJSON(r, &input); err != nil || input.PinnedIds == nil {
-		WriteError(w, http.StatusUnprocessableEntity, apierror.ValidationError, "pinnedIds is required.")
+	if err := decodeJSON(w, r, &input); err != nil || input.PinnedIds == nil {
+		if !errors.Is(err, errBodyTooLarge) {
+			WriteError(w, http.StatusUnprocessableEntity, apierror.ValidationError, "pinnedIds is required.")
+		}
 		return
 	}
 	if err := h.validatePinnedIds(*input.PinnedIds, model.ContentKindThought); err != nil {
@@ -85,8 +89,10 @@ func (h *apiHandler) adminUpdateWritingConfig(w http.ResponseWriter, r *http.Req
 	var input struct {
 		PinnedIds *[]string `json:"pinnedIds"`
 	}
-	if err := decodeJSON(r, &input); err != nil || input.PinnedIds == nil {
-		WriteError(w, http.StatusUnprocessableEntity, apierror.ValidationError, "pinnedIds is required.")
+	if err := decodeJSON(w, r, &input); err != nil || input.PinnedIds == nil {
+		if !errors.Is(err, errBodyTooLarge) {
+			WriteError(w, http.StatusUnprocessableEntity, apierror.ValidationError, "pinnedIds is required.")
+		}
 		return
 	}
 	if err := h.validatePinnedIds(*input.PinnedIds, model.ContentKindArticle); err != nil {

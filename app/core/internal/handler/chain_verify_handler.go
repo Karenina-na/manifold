@@ -45,8 +45,10 @@ func (h *apiHandler) verifyAnchorPayload(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	var input submitAnchorInput
-	if err := decodeJSON(r, &input); err != nil || input.Payload == "" {
-		WriteError(w, http.StatusBadRequest, apierror.ValidationError, "payload is required.")
+	if err := decodeJSON(w, r, &input); err != nil || input.Payload == "" {
+		if !errors.Is(err, errBodyTooLarge) {
+			WriteError(w, http.StatusBadRequest, apierror.ValidationError, "payload is required.")
+		}
 		return
 	}
 	body, status := h.verifyResult(ledger, chain.SubjectHashHex([]byte(input.Payload)))

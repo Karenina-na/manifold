@@ -126,8 +126,10 @@ func (h *apiHandler) githubExchange(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var input githubExchangeInput
-	if err := decodeJSON(r, &input); err != nil || h.validate.Struct(input) != nil {
-		WriteError(w, http.StatusUnprocessableEntity, apierror.ValidationError, "A GitHub authorization code is required.")
+	if err := decodeJSON(w, r, &input); err != nil || h.validate.Struct(input) != nil {
+		if !errors.Is(err, errBodyTooLarge) {
+			WriteError(w, http.StatusUnprocessableEntity, apierror.ValidationError, "A GitHub authorization code is required.")
+		}
 		return
 	}
 	client := newGitHubOAuthClient(h.cfg, h.githubClient)

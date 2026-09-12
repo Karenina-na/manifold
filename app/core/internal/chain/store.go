@@ -14,6 +14,12 @@ func NewLedger(db *sql.DB, cfg LedgerConfig) *Ledger {
 	if !cfg.ProofMode.Valid() {
 		cfg.ProofMode = ProofModeSim
 	}
+	if cfg.ProofMode == ProofModeProof {
+		// Second line of defence behind config.Validate: an unbounded proof
+		// search is not cancellable except by shutting the process down
+		// (docs/chain.md §5).
+		cfg.Difficulty = ClampProofDifficulty(cfg.Difficulty)
+	}
 	if cfg.MaxBlockAnchors < 1 {
 		cfg.MaxBlockAnchors = 500
 	}

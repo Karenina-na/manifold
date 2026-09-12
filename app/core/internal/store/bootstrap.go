@@ -29,7 +29,7 @@ func Open(path string, options ...Option) (*Store, error) {
 			return nil, err
 		}
 	}
-	database, err := sql.Open("sqlite", path)
+	database, err := sql.Open("sqlite", databaseDSN(path))
 	if err != nil {
 		return nil, err
 	}
@@ -98,13 +98,26 @@ func seedPlanFor(options []Option) (seed.Plan, error) {
 	return plan, nil
 }
 
+// databaseDSN attaches the connection-scoped pragmas to the database path.
+// foreign_keys is per-connection state, so it has to travel in the DSN: running
+// PRAGMA foreign_keys = ON once after opening only configures the connection it
+// happened to run on, and the constraint would silently lapse the moment the
+// pool retired that connection — taking the comments.reply_to_id, pins.content_id
+// and chain_anchors.block_id foreign keys with it. The driver applies
+// _pragma=... on every new connection, including the ":memory:" form, whose
+// query string it strips from the filename before opening.
+func databaseDSN(path string) string {
+	separator := "?"
+	if strings.Contains(path, "?") {
+		separator = "&"
+	}
+	return path + separator + "_pragma=foreign_keys(1)"
+}
+
 // migrate applies every embedded migration below the schema's known version.
 // A database from a newer binary refuses to open rather than being silently
 // downgraded.
 func (s *Store) migrate() error {
-	if _, err := s.DB.Exec(`PRAGMA foreign_keys = ON`); err != nil {
-		return err
-	}
 	var userVersion int
 	if err := s.DB.QueryRow(`PRAGMA user_version`).Scan(&userVersion); err != nil {
 		return err

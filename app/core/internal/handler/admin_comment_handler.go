@@ -94,8 +94,10 @@ type updateCommentAuthorInput struct {
 
 func (h *apiHandler) adminUpdateCommentAuthor(w http.ResponseWriter, r *http.Request) {
 	var input updateCommentAuthorInput
-	if err := decodeJSON(r, &input); err != nil {
-		WriteError(w, http.StatusUnprocessableEntity, apierror.ValidationError, "Invalid comment author input.")
+	if err := decodeJSON(w, r, &input); err != nil {
+		if !errors.Is(err, errBodyTooLarge) {
+			WriteError(w, http.StatusUnprocessableEntity, apierror.ValidationError, "Invalid comment author input.")
+		}
 		return
 	}
 	update, err := parseCommentAuthorUpdate(input)

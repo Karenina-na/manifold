@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/manifold-space/manifold/app/core/internal/chain"
 )
 
 func TestApplyDotEnvFileParsesLiteralValues(t *testing.T) {
@@ -111,5 +113,64 @@ func TestValidateAllowsEmptyTrustedProxyDefault(t *testing.T) {
 
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("empty trusted proxy default must be allowed: %v", err)
+	}
+}
+
+// The difficulty bound is checked in every environment, not just production:
+// an out-of-range value makes the miner's collision search effectively
+// unbounded, which is a resource fault rather than a deployment-secret mistake
+// (docs/chain.md §5).
+func TestValidateBoundsChainDifficultyInProofMode(t *testing.T) {
+	for _, testCase := range []struct {
+		name       string
+		difficulty int
+		wantError  bool
+	}{
+		{"at the floor", chain.MinProofDifficulty, false},
+		{"at the cap", chain.MaxProofDifficulty, false},
+		{"inside the range", 4, false},
+		{"below the floor", chain.MinProofDifficulty - 1, true},
+		{"above the cap", chain.MaxProofDifficulty + 1, true},
+	} {
+		cfg := Config{Env: "development", ChainProofMode: "proof", ChainDifficulty: testCase.difficulty}
+		err := cfg.Validate()
+		if testCase.wantError != (err != nil) {
+			t.Fatalf("%s: Validate() error = %v, wantError %v", testCase.name, err, testCase.wantError)
+		}
+	}
+}
+
+// Sim mode ignores difficulty — the miner forces the target to 0 and the stored
+// block records 0 — so an out-of-range value there is inert and must not stop a
+// process that was previously running happily.
+func TestValidateIgnoresChainDifficultyOutsideProofMode(t *testing.T) {
+	for _, mode := range []string{"sim", "", "unknown"} {
+		cfg := Config{Env: "development", ChainProofMode: mode, ChainDifficulty: 64}
+		if err := cfg.Validate(); err != nil {
+			t.Fatalf("mode %q must ignore difficulty: %v", mode, err)
+		}
+	}
+}
+
+// The built-in default has to be a value proof mode accepts, otherwise
+// enabling proof mode on its own would refuse to boot.
+func TestDefaultChainDifficultyIsValidForProofMode(t *testing.T) {
+	t.Chdir(t.TempDir())
+	if previous, ok := os.LookupEnv("CORE_CHAIN_DIFFICULTY"); ok {
+		t.Cleanup(func() { _ = os.Setenv("CORE_CHAIN_DIFFICULTY", previous) })
+	}
+	_ = os.Unsetenv("CORE_CHAIN_DIFFICULTY")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.ChainDifficulty < chain.MinProofDifficulty || cfg.ChainDifficulty > chain.MaxProofDifficulty {
+		t.Fatalf("default CORE_CHAIN_DIFFICULTY = %d is outside the proof-mode range [%d, %d]",
+			cfg.ChainDifficulty, chain.MinProofDifficulty, chain.MaxProofDifficulty)
+	}
+	cfg.ChainProofMode = "proof"
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("the default difficulty must be accepted in proof mode: %v", err)
 	}
 }

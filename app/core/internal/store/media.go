@@ -1,7 +1,9 @@
 package store
 
 import (
+	"crypto/rand"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"strings"
 	"time"
@@ -13,23 +15,47 @@ var ErrMediaNotFound = errors.New("media not found")
 
 // InsertMedia persists an upload, deduplicating by SHA256: re-uploading the
 // same bytes returns the existing row (created=false) so editor re-inserts
-// never grow the database.
+// never grow the database. Deduplication is a single INSERT ... ON CONFLICT
+// rather than a SELECT followed by an INSERT: two concurrent uploads of the
+// same bytes would both miss the lookup and the loser would then fail the
+// UNIQUE(sha256) index with a 500, which is precisely the case deduplication
+// exists to absorb. The loser now reads back the winner's row instead.
 func (s *Store) InsertMedia(mime, filename, sha256Hex string, data []byte) (model.Media, bool, error) {
-	existing, err := s.findMediaBySHA(sha256Hex)
-	if err == nil {
-		return existing, false, nil
-	}
-	if !errors.Is(err, ErrMediaNotFound) {
-		return model.Media{}, false, err
-	}
-	now := time.Now().UTC().Format(time.RFC3339)
-	id := "media_" + time.Now().UTC().Format("20060102150405.000000000")
-	_, err = s.DB.Exec(`INSERT INTO media (id, mime, size, sha256, filename, data, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`, id, mime, len(data), sha256Hex, filename, data, now)
+	id, err := newMediaID()
 	if err != nil {
 		return model.Media{}, false, err
 	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	result, err := s.DB.Exec(`INSERT INTO media (id, mime, size, sha256, filename, data, created_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(sha256) DO NOTHING`,
+		id, mime, len(data), sha256Hex, filename, data, now)
+	if err != nil {
+		return model.Media{}, false, err
+	}
+	inserted, err := result.RowsAffected()
+	if err != nil {
+		return model.Media{}, false, err
+	}
+	if inserted == 0 {
+		existing, err := s.findMediaBySHA(sha256Hex)
+		if err != nil {
+			return model.Media{}, false, err
+		}
+		return existing, false, nil
+	}
 	media := model.Media{ID: id, Mime: mime, Size: int64(len(data)), Filename: filename, SHA256: sha256Hex, CreatedAt: now}
 	return media, true, nil
+}
+
+// newMediaID returns a random media identifier. A timestamp-derived id is only
+// as unique as the clock: two uploads inside the same clock tick — or on a
+// platform whose clock resolution is coarser than the format — collided on the
+// media primary key.
+func newMediaID() (string, error) {
+	var random [16]byte
+	if _, err := rand.Read(random[:]); err != nil {
+		return "", err
+	}
+	return "media_" + hex.EncodeToString(random[:]), nil
 }
 
 func (s *Store) findMediaBySHA(sha256Hex string) (model.Media, error) {

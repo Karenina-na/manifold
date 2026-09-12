@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/manifold-space/manifold/app/core/internal/apierror"
@@ -17,8 +18,10 @@ type submitAnchorInput struct {
 // the optional label fits 64 runes.
 func (h *apiHandler) decodeSubmitAnchor(w http.ResponseWriter, r *http.Request) (submitAnchorInput, bool) {
 	var input submitAnchorInput
-	if err := decodeJSON(r, &input); err != nil {
-		WriteError(w, http.StatusBadRequest, apierror.InvalidJSON, "Request body is not valid JSON.")
+	if err := decodeJSON(w, r, &input); err != nil {
+		if !errors.Is(err, errBodyTooLarge) {
+			WriteError(w, http.StatusBadRequest, apierror.InvalidJSON, "Request body is not valid JSON.")
+		}
 		return input, false
 	}
 	if input.Payload == "" {

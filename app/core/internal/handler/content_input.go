@@ -36,9 +36,13 @@ type contentUpdateInput struct {
 	ExpectedVersion int               `json:"expectedVersion" validate:"required,min=1"`
 }
 
-func (h *apiHandler) decodeContentInput(r *http.Request) (model.ContentInput, error) {
+func (h *apiHandler) decodeContentInput(w http.ResponseWriter, r *http.Request) (model.ContentInput, error) {
 	var input contentInput
-	if err := decodeJSON(r, &input); err != nil || h.validate.Struct(input) != nil {
+	if err := decodeJSON(w, r, &input); err != nil || h.validate.Struct(input) != nil {
+		if errors.Is(err, errBodyTooLarge) {
+			// decodeJSON already answered with 413; the caller must not write.
+			return model.ContentInput{}, err
+		}
 		return model.ContentInput{}, errors.New("kind, slug, title, summary, body, tags, and metadata are required")
 	}
 	slug, err := requiredString(input.Slug, "slug", false, 160)
@@ -115,9 +119,13 @@ func decodeRequiredArray(raw json.RawMessage, name string, dst *[]string) error 
 	return nil
 }
 
-func (h *apiHandler) decodeContentUpdateInput(r *http.Request) (store.ContentUpdate, error) {
+func (h *apiHandler) decodeContentUpdateInput(w http.ResponseWriter, r *http.Request) (store.ContentUpdate, error) {
 	var input contentUpdateInput
-	if err := decodeJSON(r, &input); err != nil || h.validate.Struct(input) != nil {
+	if err := decodeJSON(w, r, &input); err != nil || h.validate.Struct(input) != nil {
+		if errors.Is(err, errBodyTooLarge) {
+			// decodeJSON already answered with 413; the caller must not write.
+			return store.ContentUpdate{}, err
+		}
 		return store.ContentUpdate{}, errors.New("complete content input and expectedVersion are required")
 	}
 	slug, err := requiredString(input.Slug, "slug", false, 160)

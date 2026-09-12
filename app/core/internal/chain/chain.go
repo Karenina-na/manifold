@@ -26,6 +26,29 @@ const (
 
 func (m ProofMode) Valid() bool { return m == ProofModeSim || m == ProofModeProof }
 
+// Proof-of-work difficulty bounds, counted in leading hex zeros. The upper
+// bound is what keeps a misconfigured difficulty from turning the miner into an
+// unbounded hash search: the target costs 16^difficulty hashes, so 6 is a few
+// seconds on one core (~1.7e7 hashes at ~5 Mhash/s) while 8 is a quarter of an
+// hour and 12 is years — and InsertBlock only learns about shutdown from ctx.
+// config.Validate refuses an out-of-range value; NewLedger clamps as a second
+// line of defence for programmatic callers (docs/chain.md §5).
+const (
+	MinProofDifficulty = 1
+	MaxProofDifficulty = 6
+)
+
+// ClampProofDifficulty bounds difficulty to the supported proof-mode range.
+func ClampProofDifficulty(difficulty int) int {
+	if difficulty < MinProofDifficulty {
+		return MinProofDifficulty
+	}
+	if difficulty > MaxProofDifficulty {
+		return MaxProofDifficulty
+	}
+	return difficulty
+}
+
 // BlockHeader is the deterministic pre-image of a block hash. Every field a
 // verifier checks must participate in the hash: flipping a historical block's
 // proofMode or difficulty would otherwise go undetected by replay (docs/chain.md §3.4).
