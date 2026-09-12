@@ -18,6 +18,6 @@ tmp/
 docs/superpowers
 
 # Go local artifacts
-apps/core/data/
-apps/core/bin/
+app/core/data/
+app/core/bin/
 
