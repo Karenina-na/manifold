@@ -29,7 +29,11 @@ function contentSecurityPolicy(nonce: string) {
     // Markdown bodies may embed any remote image, and GitHub supplies the
     // comment avatars; restricting the scheme to https keeps the risk to
     // third-party image requests rather than allowing arbitrary origins.
-    "img-src 'self' data: blob: https:",
+    // The site's own Core origin is listed explicitly for the same reason
+    // `connect-src` needs it: uploaded media is served from there, and a
+    // self-hosted Core is not necessarily https, so an https-only rule
+    // silently breaks every uploaded image.
+    `img-src 'self' data: blob: https:${coreOrigin ? ` ${coreOrigin}` : ""}`,
     "font-src 'self' data:",
     // The browser SDK calls Core on its own origin, which is not 'self'.
     `connect-src 'self'${coreOrigin ? ` ${coreOrigin}` : ""}`,

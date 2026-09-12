@@ -143,7 +143,7 @@ Web 承担 OAuth 的浏览器侧编排，认证逻辑仍在 Core（Web 不接触
 | 指令 | 取值 | 理由 |
 | --- | --- | --- |
 | `style-src` | `'self' 'unsafe-inline'` | Radix Themes 与 KaTeX 在运行时注入 `<style>` 并输出内联 style 属性；内联样式不是脚本执行面 |
-| `img-src` | `'self' data: blob: https:` | Markdown 正文可引用任意远端图片、评论头像来自 GitHub；限定 https 方案而非放开任意来源 |
+| `img-src` | `'self' data: blob: https:` + `NEXT_PUBLIC_CORE_URL` 的 origin | Markdown 正文可引用任意远端图片、评论头像来自 GitHub；限定 https 方案而非放开任意来源。站内 Core 的 origin 单独列出：上传的媒体由 Core 提供，自托管 Core 不一定是 https，只留 https 会静默挡掉所有已上传图片（与 `connect-src` 同因） |
 | `connect-src` | `'self'` + `NEXT_PUBLIC_CORE_URL` 的 origin | 浏览器 SDK 直连 Core 是跨 origin 的 |
 | `object-src` / `base-uri` / `form-action` / `frame-ancestors` / `frame-src` | 全部收紧（`'none'` 或 `'self'`） | 站点不使用插件、`<base>`、站外表单或 iframe |
 | `X-Content-Type-Options` | `nosniff` | 与 Core 侧同名的响应头一致（Core 只服务自身响应） |
