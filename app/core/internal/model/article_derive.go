@@ -12,8 +12,10 @@ var (
 	markdownLabelPattern   = regexp.MustCompile(`[*_` + "`" + `~]`)
 )
 
-// estimateReadingMinutes matches the tokenizer used for word statistics: every
-// latin/digit word counts once and every CJK character counts as half a unit.
+// estimateReadingMinutes counts latin/digit words and CJK characters like the
+// word-statistics tokenizer does, but weights a CJK character as half a unit
+// instead of a whole one: the unit is a reading-speed estimate, not a word
+// count, so the two intentionally do not agree on CJK-heavy text.
 func estimateReadingMinutes(body string) int {
 	latinWords := 0
 	cjkCharacters := 0

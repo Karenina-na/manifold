@@ -28,7 +28,7 @@
 > 1. `pnpm --filter @manifold/web test && pnpm --filter @manifold/web build`
 > 2. `pnpm --filter @manifold/admin build && pnpm browser-test`
 >
-> 新增类名时，确认 `render.css` 与组件 JSX 同步；删除 web/admin 侧遗留的平行样式（如 `site.module.css`、`App.css`）而非留着双份。
+> 新增类名时，确认 `render.css` 与组件 JSX 同步。本包只负责**内容渲染**（Markdown、正文排版、评论）的样式；两端的应用外壳样式——web 的 `app/site.module.css` 与 admin 的 `src/App.css`——由各端自己维护，它们是应用布局而不是本包样式的平行副本，也不应被本包取代。
 
 ## 依赖说明
 

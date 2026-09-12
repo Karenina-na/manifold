@@ -74,6 +74,7 @@ Core 使用 `caarlos0/env` 读取 `CORE_` 前缀变量；启动时自动从工�
 
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
+| `CORE_ENV` | `development` | 运行环境。`production` 时启用生产校验（拒绝 dev 默认 `CORE_JWT_SECRET`/`CORE_ADMIN_PASSWORD_HASH`，并校验 `CORE_TRUSTED_PROXY_CIDRS` 的 CIDR），且首次启动只播种空站点骨架、不写入演示内容 |
 | `CORE_ADDR` | `:8080` | HTTP 监听地址 |
 | `CORE_DATABASE_PATH` | `./data/manifold.db` | SQLite 路径，父目录自动创建 |
 | `CORE_ALLOWED_ORIGINS` | `http://localhost:3000,http://localhost:5173` | CORS 来源，逗号分隔 |
@@ -84,6 +85,8 @@ Core 使用 `caarlos0/env` 读取 `CORE_` 前缀变量；启动时自动从工�
 | `CORE_CONTENT_CACHE_TTL` | `30s` | 内容详情缓存 TTL |
 | `CORE_STATS_CACHE_TTL` | `30s` | 统计缓存 TTL |
 | `CORE_AUDIT_EVENT_BUFFER` | `256` | 审计队列容量 |
+| `CORE_RATE_LIMIT_PER_MIN` | `60` | 公开写入口共用的限流配额（每分钟每客户端）：`POST /presence`、`POST /content/{slug}/comments`、`PUT`/`DELETE /content/{slug}/likes`、`POST /auth/github/exchange`、`POST /chain/anchors`；超限返回 429 `RATE_LIMITED` |
+| `CORE_LOGIN_RATE_LIMIT_PER_MIN` | `5` | 管理端登录 `POST /admin/session` 的独立配额（每分钟每客户端），比公开限流更紧 |
 | `CORE_MEDIA_MAX_BYTES` | `5242880` | 单次上传大小上限（5MB），超限返回 413 |
 | `CORE_PUBLIC_URL` | 空 | 构建媒体绝对 URL 的公开基地址；为空时用请求的 Host（`X-Forwarded-Proto` 场景仅取 `r.TLS`/http） |
 | `CORE_SEED_FILE` | 空 | 自定义种子文件路径，语义见“种子数据”章节 |
@@ -164,14 +167,14 @@ Core 使用 `caarlos0/env` 读取 `CORE_` 前缀变量；启动时自动从工�
 | `GET` | `/api/v1/home/timeline` | 首页 Updates 的有限公开投影 `{ data, totalItems, truncated }`；`data` 项只含 `id/kind/slug/title/summary/publishedAt`，取最新 `limit` 条后按不可变首发时间升序；`limit` 默认 1000、上限 1000，超上限钳制，非法或未知参数返回 400 `INVALID_QUERY` |
 | `GET` | `/api/v1/content` | 已发布内容摘要集合，包含 Core 从 Markdown 正文派生的纯文本 `excerpt`、`viewCount`、`likeCount` 和可见线程口径的 `commentCount` 聚合值 |
 | `GET` | `/api/v1/tags` | 已发布内容的标签聚合 `Collection<TagSummary>`（`{ name, count }`，按 count 降序、name 升序），可用 `kind=THOUGHT|ARTICLE` 过滤 |
-| `GET` | `/api/v1/content/{slug}` | 通过 slug 或 ID 返回已发布详情和 Markdown body；默认记录一次 `content.viewed` 审计事件并写入浏览事件（识别访客按 `(content, visitor, UTC 日)` 去重，匿名浏览每次都记录），内部 metadata 请求可传 `trackView=false` 跳过计数；来源归一为 origin 供分析——优先读 `referrer` 查询参数（SDK 为服务端 fetch 转发浏览器原始 Referer），为空时回退 HTTP `Referer` 头 |
+| `GET` | `/api/v1/content/{slug}` | 按 slug 返回已发布详情和 Markdown body（**仅 slug，无 ID 回退**；按 ID 读取是管理端 `/api/v1/admin/content/{id}` 的能力）；默认记录一次 `content.viewed` 审计事件并写入浏览事件（识别访客按 `(content, visitor, UTC 日)` 去重，匿名浏览每次都记录），内部 metadata 请求可传 `trackView=false` 跳过计数；来源归一为 origin 供分析——优先读 `referrer` 查询参数（SDK 为服务端 fetch 转发浏览器原始 Referer），为空时回退 HTTP `Referer` 头 |
 | `GET` | `/api/v1/media/{id}` | 公开提供上传的媒体字节；`Content-Type` 为上传嗅探的 MIME，附 `Cache-Control: public, max-age=31536000, immutable` 与 `ETag: "<sha256>"`，`If-None-Match` 命中返回 304 |
 | `GET` | `/api/v1/content/{slug}/comments` | 返回未软删评论线程，支持 `page`/`pageSize`/`q`；隐藏评论保留线程位置并只返回 `hidden=true` 与结构字段，作者名、网站、正文和头像种子清空；平铺返回当前页顶层评论及其全部回复 |
 | `POST` | `/api/v1/content/{slug}/comments` | 创建评论并立即公开，201；站点设置 `commentsEnabled=false` 时返回 403 `COMMENT_DISABLED`（管理端评论接口不受此开关限制） |
 | `GET` | `/api/v1/content/{slug}/likes` | 点赞统计和当前访客状态 |
 | `PUT` | `/api/v1/content/{slug}/likes` | 添加点赞，200 |
 | `DELETE` | `/api/v1/content/{slug}/likes` | 移除点赞，200 |
-| `GET` | `/api/v1/stats` | 已发布统计 `Stats`；`wordCount` 与 `readingMinutes` 使用同一分词器：拉丁/数字词各计 1，每个 CJK 字符计 1 |
+| `GET` | `/api/v1/stats` | 已发布统计 `Stats`；`wordCount` 与 `readingMinutes` 使用**两个不同的分词器**：`wordCount` 把每个拉丁/数字词和每个 CJK 字符都计 1；`readingMinutes` 把拉丁/数字词计 1、CJK 字符计 **0.5**（`(cjk+1)/2`），再按每 200 单位 1 分钟向上取整、下限 1 分钟——CJK 的 0.5 权重是阅读速度估算，不代表字数 |
 | `POST` | `/api/v1/presence` | 使用 `X-Visitor-ID` 更新匿名心跳，返回最近 5 分钟活跃访客数 |
 | `GET` | `/api/v1/auth/me` | 评论访客会话：未带有效 `Authorization: Bearer` 时返回 `{authenticated:false, providers:[...]}`；带有效 visitor token 时返回 `{authenticated:true, provider, displayName, avatarUrl, providers}`。`providers` 枚举当前已配置的第三方登录（仅 `github`；未配置时为空数组，Web 端只显示访客入口） |
 | `POST` | `/api/v1/auth/github/exchange` | GitHub 授权码换发 visitor 会话：body `{code}`，成功后返回 `{token, provider, displayName, avatarUrl}`（JWT，90 天）；GitHub 未配置时返回 501 `GITHUB_AUTH_DISABLED`，缺少 `code` 时 422 `VALIDATION_ERROR`，`code` 无效或被 GitHub 拒绝时 502 `GITHUB_AUTH_FAILED`，拉取 GitHub profile 失败时 502 `GITHUB_PROFILE_FAILED`。受 `publicLimiter` 限流 |
@@ -243,6 +246,7 @@ Thoughts 归档参数为 `page`（默认 1）、`pageSize`（默认 8，范围 1
 | `POST` | `/api/v1/admin/content/{id}/comments` | 以管理员身份在该内容（含 DRAFT）下创建评论，201；输入与公开创建一致，审计 `comment.created` |
 | `POST` | `/api/v1/admin/content/{id}/publish` | DRAFT -> PUBLISHED；目标不存在或已软删时返回 404 `CONTENT_NOT_FOUND`（软删内容不可通过状态迁移复活） |
 | `POST` | `/api/v1/admin/content/{id}/unpublish` | PUBLISHED -> DRAFT，保留原始 `published_at`；目标不存在或已软删时返回 404 `CONTENT_NOT_FOUND` |
+| `POST` | `/api/v1/admin/content/{id}/restore` | DELETED -> DRAFT，版本号 +1，200 返回 `AdminContent`；目标不存在返回 404 `CONTENT_NOT_FOUND`。仅对已软删内容有效——非软删目标由 store 以版本冲突表达，handler 未单独映射，因此返回 500 `CONTENT_RESTORE_FAILED` |
 | `DELETE` | `/api/v1/admin/content/{id}` | 软删除，204；目标不存在或已软删时返回 404 `CONTENT_NOT_FOUND` |
 | `GET` | `/api/v1/admin/comments` | 线程分页的管理评论列表（含已软删和隐藏，附 `deletedAt`/`hiddenAt`），支持 `contentId`/`q`/`page`/`pageSize`/`focus`；每行额外返回 `contentTitle`/`contentSlug`/`contentKind` |
 | `DELETE` | `/api/v1/admin/comments/{id}` | 软删除评论，204 |
