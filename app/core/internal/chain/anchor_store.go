@@ -211,10 +211,7 @@ func (l *Ledger) ListAnchors(ctx context.Context, options AnchorListOptions) ([]
 	if pageSize > 100 {
 		pageSize = 100
 	}
-	page := options.Page
-	if page < 1 {
-		page = 1
-	}
+	page := clampListPage(options.Page, pageSize, total)
 	rows, err := l.db.QueryContext(ctx, `SELECT `+anchorColumns+` FROM chain_anchors WHERE `+where+` ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`,
 		append(args, pageSize, (page-1)*pageSize)...)
 	if err != nil {

@@ -73,11 +73,7 @@ func (h *apiHandler) tags(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusInternalServerError, apierror.TagsUnavailable, "Tags are unavailable.")
 		return
 	}
-	pageSize := len(tags)
-	if pageSize < 1 {
-		pageSize = 1
-	}
-	WriteJSON(w, http.StatusOK, collection(tags, model.Pagination{Page: 1, PageSize: pageSize, TotalItems: len(tags), TotalPages: 1}))
+	WriteJSON(w, http.StatusOK, collection(tags, paginationFor(1, len(tags), len(tags))))
 }
 
 func (h *apiHandler) getContent(w http.ResponseWriter, r *http.Request) {

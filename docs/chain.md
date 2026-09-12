@@ -151,7 +151,7 @@ POST /api/v1/chain/anchors ─┼──> handler 构造 payload ──> chain.Su
 
 ## 6. 公开 API
 
-基础路径 `/api/v1/chain`，无认证，不走内容 TTL 缓存（链数据低频且要求即时可见 pending 状态）。集合统一 `{ data, pagination }`。
+基础路径 `/api/v1/chain`，无认证，不走内容 TTL 缓存（链数据低频且要求即时可见 pending 状态）。集合统一 `{ data, pagination }`，分页边界与 Core 通用约定一致：空集是第 1/1 页，请求页超出末页时返回末页数据并把 `page` 夹紧到末页。
 
 | 方法 | 路径 | 行为 |
 | --- | --- | --- |

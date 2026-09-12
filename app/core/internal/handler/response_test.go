@@ -87,3 +87,28 @@ func (w *trackingResponseWriter) Write(body []byte) (int, error) {
 	}
 	return w.body.Write(body)
 }
+
+func TestPaginationForClampsEveryBoundary(t *testing.T) {
+	cases := []struct {
+		name                                   string
+		page, pageSize, total                  int
+		wantPage, wantPageSize, wantTotalPages int
+	}{
+		{name: "empty set is page 1 of 1", page: 1, pageSize: 20, total: 0, wantPage: 1, wantPageSize: 20, wantTotalPages: 1},
+		{name: "empty set on a requested later page", page: 3, pageSize: 20, total: 0, wantPage: 1, wantPageSize: 20, wantTotalPages: 1},
+		{name: "partial last page", page: 2, pageSize: 20, total: 21, wantPage: 2, wantPageSize: 20, wantTotalPages: 2},
+		{name: "page past the end is pulled back", page: 9, pageSize: 20, total: 21, wantPage: 2, wantPageSize: 20, wantTotalPages: 2},
+		{name: "non-positive page is raised to 1", page: 0, pageSize: 20, total: 5, wantPage: 1, wantPageSize: 20, wantTotalPages: 1},
+		{name: "non-positive page size becomes 1", page: 1, pageSize: 0, total: 5, wantPage: 1, wantPageSize: 1, wantTotalPages: 5},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			got := paginationFor(testCase.page, testCase.pageSize, testCase.total)
+			if got.Page != testCase.wantPage || got.PageSize != testCase.wantPageSize || got.TotalItems != testCase.total || got.TotalPages != testCase.wantTotalPages {
+				t.Fatalf("paginationFor(%d, %d, %d) = %+v, want page=%d pageSize=%d totalItems=%d totalPages=%d",
+					testCase.page, testCase.pageSize, testCase.total, got,
+					testCase.wantPage, testCase.wantPageSize, testCase.total, testCase.wantTotalPages)
+			}
+		})
+	}
+}

@@ -207,6 +207,23 @@ func (l *Ledger) tipTx(ctx context.Context, tx *sql.Tx) (*Block, error) {
 	return &block, nil
 }
 
+// clampListPage keeps the queried slice aligned with the pagination envelope:
+// an empty collection is page 1, and an out-of-range request reads the last
+// page instead of returning empty data labelled as that page.
+func clampListPage(page, pageSize, totalItems int) int {
+	totalPages := (totalItems + pageSize - 1) / pageSize
+	if totalPages < 1 {
+		totalPages = 1
+	}
+	if page < 1 {
+		return 1
+	}
+	if page > totalPages {
+		return totalPages
+	}
+	return page
+}
+
 // ListBlocks pages block summaries newest-first.
 func (l *Ledger) ListBlocks(ctx context.Context, page, pageSize int) ([]Block, int, error) {
 	var total int
@@ -219,9 +236,7 @@ func (l *Ledger) ListBlocks(ctx context.Context, page, pageSize int) ([]Block, i
 	if pageSize > 100 {
 		pageSize = 100
 	}
-	if page < 1 {
-		page = 1
-	}
+	page = clampListPage(page, pageSize, total)
 	rows, err := l.db.QueryContext(ctx, `SELECT `+blockColumns+` FROM chain_blocks ORDER BY block_index DESC LIMIT ? OFFSET ?`, pageSize, (page-1)*pageSize)
 	if err != nil {
 		return nil, 0, err

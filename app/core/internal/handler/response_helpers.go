@@ -80,3 +80,26 @@ func collection[T any](items []T, pagination model.Pagination) map[string]any {
 	}
 	return map[string]any{"data": items, "pagination": pagination}
 }
+
+// paginationFor mirrors store.clampPagination: an empty collection is page 1
+// of 1, never page 1 of 0, and a page past the end is pulled back to the last
+// one. The store computes those same numbers for the list queries it runs
+// itself, so one boundary behaviour holds across every collection response —
+// before this, the chain list endpoints reported totalPages 0 for an empty
+// result while media and audit reported 1.
+func paginationFor(page, pageSize, totalItems int) model.Pagination {
+	if pageSize < 1 {
+		pageSize = 1
+	}
+	totalPages := (totalItems + pageSize - 1) / pageSize
+	if totalPages < 1 {
+		totalPages = 1
+	}
+	if page < 1 {
+		page = 1
+	}
+	if page > totalPages {
+		page = totalPages
+	}
+	return model.Pagination{Page: page, PageSize: pageSize, TotalItems: totalItems, TotalPages: totalPages}
+}

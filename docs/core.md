@@ -137,7 +137,7 @@ Core 使用 `caarlos0/env` 读取 `CORE_` 前缀变量；启动时自动从工�
 - 时间为 UTC RFC3339 字符串，ID 为不透明字符串。
 - 每个请求都有 `X-Request-ID` 和 `X-Trace-ID`；客户端可传入 `X-Trace-ID`，Core 会校验/生成并回传。生成侧不使用 CSPRNG，回退形态为 `req_<UnixNano>` / `trace_<UnixNano>`，并追加一个进程内单调递增的序号，使同一纳秒内的并发请求不会拿到相同的 ID。
 - CORS 允许 `GET/POST/PUT/DELETE/OPTIONS`，请求头包括 `Authorization`、`Content-Type`、`X-Trace-ID`、`X-Visitor-ID`。
-- 集合响应统一为 `{ data, pagination }`；分页统一使用 `page/pageSize/totalItems/totalPages`，默认页码为 1。
+- 集合响应统一为 `{ data, pagination }`；分页统一使用 `page/pageSize/totalItems/totalPages`，默认页码为 1。`pageSize` 下限为 1，`totalPages` 至少为 1，`page` 超出 `[1, totalPages]` 时夹紧到边界；因此空集合恒为 `page=1`、`totalPages=1`（`totalItems=0`），而不是 `totalPages=0`。所有列表端点（含 `/api/v1/tags` 这类一次性返回全部项的端点）走同一套夹紧逻辑。
 - 错误统一为：
 
 ```json
@@ -277,7 +277,7 @@ Thoughts 归档参数为 `page`（默认 1）、`pageSize`（默认 8，范围 1
 | `POST` | `/api/v1/admin/session/logout-all` | 吊销该 subject 除当前外所有活跃会话，204；审计 `admin.sessions.revoked_all` |
 | `GET` | `/api/v1/admin/session/list` | `AdminSessionList`：该 subject 的活跃会话（未吊销、未过期），按 `createdAt` 降序；吊销的会话即软删除，不再出现在列表中（`revoked_at` 仍保留在 `admin_sessions` 表供审计） |
 | `POST` | `/api/v1/admin/password` | `ChangePasswordInput{currentPassword,newPassword}`，校验旧密码 → 写新 bcrypt hash → 吊销当前外所有会话，204；审计 `admin.password.changed`。旧密码错误返回 401 `INVALID_CREDENTIALS` |
-| `GET` | `/api/v1/admin/media` | `Collection<Media>`：媒体库服务端分页，`page`（默认 1）、`pageSize`（默认 20，上限 50）、`q`（按文件名/ID 过滤，≤200 字符）；`url` 为绝对地址，按 `createdAt` 降序 |
+| `GET` | `/api/v1/admin/media` | `Collection<Media>`：媒体库服务端分页，`page`（默认 1）、`pageSize`（默认 20，上限 50）、`q`（按文件名/ID 过滤，≤200 字符）；`url` 为绝对地址且键恒存在（不省略，服务端无法构造时为 `""`），按 `createdAt` 降序 |
 | `POST` | `/api/v1/admin/media` | 上传媒体：raw bytes（非 multipart）+ `?filename=`；`http.DetectContentType` 嗅探并仅接受 png/jpeg/webp/gif/avif 图片与 `application/pdf`（拒绝 SVG 与其他类型，415）；超过 `CORE_MEDIA_MAX_BYTES` 返回 413；按 SHA256 去重幂等（重复上传返回已有记录，包括并发重复上传——去重是单条 `INSERT ... ON CONFLICT(sha256) DO NOTHING` 加回读，不是先查后插，因此抢输的一方返回既有行而不是 500）；媒体 id 为 `crypto/rand` 生成的随机值；响应 201 `Media`（含绝对 `url`，图片写进 Markdown 正文使用，PDF 用于 Profile resume 链接）；审计 `media.uploaded` |
 | `DELETE` | `/api/v1/admin/media/{id}` | 物理删除媒体，204；删除前检查非删除内容正文是否引用该媒体，被引用则返回 409 `MEDIA_IN_USE`（`details.references` 列出引用内容），否则删除；审计 `media.deleted` |
 | `GET` | `/api/v1/admin/media/{id}/references` | `{ references: [...] }`：非删除内容（DRAFT/PUBLISHED）正文中引用该媒体的列表，每项为 `MediaReference{ contentId, kind, title, slug, status }`；`status` 只可能是 `DRAFT`/`PUBLISHED`；未知 id 返回空列表 |

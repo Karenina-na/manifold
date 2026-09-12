@@ -6,8 +6,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-
-	"github.com/manifold-space/manifold/app/core/internal/model"
 )
 
 func validSHA256Hex(value string) bool {
@@ -37,12 +35,4 @@ func parsePageParams(r *http.Request, page, pageSize *int) error {
 		*pageSize = value
 	}
 	return nil
-}
-
-func paginationFor(page, pageSize, total int) model.Pagination {
-	totalPages := 0
-	if pageSize > 0 {
-		totalPages = (total + pageSize - 1) / pageSize
-	}
-	return model.Pagination{Page: page, PageSize: pageSize, TotalItems: total, TotalPages: totalPages}
 }

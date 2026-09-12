@@ -123,12 +123,5 @@ func (h *apiHandler) adminAudit(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusInternalServerError, apierror.AuditUnavailable, "Audit events are unavailable.")
 		return
 	}
-	totalPages := (total + pageSize - 1) / pageSize
-	if totalPages < 1 {
-		totalPages = 1
-	}
-	if page > totalPages {
-		page = totalPages
-	}
-	WriteJSON(w, http.StatusOK, model.AuditEventList{Events: events, Pagination: model.Pagination{Page: page, PageSize: pageSize, TotalItems: total, TotalPages: totalPages}})
+	WriteJSON(w, http.StatusOK, model.AuditEventList{Events: events, Pagination: paginationFor(page, pageSize, total)})
 }

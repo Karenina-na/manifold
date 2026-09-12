@@ -179,7 +179,10 @@ export interface Comment {
   createdAt: string;
   replyToId: string | null;
   avatarSeed: string;
-  authorProvider: string;
+  // Core only ever writes "visitor" or the OAuth provider that vouched for the
+  // commenter (comments.author_provider is NOT NULL DEFAULT 'visitor'), so the
+  // field is a closed union rather than a free string.
+  authorProvider: "visitor" | "github";
   authorAvatarUrl: string;
   hidden: boolean;
 }
@@ -260,7 +263,10 @@ export interface MediaQuery { page?: number; pageSize?: number; q?: string }
 export interface LoginInput { username: string; password: string }
 export interface LoginResponse { accessToken: string; tokenType: "Bearer"; expiresIn: number; user: { username: string; role: "admin" } }
 export interface ChangePasswordInput { currentPassword: string; newPassword: string }
-export interface MediaReference { contentId: string; kind: ContentKind; title: string | null; slug: string; status: ContentStatus }
+// status excludes DELETED because the reference lookup only ever reads live
+// content; expressing it as an Exclude keeps the link to ContentStatus visible
+// instead of restating the two literals.
+export interface MediaReference { contentId: string; kind: ContentKind; title: string | null; slug: string; status: Exclude<ContentStatus, "DELETED"> }
 export interface MediaReferenceList { references: MediaReference[] }
 export interface AdminSession { id: string; createdAt: string; expiresAt: string; revokedAt: string | null; active: boolean; current: boolean }
 export interface AdminSessionList { sessions: AdminSession[] }
@@ -295,7 +301,7 @@ export interface VerifyStepInput { name: string; value: string; note?: string }
 export interface VerifyStepComputation { expression: string; value: string }
 export interface VerifyStep { id: string; label: string; status: "passed" | "failed"; detail: string; inputs?: VerifyStepInput[]; computations?: VerifyStepComputation[]; output?: string }
 export interface MerkleSibling { position: "left" | "right"; value: string }
-export interface VerifyMerkleProof { leafIndex: number; leaf: string; siblings: MerkleSibling[]; root: string; matches: boolean }
+export interface VerifyMerkleProof { leafIndex: number; leaf: string; siblings: MerkleSibling[]; root: string; matches: boolean; computations: VerifyStepComputation[] }
 export interface VerifyChainContext { prev: ChainBlockSummary | null; current: ChainBlockSummary | null; next: ChainBlockSummary | null }
 export interface VerifyResponse { found: boolean; anchor: ChainAnchor | null; block: ChainBlockSummary | null; signatureValid: boolean; chainIntegrity: boolean; steps: VerifyStep[]; merkle: VerifyMerkleProof | null; context: VerifyChainContext | null }
 export interface AnchorQuery { source?: AnchorSource; ref?: string; page?: number; pageSize?: number }

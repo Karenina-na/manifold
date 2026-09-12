@@ -12,7 +12,6 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/manifold-space/manifold/app/core/internal/apierror"
-	"github.com/manifold-space/manifold/app/core/internal/model"
 	"github.com/manifold-space/manifold/app/core/internal/store"
 )
 
@@ -97,14 +96,7 @@ func (h *apiHandler) adminListMedia(w http.ResponseWriter, r *http.Request) {
 	for index := range items {
 		items[index].URL = h.mediaURL(r, items[index].ID)
 	}
-	totalPages := (total + pageSize - 1) / pageSize
-	if totalPages < 1 {
-		totalPages = 1
-	}
-	if page > totalPages {
-		page = totalPages
-	}
-	WriteJSON(w, http.StatusOK, map[string]any{"data": items, "pagination": model.Pagination{Page: page, PageSize: pageSize, TotalItems: total, TotalPages: totalPages}})
+	WriteJSON(w, http.StatusOK, map[string]any{"data": items, "pagination": paginationFor(page, pageSize, total)})
 }
 
 func (h *apiHandler) adminDeleteMedia(w http.ResponseWriter, r *http.Request) {

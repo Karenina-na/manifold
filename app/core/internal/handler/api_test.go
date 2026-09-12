@@ -1950,7 +1950,9 @@ func TestChainPublicSubmitVerifyAndLatestAnchor(t *testing.T) {
 				}
 				// The verify process must expose every step with real values:
 				// steps (5, all passed), a merkle audit path whose recomputed
-				// root matches the block, and the prev/current/next context.
+				// root matches the block, and the prev/current/next context. A
+				// one-certificate block legitimately has zero siblings and zero
+				// computations: its leaf is already the root.
 				steps, _ := result["steps"].([]any)
 				if len(steps) != 5 {
 					t.Fatalf("expected 5 verify steps, got %d: %s", len(steps), verify.Body.String())
@@ -1971,8 +1973,10 @@ func TestChainPublicSubmitVerifyAndLatestAnchor(t *testing.T) {
 				if leaf, _ := merkle["leaf"].(string); len(leaf) != 64 {
 					t.Fatalf("merkle leaf must be a sha256 hex: %s", verify.Body.String())
 				}
-				if siblings, _ := merkle["siblings"].([]any); len(siblings) == 0 {
-					t.Fatalf("merkle proof must list at least one sibling: %s", verify.Body.String())
+				siblings, siblingsPresent := merkle["siblings"].([]any)
+				computations, computationsPresent := merkle["computations"].([]any)
+				if !siblingsPresent || !computationsPresent || len(siblings) != len(computations) {
+					t.Fatalf("merkle proof must carry one computation per sibling (including two present empty arrays for a singleton block): %s", verify.Body.String())
 				}
 				context, _ := result["context"].(map[string]any)
 				if context == nil {

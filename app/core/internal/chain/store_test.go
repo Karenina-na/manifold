@@ -229,6 +229,35 @@ func TestListAnchorsFiltersAndPaginates(t *testing.T) {
 	if err != nil || total != 1 || len(refItems) != 1 {
 		t.Fatalf("ref filter: %v %d %v", refItems, total, err)
 	}
+
+	last, total, err := ledger.ListAnchors(ctx, AnchorListOptions{Source: "content", Page: 99, PageSize: 1})
+	if err != nil || total != 2 || len(last) != 1 {
+		t.Fatalf("out-of-range page must read the last anchor page: items=%v total=%d err=%v", last, total, err)
+	}
+}
+
+func TestListBlocksClampsAnOutOfRangePage(t *testing.T) {
+	ctx := t.Context()
+	ledger := newLedgerWithKey(t, func(cfg *LedgerConfig) { cfg.SimDelay = 0 })
+	genesis, err := ledger.InsertBlock(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	anchor, err := ledger.Submit(ctx, "visitor", []byte("one"), "", "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ledger.InsertBlock([]string{anchor.ID}); err != nil {
+		t.Fatal(err)
+	}
+
+	last, total, err := ledger.ListBlocks(ctx, 99, 1)
+	if err != nil || total != 2 || len(last) != 1 {
+		t.Fatalf("out-of-range page must read the last block page: blocks=%v total=%d err=%v", last, total, err)
+	}
+	if last[0].ID != genesis.ID {
+		t.Fatalf("last page returned block %q, want genesis %q", last[0].ID, genesis.ID)
+	}
 }
 
 func TestChainInfoCounts(t *testing.T) {

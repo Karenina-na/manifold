@@ -12,7 +12,7 @@ app/core JSON <--> packages/contracts <--> packages/sdk <--> Web / Admin
 - Contracts 把运行时 JSON 形状表达为 TypeScript 类型。
 - SDK 使用这些类型约束 HTTP 方法的输入和输出。
 - Web/Admin 不应自行声明同名的 API 类型或通过 `any` 绕过契约。
-- 一致性由跨层测试锁定：Core 的 handler/store API 测试覆盖运行时 JSON 形状；本包的 `test/fixtures.test.ts` 断言 `test/fixtures/wire.json` 满足共享类型，`test/error-codes.test.ts` 断言错误码枚举与 Go 侧常量逐项相等。
+- 一致性由跨层测试锁定：Core 的 handler/store API 测试覆盖运行时 JSON 形状；本包的 `test/fixtures.test.ts` 断言 `test/fixtures/wire.ts` 满足共享类型，`test/error-codes.test.ts` 断言错误码枚举与 Go 侧常量逐项相等。fixtures 以 `satisfies` 约束的 TS 字面量书写，因此缺字段或多字段都是编译错误，而不是运行期断言。
 
 ## 空值语义（全契约统一）
 
@@ -38,7 +38,7 @@ app/core JSON <--> packages/contracts <--> packages/sdk <--> Web / Admin
 - `ThoughtConfig` / `ThoughtConfigInput`：`pinnedIds: string[]` 的 Admin 配置读写契约（整体替换置顶集合）。
 - `WritingConfig` / `WritingConfigInput`：`pinnedIds: string[]` 的 Admin 配置读写契约（整体替换置顶集合）。
 - `TagQuery` / `TagSummary`：`/api/v1/tags` 的可选 `kind` 参数和 `{ name, count }` 聚合项。
-- `Media` / `MediaQuery`：管理端媒体对象（`url` 为绝对地址，写入 Markdown 正文使用）与媒体库列表参数。
+- `Media` / `MediaQuery`：管理端媒体对象（`url` 为绝对地址，写入 Markdown 正文使用；键恒存在，Core 不省略）与媒体库列表参数。
 - `MediaReference`：媒体被内容引用时的引用条目 `{ contentId, kind, title, slug, status }`，出现在 `DELETE /admin/media/{id}` 的 409 `MEDIA_IN_USE` 错误 `details.references` 中，也作为 `GET /admin/media/{id}/references` 的 `{ references: [...] }` 返回项；`status` 只可能是 `DRAFT`/`PUBLISHED`（引用查询已排除已删除内容）。
 - `ChangePasswordInput`：`POST /admin/password` 请求体 `{ currentPassword, newPassword }`（新密码 ≥8 字符）。
 
@@ -46,7 +46,7 @@ app/core JSON <--> packages/contracts <--> packages/sdk <--> Web / Admin
 
 ### 分页（唯一模型）
 
-- `Pagination = { page, pageSize, totalItems, totalPages }`：全部列表端点使用同一页码分页模型，不再有 cursor 语义。
+- `Pagination = { page, pageSize, totalItems, totalPages }`：全部列表端点使用同一页码分页模型，不再有 cursor 语义；`pageSize >= 1`、`totalPages >= 1`，空集合为第 1/1 页，请求页超出末页时 `page` 夹紧到末页。
 - `Collection<T> = { data, pagination }`：统一列表响应信封。
 
 ### 其他公共资源
@@ -81,7 +81,7 @@ app/core JSON <--> packages/contracts <--> packages/sdk <--> Web / Admin
 - `ChainAnchor`：锚定证书。证书只承诺 payload 的 SHA-256（`subjectHash`），不携带原文；`metadata` 为 source 特定事实字段（`AnchorMetadata`）；`status`/`blockId` 由 `block_id` 派生（pending 时 `blockId: null`）。`summary`（人类可读概述）与 `target`（`AnchorTarget`：`kind`/`href`/`label`，无可跳转目标为 `null`）由 Core 根据 live 行派生——评论/点赞等无法从证书字段还原的跳转也由 Core 解析，客户端不复制该逻辑。
 - `ChainBlockSummary` / `ChainBlockDetail`：区块摘要（列表用，含 `anchorCount` 不含 certIds）与详情（含 `certIds` 和内含 `anchors`）。
 - `ChainInfo`：链概览（height/totalAnchors/pendingAnchors/proofMode/difficulty/genesisHash/tipHash/sitePublicKey）。
-- `VerifyResponse`：验证结果（`found`、`anchor?`、`block?`、`signatureValid`、`chainIntegrity`——全链重放；`steps` 五步验证过程明细含 `inputs`/`computations`/`output`、`merkle?` 审计路径、`context?` 前/当前/后块摘要）。
+- `VerifyResponse`：验证结果（`found`、`anchor?`、`block?`、`signatureValid`、`chainIntegrity`——全链重放；`steps` 五步验证过程明细含 `inputs`/`computations`/`output`、`merkle?` 审计路径、`context?` 前/当前/后块摘要）。`VerifyMerkleProof`（`leafIndex`/`leaf`/`siblings`/`root`/`matches`/`computations`）描述单证书的 merkle 审计路径，`computations` 逐步给出每层的 `sha256(left ‖ right)` 表达式与结果，与 `steps[].computations` 同形（`VerifyStepComputation`）。
 - `SubmitAnchorInput` / `SubmitAnchorResponse`：公开/Admin 提交任意 payload（≤`CORE_CHAIN_ANCHOR_MAX_BYTES`），响应 202 携带 `anchorId`/`subjectHash`/`status: "pending"`。
 - `AnchorQuery`：证书列表过滤参数 `source`/`ref`/`page`/`pageSize`。
 - `AnchorSummary`：`ContentDetail.latestAnchor` 的摘要形态（`anchorId`/`subjectHash`/`status`/`blockId`），无证书时为 `null`。
@@ -91,14 +91,14 @@ app/core JSON <--> packages/contracts <--> packages/sdk <--> Web / Admin
 1. 时间戳使用 Core 返回的 UTC RFC3339 字符串；客户端不得重新定义时间格式。
 2. `ContentInput`/`UpdateContentInput` 与响应的 metadata 必须通过 `kind` 判别，不能把 Thought 和 Article 合并成无约束的 `Record<string, unknown>`。
 3. Core 仍会做最终校验：slug 全局唯一且创建时必填；更新需要 `expectedVersion`；Article 语义要求 `title` 非空。
-4. 修改任何导出类型时，同步更新本 README 与 `test/fixtures/wire.json`，保持 Go golden 测试与 TS fixtures 测试同时通过。新增、改名或删除错误码时必须同时改 `app/core/internal/apierror/codes.go` 与 `API_ERROR_CODES`，否则 `test/error-codes.test.ts` 失败。
+4. 修改任何导出类型时，同步更新本 README 与 `test/fixtures/wire.ts`，保持 Go golden 测试与 TS fixtures 测试同时通过。新增、改名或删除错误码时必须同时改 `app/core/internal/apierror/codes.go` 与 `API_ERROR_CODES`，否则 `test/error-codes.test.ts` 失败。
 
 ## 修改流程
 
 修改 `src/index.ts` 时：
 
 1. 先确认 Core JSON 真实响应和错误语义。
-2. 更新类型、本 README 的字段/枚举说明与 `test/fixtures/wire.json`。
+2. 更新类型、本 README 的字段/枚举说明与 `test/fixtures/wire.ts`。
 3. 更新 `packages/sdk/README.md`、SDK 方法和测试。
 4. 检查 `docs/core.md`、`docs/admin.md`、`docs/decisions/web.md` 及调用方。
 5. 运行 `pnpm --filter @manifold/contracts test`、`pnpm check` 和 `pnpm test`。
