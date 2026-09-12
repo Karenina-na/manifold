@@ -7,7 +7,7 @@ import { CommentsSection } from "../../../components/comment-thread";
 import { ThoughtActions } from "../../../components/thought-actions";
 import { AnchorBadge } from "../../../components/anchor-badge";
 import { BackLink } from "../../../components/back-link";
-import { createServerClient, loadSiteData } from "../../../lib/api";
+import { loadContentDetail, loadSiteData } from "../../../lib/api";
 import { ThoughtSurface } from "@manifold/render";
 import styles from "../../site.module.css";
 
@@ -17,18 +17,20 @@ export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
-  const content = await createServerClient().contentBySlug(slug, { trackView: false }).catch(() => null);
+  const referrer = (await headers()).get("referer") ?? undefined;
+  const visitorId = (await cookies()).get("manifold-vid")?.value;
+  const content = await loadContentDetail(slug, referrer, visitorId);
   if (!content) return { title: "Thoughts" };
   return { title: content.title || "A thought", description: content.summary, alternates: { canonical: `/thoughts/${content.slug}` }, openGraph: { title: content.title || "A thought", description: content.summary, type: "article" } };
 }
 
 export default async function ThoughtDetailPage({ params }: Props) {
   const { slug } = await params;
-  const referer = (await headers()).get("referer") ?? undefined;
+  const referrer = (await headers()).get("referer") ?? undefined;
   const visitorId = (await cookies()).get("manifold-vid")?.value;
   const host = (await headers()).get("host");
-  const canGoBack = !!referer && !!host && (() => { try { return new URL(referer).host === host; } catch { return false; } })();
-  const content = await createServerClient().contentBySlug(slug, { referrer: referer }, visitorId).catch(() => null);
+  const canGoBack = !!referrer && !!host && (() => { try { return new URL(referrer).host === host; } catch { return false; } })();
+  const content = await loadContentDetail(slug, referrer, visitorId);
   if (!content || content.kind !== "THOUGHT") notFound();
   const metadata = content.metadata;
   const contentSlug = content.slug;

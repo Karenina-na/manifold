@@ -1,4 +1,5 @@
-import type { Content, SiteComposition } from "@manifold/contracts";
+import { cache } from "react";
+import type { Content, ContentDetail, SiteComposition } from "@manifold/contracts";
 import { ManifoldClient } from "@manifold/sdk";
 
 const coreUrl = process.env.NEXT_PUBLIC_CORE_URL ?? "http://localhost:8080";
@@ -26,13 +27,27 @@ export function buildHref(content: Pick<Content, "kind" | "slug">) {
   return content.kind === "ARTICLE" ? `/writing/${encodeURIComponent(content.slug)}` : `/thoughts/${encodeURIComponent(content.slug)}`;
 }
 
-export async function loadSiteData(): Promise<SiteComposition | null> {
+// Wrapped in React's per-request `cache()`: the root layout's generateMetadata
+// and its render body both need the site composition, and the detail pages need
+// it a third time. Without the memo the same request hits Core repeatedly.
+export const loadSiteData = cache(async (): Promise<SiteComposition | null> => {
   try {
     return await createServerClient().site();
   } catch {
     return null;
   }
-}
+});
+
+// One loader for a detail page's content. `generateMetadata` and the page body
+// must call it with identical arguments — same referrer, same visitor id — or
+// `cache()` sees two keys and Core is fetched twice, once per render pass.
+export const loadContentDetail = cache(async (slug: string, referrer: string | undefined, visitorId: string | undefined): Promise<ContentDetail | null> => {
+  try {
+    return await createServerClient().contentBySlug(slug, referrer ? { referrer } : undefined, visitorId);
+  } catch {
+    return null;
+  }
+});
 
 export function getVisitorId() {
   const storageKey = "manifold.visitorId";
@@ -78,15 +93,6 @@ export async function loadFeedData() {
       fetchRecentPublicContent(client, "THOUGHT"),
     ]);
     return [...writings, ...thoughts].sort((a, b) => Date.parse(b.publishedAt) - Date.parse(a.publishedAt));
-  } catch {
-    return [];
-  }
-}
-
-export async function loadPapers() {
-  try {
-    const page = await createServerClient().content({ kind: "ARTICLE", pageSize: 50 });
-    return page.data.map((item) => ({ title: item.title ?? "Untitled writing", href: buildHref(item) }));
   } catch {
     return [];
   }

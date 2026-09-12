@@ -9,7 +9,7 @@ import { ArticleDiscussion } from "../../../components/comment-thread";
 import { AnchorBadge } from "../../../components/anchor-badge";
 import { BackLink } from "../../../components/back-link";
 import { MarkdownContent } from "@manifold/render";
-import { createServerClient, loadSiteData } from "../../../lib/api";
+import { loadContentDetail, loadSiteData } from "../../../lib/api";
 import styles from "../../site.module.css";
 
 type Props = { params: Promise<{ slug: string }> };
@@ -18,18 +18,20 @@ export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
-  const content = await createServerClient().contentBySlug(slug, { trackView: false }).catch(() => null);
+  const referrer = (await headers()).get("referer") ?? undefined;
+  const visitorId = (await cookies()).get("manifold-vid")?.value;
+  const content = await loadContentDetail(slug, referrer, visitorId);
   if (!content) return { title: "Writing" };
   return { title: content.title || "A writing", description: content.summary, alternates: { canonical: `/writing/${content.slug}` }, openGraph: { title: content.title || "A writing", description: content.summary, type: "article" } };
 }
 
 export default async function WritingDetailPage({ params }: Props) {
   const { slug } = await params;
-  const referer = (await headers()).get("referer") ?? undefined;
+  const referrer = (await headers()).get("referer") ?? undefined;
   const visitorId = (await cookies()).get("manifold-vid")?.value;
   const host = (await headers()).get("host");
-  const canGoBack = !!referer && !!host && (() => { try { return new URL(referer).host === host; } catch { return false; } })();
-  const content = await createServerClient().contentBySlug(slug, { referrer: referer }, visitorId).catch(() => null);
+  const canGoBack = !!referrer && !!host && (() => { try { return new URL(referrer).host === host; } catch { return false; } })();
+  const content = await loadContentDetail(slug, referrer, visitorId);
   if (!content || content.kind !== "ARTICLE") notFound();
   const metadata = content.metadata;
   const contentSlug = content.slug;

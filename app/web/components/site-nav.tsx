@@ -5,6 +5,7 @@ import { ArrowUpRight, Moon, Rss, Search, Sun, X } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { buildHref, createBrowserClient } from "../lib/api";
+import { useTheme } from "./theme-provider";
 import type { SiteNavigationItem } from "@manifold/contracts";
 import styles from "../app/site.module.css";
 
@@ -22,7 +23,7 @@ export function SiteNav({ navigation }: { navigation?: SiteNavigationItem[] }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
-  const [theme, setTheme] = useState<"light" | "dark">(() => typeof window !== "undefined" && window.localStorage.getItem("manifold.theme") === "dark" ? "dark" : "light");
+  const { theme, toggleTheme } = useTheme();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [searching, setSearching] = useState(false);
@@ -38,9 +39,8 @@ export function SiteNav({ navigation }: { navigation?: SiteNavigationItem[] }) {
   }, []);
 
   useEffect(() => {
-    document.documentElement.dataset.theme = theme;
     void createBrowserClient().profile().then((profile) => setResumeUrl(profile.resumeUrl)).catch(() => undefined);
-  }, [theme]);
+  }, []);
 
   // Route hue identity: keep the document root in sync with the active route so
   // chrome outside the page <main> (nav pill, search, footer) shares the hue.
@@ -83,13 +83,6 @@ export function SiteNav({ navigation }: { navigation?: SiteNavigationItem[] }) {
     }, 220);
     return () => { active = false; window.clearTimeout(timer); window.clearTimeout(searchTimer); };
   }, [query, searchOpen]);
-
-  const toggleTheme = () => {
-    const nextTheme = theme === "light" ? "dark" : "light";
-    setTheme(nextTheme);
-    document.documentElement.dataset.theme = nextTheme;
-    window.localStorage.setItem("manifold.theme", nextTheme);
-  };
 
   const isActive = (href: string) => href === "/" ? pathname === "/" : pathname.startsWith(href);
 

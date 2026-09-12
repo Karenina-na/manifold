@@ -3,6 +3,8 @@
 import { Terminal, X, CornerDownLeft, ExternalLink, Circle } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { evaluateArithmetic } from "../lib/expression";
+import { buildHref, createBrowserClient } from "../lib/api";
+import { applyTheme, normalizeTheme } from "../lib/theme";
 import styles from "../app/site.module.css";
 
 export type Paper = { title: string; href: string };
@@ -24,7 +26,6 @@ type FloatingReplProps = {
   displayName: string;
   handle?: string;
   focus: string;
-  papers: Paper[];
 };
 
 const COMMANDS = [
@@ -48,7 +49,7 @@ const COMMANDS = [
   "sudo",
 ];
 
-export function FloatingRepl({ displayName, handle, focus, papers }: FloatingReplProps) {
+export function FloatingRepl({ displayName, handle, focus }: FloatingReplProps) {
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState("");
   const [outputs, setOutputs] = useState<ReplOutput[]>([]);
@@ -56,10 +57,23 @@ export function FloatingRepl({ displayName, handle, focus, papers }: FloatingRep
   const [historyIndex, setHistoryIndex] = useState<number>(-1);
   const [isBusy, setIsBusy] = useState(false);
   const [cwd, setCwd] = useState("~");
+  const [papers, setPapers] = useState<Paper[]>([]);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   const outputId = useRef(0);
+  const papersRequested = useRef(false);
+
+  // The `papers` and `open` commands are the only consumers of the archive, and
+  // the REPL is closed on nearly every page view. Fetching it lazily on first
+  // open keeps a 50-article request off every route's critical path.
+  useEffect(() => {
+    if (!open || papersRequested.current) return;
+    papersRequested.current = true;
+    void createBrowserClient().content({ kind: "ARTICLE", pageSize: 50 })
+      .then((page) => setPapers(page.data.map((item) => ({ title: item.title ?? "Untitled writing", href: buildHref(item) }))))
+      .catch(() => { papersRequested.current = false; });
+  }, [open]);
 
   // 快捷键唤醒与退出
   useEffect(() => {
@@ -342,14 +356,11 @@ async function executeCommand(
 
     case "theme": {
       const mode = args[0]?.toLowerCase();
-      const current = document.documentElement.dataset.theme || "light";
-      let nextTheme = current === "dark" ? "light" : "dark";
-
-      if (mode === "dark" || mode === "light") {
-        nextTheme = mode;
-      }
-
-      document.documentElement.dataset.theme = nextTheme;
+      const current = normalizeTheme(document.documentElement.dataset.theme);
+      // Route through the shared helper so the nav toggle's React state and the
+      // Radix appearance stay in sync with the attribute.
+      const nextTheme = mode === "dark" || mode === "light" ? mode : current === "dark" ? "light" : "dark";
+      applyTheme(nextTheme);
       return [
         { text: `System theme switched to [${nextTheme.toUpperCase()}].`, type: "success" },
       ];
