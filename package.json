@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "build": "pnpm -r build",
-    "check": "pnpm -r typecheck",
+    "check": "pnpm -r typecheck && pnpm --filter @yohaku/design-system check",
     "test": "pnpm test:release && pnpm -r test",
     "test:release": "node --test scripts/package-release.test.mjs scripts/release/*.test.mjs scripts/dev.test.mjs",
     "package:release": "node scripts/package-release.mjs",

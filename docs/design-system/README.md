@@ -58,11 +58,12 @@ From the repository root:
 
 ```bash
 pnpm install
-pnpm dev             # local showcase preview (http://localhost:5173)
-pnpm build           # bundle the showcase to design-system/showcase/dist
-pnpm check           # token drift + template lint
+pnpm check           # token drift + template lint (the root gate runs this too)
 pnpm test            # run the check.ts unit tests
-pnpm demo:pdf        # render the demo essay / résumé / report to PDF
+
+pnpm --filter @yohaku/design-system showcase:dev    # local showcase preview (http://localhost:5173)
+pnpm --filter @yohaku/design-system showcase:build  # bundle the showcase to showcase/dist
+pnpm --filter @yohaku/design-system demo:pdf        # render the demo essay / résumé / report to PDF
 ```
 
 | Path | Purpose |

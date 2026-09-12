@@ -58,11 +58,12 @@ pnpm add @yohaku/design-system
 
 ```bash
 pnpm install
-pnpm dev             # 本地起 showcase（http://localhost:5173）
-pnpm build           # 打包 showcase 到 design-system/showcase/dist
-pnpm check           # 校验 token 漂移 + 模板 lint
+pnpm check           # 校验 token 漂移 + 模板 lint（根门槛也会跑这一项）
 pnpm test            # 跑 check.ts 的单测
-pnpm demo:pdf        # 把 demo 长文 / 简历 / 报告打成 PDF
+
+pnpm --filter @yohaku/design-system showcase:dev    # 本地起 showcase（http://localhost:5173）
+pnpm --filter @yohaku/design-system showcase:build  # 打包 showcase 到 showcase/dist
+pnpm --filter @yohaku/design-system demo:pdf        # 把 demo 长文 / 简历 / 报告打成 PDF
 ```
 
 | 路径 | 用途 |

@@ -129,12 +129,12 @@ Admin 的 `VITE_CORE_URL` 必须指向 Core（默认 `http://localhost:8080`）�
 | `pnpm dev` | 由开发 supervisor 启动 Web 和 Admin，不启动 Core；异常退出自动重启 |
 | `make core-run` | 启动 Go API |
 | `pnpm build` | 构建全部 workspace |
-| `pnpm check` | TypeScript 类型检查 |
+| `pnpm check` | TypeScript 类型检查 + 设计系统 token 漂移与模板 lint |
 | `pnpm test` | 发布脚本与 workspace 测试（不含 Go） |
 | `pnpm package:release -- --env .env.production` | 生成 Linux x64 glibc 三端发布 zip |
 | `make core-test` | `go test ./...` |
 | `make test` | Go + workspace 测试 |
-| `make check` | `go vet ./...` + TypeScript 检查 |
+| `make check` | `go vet ./...` + `pnpm check` |
 | `pnpm browser-install` | 安装 Chromium |
 | `pnpm browser-test` | 临时启动三端，回归 Web 评论/反应和 Admin 评论管理 |
 | `pnpm --filter @manifold/web lint` | Web ESLint |
