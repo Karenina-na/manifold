@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { execFile, spawn } from 'node:child_process'
-import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { readFileSync } from 'node:fs'
+import { chmod, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
@@ -13,6 +14,69 @@ import { nodeVersionSupported } from './runtime.mjs'
 const execute = promisify(execFile)
 const here = dirname(fileURLToPath(import.meta.url))
 const runtimePath = resolve(here, 'runtime.mjs')
+
+// Reclaiming an orphaned service means reading that process's command line to
+// prove the PID is still ours. Linux does that through /proc; everywhere else
+// goes through ps, which hardened environments can deny outright — so the
+// orphan tests skip rather than fail for an unrelated reason.
+const processIdentityAvailable = process.platform === 'linux' || (await (async () => {
+  try {
+    const { stdout } = await execute('ps', ['-ww', '-o', 'command=', '-p', String(process.pid)])
+    return stdout.trim().length > 0
+  } catch {
+    return false
+  }
+})())
+
+function isAlive(pid) {
+  try {
+    process.kill(pid, 0)
+  } catch (error) {
+    if (error.code === 'ESRCH') return false
+    throw error
+  }
+  return !isZombie(pid)
+}
+
+// A SIGKILLed supervisor whose parent never reaped it stays in the process table
+// as a zombie, where kill(pid, 0) still succeeds. The Linux container this suite
+// runs in on CI has a non-reaping PID 1, so liveness must consult /proc there.
+function isZombie(pid) {
+  if (process.platform !== 'linux') return false
+  try {
+    const stat = readFileSync(`/proc/${pid}/stat`, 'utf8')
+    const end = stat.lastIndexOf(')')
+    const state = stat.slice(end + 2, end + 3)
+    return state === 'Z' || state === 'X'
+  } catch {
+    return false
+  }
+}
+
+async function readPidRecord(root) {
+  const source = await readFile(join(root, 'run', 'manifold.pid'), 'utf8').catch(() => '')
+  return source ? JSON.parse(source) : null
+}
+
+async function waitFor(check, timeoutMs) {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    if (await check()) return true
+    await new Promise((resolveWait) => setTimeout(resolveWait, 100))
+  }
+  return false
+}
+
+// Leaves the fixture in the state a SIGKILLed supervisor produces: the recorded
+// supervisor PID is dead while its services still hold the ports.
+async function killSupervisorOnly(root) {
+  assert.equal(await waitFor(async () => ((await readPidRecord(root))?.children?.length ?? 0) >= 2, 5_000), true)
+  const supervisor = await readPidRecord(root)
+  process.kill(supervisor.pid, 'SIGKILL')
+  assert.equal(await waitFor(async () => !isAlive(supervisor.pid), 5_000), true)
+  for (const pid of supervisor.children) assert.equal(isAlive(pid), true)
+  return supervisor
+}
 
 async function stopFixture(root, environment) {
   await execute(process.execPath, [runtimePath, 'stop'], { env: environment }).catch(() => null)
@@ -214,6 +278,121 @@ test('supervisor restarts Web without stopping healthy Core and Admin', { timeou
     await assert.doesNotReject(fetch(`http://127.0.0.1:${fixture.ports[1]}/health`))
     await assert.doesNotReject(fetch(`http://127.0.0.1:${fixture.ports[2]}/`))
     assert.match(await readFile(join(fixture.root, 'run', 'manifold.pid'), 'utf8'), /"pid"/)
+  } finally {
+    await stopFixture(fixture.root, environment)
+    await rm(fixture.root, { recursive: true, force: true })
+  }
+})
+
+test('pid file records the supervised services and leaves no temporary behind', { timeout: 20_000 }, async () => {
+  const fixture = await createFixture()
+  const environment = { ...process.env, MANIFOLD_RELEASE_ROOT: fixture.root, MANIFOLD_START_TIMEOUT_MS: '5000' }
+  try {
+    await execute(process.execPath, [runtimePath, 'start'], { env: environment })
+    // The child PIDs are the only handle start/stop have on services whose
+    // supervisor was killed without running its cleanup, so the record must
+    // carry them — and carry them in a file a reader can always parse.
+    assert.equal(await waitFor(async () => ((await readPidRecord(fixture.root))?.children?.length ?? 0) >= 2, 5_000), true)
+    const record = await readPidRecord(fixture.root)
+    assert.equal(Number.isInteger(record.pid), true)
+    assert.equal(record.root, fixture.root)
+    assert.equal(typeof record.token, 'string')
+    for (const pid of record.children) assert.equal(isAlive(pid), true)
+
+    assert.equal((await stat(join(fixture.root, 'run', 'manifold.pid'))).mode & 0o777, 0o600)
+    assert.deepEqual(await readdir(join(fixture.root, 'run')), ['manifold.pid'])
+  } finally {
+    await stopFixture(fixture.root, environment)
+    await rm(fixture.root, { recursive: true, force: true })
+  }
+})
+
+test('start reclaims the services a SIGKILLed supervisor left behind', { timeout: 30_000, skip: processIdentityAvailable ? false : 'process command lines cannot be read in this environment' }, async () => {
+  const fixture = await createFixture()
+  const environment = { ...process.env, MANIFOLD_RELEASE_ROOT: fixture.root, MANIFOLD_START_TIMEOUT_MS: '5000' }
+  try {
+    await execute(process.execPath, [runtimePath, 'start'], { env: environment })
+    const supervisor = await killSupervisorOnly(fixture.root)
+    // Without reclamation this start dies on the port check and never recovers.
+    const restarted = await execute(process.execPath, [runtimePath, 'start'], { env: environment })
+    assert.match(restarted.stdout, /Reclaimed 2 orphaned service process/)
+    assert.match(restarted.stdout, /Manifold started/)
+    for (const pid of supervisor.children) assert.equal(isAlive(pid), false)
+
+    const record = await readPidRecord(fixture.root)
+    assert.notEqual(record.pid, supervisor.pid)
+    const status = await execute(process.execPath, [runtimePath, 'status'], { env: environment })
+    assert.match(status.stdout, /Core: healthy/)
+    assert.match(status.stdout, /Web: healthy/)
+  } finally {
+    await stopFixture(fixture.root, environment)
+    await rm(fixture.root, { recursive: true, force: true })
+  }
+})
+
+test('stop reclaims the services a SIGKILLed supervisor left behind', { timeout: 30_000, skip: processIdentityAvailable ? false : 'process command lines cannot be read in this environment' }, async () => {
+  const fixture = await createFixture()
+  const environment = { ...process.env, MANIFOLD_RELEASE_ROOT: fixture.root, MANIFOLD_START_TIMEOUT_MS: '5000' }
+  try {
+    await execute(process.execPath, [runtimePath, 'start'], { env: environment })
+    const supervisor = await killSupervisorOnly(fixture.root)
+    // Reporting "not running" while the services still hold the ports is what
+    // left operators with an orphan they could not see or stop.
+    const stopped = await execute(process.execPath, [runtimePath, 'stop'], { env: environment })
+    assert.match(stopped.stdout, /reclaimed 2 orphaned service process/)
+    for (const pid of supervisor.children) assert.equal(isAlive(pid), false)
+    for (const port of fixture.ports) await assert.rejects(fetch(`http://127.0.0.1:${port}`))
+    await assert.rejects(readFile(join(fixture.root, 'run', 'manifold.pid')), /ENOENT/)
+  } finally {
+    await stopFixture(fixture.root, environment)
+    await rm(fixture.root, { recursive: true, force: true })
+  }
+})
+
+test('start replaces an unreadable pid file instead of refusing to run', { timeout: 20_000 }, async () => {
+  const fixture = await createFixture()
+  const environment = { ...process.env, MANIFOLD_RELEASE_ROOT: fixture.root, MANIFOLD_START_TIMEOUT_MS: '5000' }
+  try {
+    await mkdir(join(fixture.root, 'run'), { recursive: true })
+    // A half-written record is what the previous open('wx') + writeFile sequence
+    // could publish; the exclusive link() claim means this runtime cannot
+    // produce one, so anything unparseable is simply stale state to replace.
+    await writeFile(join(fixture.root, 'run', 'manifold.pid'), '{"pid":4242,"tok')
+    const started = await execute(process.execPath, [runtimePath, 'start'], { env: environment })
+    assert.match(started.stdout, /Manifold started/)
+    assert.equal(Number.isInteger((await readPidRecord(fixture.root)).pid), true)
+  } finally {
+    await stopFixture(fixture.root, environment)
+    await rm(fixture.root, { recursive: true, force: true })
+  }
+})
+
+test('concurrent readers never observe a partial pid file', { timeout: 20_000 }, async () => {
+  const fixture = await createFixture()
+  const environment = {
+    ...process.env,
+    MANIFOLD_FIXTURE_WEB_EXIT_MS: '1200',
+    MANIFOLD_FIXTURE_WEB_EXIT_ONCE: join(fixture.root, 'web-exit-once'),
+    MANIFOLD_RELEASE_ROOT: fixture.root,
+    MANIFOLD_START_TIMEOUT_MS: '5000',
+  }
+  try {
+    // The supervisor rewrites the record on every child change, so read it hard
+    // while a Web restart churns the child set. Every snapshot must be complete:
+    // an unparseable read is what used to make a reader delete a live
+    // supervisor's only pointer.
+    const starting = execute(process.execPath, [runtimePath, 'start'], { env: environment })
+    const pidPath = join(fixture.root, 'run', 'manifold.pid')
+    let reads = 0
+    const deadline = Date.now() + 4_000
+    while (Date.now() < deadline) {
+      const source = await readFile(pidPath, 'utf8').catch(() => '')
+      if (!source) continue
+      assert.doesNotThrow(() => JSON.parse(source), `torn pid file: ${source}`)
+      reads += 1
+    }
+    await starting
+    assert.ok(reads > 0, 'the reader never observed the pid file')
   } finally {
     await stopFixture(fixture.root, environment)
     await rm(fixture.root, { recursive: true, force: true })

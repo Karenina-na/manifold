@@ -167,6 +167,8 @@ pnpm package:release -- --env .env.production
 
 `start` 在后台启动 Web `:3000`、Admin `:5173` 和 Core `:8080`，完成三项健康检查后才返回。PID 状态位于 `run/manifold.pid`，日志位于 `logs/`；`.env`、日志和归档使用 `0600`，`data/`、`logs/`、`run/` 使用 `0700`。Web 意外退出时 supervisor 会按退避独立重启 Web，保留 Core 和 Admin；Core 意外退出或 Admin 监听失败时才停止整组服务。首次启动在 `data/manifold.db` 初始化空的生产站点骨架。发布包不会注册开机自启或终止 TLS，但支持由 OpenResty 等反向代理公开三个服务。
 
+`run/manifold.pid` 是 JSON 记录，含 supervisor PID、启动 token、发布根目录和当前受管服务的 PID，由 supervisor 在子进程集合变化时重写。写入走临时文件加 `link`/`rename`，因此并发读者不会看到半截记录；`start`/`stop`/`status` 只在 PID 存活**且**命令行匹配该记录时才认为部署在运行，所以旧格式记录或被复用的 PID 不会被误信。supervisor 被 `SIGKILL` 或机器断电时不会执行清理，受管服务会继续占用 `3000/5173/8080`：此时 `status` 报告 supervisor 已退出并提示执行 `stop`，而 `start` 和 `stop` 都会按记录中的子进程 PID 回收这些孤儿进程（逐个确认命令行指向同一发布根目录后才发信号，并输出 `Reclaimed N orphaned service process(es)`），端口随即释放。
+
 OpenResty 使用独立域名时，将 Web、Admin、Core 分别代理到 `http://127.0.0.1:3000`、`http://127.0.0.1:5173`、`http://127.0.0.1:8080`。三个 location 都应传递 `Host $host`、`X-Forwarded-Proto $scheme`，Core 还必须传递由 OpenResty 清洗后的 `X-Real-IP $remote_addr`；只有来源命中 `CORE_TRUSTED_PROXY_CIDRS` 时 Core 才用该值区分限流客户端。若 OpenResty 位于 Cloudflare 后方，先用 realip 模块和 Cloudflare 官方网段恢复 `$remote_addr`，不要直接透传客户端可伪造的请求头。服务器防火墙应阻止公网绕过代理直接访问 `3000/5173/8080`。
 
 `data/` 必须独立备份并跨版本保留。没有在线 SQLite 备份工具时，先执行 `./manifold stop`，完整复制 `data/`，再执行 `./manifold start`，避免复制数据库时遗漏 WAL 状态。
