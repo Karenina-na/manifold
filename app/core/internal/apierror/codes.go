@@ -8,7 +8,7 @@
 // switch (error.code) branches from silently rotting.
 //
 // Codes are untyped string constants so they can be passed straight to
-// handler.WriteError without conversion.
+// WriteError without conversion.
 package apierror
 
 // 会话与鉴权

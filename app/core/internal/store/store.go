@@ -90,17 +90,26 @@ func boolToInt(value bool) int {
 	return 0
 }
 
-func nowRFC3339() string { return time.Now().UTC().Format(time.RFC3339) }
+// nowRFC3339 and timeNowUTC are the same instant in the two shapes this package
+// needs: a formatted string for SQL parameters and a Time for arithmetic. One
+// derives from the other so there is a single clock decision to change.
+func nowRFC3339() string { return timeNowUTC().Format(time.RFC3339) }
+
+func timeNowUTC() time.Time { return time.Now().UTC() }
 
 func newID(prefix string) string {
 	return prefix + "_" + time.Now().UTC().Format("20060102150405.000000000")
 }
 
+// countWords counts latin/digit words plus CJK characters, one unit each. The
+// reading-time estimate in internal/model deliberately weights a CJK character
+// as half a unit instead; only the CJK classification is shared
+// (model.IsCJKRune), so widening a range cannot desynchronize the two callers.
 func countWords(body string) int {
 	latinWords, cjkCharacters := 0, 0
 	inWord := false
 	for _, r := range body {
-		if isCJK(r) {
+		if model.IsCJKRune(r) {
 			cjkCharacters++
 			inWord = false
 			continue
@@ -115,8 +124,4 @@ func countWords(body string) int {
 		inWord = false
 	}
 	return latinWords + cjkCharacters
-}
-
-func isCJK(r rune) bool {
-	return (r >= 0x4e00 && r <= 0x9fff) || (r >= 0x3400 && r <= 0x4dbf) || (r >= 0x3040 && r <= 0x30ff) || (r >= 0xac00 && r <= 0xd7af)
 }

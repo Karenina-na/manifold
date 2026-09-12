@@ -21,7 +21,7 @@ func estimateReadingMinutes(body string) int {
 	cjkCharacters := 0
 	inWord := false
 	for _, r := range body {
-		if isCJKRune(r) {
+		if IsCJKRune(r) {
 			cjkCharacters++
 			inWord = false
 			continue
@@ -107,6 +107,12 @@ func slugifyHeading(value string) string {
 	return strings.Trim(builder.String(), "-")
 }
 
-func isCJKRune(r rune) bool {
+// IsCJKRune reports whether r belongs to one of the CJK blocks counted as
+// characters rather than as word separators. The classification is shared with
+// the word-statistics tokenizer in internal/store — an earlier version of this
+// file and that one each carried their own copy of the same four ranges, so
+// widening one silently desynchronized the other. The *weighting* is what
+// deliberately differs between the two callers, not which runes are CJK.
+func IsCJKRune(r rune) bool {
 	return (r >= 0x4e00 && r <= 0x9fff) || (r >= 0x3400 && r <= 0x4dbf) || (r >= 0x3040 && r <= 0x30ff) || (r >= 0xac00 && r <= 0xd7af)
 }

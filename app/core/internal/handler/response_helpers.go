@@ -63,15 +63,10 @@ func WriteJSON(w http.ResponseWriter, status int, value any) {
 	_ = json.NewEncoder(w).Encode(value)
 }
 
+// WriteError writes the shared error envelope. The implementation lives in
+// apierror because internal/auth needs it and cannot import this package.
 func WriteError(w http.ResponseWriter, status int, code, message string) {
-	errorBody := map[string]any{"code": code, "message": message}
-	if requestID := w.Header().Get("X-Request-ID"); requestID != "" {
-		errorBody["requestId"] = requestID
-	}
-	if traceID := w.Header().Get("X-Trace-ID"); traceID != "" {
-		errorBody["traceId"] = traceID
-	}
-	WriteJSON(w, status, map[string]any{"error": errorBody})
+	apierror.WriteError(w, status, code, message)
 }
 
 func Health(w http.ResponseWriter, _ *http.Request) {

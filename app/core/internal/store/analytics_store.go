@@ -7,8 +7,6 @@ import (
 	"github.com/manifold-space/manifold/app/core/internal/model"
 )
 
-func timeNowUTC() time.Time { return time.Now().UTC() }
-
 const overviewTrendMonths = 12
 
 func (s *Store) Overview() (model.AdminOverview, error) {
