@@ -165,7 +165,9 @@ pnpm package:release -- --env .env.production
 ./manifold stop
 ```
 
-`start` 在后台启动 Web `:3000`、Admin `:5173` 和 Core `:8080`，完成三项健康检查后才返回。PID 状态位于 `run/manifold.pid`，日志位于 `logs/`；`.env`、日志和归档使用 `0600`，`data/`、`logs/`、`run/` 使用 `0700`。Web 意外退出时 supervisor 会按退避独立重启 Web，保留 Core 和 Admin；Core 意外退出或 Admin 监听失败时才停止整组服务。首次启动在 `data/manifold.db` 初始化空的生产站点骨架。发布包不会注册开机自启或终止 TLS，但支持由 OpenResty 等反向代理公开三个服务。
+`start` 在后台启动 Web `:3000`、Admin `:5173` 和 Core `:8080`，完成三项健康检查后才返回。PID 状态位于 `run/manifold.pid`，日志位于 `logs/`；`.env`、日志和归档使用 `0600`，`data/`、`logs/`、`run/` 使用 `0700`。Web 意外退出时 supervisor 会按退避独立重启 Web，保留 Core 和 Admin；连续 5 次立即失败（缺少 `server.js`、端口冲突这类起不来的情况）后停止重启并写入 `service_restart_limit_reached`，此时 Core 与 Admin 仍在运行、`status` 报告 Web unhealthy，需要人工 `restart`；Web 连续运行满 60 秒后失败计数清零，因此偶发崩溃不会累积到上限。Core 意外退出或 Admin 监听失败时才停止整组服务。首次启动在 `data/manifold.db` 初始化空的生产站点骨架。发布包不会注册开机自启或终止 TLS，但支持由 OpenResty 等反向代理公开三个服务。
+
+包内服务继承 supervisor 的环境，但 `CORE_`、`NEXT_PUBLIC_`、`VITE_` 三个前缀一律剔除后重新注入包内 `.env`，因此宿主机的 `CORE_*` 无法覆盖归档配置（这是真正重要的那一条）。`NEXT_PUBLIC_*`/`VITE_*` 的剔除只是纵深防御——二者在构建期已内联进产物，运行时值本来就到不了前端；`NODE_ENV`/`PORT`/`HOSTNAME` 与 `MANIFOLD_*` 仍会透传，前三个由 supervisor 按服务显式设置覆盖，后者是 supervisor 自身的控制变量。
 
 `run/manifold.pid` 是 JSON 记录，含 supervisor PID、启动 token、发布根目录和当前受管服务的 PID，由 supervisor 在子进程集合变化时重写。写入走临时文件加 `link`/`rename`，因此并发读者不会看到半截记录；`start`/`stop`/`status` 只在 PID 存活**且**命令行匹配该记录时才认为部署在运行，所以旧格式记录或被复用的 PID 不会被误信。supervisor 被 `SIGKILL` 或机器断电时不会执行清理，受管服务会继续占用 `3000/5173/8080`：此时 `status` 报告 supervisor 已退出并提示执行 `stop`，而 `start` 和 `stop` 都会按记录中的子进程 PID 回收这些孤儿进程（逐个确认命令行指向同一发布根目录后才发信号，并输出 `Reclaimed N orphaned service process(es)`），端口随即释放。
 

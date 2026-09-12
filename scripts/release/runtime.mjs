@@ -26,6 +26,17 @@ function releaseRoot() {
   return resolve(process.env.MANIFOLD_RELEASE_ROOT || defaultRoot)
 }
 
+// Services inherit the supervisor's environment minus the prefixes that could
+// silently override the packaged configuration. What this does *not* promise:
+// only these three prefixes are stripped, so a host `NODE_ENV`/`PORT`/`HOSTNAME`
+// still reaches the children (harmless — `supervise` sets all three explicitly
+// per service, after this spread) and `MANIFOLD_*` deliberately passes through,
+// because `MANIFOLD_RELEASE_ROOT` is a supervisor control variable and the
+// release tests drive their fixtures with `MANIFOLD_FIXTURE_*`. Stripping
+// `NEXT_PUBLIC_*`/`VITE_*` is defence in depth rather than the real protection:
+// both are inlined at build time, so a runtime value cannot reach the bundle.
+// The guarantee that matters is `CORE_*`: a host value must never override the
+// `.env` shipped inside the archive.
 function serviceEnvironment(environment) {
   const inherited = Object.fromEntries(Object.entries(process.env).filter(([key]) => (
     !key.startsWith('CORE_') && !key.startsWith('NEXT_PUBLIC_') && !key.startsWith('VITE_')
@@ -333,7 +344,7 @@ async function start(root) {
   }
   for (const service of ['core', 'web', 'admin']) await assertPortAvailable(manifest[service].port)
 
-  const logFd = openSync(join(logDirectory, 'supervisor.log'), 'a')
+  const logFd = openSync(join(logDirectory, 'supervisor.log'), 'a', 0o600)
   fchmodSync(logFd, 0o600)
   const token = randomUUID()
   const supervisor = spawn(process.execPath, [modulePath, 'supervise', token], {
@@ -423,6 +434,39 @@ function waitForChild(child, timeoutMs) {
   })
 }
 
+export const WEB_RESTART_BASE_DELAY_MS = 250
+export const WEB_RESTART_MAX_DELAY_MS = 30_000
+export const WEB_RESTART_LIMIT = 5
+export const WEB_RESTART_RESET_AFTER_MS = 60_000
+
+// Backoff policy for a Web child that keeps exiting. Two defects lived here: the
+// attempt counter only ever grew, so a Web that had served for hours and then
+// crashed once still restarted at the 30s ceiling; and nothing bounded the
+// count, so a Web that can never start (missing `server.js`, a port conflict)
+// restarted forever while the deployment stayed broken — and the supervisor
+// never settled, so nothing reported the failure. A child that ran for
+// `resetAfterMs` counts as recovered and starts the count over, and `limit`
+// consecutive failures stop the loop instead of hiding the breakage.
+//
+// Pure so the policy is testable without spawning anything, and deliberately
+// not env-configurable: a hard bound is easier to reason about than a knob.
+export function nextWebRestart({
+  attempt,
+  uptimeMs,
+  limit = WEB_RESTART_LIMIT,
+  resetAfterMs = WEB_RESTART_RESET_AFTER_MS,
+  baseDelayMs = WEB_RESTART_BASE_DELAY_MS,
+  maxDelayMs = WEB_RESTART_MAX_DELAY_MS,
+}) {
+  const effective = uptimeMs >= resetAfterMs ? 0 : attempt
+  if (effective >= limit) return { action: 'give-up', attempt: effective }
+  return {
+    action: 'restart',
+    attempt: effective + 1,
+    delayMs: Math.min(maxDelayMs, baseDelayMs * (2 ** effective)),
+  }
+}
+
 async function supervise(root) {
   process.umask(0o077)
   const { environment, manifest } = await loadRuntime(root)
@@ -459,7 +503,11 @@ async function supervise(root) {
   let webRestartTimer
   let webRestartAttempt = 0
   const launch = (command, args, options, logName) => {
-    const logFd = openSync(join(logDirectory, logName), 'a')
+    // The mode argument only applies when the file is created, which is exactly
+    // the window that matters: without it the log exists as 0644 until the
+    // fchmod below lands. The fchmod stays as the backstop for a file left by
+    // an older release.
+    const logFd = openSync(join(logDirectory, logName), 'a', 0o600)
     fchmodSync(logFd, 0o600)
     const child = spawn(command, args, { ...options, stdio: ['ignore', logFd, logFd] })
     closeSync(logFd)
@@ -503,25 +551,38 @@ async function supervise(root) {
         cwd: webDirectory,
         env: { ...baseEnvironment, NODE_ENV: 'production', HOSTNAME: manifest.web.host, PORT: String(manifest.web.port) },
       }, 'web.log')
+      const startedAt = Date.now()
       const forgetWeb = () => {
         const index = children.indexOf(web)
         if (index >= 0) children.splice(index, 1)
       }
-      web.once('error', (error) => {
-        forgetWeb()
-        console.error('service_spawn_error', { service: 'web', error })
-        scheduleWebRestart()
-      })
-      web.once('exit', (code, signal) => {
+      // A failed spawn emits both `error` and, on some platforms, `exit`; the
+      // flag keeps one failure from counting twice against the restart limit.
+      let settled = false
+      const handleWebGone = (details) => {
+        if (settled) return
+        settled = true
         forgetWeb()
         if (shuttingDown) return
-        const delay = Math.min(30_000, 250 * (2 ** webRestartAttempt))
-        webRestartAttempt += 1
-        console.error('service_exited', { service: 'web', pid: web.pid, code, signal, restartInMs: delay })
-        scheduleWebRestart(delay)
+        const decision = nextWebRestart({ attempt: webRestartAttempt, uptimeMs: Date.now() - startedAt })
+        if (decision.action === 'give-up') {
+          // Web is not coming back on its own. Core and Admin keep running so
+          // the deployment stays inspectable and `status` reports Web as
+          // unhealthy; the operator clears it with a restart.
+          console.error('service_restart_limit_reached', { service: 'web', attempts: decision.attempt, limit: WEB_RESTART_LIMIT })
+          return
+        }
+        webRestartAttempt = decision.attempt
+        console.error('service_exited', { service: 'web', pid: web.pid, ...details, restartInMs: decision.delayMs })
+        scheduleWebRestart(decision.delayMs)
+      }
+      web.once('error', (error) => {
+        console.error('service_spawn_error', { service: 'web', error })
+        handleWebGone({})
       })
+      web.once('exit', (code, signal) => handleWebGone({ code, signal }))
     }
-    const scheduleWebRestart = (delay = Math.min(30_000, 250 * (2 ** webRestartAttempt))) => {
+    const scheduleWebRestart = (delay) => {
       if (shuttingDown || webRestartTimer) return
       webRestartTimer = setTimeout(() => {
         webRestartTimer = undefined

@@ -309,7 +309,7 @@ Metadata：Thought 使用 `mood/question/context/source`；Article 使用 Core �
 - Stats 与 Admin Overview 各使用单条 TTL 快照（共用 `CORE_STATS_CACHE_TTL`）。
 - 审计事件通过有界异步队列写入 `audit_events`；队列满会记录丢弃但不让业务请求失败。
 - `RouterWithLifecycle` 用于生产入口；监听失败会结束进程，正常关闭时先取消并等待矿工 goroutine，再最多等待 5 秒排空已接受的审计事件；`Router` 仅用于同步内部调用/测试。分层现状：HTTP handler 负责协议边界，**读路径直接调用 `internal/store`**，不经过 `internal/application`；`internal/application` 只承载写用例，以及随写发生的 audit、anchor 和 cache 失效编排；`internal/store` 隐藏 SQLite 查询。依赖方向因此是 handler → store（读）与 handler → application → store（写）两条无环路径，读路径不做二次封装是当前的分层选择而非缺失。公共 HTTP 契约不受启动生命周期影响。
-- 发布包 supervisor 在 Web 子进程异常退出时按退避独立重启 Web，Core 和 Admin 保持运行；Core 异常退出或 Admin 监听失败时才向其余进程发送 SIGTERM。`stop` 等待正常退出，超时后才发送 SIGKILL。包内后台运行不包含开机自启、日志轮转、HTTPS 或反向代理。
+- 发布包 supervisor 在 Web 子进程异常退出时按退避独立重启 Web，Core 和 Admin 保持运行；连续 5 次立即失败后停止重启并记录 `service_restart_limit_reached`（此时 Core/Admin 仍在运行、`status` 报告 Web unhealthy），Web 连续运行满 60 秒后失败计数清零；Core 异常退出或 Admin 监听失败时才向其余进程发送 SIGTERM。`stop` 等待正常退出，超时后才发送 SIGKILL。包内后台运行不包含开机自启、日志轮转、HTTPS 或反向代理。
 - Core 限流默认按 TCP 对端地址分桶。仅当对端位于 `CORE_TRUSTED_PROXY_CIDRS` 时才读取 `X-Real-IP`；反向代理必须覆盖并清洗该头，不能透传客户端输入。该配置只改变限流身份识别，不改变 HTTP 契约。
 
 ### 依赖记录：github.com/shirou/gopsutil/v4

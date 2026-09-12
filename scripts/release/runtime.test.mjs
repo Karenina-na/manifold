@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 import test from 'node:test'
 
-import { nodeVersionSupported } from './runtime.mjs'
+import { nextWebRestart, nodeVersionSupported, WEB_RESTART_LIMIT } from './runtime.mjs'
 
 const execute = promisify(execFile)
 const here = dirname(fileURLToPath(import.meta.url))
@@ -158,6 +158,40 @@ test('nodeVersionSupported enforces the Next.js runtime floor', () => {
   assert.equal(nodeVersionSupported('22.0.0'), true)
 })
 
+test('nextWebRestart backs off, then gives up instead of restarting forever', () => {
+  // A Web that dies immediately walks the doubling ladder and stops at the
+  // limit. Before the bound existed this returned a restart for every attempt.
+  const delays = []
+  let attempt = 0
+  for (let round = 0; round < WEB_RESTART_LIMIT; round += 1) {
+    const decision = nextWebRestart({ attempt, uptimeMs: 0 })
+    assert.equal(decision.action, 'restart')
+    assert.equal(decision.attempt, round + 1)
+    delays.push(decision.delayMs)
+    attempt = decision.attempt
+  }
+  assert.deepEqual(delays, [250, 500, 1000, 2000, 4000])
+  assert.deepEqual(nextWebRestart({ attempt, uptimeMs: 0 }), { action: 'give-up', attempt: WEB_RESTART_LIMIT })
+})
+
+test('nextWebRestart resets the backoff after a run long enough to count as healthy', () => {
+  // The old counter only ever grew: a Web that served for an hour and then
+  // crashed once still restarted at the ceiling.
+  assert.deepEqual(nextWebRestart({ attempt: WEB_RESTART_LIMIT - 1, uptimeMs: 60_000 }), {
+    action: 'restart',
+    attempt: 1,
+    delayMs: 250,
+  })
+  // A child that dies just short of the threshold still counts toward the limit:
+  // at the limit the next failure gives up rather than resetting.
+  assert.deepEqual(nextWebRestart({ attempt: WEB_RESTART_LIMIT, uptimeMs: 59_999 }), {
+    action: 'give-up',
+    attempt: WEB_RESTART_LIMIT,
+  })
+  // The ceiling holds even at a high attempt count.
+  assert.equal(nextWebRestart({ attempt: 20, uptimeMs: 0, limit: 30 }).delayMs, 30_000)
+})
+
 test('runtime manages the service group and cleans up its pid', { timeout: 20_000 }, async () => {
   const fixture = await createFixture()
   const environment = {
@@ -279,6 +313,34 @@ test('supervisor restarts Web without stopping healthy Core and Admin', { timeou
     await assert.doesNotReject(fetch(`http://127.0.0.1:${fixture.ports[2]}/`))
     assert.match(await readFile(join(fixture.root, 'run', 'manifold.pid'), 'utf8'), /"pid"/)
   } finally {
+    await stopFixture(fixture.root, environment)
+    await rm(fixture.root, { recursive: true, force: true })
+  }
+})
+
+test('supervisor gives up on a Web that can never start, and says so', { timeout: 40_000 }, async () => {
+  const fixture = await createFixture()
+  const environment = {
+    ...process.env,
+    // Web exits on its own every time, so it never becomes healthy.
+    MANIFOLD_FIXTURE_WEB_EXIT_MS: '50',
+    MANIFOLD_RELEASE_ROOT: fixture.root,
+    MANIFOLD_START_TIMEOUT_MS: '60000',
+  }
+  // `start` never returns here — Web cannot become healthy — so it runs in the
+  // background and the test watches the supervisor log instead of waiting out
+  // the start timeout.
+  const starter = spawn(process.execPath, [runtimePath, 'start'], { env: environment, stdio: 'ignore' })
+  const logPath = join(fixture.root, 'logs', 'supervisor.log')
+  try {
+    const reached = await waitFor(async () => (await readFile(logPath, 'utf8').catch(() => '')).includes('service_restart_limit_reached'), 30_000)
+    assert.equal(reached, true, 'the supervisor must stop restarting Web instead of looping forever')
+    const supervisorLog = await readFile(logPath, 'utf8')
+    assert.equal((supervisorLog.match(/service_exited/g) ?? []).length, WEB_RESTART_LIMIT)
+    // The bound only stops the Web loop; the rest of the deployment stays up.
+    await assert.doesNotReject(fetch(`http://127.0.0.1:${fixture.ports[0]}/healthz`))
+  } finally {
+    if (starter.exitCode === null) starter.kill('SIGKILL')
     await stopFixture(fixture.root, environment)
     await rm(fixture.root, { recursive: true, force: true })
   }
