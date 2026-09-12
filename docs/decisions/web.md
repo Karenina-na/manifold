@@ -179,6 +179,7 @@ matcher 排除 `/api`（该前缀只服务 JSON），因此**唯一返回 HTML �
 3. 新增 Client Component 前确认是否真的需要浏览器状态，避免把整页改成 CSR；Thoughts 和 Writing 归档共用 `useArchiveFilters` 作为筛选/翻页客户端边界：首屏数据仍由 Server Component 读取，后续搜索（防抖 300ms，立即操作先 flush 未提交输入）、tag/排序/开关和翻页由客户端 SDK 请求对应页，`history.replaceState` 同步 URL（不触发 RSC 重渲染），请求以单调序号去陈旧；浏览器回退/前进时由 Server Component 以新参数重挂载归档（`key` 含全部筛选参数）。
 4. 页面必须有 loading/error/empty 状态和移动端约束；按钮使用现有图标体系和可访问名称。
 5. Markdown 必须经过 sanitize；任何 renderer 改动都要检查 XSS、标题锚点和代码复制。
+6. `role="dialog"` + `aria-modal="true"` 的模态表面必须同时具备焦点陷阱与焦点归还，二者由共享 `lib/use-modal-focus.ts` 的 `useModalFocus(active, containerRef)` 承担：激活时先把当时的 `document.activeElement` 记为 opener，再以**捕获阶段** `keydown` 监听把 Tab/Shift+Tab 折返到容器内首/末个可聚焦元素，卸载时把焦点还给仍连接的 opener。折返判定本身是零 DOM 依赖的纯函数 `focusWrapTarget()`（`lib/modal-focus.ts`，可聚焦选择器同文件导出），因此能在没有 jsdom 的环境里直接单测。hook 必须在"把焦点移入容器"的 effect **之前**调用，否则 opener 已被覆盖。当前只有两个模态表面：`components/article-lightbox.tsx` 的图片预览与 `components/site-nav.tsx` 的 ⌘K 搜索面板；`components/floating-tooltip.tsx` 是 `role="tooltip"` 的非模态浮层，**不得**套用该陷阱（`lib/modal-focus.test.mjs` 以结构化断言钉住这两点）。非模态的可点击容器（如 Admin 列表行）不走陷阱，改用 `role="button"` + `tabIndex={0}` + Enter/Space 键处理，并配套 `:focus-visible` 可见指示。
 
 ## 9. 修改与验证
 

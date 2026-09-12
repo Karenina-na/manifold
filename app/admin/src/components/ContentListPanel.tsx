@@ -99,9 +99,27 @@ function ContentRow({ content, singular, onEdit, onTransition, hrefFor, pin }: {
     ? `✦ ${content.summary.trim()}`
     : content.excerpt
   const pinned = pin?.pinnedIds.includes(content.id) ?? false
-  return <article className="content-row" onClick={() => onEdit(content)}>
+  const label = content.title || `Untitled ${singular}`
+  // The row is a click target but also hosts its own buttons and links, so it
+  // cannot become a <button> (nested interactive content is invalid). It gets the
+  // button role plus a key handler instead, and the handler ignores key presses
+  // that came from a child control — otherwise Enter on the pin button would open
+  // the editor as well as pin.
+  return <article
+    className="content-row"
+    role="button"
+    tabIndex={0}
+    aria-label={`Open ${label}`}
+    onClick={() => onEdit(content)}
+    onKeyDown={(event) => {
+      if (event.target !== event.currentTarget) return
+      if (event.key !== 'Enter' && event.key !== ' ') return
+      event.preventDefault()
+      onEdit(content)
+    }}
+  >
     <div>
-      <div className="row-title"><span className={`status-dot ${content.status.toLowerCase()}`} />{content.title || `Untitled ${singular}`}{pinned && <span className="pinned-badge"><Pin size={11} /> Pinned</span>}</div>
+      <div className="row-title"><span className={`status-dot ${content.status.toLowerCase()}`} />{label}{pinned && <span className="pinned-badge"><Pin size={11} /> Pinned</span>}</div>
       {preview && <p className="content-row-preview">{preview}</p>}
       <p className="content-row-meta">
         <span>{formatDate(content.publishedAt ?? content.updatedAt)}</span>

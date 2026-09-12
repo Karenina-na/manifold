@@ -202,6 +202,9 @@ button { cursor: pointer; }
 .content-row, .moderation-row { display: flex; gap: 14px; align-items: flex-start; justify-content: space-between; padding: 17px 24px; border-bottom: 1px solid var(--line); }
 .content-row { cursor: pointer; }
 .content-row:hover, .content-row.selected { background: #fbf5ee; }
+/* The row carries role="button" and tabIndex so it can be opened from the
+   keyboard; the hover wash alone is not a focus indicator. */
+.content-row:focus-visible { background: #fbf5ee; outline: 2px solid var(--accent); outline-offset: -2px; }
 .row-title { display: flex; align-items: center; gap: 8px; color: var(--ink); font-size: 14px; font-weight: 800; }
 .content-row p, .moderation-body small { margin: 6px 0 0; color: var(--muted); font-size: 12px; }
 .content-stats { display: inline-flex; align-items: center; gap: 4px; margin-top: 8px; color: var(--muted); font-size: 11px; }

@@ -3,15 +3,22 @@
 // Reading-surface image lightbox. Any <img> inside a .markdown block opens on
 // click; delegated at the document level so the shared renderer package stays
 // untouched. Overlay closes on Escape, background click or the close button,
-// locks body scroll and moves focus to the button while open.
+// locks body scroll, moves focus to the button while open, keeps Tab inside the
+// overlay and returns focus to the opener on close (via `useModalFocus`).
 import { useCallback, useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
+import { useModalFocus } from "../lib/use-modal-focus";
 import styles from "../app/site.module.css";
 
 export function ArticleLightbox() {
   const [src, setSrc] = useState<string | null>(null);
   const [alt, setAlt] = useState("");
   const closeRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  // Declared before the effect that focuses the close button so the opener is
+  // captured while it is still the active element.
+  useModalFocus(src !== null, dialogRef);
 
   useEffect(() => {
     const openFromClick = (event: MouseEvent) => {
@@ -51,7 +58,7 @@ export function ArticleLightbox() {
   if (!src) return <span data-lightbox-anchor aria-hidden="true" />;
 
   return (
-    <div className={styles.lightbox} role="dialog" aria-modal="true" aria-label={alt || "Image preview"} onClick={close}>
+    <div ref={dialogRef} className={styles.lightbox} role="dialog" aria-modal="true" aria-label={alt || "Image preview"} onClick={close}>
       <button type="button" ref={closeRef} className={styles.lightboxClose} onClick={close} aria-label="Close image preview">
         <X size={20} aria-hidden="true" />
       </button>

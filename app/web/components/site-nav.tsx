@@ -5,6 +5,7 @@ import { ArrowUpRight, Moon, Rss, Search, Sun, X } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { buildHref, createBrowserClient } from "../lib/api";
+import { useModalFocus } from "../lib/use-modal-focus";
 import { useTheme } from "./theme-provider";
 import type { SiteNavigationItem } from "@manifold/contracts";
 import styles from "../app/site.module.css";
@@ -30,6 +31,11 @@ export function SiteNav({ navigation }: { navigation?: SiteNavigationItem[] }) {
   const [resumeUrl, setResumeUrl] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(true);
   const inputRef = useRef<HTMLInputElement>(null);
+  const searchDialogRef = useRef<HTMLElement>(null);
+
+  // Declared before the effect that focuses the input so the search button is
+  // captured as the opener while it is still the active element.
+  useModalFocus(searchOpen, searchDialogRef);
 
   useEffect(() => {
     const onScroll = () => setExpanded(window.scrollY < 24);
@@ -107,7 +113,7 @@ export function SiteNav({ navigation }: { navigation?: SiteNavigationItem[] }) {
       </nav>
     </header>
     {searchOpen && <div className={styles.searchScrim} role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setSearchOpen(false); }}>
-      <section className={styles.searchDialog} role="dialog" aria-modal="true" aria-labelledby="search-title">
+      <section ref={searchDialogRef} className={styles.searchDialog} role="dialog" aria-modal="true" aria-labelledby="search-title">
         <div className={styles.searchHeader}><span id="search-title">Search content</span><button className={styles.iconButton} type="button" onClick={() => setSearchOpen(false)} aria-label="Close search"><X size={17} /></button></div>
         <label className={styles.searchInputWrap}><Search size={17} /><input ref={inputRef} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search writings, thoughts, and the archive" aria-label="Search writings and thoughts" /><kbd>ESC</kbd></label>
         <div className={styles.searchResults} aria-live="polite">
