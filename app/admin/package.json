@@ -12,7 +12,7 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "typecheck": "tsc -b --pretty false",
-    "test": "tsc -b --pretty false"
+    "test": "node --test src/lib/*.test.mjs && tsc -b --pretty false"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.1",

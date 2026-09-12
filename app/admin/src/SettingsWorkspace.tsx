@@ -8,6 +8,7 @@ import type { HomepageSection, SiteConfig } from '@manifold/contracts'
 import { createAdminClient } from './api'
 import { LinkRowsField } from './components/LinkRowsField'
 import { SecuritySection } from './components/SecuritySection'
+import { setDirtyGuard } from './lib/dirty-guard'
 import { settingsSchema, type SiteSettingsForm } from './lib/siteSettingsSchema'
 
 const sectionLabels: Record<HomepageSection, string> = {
@@ -39,6 +40,12 @@ export function SettingsWorkspace({ token, onLoggedOut }: { token: string; onLog
   const site = useQuery({ queryKey: ['admin-site'], queryFn: () => client.adminSite() })
   const form = useForm<SiteSettingsForm>({ resolver: zodResolver(settingsSchema), defaultValues: { title: '', description: '', footer: '', social: [], commentsEnabled: true, navigation: [], sections: [] } })
   useEffect(() => { if (site.data) form.reset(settingsValues(site.data)) }, [site.data, form])
+  const dirtyRef = useRef(false)
+  dirtyRef.current = form.formState.isDirty
+  useEffect(() => {
+    setDirtyGuard(() => dirtyRef.current)
+    return () => setDirtyGuard(null)
+  }, [])
   const [savedFlash, setSavedFlash] = useState(false)
   const flashTimer = useRef<number | null>(null)
   useEffect(() => () => { if (flashTimer.current) window.clearTimeout(flashTimer.current) }, [])

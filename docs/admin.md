@@ -26,7 +26,7 @@ Vite + React 19
 └── @manifold/sdk -> Core /api/v1/admin
 ```
 
-主要模块：`src/App.tsx` 管理登录、hash 路由（`#/writings`、`#/writings/{id}`、`#/writings/{id}/comments?…` 等二级页面，支持 hash query）和未保存离开确认；`src/api.ts` 创建 SDK client；`src/lib/` 提供 hash 路由、dirty 守卫和共享包导出的 Core 派生规则；`src/components/` 提供内容工作区共享组件（`ContentListPanel`/`ContentEditorShell`/`ContentCommentsPanel`/`SaveBar`/`ChipsInput`/`ConfirmButton`/`MarkdownEditor`/`Pager`/`LinkRowsField`）；`SettingsWorkspace.tsx` 管理站点设置（身份、导航、评论开关、首页区块组合）；`workspaces/` 下分别负责 Dashboard（数据总览）、Profile、Writings、Thoughts、Media（图片上传与媒体库）和评论管理；`ErrorBoundary.tsx` 负责渲染恢复。组件文件用 PascalCase，工具与 hook 用 kebab-case。
+主要模块：`src/App.tsx` 管理登录、hash 路由（`#/writings`、`#/writings/{id}`、`#/writings/{id}/comments?…` 等二级页面，支持 hash query）和未保存离开确认；`src/api.ts` 创建 SDK client；`src/lib/` 提供 hash 路由、dirty 守卫和共享包导出的 Core 派生规则——`dirty-guard.ts` 既供 `requestNavigate` 在站内跳转前查询未保存状态，也在模块加载时注册一个 `beforeunload` 监听（`hasUnsavedChanges()` 为真时 `preventDefault()`），覆盖刷新、关标签页这类不经过站内导航代码路径的离开方式；持有脏表单的四个工作区（`workspaces/ProfileWorkspace`、`SettingsWorkspace`、`WritingsWorkspace`、`ThoughtsWorkspace`）都必须注册 `setDirtyGuard` 并在卸载时清除，`dirty-guard.test.mjs` 以"任何读取 `formState.isDirty`（实例名可为 `form`/`profileForm`）的文件都必须调用 `setDirtyGuard`"的不变量钉住这条接线。已知边界：浏览器 hash 后退/前进只触发 `hashchange`，既不触发 `beforeunload` 也不经过 `requestNavigate`，因此该路径目前仍未守卫；`src/components/` 提供内容工作区共享组件（`ContentListPanel`/`ContentEditorShell`/`ContentCommentsPanel`/`SaveBar`/`ChipsInput`/`ConfirmButton`/`MarkdownEditor`/`Pager`/`LinkRowsField`）；`SettingsWorkspace.tsx` 管理站点设置（身份、导航、评论开关、首页区块组合）；`workspaces/` 下分别负责 Dashboard（数据总览）、Profile、Writings、Thoughts、Media（图片上传与媒体库）和评论管理；`ErrorBoundary.tsx` 负责渲染恢复。组件文件用 PascalCase，工具与 hook 用 kebab-case。
 
 Dashboard、Profile、Writings、Thoughts、Comments、Settings 通过 lazy chunk 加载，登录壳同步加载。
 
@@ -171,9 +171,12 @@ Settings 底部的独立 panel（`components/SecuritySection.tsx`），不属于
 pnpm --filter @manifold/admin dev
 pnpm --filter @manifold/admin typecheck
 pnpm --filter @manifold/admin lint
+pnpm --filter @manifold/admin test
 pnpm --filter @manifold/admin build
 pnpm --filter @manifold/admin preview
 ```
+
+`test` 先执行 `node --test src/lib/*.test.mjs`（纯 Node 的模块级回归测试，Node 22 直接加载 `.ts`，不需要额外转译或测试框架），再执行 `tsc -b` 作为类型门槛。
 
 根目录 `pnpm browser-test` 会启动隔离 Core/Web/Admin，验证登录、stats、反应、评论提交与回复、软删除和恢复，以及 Writings/Thoughts 的二级页面流程：列表搜索、hash 路由跳转、slug 建议、Meta/Context/Render 三 Tab、vditor 输入保存为 Markdown、Render Tab 与 Web 阅读面同构（标题/正文/TOC）、aiAssisted/summary 保存、发布 Popover、锁定态切换、dirty 离开确认和行内删除 Popover。
 

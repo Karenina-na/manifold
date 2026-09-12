@@ -10,6 +10,7 @@ Manifold 私有管理端，负责登录、Dashboard、Thought/Article 内容编�
 pnpm --filter @manifold/admin dev
 pnpm --filter @manifold/admin typecheck
 pnpm --filter @manifold/admin lint
+pnpm --filter @manifold/admin test
 pnpm --filter @manifold/admin build
 pnpm --filter @manifold/admin preview
 ```

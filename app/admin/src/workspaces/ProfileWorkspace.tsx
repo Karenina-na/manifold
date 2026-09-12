@@ -18,6 +18,7 @@ import {
 import { ApiError } from '@manifold/sdk'
 import { createAdminClient } from '../api'
 import { ChipsInput } from '../components/ChipsInput'
+import { setDirtyGuard } from '../lib/dirty-guard'
 
 const optionalUrl = z.string().trim().max(500).refine((value) => value === '' || /^https?:\/\//i.test(value), 'Use an http(s) URL')
 const contactUrl = z.string().trim().min(1, 'URL is required').max(500).refine((value) => /^https?:\/\//i.test(value) || value.startsWith('mailto:'), 'Use an http(s) or mailto URL')
@@ -428,6 +429,12 @@ export function ProfileWorkspace({ token }: { token: string }) {
   const profileForm = useForm<ProfileForm>({ resolver: zodResolver(profileSchema), defaultValues: emptyProfileForm() })
   useEffect(() => { if (profile.data) profileForm.reset(profileValues(profile.data)) }, [profile.data, profileForm])
   useEffect(() => () => { if (flashTimer.current) window.clearTimeout(flashTimer.current) }, [])
+  const dirtyRef = useRef(false)
+  dirtyRef.current = profileForm.formState.isDirty
+  useEffect(() => {
+    setDirtyGuard(() => dirtyRef.current)
+    return () => setDirtyGuard(null)
+  }, [])
   const saveProfile = useMutation({
     mutationFn: (input: ProfileForm) => client.updateProfile(input),
     onSuccess: () => {
