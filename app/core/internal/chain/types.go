@@ -37,6 +37,11 @@ type LedgerConfig struct {
 	MaxBlockAnchors int
 	FlushTimeout    time.Duration
 	AnchorMaxBytes  int64
+	// OnProofSearchStart, when non-nil, is called at the top of the proof loop
+	// before the first hash. It is a test seam, like SimDelay: the loop has no
+	// other observable side effect, so a test that cancels a search mid-flight
+	// has no way to know the search began. Production leaves it nil.
+	OnProofSearchStart func()
 }
 
 // SiteKey is one row of chain_keys; only the site_key_1 singleton is created

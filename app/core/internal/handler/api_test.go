@@ -2,8 +2,10 @@ package handler_test
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -811,26 +813,25 @@ func TestWriteOperationsCreateAuditEvents(t *testing.T) {
 	if recorder.Code != http.StatusCreated {
 		t.Fatalf("expected comment 201, got %d", recorder.Code)
 	}
-	deadline := time.Now().Add(2 * time.Second)
+	// The audit dispatcher is asynchronous, so the row has to be waited for. The
+	// wait is on this request's own row rather than on a total count: the count
+	// also covers the events the seeded reads in newTestRouterWithConfig produce,
+	// so the previous `count == 2` was a magic number with a comment admitting it
+	// "can vary", and its `count < 1` fallback made the loop nearly unfalsifiable.
+	var requestID, traceID string
+	deadline := time.Now().Add(10 * time.Second)
 	for {
-		count, err := database.AuditEventCount()
-		if err != nil {
+		err := database.DB.QueryRow(`SELECT request_id, trace_id FROM audit_events WHERE request_id = 'req_audit_test' LIMIT 1`).Scan(&requestID, &traceID)
+		if err == nil {
+			break
+		}
+		if !errors.Is(err, sql.ErrNoRows) {
 			t.Fatal(err)
 		}
-		if count == 2 { // comment.created + content.viewed from prior seeded reads can vary; accept >=1 below
-			break
-		}
 		if time.Now().After(deadline) {
-			if count < 1 {
-				t.Fatalf("expected audit events to settle, got %d", count)
-			}
-			break
+			t.Fatal("the audit event for this request was never recorded")
 		}
-		time.Sleep(time.Millisecond)
-	}
-	var requestID, traceID string
-	if err := database.DB.QueryRow(`SELECT request_id, trace_id FROM audit_events WHERE request_id = 'req_audit_test' LIMIT 1`).Scan(&requestID, &traceID); err != nil {
-		t.Fatal(err)
+		time.Sleep(5 * time.Millisecond)
 	}
 	if requestID != "req_audit_test" || traceID != "trace_audit_test" {
 		t.Fatalf("expected audit correlation IDs, got request=%q trace=%q", requestID, traceID)

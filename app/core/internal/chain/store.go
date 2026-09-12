@@ -111,6 +111,9 @@ func (l *Ledger) mineHeader(ctx context.Context, certIDs []string) (BlockHeader,
 		case <-timer.C:
 		}
 	default:
+		if l.cfg.OnProofSearchStart != nil {
+			l.cfg.OnProofSearchStart()
+		}
 		for header.Nonce = 0; ; header.Nonce++ {
 			if header.Nonce%1024 == 0 {
 				if err := ctx.Err(); err != nil {

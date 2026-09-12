@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 )
@@ -275,11 +276,26 @@ func TestRunStopsOnContextCancel(t *testing.T) {
 	}
 }
 
+// TestRunCancelsAnInFlightProofSearch asserts that a proof search already
+// running is stopped by ctx cancellation, not merely that Run notices an
+// already-cancelled context — TestRunStopsOnContextCancel covers that.
+//
+// The distinction needs the search to be provably in flight before cancelling.
+// A fixed `time.Sleep(10ms)` was used for this and could elapse before the
+// goroutine reached the loop, at which point the test still passed while
+// asserting nothing beyond what the other test already covers. The wait is now
+// on the miner's own signal that the loop started.
 func TestRunCancelsAnInFlightProofSearch(t *testing.T) {
+	started := make(chan struct{})
+	var once sync.Once
 	ledger := newLedgerWithKey(t, func(cfg *LedgerConfig) {
 		cfg.ProofMode = ProofModeProof
+		// 64 hex digits of leading zeros never collide, so the search runs until
+		// it is cancelled. newLedgerWithKey assigns cfg directly and so bypasses
+		// the constructor's difficulty clamp, which is what keeps this reachable.
 		cfg.Difficulty = 64
 		cfg.FlushTimeout = 0
+		cfg.OnProofSearchStart = func() { once.Do(func() { close(started) }) }
 	})
 	ctx, cancel := contextWithCancel()
 	done := make(chan error, 1)
@@ -287,14 +303,22 @@ func TestRunCancelsAnInFlightProofSearch(t *testing.T) {
 		done <- ledger.Run(ctx, RunOptions{})
 	}()
 
-	time.Sleep(10 * time.Millisecond)
+	select {
+	case <-started:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the proof search never started, so nothing was in flight to cancel")
+	}
 	cancel()
+
+	// The loop re-reads ctx every 1024 nonces (~0.2ms at the measured rate), so
+	// this bound only distinguishes "stopped" from "hung"; it is not a margin
+	// the test races against.
 	select {
 	case err := <-done:
 		if !errors.Is(err, context.Canceled) {
 			t.Fatalf("expected context cancellation, got %v", err)
 		}
-	case <-time.After(200 * time.Millisecond):
+	case <-time.After(10 * time.Second):
 		t.Fatal("in-flight proof search did not stop after context cancellation")
 	}
 }
