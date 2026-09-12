@@ -710,6 +710,25 @@ async function main() {
     await admin.locator('fieldset.editor-locked[disabled]').first().waitFor({ state: 'visible', timeout: 5000 });
     await admin.getByRole('button', { name: 'Edit' }).click();
     await admin.getByLabel('Summary').fill('A probe writing with unsaved edits.');
+
+    // Browser back/forward with a dirty editor. That path fires only
+    // `hashchange` — `beforeunload` never runs and `requestNavigate` is not on
+    // the way — so before the guard existed the editor unmounted and the
+    // unsaved edit vanished with no prompt at all.
+    const editorHash = await admin.evaluate(() => window.location.hash);
+    await admin.evaluate(() => window.history.back());
+    const unsavedDialog = admin.getByRole('dialog').filter({ hasText: 'Discard unsaved changes and leave this page?' });
+    await unsavedDialog.waitFor({ state: 'visible', timeout: 5000 });
+    // A refusal has to leave the URL where the mounted UI still is, otherwise
+    // the address bar points at a route the user never reached.
+    if (await admin.evaluate(() => window.location.hash) !== editorHash) throw new Error('A refused back gesture left the URL on a route the UI never rendered');
+    await unsavedDialog.getByRole('button', { name: 'Keep editing' }).click();
+    await unsavedDialog.waitFor({ state: 'hidden', timeout: 5000 });
+    // Keeping the edits must leave the *same* mounted editor: a remount would
+    // repopulate the form from the server and quietly drop the edit.
+    if (await admin.getByLabel('Summary').inputValue() !== 'A probe writing with unsaved edits.') throw new Error('Keeping the edits lost the unsaved form state');
+    if (await admin.evaluate(() => window.location.hash) !== editorHash) throw new Error('Keeping the edits moved the route');
+
     await admin.getByRole('button', { name: 'Back to writings' }).click();
     await admin.getByRole('dialog').waitFor({ state: 'visible', timeout: 5000 });
     await admin.getByRole('dialog').getByRole('button', { name: 'Discard and leave' }).click();
