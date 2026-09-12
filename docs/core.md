@@ -79,7 +79,7 @@ Core 使用 `caarlos0/env` 读取 `CORE_` 前缀变量；启动时自动从工�
 | `CORE_DATABASE_PATH` | `./data/manifold.db` | SQLite 路径，父目录自动创建 |
 | `CORE_ALLOWED_ORIGINS` | `http://localhost:3000,http://localhost:5173` | CORS 来源，逗号分隔 |
 | `CORE_TRUSTED_PROXY_CIDRS` | 空 | 可提供可信 `X-Real-IP` 的代理 CIDR，逗号分隔；未命中时忽略转发头 |
-| `CORE_JWT_SECRET` | `manifold-dev-secret-change-me` | HS256 密钥，生产必须替换 |
+| `CORE_JWT_SECRET` | `manifold-dev-secret-change-me` | JWT 根密钥，Core 用 HMAC-SHA256 分别派生 admin/visitor 的 HS256 用途子密钥；生产必须替换 |
 | `CORE_ADMIN_USERNAME` | `admin` | 管理用户名 |
 | `CORE_ADMIN_PASSWORD_HASH` | 内置 bcrypt hash | 管理密码 hash；发布配置留空时由打包脚本生成并写回 |
 | `CORE_CONTENT_CACHE_TTL` | `30s` | 内容详情缓存 TTL |
@@ -179,7 +179,7 @@ Core 使用 `caarlos0/env` 读取 `CORE_` 前缀变量；启动时自动从工�
 | `GET` | `/api/v1/stats` | 已发布统计 `Stats`；`wordCount` 与 `readingMinutes` 使用**两个不同的分词器**：`wordCount` 把每个拉丁/数字词和每个 CJK 字符都计 1；`readingMinutes` 把拉丁/数字词计 1、CJK 字符计 **0.5**（`(cjk+1)/2`），再按每 200 单位 1 分钟向上取整、下限 1 分钟——CJK 的 0.5 权重是阅读速度估算，不代表字数 |
 | `POST` | `/api/v1/presence` | 使用 `X-Visitor-ID` 更新匿名心跳，返回最近 5 分钟活跃访客数 |
 | `GET` | `/api/v1/auth/me` | 评论访客会话：未带有效 `Authorization: Bearer` 时返回 `{authenticated:false, providers:[...]}`；带有效 visitor token 时返回 `{authenticated:true, provider, displayName, avatarUrl, providers}`。`providers` 枚举当前已配置的第三方登录（仅 `github`；未配置时为空数组，Web 端只显示访客入口） |
-| `POST` | `/api/v1/auth/github/exchange` | GitHub 授权码换发 visitor 会话：body `{code}`，成功后返回 `{token, provider, displayName, avatarUrl}`（JWT，90 天）；GitHub 未配置时返回 501 `GITHUB_AUTH_DISABLED`，缺少 `code` 时 422 `VALIDATION_ERROR`，`code` 无效或被 GitHub 拒绝时 502 `GITHUB_AUTH_FAILED`，拉取 GitHub profile 失败时 502 `GITHUB_PROFILE_FAILED`。受 `publicLimiter` 限流 |
+| `POST` | `/api/v1/auth/github/exchange` | GitHub 授权码换发 visitor 会话：body `{code}`，成功后返回 `{token, provider, displayName, avatarUrl}`（JWT，90 天，`iss=manifold-core`、`aud=manifold-visitor`）；GitHub 未配置时返回 501 `GITHUB_AUTH_DISABLED`，缺少 `code` 时 422 `VALIDATION_ERROR`，`code` 无效或被 GitHub 拒绝时 502 `GITHUB_AUTH_FAILED`，拉取 GitHub profile 失败时 502 `GITHUB_PROFILE_FAILED`。受 `publicLimiter` 限流 |
 
 `/auth/github/exchange` 是无浏览器 cookie 上下文的服务端授权码交换边界，不签发或校验 OAuth `state`。浏览器调用方必须在调用该端点前自行完成 CSRF 往返绑定；当前 Web 的 login/callback 路由用 10 分钟 HttpOnly、SameSite=Lax cookie 保存并严格比对随机 `state`，只有比对成功才向 Core 交换 `code`。新增客户端不得绕过这一约束。
 
@@ -237,7 +237,9 @@ Thoughts 归档参数为 `page`（默认 1）、`pageSize`（默认 8，范围 1
 
 ## 6. Admin API
 
-`POST /api/v1/admin/session` 使用用户名和 bcrypt 密码登录，返回 12 小时 HS256 JWT（claims 携带 `jti`，对应 `admin_sessions` 一行）。除登录接口外，所有 Admin 请求都需要 `Authorization: Bearer <token>`，且服务端逐请求校验 session 未吊销、未过期。
+`POST /api/v1/admin/session` 使用用户名和 bcrypt 密码登录，返回 12 小时 HS256 JWT（`iss=manifold-core`、`aud=manifold-admin`，claims 携带 `jti`，对应 `admin_sessions` 一行）。除登录接口外，所有 Admin 请求都需要 `Authorization: Bearer <token>`，且服务端逐请求校验 session 未吊销、未过期。
+
+Admin 与 visitor token 使用从 `CORE_JWT_SECRET` 按用途派生的不同签名子密钥，并分别强制 `aud=manifold-admin` / `aud=manifold-visitor`，不能跨认证域复用。升级前签发、没有 `iss`/`aud` 且直接使用旧根密钥签名的 token 仅在其原有 `exp` 之前走兼容验证；兼容解析仍要求 admin token 带 `role=admin` + `jti`、visitor token 带 provider 且不带 `jti`，旧 token 也不能跨认证域。带新域 claims 却使用旧根密钥签名的 token 会被拒绝。该兼容窗口最长为 visitor token 的 90 天，不会延长旧 token 的有效期。
 
 登录失败的响应按失败原因分流，不把服务端故障伪装成密码错误：
 

@@ -133,7 +133,9 @@ func (s *Service) Login(ctx context.Context, username, password string) (string,
 	claims := Claims{
 		Role: "admin",
 		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    tokenIssuer,
 			Subject:   username,
+			Audience:  jwt.ClaimStrings{adminTokenAudience},
 			IssuedAt:  jwt.NewNumericDate(now),
 			ExpiresAt: jwt.NewNumericDate(now.Add(SessionTTL)),
 		},
@@ -143,21 +145,29 @@ func (s *Service) Login(ctx context.Context, username, password string) (string,
 		return "", err
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString([]byte(s.config.JWTSecret))
+	return token.SignedString(s.tokenSigningKey(adminTokenAudience))
 }
 
 func (s *Service) Parse(tokenValue string) (*Claims, error) {
 	claims := &Claims{}
-	token, err := jwt.ParseWithClaims(tokenValue, claims, func(token *jwt.Token) (any, error) {
-		if token.Method != jwt.SigningMethodHS256 {
-			return nil, ErrUnauthorized
-		}
+	token, err := jwt.ParseWithClaims(tokenValue, claims, func(*jwt.Token) (any, error) {
+		return s.tokenSigningKey(adminTokenAudience), nil
+	}, tokenParserOptions(adminTokenAudience)...)
+	if err == nil && token.Valid && claims.Role == "admin" && claims.ID != "" {
+		return claims, nil
+	}
+
+	// Tokens minted before domain separation used the root secret directly and
+	// carried neither issuer nor audience. Accept only that exact legacy shape;
+	// a modern-looking token signed with the legacy key is a downgrade attempt.
+	legacyClaims := &Claims{}
+	legacyToken, legacyErr := jwt.ParseWithClaims(tokenValue, legacyClaims, func(*jwt.Token) (any, error) {
 		return []byte(s.config.JWTSecret), nil
-	})
-	if err != nil || !token.Valid {
+	}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}), jwt.WithExpirationRequired())
+	if legacyErr != nil || !legacyToken.Valid || legacyClaims.Role != "admin" || legacyClaims.ID == "" || !legacyTokenClaims(legacyClaims.RegisteredClaims) {
 		return nil, ErrUnauthorized
 	}
-	return claims, nil
+	return legacyClaims, nil
 }
 
 func (s *Service) RequireAdmin(next http.Handler) http.Handler {

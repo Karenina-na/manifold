@@ -11,9 +11,9 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-// Visitor sessions (GitHub sign-in for public comments) had no coverage at all,
-// even though they share a signing key with admin sessions. These cases pin the
-// mint/parse round trip and the ways a token must be refused.
+// Visitor sessions (GitHub sign-in for public comments) use a purpose-derived
+// signing key and their own audience. These cases pin the mint/parse round trip
+// and the ways a token must be refused.
 func TestVisitorTokenRoundTrip(t *testing.T) {
 	service, _ := testService(t, testPasswordHash(t), map[string]bool{})
 	now := time.Now()
@@ -30,6 +30,9 @@ func TestVisitorTokenRoundTrip(t *testing.T) {
 	}
 	if claims.Provider != "github" || claims.DisplayName != "Ada" || claims.AvatarURL != "https://example.test/ada.png" {
 		t.Fatalf("identity fields did not round trip: %+v", claims)
+	}
+	if claims.Issuer != tokenIssuer || len(claims.Audience) != 1 || claims.Audience[0] != visitorTokenAudience {
+		t.Fatalf("visitor token domain = issuer %q audience %v", claims.Issuer, claims.Audience)
 	}
 	if claims.ExpiresAt == nil || !claims.ExpiresAt.Time.After(now.Add(VisitorTTL-time.Minute)) {
 		t.Fatalf("expected a %s lifetime, got %+v", VisitorTTL, claims.ExpiresAt)
@@ -129,11 +132,154 @@ func TestVisitorFromRequestDistinguishesAbsentFromInvalid(t *testing.T) {
 	}
 }
 
-// Admin and visitor tokens share one signing key, so the two parsers must not
-// be interchangeable. RequireAdmin is the direction that matters: a visitor
-// token must never authorize an admin request. It is refused twice over — the
-// missing jti fails the session lookup, and an empty role fails Casbin — and
-// this asserts the first gate, which is the one that answers today.
+func TestLegacyVisitorTokenRemainsValidUntilItsExistingExpiry(t *testing.T) {
+	service, _ := testService(t, testPasswordHash(t), map[string]bool{})
+	now := time.Now()
+	token := mintVisitorToken(t, "test-secret", jwt.RegisteredClaims{
+		Subject:   "ident_legacy",
+		IssuedAt:  jwt.NewNumericDate(now),
+		ExpiresAt: jwt.NewNumericDate(now.Add(time.Hour)),
+	})
+	claims, err := service.ParseVisitor(token)
+	if err != nil {
+		t.Fatalf("legacy visitor cookie must remain valid: %v", err)
+	}
+	if claims.Subject != "ident_legacy" {
+		t.Fatalf("legacy subject = %q", claims.Subject)
+	}
+}
+
+func TestAdminAndVisitorTokenDomainsAreNotInterchangeable(t *testing.T) {
+	ctx := t.Context()
+	service, _ := testService(t, testPasswordHash(t), map[string]bool{})
+	adminToken, err := service.Login(ctx, "admin", "password")
+	if err != nil {
+		t.Fatal(err)
+	}
+	visitorToken, err := service.SignVisitor("ident_1", "github", "Ada", "", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if claims, err := service.ParseVisitor(adminToken); !errors.Is(err, ErrInvalidVisitorToken) || claims != nil {
+		t.Fatalf("visitor parser accepted an admin token: claims=%+v err=%v", claims, err)
+	}
+	if claims, err := service.Parse(visitorToken); !errors.Is(err, ErrUnauthorized) || claims != nil {
+		t.Fatalf("admin parser accepted a visitor token: claims=%+v err=%v", claims, err)
+	}
+
+	legacyAdmin := mintAdminToken(t, "ses_legacy_admin")
+	if claims, err := service.ParseVisitor(legacyAdmin); !errors.Is(err, ErrInvalidVisitorToken) || claims != nil {
+		t.Fatalf("visitor parser accepted a legacy admin token: claims=%+v err=%v", claims, err)
+	}
+	legacyVisitor := mintVisitorToken(t, "test-secret", jwt.RegisteredClaims{
+		Subject:   "ident_legacy",
+		IssuedAt:  jwt.NewNumericDate(time.Now()),
+		ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+	})
+	if claims, err := service.Parse(legacyVisitor); !errors.Is(err, ErrUnauthorized) || claims != nil {
+		t.Fatalf("admin parser accepted a legacy visitor token: claims=%+v err=%v", claims, err)
+	}
+}
+
+func TestLegacyKeyCannotClaimTheVisitorTokenDomain(t *testing.T) {
+	service, _ := testService(t, testPasswordHash(t), map[string]bool{})
+	now := time.Now()
+	token := mintVisitorToken(t, "test-secret", jwt.RegisteredClaims{
+		Issuer:    tokenIssuer,
+		Subject:   "ident_1",
+		Audience:  jwt.ClaimStrings{visitorTokenAudience},
+		IssuedAt:  jwt.NewNumericDate(now),
+		ExpiresAt: jwt.NewNumericDate(now.Add(time.Hour)),
+	})
+	if claims, err := service.ParseVisitor(token); !errors.Is(err, ErrInvalidVisitorToken) || claims != nil {
+		t.Fatalf("legacy root key must not mint a modern visitor token, got claims=%+v err=%v", claims, err)
+	}
+}
+
+func TestTokenParsersRequireIssuerAndAudience(t *testing.T) {
+	service, _ := testService(t, testPasswordHash(t), map[string]bool{})
+	now := time.Now()
+	wrongAdminAudience := Claims{
+		Role: "admin",
+		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    tokenIssuer,
+			Subject:   "admin",
+			Audience:  jwt.ClaimStrings{visitorTokenAudience},
+			IssuedAt:  jwt.NewNumericDate(now),
+			ExpiresAt: jwt.NewNumericDate(now.Add(time.Hour)),
+			ID:        "ses_wrong_audience",
+		},
+	}
+	adminToken, err := jwt.NewWithClaims(jwt.SigningMethodHS256, wrongAdminAudience).SignedString(service.tokenSigningKey(adminTokenAudience))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if claims, err := service.Parse(adminToken); !errors.Is(err, ErrUnauthorized) || claims != nil {
+		t.Fatalf("admin parser accepted the visitor audience: claims=%+v err=%v", claims, err)
+	}
+
+	wrongVisitorIssuer := VisitorClaims{
+		Provider: "github", DisplayName: "Ada",
+		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    "another-issuer",
+			Subject:   "ident_1",
+			Audience:  jwt.ClaimStrings{visitorTokenAudience},
+			IssuedAt:  jwt.NewNumericDate(now),
+			ExpiresAt: jwt.NewNumericDate(now.Add(time.Hour)),
+		},
+	}
+	visitorToken, err := jwt.NewWithClaims(jwt.SigningMethodHS256, wrongVisitorIssuer).SignedString(service.tokenSigningKey(visitorTokenAudience))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if claims, err := service.ParseVisitor(visitorToken); !errors.Is(err, ErrInvalidVisitorToken) || claims != nil {
+		t.Fatalf("visitor parser accepted another issuer: claims=%+v err=%v", claims, err)
+	}
+}
+
+func TestPurposeDerivedSigningKeysAreNotInterchangeable(t *testing.T) {
+	service, _ := testService(t, testPasswordHash(t), map[string]bool{})
+	now := time.Now()
+	adminClaims := Claims{
+		Role: "admin",
+		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    tokenIssuer,
+			Subject:   "admin",
+			Audience:  jwt.ClaimStrings{adminTokenAudience},
+			IssuedAt:  jwt.NewNumericDate(now),
+			ExpiresAt: jwt.NewNumericDate(now.Add(time.Hour)),
+			ID:        "ses_wrong_key",
+		},
+	}
+	adminToken, err := jwt.NewWithClaims(jwt.SigningMethodHS256, adminClaims).SignedString(service.tokenSigningKey(visitorTokenAudience))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if claims, err := service.Parse(adminToken); !errors.Is(err, ErrUnauthorized) || claims != nil {
+		t.Fatalf("visitor subkey signed an admin token: claims=%+v err=%v", claims, err)
+	}
+
+	visitorClaims := VisitorClaims{
+		Provider: "github", DisplayName: "Ada",
+		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    tokenIssuer,
+			Subject:   "ident_1",
+			Audience:  jwt.ClaimStrings{visitorTokenAudience},
+			IssuedAt:  jwt.NewNumericDate(now),
+			ExpiresAt: jwt.NewNumericDate(now.Add(time.Hour)),
+		},
+	}
+	visitorToken, err := jwt.NewWithClaims(jwt.SigningMethodHS256, visitorClaims).SignedString(service.tokenSigningKey(adminTokenAudience))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if claims, err := service.ParseVisitor(visitorToken); !errors.Is(err, ErrInvalidVisitorToken) || claims != nil {
+		t.Fatalf("admin subkey signed a visitor token: claims=%+v err=%v", claims, err)
+	}
+}
+
+// Purpose-derived keys plus issuer/audience checks are the primary separation.
+// RequireAdmin still keeps its session-liveness gate as defense in depth.
 func TestVisitorTokenCannotAuthorizeAnAdminRequest(t *testing.T) {
 	service, store := testService(t, testPasswordHash(t), map[string]bool{})
 	token, err := service.SignVisitor("ident_1", "github", "Ada", "", time.Now())
@@ -152,8 +298,8 @@ func TestVisitorTokenCannotAuthorizeAnAdminRequest(t *testing.T) {
 	if recorder.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401, got %d", recorder.Code)
 	}
-	if !strings.Contains(recorder.Body.String(), "session") {
-		t.Fatalf("expected the missing-session message, got %s", recorder.Body.String())
+	if !strings.Contains(recorder.Body.String(), "valid JWT") {
+		t.Fatalf("expected the token-domain rejection, got %s", recorder.Body.String())
 	}
 }
 

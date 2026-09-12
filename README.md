@@ -100,7 +100,7 @@ Admin 的 `VITE_CORE_URL` 必须指向 Core（默认 `http://localhost:8080`）�
 | `CORE_DATABASE_PATH` | `./data/manifold.db` | SQLite 文件路径 |
 | `CORE_ALLOWED_ORIGINS` | `http://localhost:3000,http://localhost:5173` | CORS 来源，逗号分隔 |
 | `CORE_TRUSTED_PROXY_CIDRS` | 空 | 可提供可信 `X-Real-IP` 的反向代理网段；同机 OpenResty 使用 `127.0.0.1/32,::1/128` |
-| `CORE_JWT_SECRET` | `manifold-dev-secret-change-me` | JWT 密钥，生产环境必须更换 |
+| `CORE_JWT_SECRET` | `manifold-dev-secret-change-me` | JWT 根密钥；Core 按 admin/visitor 用途派生独立签名子密钥，生产环境必须更换 |
 | `CORE_ADMIN_USERNAME` | `admin` | 管理用户名 |
 | `CORE_ADMIN_PASSWORD_HASH` | `.env.example` 中的 bcrypt 哈希 | 管理密码哈希，不要写明文；发布配置留空时由打包脚本生成 |
 | `CORE_CONTENT_CACHE_TTL` | `30s` | 内容详情缓存 TTL |

@@ -32,13 +32,15 @@ func (s *Service) SignVisitor(identityID, provider, displayName, avatarURL strin
 		DisplayName: displayName,
 		AvatarURL:   avatarURL,
 		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    tokenIssuer,
 			Subject:   identityID,
+			Audience:  jwt.ClaimStrings{visitorTokenAudience},
 			IssuedAt:  jwt.NewNumericDate(now),
 			ExpiresAt: jwt.NewNumericDate(now.Add(VisitorTTL)),
 		},
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString([]byte(s.config.JWTSecret))
+	return token.SignedString(s.tokenSigningKey(visitorTokenAudience))
 }
 
 // ParseVisitor validates a Bearer visitor token. A token that is structurally
@@ -50,16 +52,24 @@ func (s *Service) ParseVisitor(tokenValue string) (*VisitorClaims, error) {
 		return nil, ErrInvalidVisitorToken
 	}
 	claims := &VisitorClaims{}
-	token, err := jwt.ParseWithClaims(value, claims, func(token *jwt.Token) (any, error) {
-		if token.Method != jwt.SigningMethodHS256 {
-			return nil, ErrInvalidVisitorToken
-		}
+	token, err := jwt.ParseWithClaims(value, claims, func(*jwt.Token) (any, error) {
+		return s.tokenSigningKey(visitorTokenAudience), nil
+	}, tokenParserOptions(visitorTokenAudience)...)
+	if err == nil && token.Valid && claims.Subject != "" && claims.Provider != "" && claims.ID == "" {
+		return claims, nil
+	}
+
+	// Preserve pre-separation visitor cookies until their existing expiry. The
+	// fallback accepts only tokens with no issuer/audience, so the root key cannot
+	// be used to forge a token that claims the new visitor authentication domain.
+	legacyClaims := &VisitorClaims{}
+	legacyToken, legacyErr := jwt.ParseWithClaims(value, legacyClaims, func(*jwt.Token) (any, error) {
 		return []byte(s.config.JWTSecret), nil
-	})
-	if err != nil || !token.Valid || claims.Subject == "" {
+	}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}), jwt.WithExpirationRequired())
+	if legacyErr != nil || !legacyToken.Valid || legacyClaims.Subject == "" || legacyClaims.Provider == "" || legacyClaims.ID != "" || !legacyTokenClaims(legacyClaims.RegisteredClaims) {
 		return nil, ErrInvalidVisitorToken
 	}
-	return claims, nil
+	return legacyClaims, nil
 }
 
 // VisitorFromRequest extracts an optional visitor session from the request's

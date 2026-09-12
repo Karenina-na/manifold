@@ -109,6 +109,9 @@ func TestLoginAndAdminAuthorization(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if parsed.Issuer != tokenIssuer || len(parsed.Audience) != 1 || parsed.Audience[0] != adminTokenAudience {
+		t.Fatalf("admin token domain = issuer %q audience %v", parsed.Issuer, parsed.Audience)
+	}
 	// Simulate the DB-backed liveness: register the created session as live.
 	store.sessions[parsed.ID] = true
 	recorder := httptest.NewRecorder()
@@ -122,6 +125,8 @@ func TestLoginAndAdminAuthorization(t *testing.T) {
 
 func TestRequireAdminChecksSessionLiveness(t *testing.T) {
 	service, _ := testService(t, "$2a$10$abcdefghijklmnopqrstuv", map[string]bool{"ses_fixed": true})
+	// mintAdminToken deliberately uses the pre-domain-separation root key and
+	// omits issuer/audience. Existing 12-hour admin sessions remain valid.
 	token := mintAdminToken(t, "ses_fixed")
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/admin/content", nil)
@@ -153,6 +158,29 @@ func TestExpiredTokenIsRejected(t *testing.T) {
 	}
 	if _, err := service.Parse(token); err == nil {
 		t.Fatal("expected expired token to be rejected")
+	}
+}
+
+func TestLegacyKeyCannotClaimTheAdminTokenDomain(t *testing.T) {
+	service, _ := testService(t, testPasswordHash(t), map[string]bool{})
+	now := time.Now()
+	claims := Claims{
+		Role: "admin",
+		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    tokenIssuer,
+			Subject:   "admin",
+			Audience:  jwt.ClaimStrings{adminTokenAudience},
+			IssuedAt:  jwt.NewNumericDate(now),
+			ExpiresAt: jwt.NewNumericDate(now.Add(time.Hour)),
+			ID:        "ses_downgrade",
+		},
+	}
+	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte("test-secret"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsed, err := service.Parse(token); !errors.Is(err, ErrUnauthorized) || parsed != nil {
+		t.Fatalf("legacy root key must not mint a modern admin token, got claims=%+v err=%v", parsed, err)
 	}
 }
 
