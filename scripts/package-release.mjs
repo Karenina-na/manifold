@@ -101,7 +101,7 @@ export async function validateStagedBundle(root) {
     }
     if (!entry.item.isFile()) continue
     if (entry.relativePath.endsWith('/node_modules/@swc/helpers/esm/_interop_require_default.js')) swcHelpersEsm = true
-    if (/\.db(?:-shm|-wal)?$/.test(name)) throw new Error(`release must not contain database file ${entry.relativePath}`)
+    if (DATABASE_FILE.test(name)) throw new Error(`release must not contain database file ${entry.relativePath}`)
     if (name.endsWith('.dylib')) throw new Error(`release contains Darwin library ${entry.relativePath}`)
 
     const header = await readHeader(entry.path)
@@ -117,6 +117,13 @@ export async function validateStagedBundle(root) {
   if (!sharpLibvipsLinuxX64) throw new Error('release is missing @img/sharp-libvips-linux-x64')
   return { nativeModules }
 }
+
+// A release archive must never carry a database off the build machine, and
+// SQLite files are not all called `.db`: `.sqlite`/`.sqlite3`/`.db3` are just as
+// common, and each of them can leave `-wal`/`-shm` sidecars behind. Matching
+// only `.db` let every one of those through while the docs promised the archive
+// contains no database.
+const DATABASE_FILE = /\.(?:db|db3|sqlite|sqlite3)(?:-(?:shm|wal))?$/
 
 function run(command, args, options = {}) {
   return new Promise((resolveRun, reject) => {

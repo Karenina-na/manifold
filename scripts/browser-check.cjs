@@ -30,8 +30,23 @@ if (!startServices && process.env.MANIFOLD_ALLOW_EXTERNAL_MUTATIONS !== '1') {
   throw new Error('External service mode mutates Core. Set MANIFOLD_ALLOW_EXTERNAL_MUTATIONS=1 explicitly.');
 }
 
+// A run must not inherit the developer's own Core/Web/Admin configuration: a
+// shell with CORE_SEED_FILE, CORE_ENV or a stale CORE_ADMIN_PASSWORD_HASH set
+// would silently change what this fixture exercises, and the resulting failures
+// would look like product bugs. Only these three prefixes are dropped —
+// everything else (PATH, HOME, …) has to survive for the children to start.
+// Each spawn below re-supplies the values it needs explicitly.
+const SERVICE_ENV_PREFIXES = ['CORE_', 'NEXT_PUBLIC_', 'VITE_'];
+
+function serviceEnvironment(environment) {
+  const inherited = Object.fromEntries(Object.entries(process.env).filter(([key]) => (
+    !SERVICE_ENV_PREFIXES.some((prefix) => key.startsWith(prefix))
+  )));
+  return { ...inherited, ...environment };
+}
+
 function spawnService(command, args, cwd, environment) {
-  const child = spawn(command, args, { cwd, detached: true, env: { ...process.env, ...environment }, stdio: ['ignore', 'pipe', 'pipe'] });
+  const child = spawn(command, args, { cwd, detached: true, env: serviceEnvironment(environment), stdio: ['ignore', 'pipe', 'pipe'] });
   const output = [];
   const collect = (chunk) => { output.push(chunk.toString()); if (output.length > 40) output.shift(); };
   child.stdout.on('data', collect);
@@ -63,7 +78,11 @@ function waitForUrl(url, timeout = 90_000) {
     const poll = () => {
       const request = get(url, (response) => {
         response.resume();
-        if (response.statusCode && response.statusCode < 500) {
+        // 4xx is not "ready": the three probes below are `/healthz`, a real
+        // content route and the Admin index, and a 404 used to satisfy this
+        // check while the service it probed was plainly broken. Redirects still
+        // count (Next dev may answer with one), server errors do not.
+        if (response.statusCode && response.statusCode < 400) {
           resolveReady();
           return;
         }
@@ -553,20 +572,21 @@ async function main() {
     // Dashboard panels: paging between pages of different length must not
     // clamp the window scroll to the bottom of the page.
     {
-      // The 12 filler comments plus seeded ones give the comments panel a
-      // second page; scroll its pager into view like a user would.
+      // The fixture writes far more than one page of audit events, so the
+      // activity panel always has a second page. If that button is ever
+      // disabled the scroll-clamp check below would assert nothing at all, so a
+      // missing second page is a fixture failure rather than a silent skip.
       const activityNext = admin.locator('section[aria-label="Recent activity"]').getByRole('button', { name: 'Next page' });
-      if (await activityNext.isEnabled()) {
-        await activityNext.scrollIntoViewIfNeeded();
-        const scrollBefore = await admin.evaluate(() => window.scrollY);
-        const auditPage2 = admin.waitForResponse((response) => new URL(response.url()).pathname === '/api/v1/admin/audit' && new URL(response.url()).searchParams.get('page') === '2' && response.status() === 200);
-        await activityNext.click();
-        await auditPage2;
-        await admin.waitForTimeout(300);
-        const scrollAfter = await admin.evaluate(() => window.scrollY);
-        if (scrollAfter > scrollBefore + 80) {
-          throw new Error(`Dashboard paging jumps the page to the bottom: ${scrollBefore} -> ${scrollAfter}`);
-        }
+      if (!(await activityNext.isEnabled())) throw new Error('Dashboard activity panel has no second page, so the scroll-clamp check cannot run');
+      await activityNext.scrollIntoViewIfNeeded();
+      const scrollBefore = await admin.evaluate(() => window.scrollY);
+      const auditPage2 = admin.waitForResponse((response) => new URL(response.url()).pathname === '/api/v1/admin/audit' && new URL(response.url()).searchParams.get('page') === '2' && response.status() === 200);
+      await activityNext.click();
+      await auditPage2;
+      await admin.waitForTimeout(300);
+      const scrollAfter = await admin.evaluate(() => window.scrollY);
+      if (scrollAfter > scrollBefore + 80) {
+        throw new Error(`Dashboard paging jumps the page to the bottom: ${scrollBefore} -> ${scrollAfter}`);
       }
     }
 
@@ -703,7 +723,12 @@ async function main() {
     const writingDeleteResponse = admin.waitForResponse((response) => /\/api\/v1\/admin\/content\/[^/]+$/.test(new URL(response.url()).pathname) && response.request().method() === 'DELETE' && response.status() === 204);
     await admin.getByRole('button', { name: 'Delete', exact: true }).last().click();
     await writingDeleteResponse;
-    await admin.waitForFunction(() => !window.location.hash.includes('writings/'), undefined, { timeout: 1000 }).catch(() => {});
+    // A list-row delete must remove the row and leave the list route in place.
+    // The old form waited for the hash to *not* contain "writings/", which was
+    // already true while sitting on the list, and swallowed the timeout — so it
+    // passed no matter what the delete did.
+    await writingRow.waitFor({ state: 'detached', timeout: 5000 });
+    if (await admin.evaluate(() => window.location.hash) !== '#/writings') throw new Error('A list-row delete navigated away from the writings list');
 
     await admin.getByRole('button', { name: 'Thoughts' }).click();
     await admin.getByText('Capture as you go.').waitFor({ state: 'visible', timeout: 5000 });
@@ -731,7 +756,10 @@ async function main() {
     const thoughtDeleteResponse = admin.waitForResponse((response) => /\/api\/v1\/admin\/content\/[^/]+$/.test(new URL(response.url()).pathname) && response.request().method() === 'DELETE' && response.status() === 204);
     await admin.getByRole('button', { name: 'Delete', exact: true }).last().click();
     await thoughtDeleteResponse;
-    await admin.getByRole('dialog').waitFor({ state: 'hidden', timeout: 5000 }).catch(() => {});
+    // The confirm popover has to close once the delete lands. Waiting on the
+    // generic `role=dialog` with a swallowed timeout hid both a popover that
+    // stayed open and a strict-mode violation from matching several dialogs.
+    await admin.getByText('Delete this piece? It leaves the public site immediately.').waitFor({ state: 'hidden', timeout: 5000 });
 
     // media library: a published probe writing embeds the uploaded image and
     // renders it on both the admin Render tab and the public writing page

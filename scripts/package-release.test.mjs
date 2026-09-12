@@ -161,6 +161,23 @@ test('validateStagedBundle rejects databases and Mach-O native code', async () =
   }
 })
 
+test('validateStagedBundle rejects every SQLite extension, not just .db', async () => {
+  const root = await createBundle()
+  try {
+    for (const name of ['data.sqlite', 'data.sqlite3', 'data.db3', 'data.sqlite-wal', 'data.db-shm']) {
+      await writeFile(join(root, name), '')
+      await assert.rejects(
+        validateStagedBundle(root),
+        (error) => error.message.includes(`must not contain database file ${name}`),
+        `${name} must be rejected`,
+      )
+      await rm(join(root, name))
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
 test('validateStagedBundle rejects permissive secrets and non-x64 shared libraries', async () => {
   const root = await createBundle()
   try {

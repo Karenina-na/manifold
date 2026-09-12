@@ -154,7 +154,7 @@ pnpm package:release -- --env .env.production
 
 当 `CORE_ADMIN_PASSWORD_HASH` 为空时，打包脚本先生成随机初始密码，通过 Core 使用的 bcrypt 实现计算 hash，再以 `0600` 权限原子写回该配置文件。初始用户名和明文密码只在终端显示一次，必须立即保存到密码管理器；后续打包复用已写回的 hash，不会再次重置密码。CI 日志可能持久化终端输出，不应在不受保护的公共 CI 中使用自动生成模式。
 
-产物位于 `dist/releases/manifold-<git-sha>-linux-x64-glibc.zip`。归档包含 Linux Core 二进制、Next.js standalone、Admin 静态文件、生产 `.env` 和运行管理器，不包含数据库、日志或 PID。由于 `.env` 含生产密钥，归档必须通过受保护通道传输并限制访问。
+产物位于 `dist/releases/manifold-<git-sha>-linux-x64-glibc.zip`。归档包含 Linux Core 二进制、Next.js standalone、Admin 静态文件、生产 `.env` 和运行管理器，不包含数据库、日志或 PID；打包校验会拒绝任何 `.db`、`.db3`、`.sqlite`、`.sqlite3` 及其 `-wal`/`-shm` 侧车文件。由于 `.env` 含生产密钥，归档必须通过受保护通道传输并限制访问。
 
 上传并解压后，在归档根目录运行：
 
