@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/manifold-space/manifold/app/core/internal/apierror"
 	"github.com/manifold-space/manifold/app/core/internal/model"
 )
 
@@ -16,7 +17,7 @@ func (h *apiHandler) adminStats(w http.ResponseWriter, _ *http.Request) {
 		var err error
 		stats, err = h.store.Stats()
 		if err != nil {
-			WriteError(w, http.StatusInternalServerError, "STATS_UNAVAILABLE", "Stats are unavailable.")
+			WriteError(w, http.StatusInternalServerError, apierror.StatsUnavailable, "Stats are unavailable.")
 			return
 		}
 		h.statsCache.Set(stats)
@@ -32,7 +33,7 @@ func (h *apiHandler) adminOverview(w http.ResponseWriter, _ *http.Request) {
 		var err error
 		overview, err = h.store.Overview()
 		if err != nil {
-			WriteError(w, http.StatusInternalServerError, "OVERVIEW_UNAVAILABLE", "Overview is unavailable.")
+			WriteError(w, http.StatusInternalServerError, apierror.OverviewUnavailable, "Overview is unavailable.")
 			return
 		}
 		h.overviewCache.Set(overview)
@@ -42,21 +43,21 @@ func (h *apiHandler) adminOverview(w http.ResponseWriter, _ *http.Request) {
 
 func (h *apiHandler) adminAnalyticsViews(w http.ResponseWriter, r *http.Request) {
 	if err := rejectUnknownQuery(r.URL.Query(), "days"); err != nil {
-		WriteError(w, http.StatusBadRequest, "INVALID_QUERY", err.Error())
+		WriteError(w, http.StatusBadRequest, apierror.InvalidQuery, err.Error())
 		return
 	}
 	days := 0
 	if rawDays := strings.TrimSpace(r.URL.Query().Get("days")); rawDays != "" {
 		value, err := strconv.Atoi(rawDays)
 		if err != nil || value < 1 {
-			WriteError(w, http.StatusBadRequest, "INVALID_QUERY", "days must be a positive integer")
+			WriteError(w, http.StatusBadRequest, apierror.InvalidQuery, "days must be a positive integer")
 			return
 		}
 		days = value
 	}
 	views, err := h.store.AnalyticsViews(days)
 	if err != nil {
-		WriteError(w, http.StatusInternalServerError, "ANALYTICS_UNAVAILABLE", "Analytics are unavailable.")
+		WriteError(w, http.StatusInternalServerError, apierror.AnalyticsUnavailable, "Analytics are unavailable.")
 		return
 	}
 	WriteJSON(w, http.StatusOK, views)
@@ -65,12 +66,12 @@ func (h *apiHandler) adminAnalyticsViews(w http.ResponseWriter, r *http.Request)
 func (h *apiHandler) adminSystem(w http.ResponseWriter, _ *http.Request) {
 	sizeBytes, err := h.store.DatabaseSizeBytes()
 	if err != nil {
-		WriteError(w, http.StatusInternalServerError, "SYSTEM_UNAVAILABLE", "System status is unavailable.")
+		WriteError(w, http.StatusInternalServerError, apierror.SystemUnavailable, "System status is unavailable.")
 		return
 	}
 	auditEventCount, err := h.store.AuditEventCount()
 	if err != nil {
-		WriteError(w, http.StatusInternalServerError, "SYSTEM_UNAVAILABLE", "System status is unavailable.")
+		WriteError(w, http.StatusInternalServerError, apierror.SystemUnavailable, "System status is unavailable.")
 		return
 	}
 	var memStats runtime.MemStats
@@ -91,14 +92,14 @@ func (h *apiHandler) adminSystem(w http.ResponseWriter, _ *http.Request) {
 
 func (h *apiHandler) adminAudit(w http.ResponseWriter, r *http.Request) {
 	if err := rejectUnknownQuery(r.URL.Query(), "page", "pageSize", "q"); err != nil {
-		WriteError(w, http.StatusBadRequest, "INVALID_QUERY", err.Error())
+		WriteError(w, http.StatusBadRequest, apierror.InvalidQuery, err.Error())
 		return
 	}
 	page := 1
 	if rawPage := strings.TrimSpace(r.URL.Query().Get("page")); rawPage != "" {
 		value, err := strconv.Atoi(rawPage)
 		if err != nil || value < 1 {
-			WriteError(w, http.StatusBadRequest, "INVALID_QUERY", "page must be a positive integer")
+			WriteError(w, http.StatusBadRequest, apierror.InvalidQuery, "page must be a positive integer")
 			return
 		}
 		page = value
@@ -107,19 +108,19 @@ func (h *apiHandler) adminAudit(w http.ResponseWriter, r *http.Request) {
 	if rawPageSize := strings.TrimSpace(r.URL.Query().Get("pageSize")); rawPageSize != "" {
 		value, err := strconv.Atoi(rawPageSize)
 		if err != nil || value < 1 || value > 50 {
-			WriteError(w, http.StatusBadRequest, "INVALID_QUERY", "pageSize must be between 1 and 50")
+			WriteError(w, http.StatusBadRequest, apierror.InvalidQuery, "pageSize must be between 1 and 50")
 			return
 		}
 		pageSize = value
 	}
 	needle := strings.TrimSpace(r.URL.Query().Get("q"))
 	if len(needle) > 200 {
-		WriteError(w, http.StatusBadRequest, "INVALID_QUERY", "q is too long")
+		WriteError(w, http.StatusBadRequest, apierror.InvalidQuery, "q is too long")
 		return
 	}
 	events, total, err := h.store.ListAuditEvents(page, pageSize, needle)
 	if err != nil {
-		WriteError(w, http.StatusInternalServerError, "AUDIT_UNAVAILABLE", "Audit events are unavailable.")
+		WriteError(w, http.StatusInternalServerError, apierror.AuditUnavailable, "Audit events are unavailable.")
 		return
 	}
 	totalPages := (total + pageSize - 1) / pageSize

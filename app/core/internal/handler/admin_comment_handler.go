@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/manifold-space/manifold/app/core/internal/apierror"
 	"github.com/manifold-space/manifold/app/core/internal/model"
 	"github.com/manifold-space/manifold/app/core/internal/store"
 )
@@ -17,11 +18,11 @@ import (
 func (h *apiHandler) adminCreateComment(w http.ResponseWriter, r *http.Request) {
 	content, err := h.store.GetContentByID(chi.URLParam(r, "id"), true)
 	if errors.Is(err, store.ErrContentNotFound) || errors.Is(err, sql.ErrNoRows) {
-		WriteError(w, http.StatusNotFound, "CONTENT_NOT_FOUND", "Content was not found.")
+		WriteError(w, http.StatusNotFound, apierror.ContentNotFound, "Content was not found.")
 		return
 	}
 	if err != nil {
-		WriteError(w, http.StatusInternalServerError, "CONTENT_UNAVAILABLE", "Content is unavailable.")
+		WriteError(w, http.StatusInternalServerError, apierror.ContentUnavailable, "Content is unavailable.")
 		return
 	}
 	// Admin replies bypass the public comments toggle by design and are never
@@ -32,21 +33,21 @@ func (h *apiHandler) adminCreateComment(w http.ResponseWriter, r *http.Request) 
 func (h *apiHandler) adminListComments(w http.ResponseWriter, r *http.Request) {
 	options, err := parseAdminCommentListOptions(r)
 	if err != nil {
-		WriteError(w, http.StatusBadRequest, "INVALID_QUERY", err.Error())
+		WriteError(w, http.StatusBadRequest, apierror.InvalidQuery, err.Error())
 		return
 	}
 	if options.ContentID != "" {
 		if _, err := h.store.GetContentByID(options.ContentID, true); errors.Is(err, store.ErrContentNotFound) {
-			WriteError(w, http.StatusNotFound, "CONTENT_NOT_FOUND", "Content was not found.")
+			WriteError(w, http.StatusNotFound, apierror.ContentNotFound, "Content was not found.")
 			return
 		} else if err != nil {
-			WriteError(w, http.StatusInternalServerError, "CONTENT_UNAVAILABLE", "Content is unavailable.")
+			WriteError(w, http.StatusInternalServerError, apierror.ContentUnavailable, "Content is unavailable.")
 			return
 		}
 	}
 	result, err := h.store.ListAdminComments(options)
 	if err != nil {
-		WriteError(w, http.StatusInternalServerError, "COMMENTS_UNAVAILABLE", "Comments are unavailable.")
+		WriteError(w, http.StatusInternalServerError, apierror.CommentsUnavailable, "Comments are unavailable.")
 		return
 	}
 	WriteJSON(w, http.StatusOK, collection(result.Comments, model.Pagination{Page: result.Page, PageSize: result.PageSize, TotalItems: result.TotalItems, TotalPages: result.TotalPages}))
@@ -71,15 +72,15 @@ func (h *apiHandler) adminUnhideComment(w http.ResponseWriter, r *http.Request) 
 func (h *apiHandler) setCommentHidden(w http.ResponseWriter, r *http.Request, hidden bool) {
 	err := h.mutations.SetCommentHidden(mutationRequest(r), chi.URLParam(r, "id"), hidden)
 	if errors.Is(err, sql.ErrNoRows) {
-		WriteError(w, http.StatusNotFound, "COMMENT_NOT_FOUND", "Comment was not found.")
+		WriteError(w, http.StatusNotFound, apierror.CommentNotFound, "Comment was not found.")
 		return
 	}
 	if errors.Is(err, store.ErrCommentDeleted) {
-		WriteError(w, http.StatusUnprocessableEntity, "COMMENT_DELETED", "Deleted comments cannot be moderated.")
+		WriteError(w, http.StatusUnprocessableEntity, apierror.CommentDeleted, "Deleted comments cannot be moderated.")
 		return
 	}
 	if err != nil {
-		WriteError(w, http.StatusInternalServerError, "COMMENT_UPDATE_FAILED", "Comment could not be updated.")
+		WriteError(w, http.StatusInternalServerError, apierror.CommentUpdateFailed, "Comment could not be updated.")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -94,25 +95,25 @@ type updateCommentAuthorInput struct {
 func (h *apiHandler) adminUpdateCommentAuthor(w http.ResponseWriter, r *http.Request) {
 	var input updateCommentAuthorInput
 	if err := decodeJSON(r, &input); err != nil {
-		WriteError(w, http.StatusUnprocessableEntity, "VALIDATION_ERROR", "Invalid comment author input.")
+		WriteError(w, http.StatusUnprocessableEntity, apierror.ValidationError, "Invalid comment author input.")
 		return
 	}
 	update, err := parseCommentAuthorUpdate(input)
 	if err != nil {
-		WriteError(w, http.StatusUnprocessableEntity, "VALIDATION_ERROR", err.Error())
+		WriteError(w, http.StatusUnprocessableEntity, apierror.ValidationError, err.Error())
 		return
 	}
 	err = h.mutations.UpdateCommentAuthor(mutationRequest(r), chi.URLParam(r, "id"), update)
 	if errors.Is(err, sql.ErrNoRows) {
-		WriteError(w, http.StatusNotFound, "COMMENT_NOT_FOUND", "Comment was not found.")
+		WriteError(w, http.StatusNotFound, apierror.CommentNotFound, "Comment was not found.")
 		return
 	}
 	if errors.Is(err, store.ErrCommentDeleted) {
-		WriteError(w, http.StatusUnprocessableEntity, "COMMENT_DELETED", "Deleted comments cannot be edited.")
+		WriteError(w, http.StatusUnprocessableEntity, apierror.CommentDeleted, "Deleted comments cannot be edited.")
 		return
 	}
 	if err != nil {
-		WriteError(w, http.StatusInternalServerError, "COMMENT_UPDATE_FAILED", "Comment could not be updated.")
+		WriteError(w, http.StatusInternalServerError, apierror.CommentUpdateFailed, "Comment could not be updated.")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -173,7 +174,7 @@ func parseCommentAuthorUpdate(input updateCommentAuthorInput) (store.CommentAuth
 func (h *apiHandler) setCommentDeleted(w http.ResponseWriter, r *http.Request, deleted bool) {
 	err := h.mutations.SetCommentDeleted(mutationRequest(r), chi.URLParam(r, "id"), deleted)
 	if err != nil {
-		WriteError(w, http.StatusNotFound, "COMMENT_NOT_FOUND", "Comment was not found.")
+		WriteError(w, http.StatusNotFound, apierror.CommentNotFound, "Comment was not found.")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

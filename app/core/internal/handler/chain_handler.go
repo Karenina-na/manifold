@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/manifold-space/manifold/app/core/internal/apierror"
 	"github.com/manifold-space/manifold/app/core/internal/chain"
 )
 
@@ -19,7 +20,7 @@ func (h *apiHandler) enrichView(view anchorView) anchorView {
 
 func (h *apiHandler) requireLedger(w http.ResponseWriter) (*chain.Ledger, bool) {
 	if h.ledger == nil {
-		WriteError(w, http.StatusServiceUnavailable, "CHAIN_UNAVAILABLE", "The anchoring chain is not enabled.")
+		WriteError(w, http.StatusServiceUnavailable, apierror.ChainUnavailable, "The anchoring chain is not enabled.")
 		return nil, false
 	}
 	return h.ledger, true
@@ -32,7 +33,7 @@ func (h *apiHandler) chainInfo(w http.ResponseWriter, _ *http.Request) {
 	}
 	info, err := ledger.ChainInfo()
 	if err != nil {
-		WriteError(w, http.StatusInternalServerError, "CHAIN_UNAVAILABLE", "Chain info is unavailable.")
+		WriteError(w, http.StatusInternalServerError, apierror.ChainUnavailable, "Chain info is unavailable.")
 		return
 	}
 	WriteJSON(w, http.StatusOK, map[string]any{
@@ -48,25 +49,25 @@ func (h *apiHandler) listChainAnchors(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := rejectUnknownQuery(r.URL.Query(), "source", "ref", "page", "pageSize"); err != nil {
-		WriteError(w, http.StatusBadRequest, "INVALID_QUERY", err.Error())
+		WriteError(w, http.StatusBadRequest, apierror.InvalidQuery, err.Error())
 		return
 	}
 	options := chain.AnchorListOptions{Page: 1, PageSize: 20}
 	if raw := strings.TrimSpace(r.URL.Query().Get("source")); raw != "" {
 		if !chain.ValidSource(raw) {
-			WriteError(w, http.StatusBadRequest, "INVALID_QUERY", "source is invalid")
+			WriteError(w, http.StatusBadRequest, apierror.InvalidQuery, "source is invalid")
 			return
 		}
 		options.Source = raw
 	}
 	options.Ref = strings.TrimSpace(r.URL.Query().Get("ref"))
 	if err := parsePageParams(r, &options.Page, &options.PageSize); err != nil {
-		WriteError(w, http.StatusBadRequest, "INVALID_QUERY", err.Error())
+		WriteError(w, http.StatusBadRequest, apierror.InvalidQuery, err.Error())
 		return
 	}
 	anchors, total, err := ledger.ListAnchors(options)
 	if err != nil {
-		WriteError(w, http.StatusInternalServerError, "CHAIN_UNAVAILABLE", "Anchors are unavailable.")
+		WriteError(w, http.StatusInternalServerError, apierror.ChainUnavailable, "Anchors are unavailable.")
 		return
 	}
 	views := make([]anchorView, 0, len(anchors))
@@ -83,11 +84,11 @@ func (h *apiHandler) getChainAnchor(w http.ResponseWriter, r *http.Request) {
 	}
 	anchor, err := ledger.GetAnchor(chi.URLParam(r, "id"))
 	if errors.Is(err, sql.ErrNoRows) {
-		WriteError(w, http.StatusNotFound, "ANCHOR_NOT_FOUND", "Anchor was not found.")
+		WriteError(w, http.StatusNotFound, apierror.AnchorNotFound, "Anchor was not found.")
 		return
 	}
 	if err != nil {
-		WriteError(w, http.StatusInternalServerError, "CHAIN_UNAVAILABLE", "Anchors are unavailable.")
+		WriteError(w, http.StatusInternalServerError, apierror.ChainUnavailable, "Anchors are unavailable.")
 		return
 	}
 	WriteJSON(w, http.StatusOK, h.enrichView(toAnchorView(anchor)))
@@ -99,17 +100,17 @@ func (h *apiHandler) listChainBlocks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := rejectUnknownQuery(r.URL.Query(), "page", "pageSize"); err != nil {
-		WriteError(w, http.StatusBadRequest, "INVALID_QUERY", err.Error())
+		WriteError(w, http.StatusBadRequest, apierror.InvalidQuery, err.Error())
 		return
 	}
 	page, pageSize := 1, 20
 	if err := parsePageParams(r, &page, &pageSize); err != nil {
-		WriteError(w, http.StatusBadRequest, "INVALID_QUERY", err.Error())
+		WriteError(w, http.StatusBadRequest, apierror.InvalidQuery, err.Error())
 		return
 	}
 	blocks, total, err := ledger.ListBlocks(page, pageSize)
 	if err != nil {
-		WriteError(w, http.StatusInternalServerError, "CHAIN_UNAVAILABLE", "Blocks are unavailable.")
+		WriteError(w, http.StatusInternalServerError, apierror.ChainUnavailable, "Blocks are unavailable.")
 		return
 	}
 	views := make([]blockSummaryView, 0, len(blocks))
@@ -130,11 +131,11 @@ func (h *apiHandler) getChainBlock(w http.ResponseWriter, r *http.Request) {
 	}
 	block, anchors, err := ledger.GetBlock(chi.URLParam(r, "id"))
 	if errors.Is(err, sql.ErrNoRows) {
-		WriteError(w, http.StatusNotFound, "BLOCK_NOT_FOUND", "Block was not found.")
+		WriteError(w, http.StatusNotFound, apierror.BlockNotFound, "Block was not found.")
 		return
 	}
 	if err != nil {
-		WriteError(w, http.StatusInternalServerError, "CHAIN_UNAVAILABLE", "Blocks are unavailable.")
+		WriteError(w, http.StatusInternalServerError, apierror.ChainUnavailable, "Blocks are unavailable.")
 		return
 	}
 	anchorViews := make([]anchorView, 0, len(anchors))
@@ -156,7 +157,7 @@ func (h *apiHandler) listChainKeys(w http.ResponseWriter, _ *http.Request) {
 	}
 	keys, err := ledger.ListSiteKeys()
 	if err != nil {
-		WriteError(w, http.StatusInternalServerError, "CHAIN_UNAVAILABLE", "Site keys are unavailable.")
+		WriteError(w, http.StatusInternalServerError, apierror.ChainUnavailable, "Site keys are unavailable.")
 		return
 	}
 	views := make([]map[string]any, 0, len(keys))

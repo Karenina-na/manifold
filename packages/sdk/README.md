@@ -117,7 +117,7 @@ SDK 当前没有自动提供重试、轮询、分页迭代器或 token refresh�
 
 ## 错误模型
 
-`ApiError` 字段：`status`、`code`、`message`、可选 `details`、`requestId`、`traceId`。
+`ApiError` 字段：`status`、`code`、`message`、可选 `details`、`requestId`、`traceId`。`code` 的类型是 `ApiFailureCode = ApiErrorCode | "REQUEST_FAILED"`：`ApiErrorCode` 是 Core 的错误码契约（见 [`packages/contracts/README.md`](../contracts/README.md)），因此对 `code` 的比较和 `switch` 都受类型检查；`REQUEST_FAILED` 是 SDK 自己的兜底值。
 
 ```ts
 try {
@@ -129,7 +129,7 @@ try {
 }
 ```
 
-响应 body 不是合法 JSON 时，SDK 使用 `REQUEST_FAILED` 和 HTTP status 生成兜底错误；不要在 UI 中依赖服务端英文 message，优先使用稳定 `code`。
+响应 body 不是合法 JSON，或错误码不在 `ApiErrorCode` 枚举内时，SDK 使用 `REQUEST_FAILED` 和 HTTP status 生成兜底错误；不要在 UI 中依赖服务端英文 message，优先使用稳定 `code`。
 
 ## 测试与修改流程
 

@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowRight, BadgeCheck, Boxes, Check, ChevronDown, ChevronLeft, ChevronRight, Clock, Copy, Cpu, Fingerprint, Hash, KeyRound, Layers, Link2, ScanLine, ShieldCheck } from "lucide-react";
 import type { AnchorSource, ChainAnchor, ChainBlockDetail, ChainBlockSummary, ChainInfo, VerifyChainContext, VerifyMerkleProof, VerifyResponse, VerifyStep } from "@manifold/contracts";
+import { ApiError } from "@manifold/sdk";
 import { usePendingCommits, type PendingCommit } from "../features/chain/use-pending-commits";
 import { createBrowserClient } from "../lib/api";
 import { Pagination } from "./pagination";
@@ -838,13 +839,15 @@ function VerifyProcessGraph({ steps, merkle, context, running, verdict }: { step
 }
 
 // Core answers throttled public writes with 429 RATE_LIMITED; the SDK exposes
-// it as an ApiError so the explorer can hold the button instead of failing.
+// it as a typed ApiError so the explorer can hold the button instead of failing.
 function describeFailure(error: unknown): { rateLimited: boolean; message: string } {
-  const failure = error as { status?: number; code?: string; message?: string } | null;
-  if (failure?.status === 429 || failure?.code === "RATE_LIMITED") {
+  if (error instanceof ApiError && (error.status === 429 || error.code === "RATE_LIMITED")) {
     return { rateLimited: true, message: "Rate limit reached — the chain is pacing your requests. Wait a moment and try again." };
   }
-  return { rateLimited: false, message: failure?.message || "The request could not be completed." };
+  if (error instanceof Error && error.message) {
+    return { rateLimited: false, message: error.message };
+  }
+  return { rateLimited: false, message: "The request could not be completed." };
 }
 
 function parseBlockIndex(id: string): number | null {

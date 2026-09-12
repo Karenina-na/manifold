@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/manifold-space/manifold/app/core/internal/apierror"
 	"github.com/manifold-space/manifold/app/core/internal/application"
 	"github.com/manifold-space/manifold/app/core/internal/chain"
 	"github.com/manifold-space/manifold/app/core/internal/store"
@@ -20,12 +21,12 @@ func (h *apiHandler) verifyAnchorByHash(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if err := rejectUnknownQuery(r.URL.Query(), "hash"); err != nil {
-		WriteError(w, http.StatusBadRequest, "INVALID_QUERY", err.Error())
+		WriteError(w, http.StatusBadRequest, apierror.InvalidQuery, err.Error())
 		return
 	}
 	hash := strings.TrimSpace(r.URL.Query().Get("hash"))
 	if hash == "" || !validSHA256Hex(hash) {
-		WriteError(w, http.StatusBadRequest, "INVALID_QUERY", "hash must be a 64-character sha256 hex string.")
+		WriteError(w, http.StatusBadRequest, apierror.InvalidQuery, "hash must be a 64-character sha256 hex string.")
 		return
 	}
 	body, status := h.verifyResult(ledger, strings.ToLower(hash))
@@ -45,7 +46,7 @@ func (h *apiHandler) verifyAnchorPayload(w http.ResponseWriter, r *http.Request)
 	}
 	var input submitAnchorInput
 	if err := decodeJSON(r, &input); err != nil || input.Payload == "" {
-		WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "payload is required.")
+		WriteError(w, http.StatusBadRequest, apierror.ValidationError, "payload is required.")
 		return
 	}
 	body, status := h.verifyResult(ledger, chain.SubjectHashHex([]byte(input.Payload)))
@@ -67,16 +68,16 @@ func (h *apiHandler) verifyAnchorContent(w http.ResponseWriter, r *http.Request)
 	}
 	content, err := h.store.GetContentBySlug(chi.URLParam(r, "slug"), false)
 	if errors.Is(err, store.ErrContentNotFound) || errors.Is(err, sql.ErrNoRows) {
-		WriteError(w, http.StatusNotFound, "CONTENT_NOT_FOUND", "Content was not found.")
+		WriteError(w, http.StatusNotFound, apierror.ContentNotFound, "Content was not found.")
 		return
 	}
 	if err != nil {
-		WriteError(w, http.StatusInternalServerError, "CONTENT_UNAVAILABLE", "Content is unavailable.")
+		WriteError(w, http.StatusInternalServerError, apierror.ContentUnavailable, "Content is unavailable.")
 		return
 	}
 	payload, _, _, _, err := application.ContentPayload(content)
 	if err != nil {
-		WriteError(w, http.StatusInternalServerError, "CHAIN_UNAVAILABLE", "Payload could not be rebuilt.")
+		WriteError(w, http.StatusInternalServerError, apierror.ChainUnavailable, "Payload could not be rebuilt.")
 		return
 	}
 	body, status := h.verifyResult(ledger, chain.SubjectHashHex(payload))
@@ -100,20 +101,20 @@ func (h *apiHandler) verifyAnchorComment(w http.ResponseWriter, r *http.Request)
 	}
 	comment, err := h.store.GetCommentByID(chi.URLParam(r, "id"))
 	if errors.Is(err, sql.ErrNoRows) {
-		WriteError(w, http.StatusNotFound, "COMMENT_NOT_FOUND", "Comment was not found.")
+		WriteError(w, http.StatusNotFound, apierror.CommentNotFound, "Comment was not found.")
 		return
 	}
 	if err != nil {
-		WriteError(w, http.StatusInternalServerError, "COMMENTS_UNAVAILABLE", "Comments are unavailable.")
+		WriteError(w, http.StatusInternalServerError, apierror.CommentsUnavailable, "Comments are unavailable.")
 		return
 	}
 	if comment.Hidden || comment.DeletedAt != nil {
-		WriteError(w, http.StatusNotFound, "COMMENT_NOT_FOUND", "Comment was not found.")
+		WriteError(w, http.StatusNotFound, apierror.CommentNotFound, "Comment was not found.")
 		return
 	}
 	payloadHashes, err := application.CommentPayloadHashes(comment.Comment)
 	if err != nil {
-		WriteError(w, http.StatusInternalServerError, "CHAIN_UNAVAILABLE", "Payload could not be rebuilt.")
+		WriteError(w, http.StatusInternalServerError, apierror.ChainUnavailable, "Payload could not be rebuilt.")
 		return
 	}
 	body, status := h.verifyResult(ledger, payloadHashes[0])
@@ -140,7 +141,7 @@ func (h *apiHandler) verifyAnchorComment(w http.ResponseWriter, r *http.Request)
 func (h *apiHandler) verifyResult(ledger *chain.Ledger, subjectHash string) (map[string]any, int) {
 	report, err := ledger.ReplayVerify()
 	if err != nil {
-		return map[string]any{"error": map[string]any{"code": "CHAIN_UNAVAILABLE", "message": "Chain verification failed."}}, http.StatusInternalServerError
+		return map[string]any{"error": map[string]any{"code": apierror.ChainUnavailable, "message": "Chain verification failed."}}, http.StatusInternalServerError
 	}
 	anchor, err := ledger.LatestAnchorByHash(subjectHash)
 	steps := []verifyStepView{

@@ -150,6 +150,8 @@ Core 使用 `caarlos0/env` 读取 `CORE_` 前缀变量；启动时自动从工�
 
 常见状态码：`400` 查询/访客参数无效，`401` JWT 缺失或无效，`403` 角色无权限，`404` 不存在或对调用者不可见，`409` 唯一键/版本冲突，`422` 输入校验失败，`500` 服务端故障。
 
+`code` 的完整枚举是 `ApiErrorCode`（`packages/contracts/src/index.ts` 的 `API_ERROR_CODES`），Core 侧的常量集中在 `app/core/internal/apierror/codes.go`。两侧由 `packages/contracts/test/error-codes.test.ts` 强制逐项相等，因此新增或改名一个错误码必须同时改两处，否则测试失败——客户端可以放心地对 `code` 做穷尽 `switch`。
+
 ## 5. 公开 API
 
 公开读取不需要认证；草稿和软删除内容永远不可见。
@@ -172,7 +174,7 @@ Core 使用 `caarlos0/env` 读取 `CORE_` 前缀变量；启动时自动从工�
 | `GET` | `/api/v1/stats` | 已发布统计 `Stats`；`wordCount` 与 `readingMinutes` 使用同一分词器：拉丁/数字词各计 1，每个 CJK 字符计 1 |
 | `POST` | `/api/v1/presence` | 使用 `X-Visitor-ID` 更新匿名心跳，返回最近 5 分钟活跃访客数 |
 | `GET` | `/api/v1/auth/me` | 评论访客会话：未带有效 `Authorization: Bearer` 时返回 `{authenticated:false, providers:[...]}`；带有效 visitor token 时返回 `{authenticated:true, provider, displayName, avatarUrl, providers}`。`providers` 枚举当前已配置的第三方登录（仅 `github`；未配置时为空数组，Web 端只显示访客入口） |
-| `POST` | `/api/v1/auth/github/exchange` | GitHub 授权码换发 visitor 会话：body `{code}`，成功后返回 `{token, provider, displayName, avatarUrl}`（JWT，90 天）；GitHub 未配置时返回 501 `GITHUB_AUTH_DISABLED`，code 无效/被 GitHub 拒绝时 502 `GITHUB_EXCHANGE_FAILED`。受 `publicLimiter` 限流 |
+| `POST` | `/api/v1/auth/github/exchange` | GitHub 授权码换发 visitor 会话：body `{code}`，成功后返回 `{token, provider, displayName, avatarUrl}`（JWT，90 天）；GitHub 未配置时返回 501 `GITHUB_AUTH_DISABLED`，缺少 `code` 时 422 `VALIDATION_ERROR`，`code` 无效或被 GitHub 拒绝时 502 `GITHUB_AUTH_FAILED`，拉取 GitHub profile 失败时 502 `GITHUB_PROFILE_FAILED`。受 `publicLimiter` 限流 |
 
 内容列表参数：
 
@@ -194,7 +196,7 @@ Thoughts 归档参数为 `page`（默认 1）、`pageSize`（默认 8，范围 1
 
 评论输入：`body` 必填且最多 4000 字符；`authorName` 最多 80 字符，可空时归一化为 `Anonymous`；`authorUrl`、`replyToId` 和 `avatarSeed`（最多 64 字符）可选。`replyToId` 必须指向同一内容下未软删的评论，否则返回 422 `REPLY_TARGET_INVALID`。评论创建即公开；admin 可独立隐藏/恢复或软删除/恢复，隐藏不会级联到回复。
 
-评论身份（`authorProvider`/`authorAvatarUrl`）：无有效 visitor 会话时走匿名路径，作者名/头像种子由客户端提供，响应 `authorProvider="visitor"`；带有效 visitor token 时 Core **服务端覆盖**客户端提交的 `authorName`/`avatarSeed`（清空头像种子），使用 GitHub 身份（`authorProvider="github"`、`authorAvatarUrl` 取 GitHub 头像快照），无效 token 返回 401 `INVALID_VISITOR_TOKEN`。`authorAvatarUrl` 是账号资料的快照列，GitHub 改名/换头像不影响历史评论。
+评论身份（`authorProvider`/`authorAvatarUrl`）：无有效 visitor 会话时走匿名路径，作者名/头像种子由客户端提供，响应 `authorProvider="visitor"`；带有效 visitor token 时 Core **服务端覆盖**客户端提交的 `authorName`/`avatarSeed`（清空头像种子），使用 GitHub 身份（`authorProvider="github"`、`authorAvatarUrl` 取 GitHub 头像快照），无效 token 返回 401 `INVALID_VISITOR_SESSION`。`authorAvatarUrl` 是账号资料的快照列，GitHub 改名/换头像不影响历史评论。
 
 公开评论列表参数：`page`（默认 1，1 起）、`pageSize`（每页顶层评论数，默认 10，范围 1..100）和 `q`（最长 200，按作者名或正文做大小写不敏感子串搜索）。分页只作用于顶层评论：响应平铺当前页的顶层评论（`createdAt` 升序）加它们各自的全部回复（回复升序），线程永不跨页拆散；被软删父级的回复随父级一起隐藏，隐藏行保留并以 `hidden=true` 标记，但不返回作者名、网站、正文或头像种子。`q` 是线程级搜索——隐藏评论的作者/正文不参与匹配，顶层或其任一可见回复命中即返回整条线程。带 `page` 时 `pagination` 返回 `page/pageSize/totalItems/totalPages`：`totalItems` 为匹配集内全部未软删评论（含隐藏行和回复），`totalPages` 按匹配的顶层评论计，超出范围的页码夹紧到最后一页；非法 `page`/`pageSize`/`q` 返回 400 `INVALID_QUERY`。
 

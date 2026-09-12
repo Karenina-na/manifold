@@ -15,6 +15,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
 
+	"github.com/manifold-space/manifold/app/core/internal/apierror"
 	"github.com/manifold-space/manifold/app/core/internal/config"
 )
 
@@ -131,25 +132,25 @@ func (s *Service) RequireAdmin(next http.Handler) http.Handler {
 		value := strings.TrimSpace(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
 		claims, err := s.Parse(value)
 		if err != nil {
-			writeAuthError(w, http.StatusUnauthorized, "UNAUTHORIZED", "A valid JWT is required.")
+			writeAuthError(w, http.StatusUnauthorized, apierror.Unauthorized, "A valid JWT is required.")
 			return
 		}
 		if claims.ID == "" {
-			writeAuthError(w, http.StatusUnauthorized, "UNAUTHORIZED", "A valid session is required.")
+			writeAuthError(w, http.StatusUnauthorized, apierror.Unauthorized, "A valid session is required.")
 			return
 		}
 		live, err := s.store.SessionLive(claims.ID, s.now())
 		if err != nil {
-			writeAuthError(w, http.StatusInternalServerError, "SESSION_UNAVAILABLE", "Session state is unavailable.")
+			writeAuthError(w, http.StatusInternalServerError, apierror.SessionUnavailable, "Session state is unavailable.")
 			return
 		}
 		if !live {
-			writeAuthError(w, http.StatusUnauthorized, "UNAUTHORIZED", "Session is no longer active.")
+			writeAuthError(w, http.StatusUnauthorized, apierror.Unauthorized, "Session is no longer active.")
 			return
 		}
 		allowed, err := s.enforcer.Enforce(claims.Role, r.URL.Path, r.Method)
 		if err != nil || !allowed {
-			writeAuthError(w, http.StatusForbidden, "FORBIDDEN", "The role cannot access this resource.")
+			writeAuthError(w, http.StatusForbidden, apierror.Forbidden, "The role cannot access this resource.")
 			return
 		}
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), claimsKey{}, claims)))

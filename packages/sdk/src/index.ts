@@ -1,13 +1,20 @@
-import type { AdminComment, AdminCommentQuery, AdminContent, AdminContentQuery, AdminOverview, AdminSessionList, AdminStats, AnalyticsViews, AnalyticsViewsQuery, AnchorQuery, AuditEventCollection, AuditQuery, AuthMeResponse, ChainAnchor, ChainBlockDetail, ChainBlockSummary, ChainInfo, ChainPublicKey, ChangePasswordInput, Collection, Comment, CommentQuery, Content, ContentDetail, ContentDetailQuery, ContentInput, ContentQuery, CreateCommentInput, GitHubExchangeInput, GitHubExchangeResponse, HealthStatus, HomeTimeline, HomeTimelineQuery, LikeSummary, LoginInput, LoginResponse, Media, MediaQuery, MediaReferenceList, PresenceStatus, Profile, ProfileInput, SiteComposition, SiteConfig, SiteConfigInput, Stats, SubmitAnchorInput, SubmitAnchorResponse, SystemStatus, TagQuery, TagSummary, ThoughtConfig, ThoughtConfigInput, UpdateCommentInput, UpdateContentInput, VerifyResponse, WritingConfig, WritingConfigInput } from "@manifold/contracts";
+import type { ApiErrorCode, AdminComment, AdminCommentQuery, AdminContent, AdminContentQuery, AdminOverview, AdminSessionList, AdminStats, AnalyticsViews, AnalyticsViewsQuery, AnchorQuery, AuditEventCollection, AuditQuery, AuthMeResponse, ChainAnchor, ChainBlockDetail, ChainBlockSummary, ChainInfo, ChainPublicKey, ChangePasswordInput, Collection, Comment, CommentQuery, Content, ContentDetail, ContentDetailQuery, ContentInput, ContentQuery, CreateCommentInput, GitHubExchangeInput, GitHubExchangeResponse, HealthStatus, HomeTimeline, HomeTimelineQuery, LikeSummary, LoginInput, LoginResponse, Media, MediaQuery, MediaReferenceList, PresenceStatus, Profile, ProfileInput, SiteComposition, SiteConfig, SiteConfigInput, Stats, SubmitAnchorInput, SubmitAnchorResponse, SystemStatus, TagQuery, TagSummary, ThoughtConfig, ThoughtConfigInput, UpdateCommentInput, UpdateContentInput, VerifyResponse, WritingConfig, WritingConfigInput } from "@manifold/contracts";
+import { isApiErrorCode } from "@manifold/contracts";
+
+// The SDK synthesises this when a response carries no parseable error body (a
+// proxy 502, an HTML error page), so it is observable on ApiError.code but is
+// never emitted by Core — which is why it is not part of ApiErrorCode.
+export const REQUEST_FAILED_CODE = "REQUEST_FAILED";
+export type ApiFailureCode = ApiErrorCode | typeof REQUEST_FAILED_CODE;
 
 export class ApiError extends Error {
 	readonly status: number;
-	readonly code: string;
+	readonly code: ApiFailureCode;
 	readonly details?: unknown;
 	readonly requestId?: string;
 	readonly traceId?: string;
 
-	constructor(status: number, code: string, message: string, details?: unknown, requestId?: string, traceId?: string) {
+	constructor(status: number, code: ApiFailureCode, message: string, details?: unknown, requestId?: string, traceId?: string) {
 		super(message);
 		this.name = "ApiError";
 		this.status = status;
@@ -144,7 +151,13 @@ export class ManifoldClient {
 		const response = await this.fetcher(`${this.baseUrl}${path}`, { method: options.method ?? "GET", headers, body });
 		if (!response.ok) {
 			const body = await response.json().catch(() => undefined) as { error?: { code?: string; message?: string; details?: unknown; requestId?: string; traceId?: string } } | undefined;
-			throw new ApiError(response.status, body?.error?.code ?? "REQUEST_FAILED", body?.error?.message ?? `Request failed with status ${response.status}`, body?.error?.details, body?.error?.requestId, body?.error?.traceId ?? response.headers.get("X-Trace-ID") ?? undefined);
+			// ApiError.code is a closed union, so an unrecognised code is treated the
+			// same as an unparseable body rather than smuggled through the type. Core
+			// only emits members of API_ERROR_CODES (enforced by
+			// packages/contracts/test/error-codes.test.ts), so this means something
+			// between the client and Core answered, not that the contract drifted.
+			const code = isApiErrorCode(body?.error?.code) ? body.error.code : REQUEST_FAILED_CODE;
+			throw new ApiError(response.status, code, body?.error?.message ?? `Request failed with status ${response.status}`, body?.error?.details, body?.error?.requestId, body?.error?.traceId ?? response.headers.get("X-Trace-ID") ?? undefined);
 		}
 		if (response.status === 204) return undefined as T;
 		return response.json() as Promise<T>;

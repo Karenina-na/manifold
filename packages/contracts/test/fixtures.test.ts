@@ -17,6 +17,7 @@ import type {
   SiteComposition,
   VerifyResponse,
 } from "../src/index.ts";
+import { isApiErrorCode } from "../src/index.ts";
 
 const wire = JSON.parse(readFileSync(fileURLToPath(new URL("./fixtures/wire.json", import.meta.url)), "utf8")) as {
   collection: Collection<CollectionFixture>;
@@ -55,7 +56,9 @@ test("wire fixtures conform to contracts", () => {
   if (wire.adminComment.hiddenAt !== null) throw new Error("admin hiddenAt");
   if (wire.site.pinnedThoughts.length !== 0 || wire.site.pinnedWritings.length !== 0) throw new Error("site featured");
   if (wire.auditEvent.requestId !== "req_abc123") throw new Error("audit requestId");
-  if (wire.error.error.code !== "VALIDATION_FAILED") throw new Error("error code");
+  if (wire.error.error.code !== "VALIDATION_ERROR") throw new Error("error code");
+  // The fixture used to pin VALIDATION_FAILED, a code Core has never emitted.
+  if (!isApiErrorCode(wire.error.error.code)) throw new Error("error code is not modelled");
   if (wire.sessionList.sessions.length !== 2) throw new Error("session list length");
   const current = wire.sessionList.sessions.find((session) => session.current);
   if (current?.active !== true || current?.revokedAt !== null) throw new Error("session current active");

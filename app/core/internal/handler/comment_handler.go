@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/manifold-space/manifold/app/core/internal/apierror"
 	"github.com/manifold-space/manifold/app/core/internal/application"
 	"github.com/manifold-space/manifold/app/core/internal/model"
 	"github.com/manifold-space/manifold/app/core/internal/store"
@@ -25,11 +26,11 @@ type commentInput struct {
 func (h *apiHandler) resolvePublicContent(w http.ResponseWriter, r *http.Request) (model.Content, bool) {
 	content, err := h.store.GetContentBySlug(chi.URLParam(r, "slug"), false)
 	if errors.Is(err, store.ErrContentNotFound) || errors.Is(err, sql.ErrNoRows) {
-		WriteError(w, http.StatusNotFound, "CONTENT_NOT_FOUND", "Content was not found.")
+		WriteError(w, http.StatusNotFound, apierror.ContentNotFound, "Content was not found.")
 		return model.Content{}, false
 	}
 	if err != nil {
-		WriteError(w, http.StatusInternalServerError, "CONTENT_UNAVAILABLE", "Content is unavailable.")
+		WriteError(w, http.StatusInternalServerError, apierror.ContentUnavailable, "Content is unavailable.")
 		return model.Content{}, false
 	}
 	return content, true
@@ -42,12 +43,12 @@ func (h *apiHandler) listPublicComments(w http.ResponseWriter, r *http.Request) 
 	}
 	options, err := parseCommentListOptions(r)
 	if err != nil {
-		WriteError(w, http.StatusBadRequest, "INVALID_QUERY", err.Error())
+		WriteError(w, http.StatusBadRequest, apierror.InvalidQuery, err.Error())
 		return
 	}
 	result, err := h.store.ListComments(content.ID, options)
 	if err != nil {
-		WriteError(w, http.StatusInternalServerError, "COMMENTS_UNAVAILABLE", "Comments are unavailable.")
+		WriteError(w, http.StatusInternalServerError, apierror.CommentsUnavailable, "Comments are unavailable.")
 		return
 	}
 	WriteJSON(w, http.StatusOK, collection(result.Comments, model.Pagination{Page: result.Page, PageSize: result.PageSize, TotalItems: result.TotalItems, TotalPages: result.TotalPages}))
@@ -56,11 +57,11 @@ func (h *apiHandler) listPublicComments(w http.ResponseWriter, r *http.Request) 
 func (h *apiHandler) createComment(w http.ResponseWriter, r *http.Request) {
 	config, err := h.store.GetSiteConfig()
 	if err != nil {
-		WriteError(w, http.StatusInternalServerError, "SITE_UNAVAILABLE", "Site configuration is unavailable.")
+		WriteError(w, http.StatusInternalServerError, apierror.SiteUnavailable, "Site configuration is unavailable.")
 		return
 	}
 	if !config.CommentsEnabled {
-		WriteError(w, http.StatusForbidden, "COMMENT_DISABLED", "Comments are disabled for this site.")
+		WriteError(w, http.StatusForbidden, apierror.CommentDisabled, "Comments are disabled for this site.")
 		return
 	}
 	content, ok := h.resolvePublicContent(w, r)
@@ -76,7 +77,7 @@ func (h *apiHandler) createComment(w http.ResponseWriter, r *http.Request) {
 func (h *apiHandler) createCommentOnContent(w http.ResponseWriter, r *http.Request, content model.Content, withVisitor bool) {
 	var input commentInput
 	if err := decodeJSON(r, &input); err != nil || h.validate.Struct(input) != nil {
-		WriteError(w, http.StatusUnprocessableEntity, "VALIDATION_ERROR", "Comment body is required.")
+		WriteError(w, http.StatusUnprocessableEntity, apierror.ValidationError, "Comment body is required.")
 		return
 	}
 	authorName := strings.TrimSpace(input.AuthorName)
@@ -89,7 +90,7 @@ func (h *apiHandler) createCommentOnContent(w http.ResponseWriter, r *http.Reque
 	if withVisitor {
 		visitor, err := h.visitorIdentity(r)
 		if err != nil {
-			WriteError(w, http.StatusUnauthorized, "INVALID_VISITOR_SESSION", "The signed-in session is no longer valid.")
+			WriteError(w, http.StatusUnauthorized, apierror.InvalidVisitorSession, "The signed-in session is no longer valid.")
 			return
 		}
 		if visitor != nil {
@@ -118,11 +119,11 @@ func (h *apiHandler) createCommentOnContent(w http.ResponseWriter, r *http.Reque
 		AvatarSeed: avatarSeed, AuthorProvider: authorProvider, AuthorAvatarURL: authorAvatarURL,
 	})
 	if errors.Is(err, store.ErrCommentReplyInvalid) {
-		WriteError(w, http.StatusUnprocessableEntity, "REPLY_TARGET_INVALID", "The comment you replied to is no longer available.")
+		WriteError(w, http.StatusUnprocessableEntity, apierror.ReplyTargetInvalid, "The comment you replied to is no longer available.")
 		return
 	}
 	if err != nil {
-		WriteError(w, http.StatusInternalServerError, "COMMENT_CREATE_FAILED", "Comment could not be created.")
+		WriteError(w, http.StatusInternalServerError, apierror.CommentCreateFailed, "Comment could not be created.")
 		return
 	}
 	WriteJSON(w, http.StatusCreated, comment)

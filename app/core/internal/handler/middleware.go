@@ -6,6 +6,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/manifold-space/manifold/app/core/internal/apierror"
 )
 
 // securityHeaders are baseline response headers for every endpoint. CSP is
@@ -114,7 +116,7 @@ func (l *rateLimiter) middleware(trustedProxies []*net.IPNet) func(http.Handler)
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			key := clientAddress(r, trustedProxies)
 			if !l.allow(key) {
-				WriteError(w, http.StatusTooManyRequests, "RATE_LIMITED", "Too many requests. Slow down and try again shortly.")
+				WriteError(w, http.StatusTooManyRequests, apierror.RateLimited, "Too many requests. Slow down and try again shortly.")
 				return
 			}
 			next.ServeHTTP(w, r)

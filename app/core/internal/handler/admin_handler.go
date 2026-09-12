@@ -5,13 +5,14 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/manifold-space/manifold/app/core/internal/apierror"
 	"github.com/manifold-space/manifold/app/core/internal/model"
 )
 
 func (h *apiHandler) profile(w http.ResponseWriter, _ *http.Request) {
 	profile, err := h.store.GetProfile()
 	if err != nil {
-		WriteError(w, http.StatusInternalServerError, "PROFILE_UNAVAILABLE", "Profile is unavailable.")
+		WriteError(w, http.StatusInternalServerError, apierror.ProfileUnavailable, "Profile is unavailable.")
 		return
 	}
 	WriteJSON(w, http.StatusOK, profile)
@@ -28,7 +29,7 @@ type SiteCompositionResponse struct {
 func (h *apiHandler) site(w http.ResponseWriter, _ *http.Request) {
 	config, err := h.store.GetSiteConfig()
 	if err != nil {
-		WriteError(w, http.StatusInternalServerError, "SITE_UNAVAILABLE", "Site configuration is unavailable.")
+		WriteError(w, http.StatusInternalServerError, apierror.SiteUnavailable, "Site configuration is unavailable.")
 		return
 	}
 	response := SiteCompositionResponse{SiteConfig: config, PinnedThoughts: []model.PublicContent{}, PinnedWritings: []model.PublicContent{}}
@@ -67,21 +68,21 @@ func (h *apiHandler) adminUpdateProfile(w http.ResponseWriter, r *http.Request) 
 		Contacts     *[]model.ProfileContact        `json:"contacts"`
 	}
 	if err := decodeJSON(r, &input); err != nil || input.DisplayName == nil || strings.TrimSpace(*input.DisplayName) == "" || input.Handle == nil || input.Headline == nil || input.Bio == nil || input.AvatarURL == nil || input.Location == nil || input.Organization == nil || input.WebsiteURL == nil || len(input.ResumeURL) == 0 || input.Interests == nil || input.Education == nil || input.Experience == nil || input.Series == nil || input.Contacts == nil {
-		WriteError(w, http.StatusUnprocessableEntity, "VALIDATION_ERROR", "Display name is required.")
+		WriteError(w, http.StatusUnprocessableEntity, apierror.ValidationError, "Display name is required.")
 		return
 	}
 	var resumeURL *string
 	if string(input.ResumeURL) != "null" {
 		var value string
 		if err := json.Unmarshal(input.ResumeURL, &value); err != nil {
-			WriteError(w, http.StatusUnprocessableEntity, "VALIDATION_ERROR", "resumeUrl must be a string or null.")
+			WriteError(w, http.StatusUnprocessableEntity, apierror.ValidationError, "resumeUrl must be a string or null.")
 			return
 		}
 		resumeURL = &value
 	}
 	profile := model.Profile{ID: "profile_1", DisplayName: *input.DisplayName, Handle: *input.Handle, Headline: *input.Headline, Bio: *input.Bio, AvatarURL: *input.AvatarURL, Location: *input.Location, Organization: *input.Organization, WebsiteURL: *input.WebsiteURL, ResumeURL: resumeURL, Interests: *input.Interests, Education: *input.Education, Experience: *input.Experience, Series: *input.Series, Contacts: *input.Contacts}
 	if err := h.mutations.UpdateProfile(mutationRequest(r), profile); err != nil {
-		WriteError(w, http.StatusInternalServerError, "PROFILE_UPDATE_FAILED", "Profile could not be updated.")
+		WriteError(w, http.StatusInternalServerError, apierror.ProfileUpdateFailed, "Profile could not be updated.")
 		return
 	}
 	h.profile(w, r)

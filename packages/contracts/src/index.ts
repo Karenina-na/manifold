@@ -9,7 +9,89 @@ export type ContentKind = "THOUGHT" | "ARTICLE";
 export type ContentStatus = "DRAFT" | "PUBLISHED" | "DELETED";
 export type ContentSort = "newest" | "oldest" | "updated";
 
-export interface ApiErrorBody { error: { code: string; message: string; details?: unknown; requestId?: string; traceId?: string } }
+// Core 可返回的全部错误码，是错误码的唯一权威清单。类型由数组派生，因此两者
+// 不可能互相漂移；Go 侧的 app/core/internal/apierror 保存同名常量，两边由
+// test/error-codes.test.ts 强制逐项相等。客户端可以对这些值做穷尽 switch。
+export const API_ERROR_CODES = [
+  // 会话与鉴权
+  "UNAUTHORIZED",
+  "FORBIDDEN",
+  "INVALID_CREDENTIALS",
+  "SESSION_UNAVAILABLE",
+  "SESSIONS_UNAVAILABLE",
+  "SESSION_NOT_FOUND",
+  "SESSION_REVOKE_FAILED",
+  "PASSWORD_CHANGE_FAILED",
+  "INVALID_VISITOR_SESSION",
+  "VISITOR_ID_INVALID",
+  // 第三方登录
+  "GITHUB_AUTH_DISABLED",
+  "GITHUB_AUTH_FAILED",
+  "GITHUB_PROFILE_FAILED",
+  "IDENTITY_UNAVAILABLE",
+  // 请求校验与限流
+  "VALIDATION_ERROR",
+  "INVALID_JSON",
+  "INVALID_QUERY",
+  "PAYLOAD_TOO_LARGE",
+  "RATE_LIMITED",
+  // 内容
+  "CONTENT_NOT_FOUND",
+  "CONTENT_UNAVAILABLE",
+  "CONTENT_CREATE_FAILED",
+  "CONTENT_UPDATE_FAILED",
+  "CONTENT_RESTORE_FAILED",
+  "SLUG_TAKEN",
+  "VERSION_CONFLICT",
+  // 评论与反应
+  "COMMENT_NOT_FOUND",
+  "COMMENT_CREATE_FAILED",
+  "COMMENT_UPDATE_FAILED",
+  "COMMENT_DELETED",
+  "COMMENT_DISABLED",
+  "COMMENTS_UNAVAILABLE",
+  "REPLY_TARGET_INVALID",
+  "LIKES_UNAVAILABLE",
+  "LIKE_UPDATE_FAILED",
+  // 媒体
+  "MEDIA_NOT_FOUND",
+  "MEDIA_UNAVAILABLE",
+  "MEDIA_DELETE_FAILED",
+  "MEDIA_TOO_LARGE",
+  "MEDIA_TYPE_UNSUPPORTED",
+  "MEDIA_UNREADABLE",
+  "MEDIA_IN_USE",
+  // Profile 与站点配置
+  "PROFILE_UNAVAILABLE",
+  "PROFILE_UPDATE_FAILED",
+  "SITE_UNAVAILABLE",
+  "SITE_UPDATE_FAILED",
+  "THOUGHT_CONFIG_UNAVAILABLE",
+  "THOUGHT_CONFIG_UPDATE_FAILED",
+  "WRITING_CONFIG_UNAVAILABLE",
+  "WRITING_CONFIG_UPDATE_FAILED",
+  // 管理端系统视图
+  "OVERVIEW_UNAVAILABLE",
+  "ANALYTICS_UNAVAILABLE",
+  "AUDIT_UNAVAILABLE",
+  "STATS_UNAVAILABLE",
+  "SYSTEM_UNAVAILABLE",
+  // 公开端聚合视图
+  "PRESENCE_UNAVAILABLE",
+  "TAGS_UNAVAILABLE",
+  // 锚定链
+  "CHAIN_UNAVAILABLE",
+  "BLOCK_NOT_FOUND",
+  "ANCHOR_NOT_FOUND",
+  "ANCHOR_SUBMIT_FAILED",
+] as const;
+export type ApiErrorCode = (typeof API_ERROR_CODES)[number];
+
+export function isApiErrorCode(value: unknown): value is ApiErrorCode {
+  return typeof value === "string" && (API_ERROR_CODES as readonly string[]).includes(value);
+}
+
+export interface ApiErrorBody { error: { code: ApiErrorCode; message: string; details?: unknown; requestId?: string; traceId?: string } }
 export interface HealthStatus { status: "ok"; version: string; startedAt: string }
 
 export interface ProfileSeriesItem { name: string; url: string; description: string; category: string | null }

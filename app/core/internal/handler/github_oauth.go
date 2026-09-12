@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/manifold-space/manifold/app/core/internal/apierror"
 	"github.com/manifold-space/manifold/app/core/internal/auth"
 	"github.com/manifold-space/manifold/app/core/internal/config"
 )
@@ -121,23 +122,23 @@ type githubExchangeInput struct {
 // carries the GitHub access token.
 func (h *apiHandler) githubExchange(w http.ResponseWriter, r *http.Request) {
 	if !h.githubEnabled() {
-		WriteError(w, http.StatusNotImplemented, "GITHUB_AUTH_DISABLED", "GitHub sign-in is not configured on this server.")
+		WriteError(w, http.StatusNotImplemented, apierror.GitHubAuthDisabled, "GitHub sign-in is not configured on this server.")
 		return
 	}
 	var input githubExchangeInput
 	if err := decodeJSON(r, &input); err != nil || h.validate.Struct(input) != nil {
-		WriteError(w, http.StatusUnprocessableEntity, "VALIDATION_ERROR", "A GitHub authorization code is required.")
+		WriteError(w, http.StatusUnprocessableEntity, apierror.ValidationError, "A GitHub authorization code is required.")
 		return
 	}
 	client := newGitHubOAuthClient(h.cfg, h.githubClient)
 	accessToken, err := client.exchange(input.Code)
 	if err != nil {
-		WriteError(w, http.StatusBadGateway, "GITHUB_AUTH_FAILED", "GitHub could not authorize this sign-in.")
+		WriteError(w, http.StatusBadGateway, apierror.GitHubAuthFailed, "GitHub could not authorize this sign-in.")
 		return
 	}
 	profile, err := client.profile(accessToken)
 	if err != nil {
-		WriteError(w, http.StatusBadGateway, "GITHUB_PROFILE_FAILED", "GitHub profile could not be loaded.")
+		WriteError(w, http.StatusBadGateway, apierror.GitHubProfileFailed, "GitHub profile could not be loaded.")
 		return
 	}
 	displayName := strings.TrimSpace(profile.Name)
@@ -146,12 +147,12 @@ func (h *apiHandler) githubExchange(w http.ResponseWriter, r *http.Request) {
 	}
 	identity, err := h.store.UpsertIdentity("github", strconv.FormatInt(profile.ID, 10), displayName, profile.AvatarURL, profile.Email)
 	if err != nil {
-		WriteError(w, http.StatusInternalServerError, "IDENTITY_UNAVAILABLE", "Sign-in could not be recorded.")
+		WriteError(w, http.StatusInternalServerError, apierror.IdentityUnavailable, "Sign-in could not be recorded.")
 		return
 	}
 	token, err := h.auth.SignVisitor(identity.ID, identity.Provider, identity.DisplayName, identity.AvatarURL, time.Now())
 	if err != nil {
-		WriteError(w, http.StatusInternalServerError, "SESSION_UNAVAILABLE", "A session could not be issued.")
+		WriteError(w, http.StatusInternalServerError, apierror.SessionUnavailable, "A session could not be issued.")
 		return
 	}
 	WriteJSON(w, http.StatusOK, map[string]any{

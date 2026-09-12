@@ -3,6 +3,7 @@ package handler
 import (
 	"net/http"
 
+	"github.com/manifold-space/manifold/app/core/internal/apierror"
 	"github.com/manifold-space/manifold/app/core/internal/chain"
 )
 
@@ -17,15 +18,15 @@ type submitAnchorInput struct {
 func (h *apiHandler) decodeSubmitAnchor(w http.ResponseWriter, r *http.Request) (submitAnchorInput, bool) {
 	var input submitAnchorInput
 	if err := decodeJSON(r, &input); err != nil {
-		WriteError(w, http.StatusBadRequest, "INVALID_JSON", "Request body is not valid JSON.")
+		WriteError(w, http.StatusBadRequest, apierror.InvalidJSON, "Request body is not valid JSON.")
 		return input, false
 	}
 	if input.Payload == "" {
-		WriteError(w, http.StatusUnprocessableEntity, "VALIDATION_ERROR", "payload is required.")
+		WriteError(w, http.StatusUnprocessableEntity, apierror.ValidationError, "payload is required.")
 		return input, false
 	}
 	if label := []rune(input.Label); len(label) > 64 {
-		WriteError(w, http.StatusUnprocessableEntity, "VALIDATION_ERROR", "label is too long.")
+		WriteError(w, http.StatusUnprocessableEntity, apierror.ValidationError, "label is too long.")
 		return input, false
 	}
 	limit := h.cfg.ChainAnchorMaxBytes
@@ -33,7 +34,7 @@ func (h *apiHandler) decodeSubmitAnchor(w http.ResponseWriter, r *http.Request) 
 		limit = 1 << 16
 	}
 	if int64(len([]byte(input.Payload))) > limit {
-		WriteError(w, http.StatusRequestEntityTooLarge, "PAYLOAD_TOO_LARGE", "Payload exceeds the configured size limit.")
+		WriteError(w, http.StatusRequestEntityTooLarge, apierror.PayloadTooLarge, "Payload exceeds the configured size limit.")
 		return input, false
 	}
 	return input, true
@@ -52,7 +53,7 @@ func (h *apiHandler) submitAnchor(w http.ResponseWriter, r *http.Request, source
 	// canonicalized or stored (docs/chain.md §3.4).
 	anchor, err := ledger.Submit(source, []byte(input.Payload), input.Label, "", nil)
 	if err != nil {
-		WriteError(w, http.StatusInternalServerError, "ANCHOR_SUBMIT_FAILED", "The anchor could not be submitted.")
+		WriteError(w, http.StatusInternalServerError, apierror.AnchorSubmitFailed, "The anchor could not be submitted.")
 		return
 	}
 	h.audit(r, "chain.anchor.submitted", source, anchor.ID, nil)

@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/manifold-space/manifold/app/core/internal/apierror"
 	"github.com/manifold-space/manifold/app/core/internal/store"
 )
 
@@ -15,10 +16,10 @@ func (h *apiHandler) getMedia(w http.ResponseWriter, r *http.Request) {
 	media, data, err := h.store.GetMedia(chi.URLParam(r, "id"))
 	if err != nil {
 		if errors.Is(err, store.ErrMediaNotFound) {
-			WriteError(w, http.StatusNotFound, "MEDIA_NOT_FOUND", "Media was not found.")
+			WriteError(w, http.StatusNotFound, apierror.MediaNotFound, "Media was not found.")
 			return
 		}
-		WriteError(w, http.StatusInternalServerError, "MEDIA_UNAVAILABLE", "Media is unavailable.")
+		WriteError(w, http.StatusInternalServerError, apierror.MediaUnavailable, "Media is unavailable.")
 		return
 	}
 	etag := `"` + media.SHA256 + `"`

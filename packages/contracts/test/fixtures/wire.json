@@ -213,7 +213,7 @@
   },
   "error": {
     "error": {
-      "code": "VALIDATION_FAILED",
+      "code": "VALIDATION_ERROR",
       "message": "invalid input",
       "requestId": "req_abc123",
       "traceId": "trace_def456"

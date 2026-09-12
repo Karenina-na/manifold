@@ -12,7 +12,7 @@ app/core JSON <--> packages/contracts <--> packages/sdk <--> Web / Admin
 - Contracts 把运行时 JSON 形状表达为 TypeScript 类型。
 - SDK 使用这些类型约束 HTTP 方法的输入和输出。
 - Web/Admin 不应自行声明同名的 API 类型或通过 `any` 绕过契约。
-- 一致性由跨层测试锁定：Core 的 handler/store API 测试覆盖运行时 JSON 形状；本包的 `test/fixtures.test.ts` 断言 `test/fixtures/wire.json` 满足共享类型。
+- 一致性由跨层测试锁定：Core 的 handler/store API 测试覆盖运行时 JSON 形状；本包的 `test/fixtures.test.ts` 断言 `test/fixtures/wire.json` 满足共享类型，`test/error-codes.test.ts` 断言错误码枚举与 Go 侧常量逐项相等。
 
 ## 空值语义（全契约统一）
 
@@ -72,7 +72,8 @@ app/core JSON <--> packages/contracts <--> packages/sdk <--> Web / Admin
 - `CommentQuery`：公开评论参数 `page`/`pageSize`/`q`；分页只作用于顶层评论，回复永远随其顶层同页。
 - `AdminCommentQuery`：管理评论参数 `contentId`/`q`/`page`/`pageSize`/`focus`。
 - `LikeSummary`：点赞统计和当前访客状态。
-- `ApiErrorBody`：Core 结构化错误响应字段；SDK 的运行时 `ApiError` 见 [`packages/sdk/README.md`](../sdk/README.md)。
+- `ApiErrorBody`：Core 结构化错误响应字段，`code` 为下面的 `ApiErrorCode`；SDK 的运行时 `ApiError` 见 [`packages/sdk/README.md`](../sdk/README.md)。
+- `ApiErrorCode` / `API_ERROR_CODES` / `isApiErrorCode`：Core 能返回的全部错误码（`UNAUTHORIZED`、`VALIDATION_ERROR`、`SLUG_TAKEN`、`VERSION_CONFLICT`、`MEDIA_IN_USE`、`PAYLOAD_TOO_LARGE`、`RATE_LIMITED`、`GITHUB_AUTH_FAILED`…）。类型由数组派生，两者不可能互相漂移；Go 侧的常量在 `app/core/internal/apierror/codes.go`，两侧由 `test/error-codes.test.ts` 强制逐项相等。客户端可以据此对 `error.code` 做穷尽 `switch`。
 
 ### 锚定链（`docs/chain.md`）
 
@@ -90,7 +91,7 @@ app/core JSON <--> packages/contracts <--> packages/sdk <--> Web / Admin
 1. 时间戳使用 Core 返回的 UTC RFC3339 字符串；客户端不得重新定义时间格式。
 2. `ContentInput`/`UpdateContentInput` 与响应的 metadata 必须通过 `kind` 判别，不能把 Thought 和 Article 合并成无约束的 `Record<string, unknown>`。
 3. Core 仍会做最终校验：slug 全局唯一且创建时必填；更新需要 `expectedVersion`；Article 语义要求 `title` 非空。
-4. 修改任何导出类型时，同步更新本 README 与 `test/fixtures/wire.json`，保持 Go golden 测试与 TS fixtures 测试同时通过。
+4. 修改任何导出类型时，同步更新本 README 与 `test/fixtures/wire.json`，保持 Go golden 测试与 TS fixtures 测试同时通过。新增、改名或删除错误码时必须同时改 `app/core/internal/apierror/codes.go` 与 `API_ERROR_CODES`，否则 `test/error-codes.test.ts` 失败。
 
 ## 修改流程
 

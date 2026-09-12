@@ -12,6 +12,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/manifold-space/manifold/app/core/internal/apierror"
 	"github.com/manifold-space/manifold/app/core/internal/model"
 	"github.com/manifold-space/manifold/app/core/internal/store"
 )
@@ -19,12 +20,12 @@ import (
 func (h *apiHandler) listContent(w http.ResponseWriter, r *http.Request) {
 	options, err := parseContentListOptions(r, false)
 	if err != nil {
-		WriteError(w, http.StatusBadRequest, "INVALID_QUERY", err.Error())
+		WriteError(w, http.StatusBadRequest, apierror.InvalidQuery, err.Error())
 		return
 	}
 	result, err := h.store.ListContent(false, options)
 	if err != nil {
-		WriteError(w, http.StatusInternalServerError, "CONTENT_UNAVAILABLE", "Content is unavailable.")
+		WriteError(w, http.StatusInternalServerError, apierror.ContentUnavailable, "Content is unavailable.")
 		return
 	}
 	items := make([]model.PublicContent, 0, len(result.Items))
@@ -36,21 +37,21 @@ func (h *apiHandler) listContent(w http.ResponseWriter, r *http.Request) {
 
 func (h *apiHandler) homeTimeline(w http.ResponseWriter, r *http.Request) {
 	if err := rejectUnknownQuery(r.URL.Query(), "limit"); err != nil {
-		WriteError(w, http.StatusBadRequest, "INVALID_QUERY", err.Error())
+		WriteError(w, http.StatusBadRequest, apierror.InvalidQuery, err.Error())
 		return
 	}
 	limit := 1000
 	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
 		parsed, err := strconv.Atoi(raw)
 		if err != nil || parsed < 1 {
-			WriteError(w, http.StatusBadRequest, "INVALID_QUERY", "limit must be a positive integer")
+			WriteError(w, http.StatusBadRequest, apierror.InvalidQuery, "limit must be a positive integer")
 			return
 		}
 		limit = parsed
 	}
 	items, total, truncated, err := h.store.HomeTimeline(limit)
 	if err != nil {
-		WriteError(w, http.StatusInternalServerError, "CONTENT_UNAVAILABLE", "Content is unavailable.")
+		WriteError(w, http.StatusInternalServerError, apierror.ContentUnavailable, "Content is unavailable.")
 		return
 	}
 	WriteJSON(w, http.StatusOK, model.HomeTimeline{Data: items, TotalItems: total, Truncated: truncated})
@@ -58,17 +59,17 @@ func (h *apiHandler) homeTimeline(w http.ResponseWriter, r *http.Request) {
 
 func (h *apiHandler) tags(w http.ResponseWriter, r *http.Request) {
 	if err := rejectUnknownQuery(r.URL.Query(), "kind"); err != nil {
-		WriteError(w, http.StatusBadRequest, "INVALID_QUERY", err.Error())
+		WriteError(w, http.StatusBadRequest, apierror.InvalidQuery, err.Error())
 		return
 	}
 	kind := model.ContentKind(strings.TrimSpace(r.URL.Query().Get("kind")))
 	if kind != "" && kind != model.ContentKindThought && kind != model.ContentKindArticle {
-		WriteError(w, http.StatusBadRequest, "INVALID_QUERY", "kind is invalid")
+		WriteError(w, http.StatusBadRequest, apierror.InvalidQuery, "kind is invalid")
 		return
 	}
 	tags, err := h.store.Tags(kind)
 	if err != nil {
-		WriteError(w, http.StatusInternalServerError, "TAGS_UNAVAILABLE", "Tags are unavailable.")
+		WriteError(w, http.StatusInternalServerError, apierror.TagsUnavailable, "Tags are unavailable.")
 		return
 	}
 	pageSize := len(tags)
@@ -85,11 +86,11 @@ func (h *apiHandler) getContent(w http.ResponseWriter, r *http.Request) {
 		var err error
 		content, err = h.store.GetContentBySlug(slug, false)
 		if errors.Is(err, store.ErrContentNotFound) || errors.Is(err, sql.ErrNoRows) {
-			WriteError(w, http.StatusNotFound, "CONTENT_NOT_FOUND", "Content was not found.")
+			WriteError(w, http.StatusNotFound, apierror.ContentNotFound, "Content was not found.")
 			return
 		}
 		if err != nil {
-			WriteError(w, http.StatusInternalServerError, "CONTENT_UNAVAILABLE", "Content is unavailable.")
+			WriteError(w, http.StatusInternalServerError, apierror.ContentUnavailable, "Content is unavailable.")
 			return
 		}
 	}
@@ -181,7 +182,7 @@ func (h *apiHandler) stats(w http.ResponseWriter, _ *http.Request) {
 	}
 	stats, err := h.store.Stats()
 	if err != nil {
-		WriteError(w, http.StatusInternalServerError, "STATS_UNAVAILABLE", "Stats are unavailable.")
+		WriteError(w, http.StatusInternalServerError, apierror.StatsUnavailable, "Stats are unavailable.")
 		return
 	}
 	h.statsCache.Set(stats)
@@ -191,12 +192,12 @@ func (h *apiHandler) stats(w http.ResponseWriter, _ *http.Request) {
 func (h *apiHandler) presence(w http.ResponseWriter, r *http.Request) {
 	visitorID, err := visitorID(r, true)
 	if err != nil {
-		WriteError(w, http.StatusBadRequest, "VISITOR_ID_INVALID", "Visitor ID is required and invalid.")
+		WriteError(w, http.StatusBadRequest, apierror.VisitorIDInvalid, "Visitor ID is required and invalid.")
 		return
 	}
 	activeVisitors, err := h.store.TouchPresence(visitorID)
 	if err != nil {
-		WriteError(w, http.StatusInternalServerError, "PRESENCE_UNAVAILABLE", "Presence is unavailable.")
+		WriteError(w, http.StatusInternalServerError, apierror.PresenceUnavailable, "Presence is unavailable.")
 		return
 	}
 	WriteJSON(w, http.StatusOK, model.PresenceStatus{ActiveVisitors: activeVisitors, ObservedAt: time.Now().UTC().Format(time.RFC3339)})
