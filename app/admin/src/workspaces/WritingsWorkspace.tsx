@@ -4,35 +4,40 @@ import { Alert, Autocomplete, Button, Switch, Textarea, TextInput } from '@manti
 import { CalendarDays, Clock3, Eye, Heart, Languages, Plus } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
+import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import type { AdminContent, ArticleMetadataInput } from '@manifold/contracts'
-import { ArticleSurface, deriveToc, estimateReadingMinutes, formatDate } from '@manifold/render'
+import { ArticleSurface, deriveToc, estimateReadingMinutes } from '@manifold/render'
 import { ApiError } from '@manifold/sdk'
 import { z } from 'zod'
-import { createAdminClient, webBaseUrl } from '../api'
+import { createAdminClient, webBaseUrl } from '../lib/api'
+import { activeLocale, formatDate } from '../i18n/format'
 import { setDirtyGuard } from '../lib/dirty-guard'
 import { navigate, requestNavigate, replaceRoute } from '../lib/useHashRoute'
-import { ChipsInput } from '../components/ChipsInput'
-import { ContentListPanel, type TransitionAction } from '../components/ContentListPanel'
-import { ContentEditorShell, type EditorMode } from '../components/ContentEditorShell'
-import { ContentCommentsPanel } from '../components/ContentCommentsPanel'
-import { MarkdownEditor } from '../components/MarkdownEditor'
+import { ChipsInput } from '../components/forms/ChipsInput'
+import { ContentListPanel, type TransitionAction } from '../components/content/ContentListPanel'
+import { ContentEditorShell, type EditorMode } from '../components/content/ContentEditorShell'
+import { ContentCommentsPanel } from '../components/content/ContentCommentsPanel'
+import { MarkdownEditor } from '../components/content/MarkdownEditor'
 
-const schema = z.object({
-  slug: z.string().trim().min(1, 'Slug is required.'),
-  title: z.string(),
-  summary: z.string().max(4000),
-  body: z.string().min(1, 'Content is required.'),
-  tags: z.array(z.string().trim().min(1).max(60)),
-  language: z.string(),
-  aiAssisted: z.boolean(),
-})
-type Form = z.infer<typeof schema>
+function createSchema(t: TFunction) {
+  return z.object({
+    slug: z.string().trim().min(1, t('validation.slugRequired')),
+    title: z.string(),
+    summary: z.string().max(4000, t('validation.maxCharacters', { count: 4000 })),
+    body: z.string().min(1, t('validation.contentRequired')),
+    tags: z.array(z.string().trim().min(1, t('validation.valueRequired')).max(60, t('validation.maxCharacters', { count: 60 }))),
+    language: z.string(),
+    aiAssisted: z.boolean(),
+  })
+}
+type Form = z.infer<ReturnType<typeof createSchema>>
 const empty: Form = { slug: '', title: '', summary: '', body: '', tags: [], language: '', aiAssisted: false }
 
 // The language field records the language the piece is written in, not a
 // programming language. Presets cover common garden languages; the searchable
 // select lets any free-text value be stored instead.
-const languagePresets = ['English', '简体中文', '繁體中文', '日本語', '한국어', 'Français', 'Deutsch', 'Español', 'Português', 'Italiano', 'Русский', 'Nederlands', 'Other']
+const languagePresets = ['English', '简体中文', '繁體中文', '日本語', '한국어', 'Français', 'Deutsch', 'Español', 'Português', 'Italiano', 'Русский', 'Nederlands']
 
 function metadataFrom(form: Form): ArticleMetadataInput {
   return {
@@ -86,6 +91,7 @@ function useWritingPin(client: ReturnType<typeof createAdminClient>) {
 }
 
 function WritingsListPage({ client }: { client: ReturnType<typeof createAdminClient> }) {
+  const { t } = useTranslation()
   const queryClient = useQueryClient()
   const pin = useWritingPin(client)
   const invalidate = () => {
@@ -97,11 +103,11 @@ function WritingsListPage({ client }: { client: ReturnType<typeof createAdminCli
     onSuccess: () => invalidate(),
   })
   return <section className="workspace">
-    <div className="page-heading"><div><p className="kicker">Writings</p><h1>Writings worth returning to.</h1><p className="subheading">Deep technical pieces with the full reading surface.</p></div><Button className="button button-primary" onClick={() => navigate('#/writings/new')} leftSection={<Plus size={16} />}>New writing</Button></div>
+    <div className="page-heading"><div><p className="kicker">{t('writings.kicker')}</p><h1>{t('writings.title')}</h1><p className="subheading">{t('writings.copy')}</p></div><Button className="button button-primary" onClick={() => navigate('#/writings/new')} leftSection={<Plus size={16} />}>{t('writings.new')}</Button></div>
     <ContentListPanel
       client={client}
       kind="ARTICLE"
-      singular="writing"
+      singular={t('common.writing')}
       onEdit={(content) => navigate(`#/writings/${content.id}`)}
       onTransition={(content, action) => transition.mutate({ id: content.id, action })}
       hrefFor={(content) => `${webBaseUrl}/writing/${content.slug}`}
@@ -111,6 +117,9 @@ function WritingsListPage({ client }: { client: ReturnType<typeof createAdminCli
 }
 
 function WritingEditorPage({ client, editingId, commentsRequested, routeQuery }: { client: ReturnType<typeof createAdminClient>; editingId: string; commentsRequested: boolean; routeQuery: URLSearchParams }) {
+  const { t, i18n } = useTranslation()
+  const locale = activeLocale(i18n.resolvedLanguage ?? i18n.language)
+  const schema = useMemo(() => createSchema(t), [t])
   const queryClient = useQueryClient()
   const isNew = editingId === 'new'
   const pin = useWritingPin(client)
@@ -181,8 +190,8 @@ function WritingEditorPage({ client, editingId, commentsRequested, routeQuery }:
   })
   const pinSection = isNew ? null : <div className="pin-section">
     <Switch
-      label="Pin to the writings archive"
-      description="Pins this piece in the Featured row at the top of the public Writings page. Multiple pieces can be pinned."
+      label={t('writings.pin')}
+      description={t('writings.pinDescription')}
       checked={pin.config.data?.pinnedIds.includes(editingId) ?? false}
       disabled={pin.setPin.isPending}
       onChange={(event) => pin.setPin.mutate(
@@ -191,39 +200,39 @@ function WritingEditorPage({ client, editingId, commentsRequested, routeQuery }:
           : (pin.config.data?.pinnedIds ?? []).filter((id) => id !== editingId)
       )}
     />
-    {pin.setPin.isError && <Alert color="red" variant="light">The pin could not be updated.</Alert>}
+    {pin.setPin.isError && <Alert color="red" variant="light">{t('writings.pinError')}</Alert>}
   </div>
   const metaTab = <form className="form-stack" id="writing-form" noValidate onSubmit={submitForm}>
-    {!isNew && item.isError && <Alert color="red" variant="light">This writing could not be loaded. Go back and try again.</Alert>}
-    <TextInput label="Title" {...form.register('title')} placeholder="A title with a clear promise" error={form.formState.errors.title?.message} onBlur={(event) => { if (!draft && !form.getValues('slug').trim()) form.setValue('slug', slugify(event.currentTarget.value), { shouldDirty: true }) }} />
-    <TextInput label="Slug" description={`${webBaseUrl}/writing/${watched.slug || '…'}`} {...form.register('slug')} placeholder="a-readable-url" error={form.formState.errors.slug?.message} />
-    <Textarea label="Summary" description={`✦ ${watched.summary.trim().length}/4000 — shown on archive cards`} {...form.register('summary')} minRows={2} error={form.formState.errors.summary?.message} />
-    <div><label>Tags</label><ChipsInput value={watched.tags} onChange={(next) => form.setValue('tags', next, { shouldDirty: true })} placeholder="Add tag and press Enter" /></div>
+    {!isNew && item.isError && <Alert color="red" variant="light">{t('writings.loadError')}</Alert>}
+    <TextInput label={t('writings.titleLabel')} {...form.register('title')} placeholder={t('writings.titlePlaceholder')} error={form.formState.errors.title?.message} onBlur={(event) => { if (!draft && !form.getValues('slug').trim()) form.setValue('slug', slugify(event.currentTarget.value), { shouldDirty: true }) }} />
+    <TextInput label={t('writings.slug')} description={`${webBaseUrl}/writing/${watched.slug || '…'}`} {...form.register('slug')} placeholder={t('writings.slugPlaceholder')} error={form.formState.errors.slug?.message} />
+    <Textarea label={t('writings.summary')} description={t('writings.summaryDescription', { count: watched.summary.trim().length })} {...form.register('summary')} minRows={2} error={form.formState.errors.summary?.message} />
+    <div><label>{t('writings.tags')}</label><ChipsInput value={watched.tags} onChange={(next) => form.setValue('tags', next, { shouldDirty: true })} placeholder={t('writings.addTag')} /></div>
     <div className="form-grid form-grid-even">
       <Autocomplete
-        label="Language"
-        description="The language the piece is written in, shown in the article meta line"
-        value={watched.language}
-        onChange={(value) => form.setValue('language', value, { shouldDirty: true })}
-        data={languagePresets}
-        placeholder="e.g. English"
+        label={t('writings.language')}
+        description={t('writings.languageDescription')}
+        value={watched.language === 'Other' ? t('writings.languagePresetOther') : watched.language}
+        onChange={(value) => form.setValue('language', value === t('writings.languagePresetOther') ? 'Other' : value, { shouldDirty: true })}
+        data={[...languagePresets, t('writings.languagePresetOther')]}
+        placeholder={t('writings.languagePlaceholder')}
         clearable
       />
-      <TextInput label="Estimated reading time" value={`${minutes} min`} readOnly description="Core recalculates this on save" />
+      <TextInput label={t('writings.readingTime')} value={t('writings.minutes', { count: minutes })} readOnly description={t('writings.recalculated')} />
     </div>
-    <Switch label="AI-assisted writing" description="Lets readers filter this piece out with “No AI writing”" checked={watched.aiAssisted} onChange={(event) => form.setValue('aiAssisted', event.currentTarget.checked, { shouldDirty: true })} />
-    {save.isError && !conflict && <Alert color="red" variant="light">Could not save this writing. Check the fields and Core status.</Alert>}
+    <Switch label={t('writings.aiAssisted')} description={t('writings.aiDescription')} checked={watched.aiAssisted} onChange={(event) => form.setValue('aiAssisted', event.currentTarget.checked, { shouldDirty: true })} />
+    {save.isError && !conflict && <Alert color="red" variant="light">{t('writings.saveError')}</Alert>}
   </form>
 
   const contextTab = <div className="context-editor">
-    <p className="field-hint">Write in the instant-rendering editor — headings, lists, code and math format as you type; images paste, drop or upload from the toolbar and are stored in Core. The stored value is plain Markdown.</p>
+    <p className="field-hint">{t('writings.editorHint')}</p>
     <MarkdownEditor value={bodyText} disabled={mode === 'view'} onChange={(next) => form.setValue('body', next, { shouldDirty: true })} onUploadImage={async (file) => (await client.uploadMedia(file, file.name)).url} />
     {form.formState.errors.body?.message && <Alert color="red" variant="light">{form.formState.errors.body.message}</Alert>}
   </div>
 
   const meta = <div className="articleMeta">
-    <span><CalendarDays size={14} aria-hidden="true" /> <time>{formatDate(draft?.publishedAt ?? new Date().toISOString())}</time></span>
-    <span><Clock3 size={14} aria-hidden="true" /> {minutes} min read</span>
+    <span><CalendarDays size={14} aria-hidden="true" /> <time>{formatDate(draft?.publishedAt ?? new Date().toISOString(), locale)}</time></span>
+    <span><Clock3 size={14} aria-hidden="true" /> {t('writings.minRead', { count: minutes })}</span>
     {watched.language && <span><Languages size={14} aria-hidden="true" /> {watched.language}</span>}
     {draft && <span><Eye size={14} aria-hidden="true" /> {draft.viewCount}</span>}
     {draft && <span><Heart size={14} aria-hidden="true" /> {draft.likeCount}</span>}
@@ -252,7 +261,7 @@ function WritingEditorPage({ client, editingId, commentsRequested, routeQuery }:
   />
 
   return <ContentEditorShell
-    kindLabel="Writing"
+    kindLabel={t('common.writing')}
     hrefFor={(content) => `${webBaseUrl}/writing/${content.slug}`}
     selected={draft}
     mode={mode}

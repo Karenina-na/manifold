@@ -2,18 +2,20 @@ import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-quer
 import { Badge } from '@mantine/core'
 import { ChevronLeft, ChevronRight, Eye, FileText, MessageCircle, PenLine, RefreshCw, ThumbsUp, Users } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import type { SystemStatus } from '@manifold/contracts'
-import { createAdminClient } from '../api'
+import type { TFunction } from 'i18next'
+import { createAdminClient } from '../lib/api'
+import { activeLocale, formatDateTime, formatNumber, formatRelativeTime } from '../i18n/format'
+import type { Locale } from '../i18n/locale'
 
 const ANALYTICS_DAYS = 30
 const PANEL_PAGE_SIZE = 10
 const AUDIT_DEBOUNCE_MS = 250
 
-const numberFormat = new Intl.NumberFormat('en')
-
-function formatCount(value: number | undefined) {
-  return value === undefined ? '—' : numberFormat.format(value)
+function formatCount(value: number | undefined, locale: Locale) {
+  return value === undefined ? '—' : formatNumber(value, locale)
 }
 
 function formatBytes(bytes: number) {
@@ -23,21 +25,13 @@ function formatBytes(bytes: number) {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`
 }
 
-function formatUptime(seconds: number) {
+function formatUptime(seconds: number, t: TFunction) {
   const days = Math.floor(seconds / 86400)
   const hours = Math.floor((seconds % 86400) / 3600)
   const minutes = Math.floor((seconds % 3600) / 60)
-  if (days > 0) return `${days}d ${hours}h`
-  if (hours > 0) return `${hours}h ${minutes}m`
-  return `${minutes}m`
-}
-
-function relativeTime(value: string) {
-  const seconds = Math.max(0, Math.floor((Date.now() - Date.parse(value)) / 1000))
-  if (seconds < 60) return 'just now'
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`
-  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`
-  return `${Math.floor(seconds / 86400)}d ago`
+  if (days > 0) return t('dashboard.uptimeDays', { days, hours })
+  if (hours > 0) return t('dashboard.uptimeHours', { hours, minutes })
+  return t('dashboard.uptimeMinutes', { minutes })
 }
 
 function useDebouncedValue<T>(value: T, delay: number): T {
@@ -50,6 +44,8 @@ function useDebouncedValue<T>(value: T, delay: number): T {
 }
 
 export function DashboardWorkspace({ token }: { token: string }) {
+  const { t, i18n } = useTranslation()
+  const locale = activeLocale(i18n.resolvedLanguage ?? i18n.language)
   const client = useMemo(() => createAdminClient(token), [token])
   const queryClient = useQueryClient()
   const overview = useQuery({ queryKey: ['admin-overview'], queryFn: () => client.adminOverview() })
@@ -96,23 +92,23 @@ export function DashboardWorkspace({ token }: { token: string }) {
   return <section className="workspace">
     <div className="page-heading">
       <div>
-        <p className="kicker">Overview</p>
-        <h1>Dashboard</h1>
-        <p className="subheading">Content, traffic, activity, and system health at a glance.</p>
+        <p className="kicker">{t('dashboard.kicker')}</p>
+        <h1>{t('dashboard.title')}</h1>
+        <p className="subheading">{t('dashboard.copy')}</p>
       </div>
-      <button className="button button-ghost" type="button" onClick={refresh}><RefreshCw size={16} /> Refresh</button>
+      <button className="button button-ghost" type="button" onClick={refresh}><RefreshCw size={16} /> {t('dashboard.refresh')}</button>
     </div>
-    {(overview.isError || analytics.isError) && <p className="callout error">The dashboard could not reach Core.</p>}
+    {(overview.isError || analytics.isError) && <p className="callout error">{t('dashboard.error')}</p>}
     <div className="metric-grid wide">
-      <Metric label="Published" value={formatCount(content?.contentCount)} icon={<FileText size={18} />} />
-      <Metric label="Drafts" value={formatCount(content?.draftCount)} icon={<PenLine size={18} />} />
-      <Metric label="Total views" value={formatCount(content?.totalViews)} icon={<Eye size={18} />} />
-      <Metric label="Likes" value={formatCount(content?.totalLikes)} icon={<ThumbsUp size={18} />} />
-      <Metric label="Comments" value={formatCount(content?.totalComments)} icon={<MessageCircle size={18} />} />
-      <Metric label="Visitors now" value={formatCount(content?.activeVisitors)} icon={<Users size={18} />} />
+      <Metric label={t('dashboard.metrics.published')} value={formatCount(content?.contentCount, locale)} icon={<FileText size={18} />} />
+      <Metric label={t('dashboard.metrics.drafts')} value={formatCount(content?.draftCount, locale)} icon={<PenLine size={18} />} />
+      <Metric label={t('dashboard.metrics.views')} value={formatCount(content?.totalViews, locale)} icon={<Eye size={18} />} />
+      <Metric label={t('dashboard.metrics.likes')} value={formatCount(content?.totalLikes, locale)} icon={<ThumbsUp size={18} />} />
+      <Metric label={t('dashboard.metrics.comments')} value={formatCount(content?.totalComments, locale)} icon={<MessageCircle size={18} />} />
+      <Metric label={t('dashboard.metrics.visitors')} value={formatCount(content?.activeVisitors, locale)} icon={<Users size={18} />} />
     </div>
     <div className="dash-grid">
-      <ChartPanel title="Content growth" hint="Created vs published per month">
+      <ChartPanel title={t('dashboard.growth')} hint={t('dashboard.growthHint')}>
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={trendData} margin={{ top: 4, right: 8, left: -18, bottom: 0 }}>
             <defs>
@@ -129,12 +125,12 @@ export function DashboardWorkspace({ token }: { token: string }) {
             <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#77807b' }} tickLine={false} axisLine={false} />
             <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#77807b' }} tickLine={false} axisLine={false} />
             <Tooltip />
-            <Area type="monotone" dataKey="created" name="Created" stroke="#b5503a" fill="url(#createdFill)" strokeWidth={2} />
-            <Area type="monotone" dataKey="published" name="Published" stroke="#2f785c" fill="url(#publishedFill)" strokeWidth={2} />
+            <Area type="monotone" dataKey="created" name={t('dashboard.created')} stroke="#b5503a" fill="url(#createdFill)" strokeWidth={2} />
+            <Area type="monotone" dataKey="published" name={t('dashboard.published')} stroke="#2f785c" fill="url(#publishedFill)" strokeWidth={2} />
           </AreaChart>
         </ResponsiveContainer>
       </ChartPanel>
-      <ChartPanel title={`Views · last ${ANALYTICS_DAYS} days`} hint={analytics.data ? `${formatCount(analytics.data.uniqueVisitors)} unique visitors` : undefined}>
+      <ChartPanel title={t('dashboard.viewsDays', { days: ANALYTICS_DAYS })} hint={analytics.data ? t('dashboard.uniqueVisitors', { count: formatCount(analytics.data.uniqueVisitors, locale) }) : undefined}>
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={viewsData} margin={{ top: 4, right: 8, left: -18, bottom: 0 }}>
             <defs>
@@ -147,65 +143,65 @@ export function DashboardWorkspace({ token }: { token: string }) {
             <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#77807b' }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
             <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#77807b' }} tickLine={false} axisLine={false} />
             <Tooltip />
-            <Area type="monotone" dataKey="views" name="Views" stroke="#b5503a" fill="url(#viewsFill)" strokeWidth={2} />
-            <Area type="monotone" dataKey="uniqueVisitors" name="Unique visitors" stroke="#77807b" fillOpacity={0} strokeWidth={1.5} strokeDasharray="4 3" />
+            <Area type="monotone" dataKey="views" name={t('dashboard.views')} stroke="#b5503a" fill="url(#viewsFill)" strokeWidth={2} />
+            <Area type="monotone" dataKey="uniqueVisitors" name={t('dashboard.uniqueVisitorsLabel')} stroke="#77807b" fillOpacity={0} strokeWidth={1.5} strokeDasharray="4 3" />
           </AreaChart>
         </ResponsiveContainer>
       </ChartPanel>
     </div>
     <div className="dash-grid">
-      <section className="panel" aria-label="Top content">
-        <div className="panel-heading"><div><p className="kicker">Ranking</p><h2>Top content</h2></div><Badge color="orange" variant="light">Top 5</Badge></div>
-        {(overview.data?.topContent.length ?? 0) === 0 && <p className="muted">Published content will rank here as views come in.</p>}
+      <section className="panel" aria-label={t('dashboard.topContent')}>
+        <div className="panel-heading"><div><p className="kicker">{t('dashboard.ranking')}</p><h2>{t('dashboard.topContent')}</h2></div><Badge color="orange" variant="light">{t('dashboard.topFive')}</Badge></div>
+        {(overview.data?.topContent.length ?? 0) === 0 && <p className="muted">{t('dashboard.topEmpty')}</p>}
         <ul className="dash-list">
           {overview.data?.topContent.map((item, index) => <li key={item.id}>
             <span className="dash-main">
               <strong>{index + 1}. {item.title || item.slug || item.id}</strong>
-              <span className="dash-meta">{item.kind === 'ARTICLE' ? 'Writing' : 'Thought'} · {formatCount(item.viewCount)} views · {formatCount(item.likeCount)} likes · {formatCount(item.commentCount)} comments</span>
+              <span className="dash-meta">{t('dashboard.topMeta', { kind: item.kind === 'ARTICLE' ? t('common.writing') : t('common.thought'), views: formatCount(item.viewCount, locale), likes: formatCount(item.likeCount, locale), comments: formatCount(item.commentCount, locale) })}</span>
             </span>
-            <span className="dash-value"><Eye size={13} /> {formatCount(item.viewCount)}</span>
+            <span className="dash-value"><Eye size={13} /> {formatCount(item.viewCount, locale)}</span>
           </li>)}
         </ul>
       </section>
-      <ChartPanel title="Tag distribution" hint="Top 10 by published usage">
+      <ChartPanel title={t('dashboard.tagDistribution')} hint={t('dashboard.tagHint')}>
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={tagData} layout="vertical" margin={{ top: 0, right: 16, left: 8, bottom: 0 }}>
             <CartesianGrid stroke="#deddd4" strokeDasharray="3 3" horizontal={false} />
             <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11, fill: '#77807b' }} tickLine={false} axisLine={false} />
             <YAxis type="category" dataKey="name" width={92} tick={{ fontSize: 11, fill: '#252a28' }} tickLine={false} axisLine={false} />
             <Tooltip />
-            <Bar dataKey="count" name="Content" fill="#b5503a" barSize={12} />
+            <Bar dataKey="count" name={t('dashboard.content')} fill="#b5503a" barSize={12} />
           </BarChart>
         </ResponsiveContainer>
       </ChartPanel>
     </div>
     <div className="dash-grid">
-      <section className="panel panel-stack" aria-label="Recent comments">
-        <div className="panel-heading"><div><p className="kicker">Community</p><h2>Recent comments</h2></div><Badge color="teal" variant="light">{formatCount(commentTotal)}</Badge></div>
-        <input className="panel-search" type="search" value={commentSearch} placeholder="Search comments" aria-label="Search comments" onChange={(event) => { setCommentSearch(event.target.value); setCommentPage(1) }} />
-        {commentRows.length === 0 && <p className="muted">{commentSearch ? 'No matching comments.' : 'No comments yet.'}</p>}
+      <section className="panel panel-stack" aria-label={t('dashboard.recentComments')}>
+        <div className="panel-heading"><div><p className="kicker">{t('dashboard.community')}</p><h2>{t('dashboard.recentComments')}</h2></div><Badge color="teal" variant="light">{formatCount(commentTotal, locale)}</Badge></div>
+        <input className="panel-search" type="search" value={commentSearch} placeholder={t('comments.search')} aria-label={t('comments.search')} onChange={(event) => { setCommentSearch(event.target.value); setCommentPage(1) }} />
+        {commentRows.length === 0 && <p className="muted">{commentSearch ? t('dashboard.noMatchingComments') : t('dashboard.noComments')}</p>}
         <ul className="dash-list">
           {commentRows.map((comment) => <li key={comment.id}>
             <span className="dash-main">
-              <strong>{comment.authorName || 'Anonymous'}</strong>
+              <strong>{comment.authorName || t('common.anonymous')}</strong>
               <span className="dash-meta">{comment.body.length > 120 ? `${comment.body.slice(0, 120)}…` : comment.body}</span>
             </span>
-            <span className="dash-value">{relativeTime(comment.createdAt)}</span>
+            <span className="dash-value">{formatRelativeTime(comment.createdAt, locale, t)}</span>
           </li>)}
         </ul>
         <PanelPager page={safeCommentPage} pageCount={commentPageCount} onPage={setCommentPage} />
       </section>
-      <section className="panel panel-stack" aria-label="Recent activity">
-        <div className="panel-heading"><div><p className="kicker">Audit</p><h2>Recent activity</h2></div><Badge color="gray" variant="light">{auditPagination ? `${formatCount(auditPagination.totalItems)} events` : '…'}</Badge></div>
-        <input className="panel-search" type="search" value={auditSearch} placeholder="Search activity" aria-label="Search activity" onChange={(event) => { setAuditSearch(event.target.value); setAuditPage(1) }} />
-        {(audit.data?.events.length ?? 0) === 0 && <p className="muted">{debouncedAuditSearch ? 'No matching activity.' : 'Activity will appear here as the garden changes.'}</p>}
+      <section className="panel panel-stack" aria-label={t('dashboard.recentActivity')}>
+        <div className="panel-heading"><div><p className="kicker">{t('dashboard.audit')}</p><h2>{t('dashboard.recentActivity')}</h2></div><Badge color="gray" variant="light">{auditPagination ? t('common.count.events', { count: auditPagination.totalItems }) : '…'}</Badge></div>
+        <input className="panel-search" type="search" value={auditSearch} placeholder={t('dashboard.searchActivity')} aria-label={t('dashboard.searchActivity')} onChange={(event) => { setAuditSearch(event.target.value); setAuditPage(1) }} />
+        {(audit.data?.events.length ?? 0) === 0 && <p className="muted">{debouncedAuditSearch ? t('dashboard.noMatchingActivity') : t('dashboard.activityEmpty')}</p>}
         <ul className="dash-list">
           {audit.data?.events.map((event) => <li key={event.id}>
             <span className="dash-main">
-              <strong>{describeEvent(event.eventName)}</strong>
+              <strong>{describeEvent(event.eventName, t)}</strong>
               <span className="dash-meta">{event.resourceType}{event.resourceId ? ` · ${event.resourceId}` : ''}{event.actor !== 'anonymous' ? ` · ${event.actor}` : ''}</span>
             </span>
-            <span className="dash-value">{relativeTime(event.createdAt)}</span>
+            <span className="dash-value">{formatRelativeTime(event.createdAt, locale, t)}</span>
           </li>)}
         </ul>
         <PanelPager page={auditPagination?.page ?? 1} pageCount={auditPagination?.totalPages ?? 1} onPage={setAuditPage} />
@@ -216,38 +212,40 @@ export function DashboardWorkspace({ token }: { token: string }) {
 }
 
 function PanelPager({ page, pageCount, onPage }: { page: number; pageCount: number; onPage: (page: number) => void }) {
+  const { t } = useTranslation()
   return <div className="panel-pager">
-    <button className="mini-button" type="button" disabled={page <= 1} aria-label="Previous page" onClick={() => onPage(page - 1)}><ChevronLeft size={15} /></button>
-    <span className="dash-meta">Page {page} of {pageCount}</span>
-    <button className="mini-button" type="button" disabled={page >= pageCount} aria-label="Next page" onClick={() => onPage(page + 1)}><ChevronRight size={15} /></button>
+    <button className="mini-button" type="button" disabled={page <= 1} aria-label={t('common.previousPage')} onClick={() => onPage(page - 1)}><ChevronLeft size={15} /></button>
+    <span className="dash-meta">{t('common.pageOf', { page, total: pageCount })}</span>
+    <button className="mini-button" type="button" disabled={page >= pageCount} aria-label={t('common.nextPage')} onClick={() => onPage(page + 1)}><ChevronRight size={15} /></button>
   </div>
 }
 
-function describeEvent(eventName: string) {
+function describeEvent(eventName: string, t: TFunction) {
   const labels: Record<string, string> = {
-    'admin.session.created': 'Signed in',
-    'content.created': 'Content created',
-    'content.updated': 'Content updated',
-    'content.published': 'Content published',
-    'content.unpublished': 'Content unpublished',
-    'content.deleted': 'Content deleted',
-    'content.viewed': 'Content viewed',
-    'content.like.added': 'Like added',
-    'content.like.removed': 'Like removed',
-    'comment.created': 'Comment posted',
-    'comment.deleted': 'Comment removed',
-    'comment.restored': 'Comment restored',
-    'profile.updated': 'Profile updated',
-    'site.updated': 'Site composition updated',
-    'thoughts.config.updated': 'Thoughts config updated',
+    'admin.session.created': t('dashboard.events.signedIn'),
+    'content.created': t('dashboard.events.contentCreated'),
+    'content.updated': t('dashboard.events.contentUpdated'),
+    'content.published': t('dashboard.events.contentPublished'),
+    'content.unpublished': t('dashboard.events.contentUnpublished'),
+    'content.deleted': t('dashboard.events.contentDeleted'),
+    'content.viewed': t('dashboard.events.contentViewed'),
+    'content.like.added': t('dashboard.events.likeAdded'),
+    'content.like.removed': t('dashboard.events.likeRemoved'),
+    'comment.created': t('dashboard.events.commentPosted'),
+    'comment.deleted': t('dashboard.events.commentRemoved'),
+    'comment.restored': t('dashboard.events.commentRestored'),
+    'profile.updated': t('dashboard.events.profileUpdated'),
+    'site.updated': t('dashboard.events.siteUpdated'),
+    'thoughts.config.updated': t('dashboard.events.thoughtsUpdated'),
   }
   return labels[eventName] ?? eventName
 }
 
 function ChartPanel({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
+  const { t } = useTranslation()
   return <section className="panel">
     <div className="panel-heading">
-      <div><p className="kicker">Trend</p><h2>{title}</h2></div>
+      <div><p className="kicker">{t('dashboard.trend')}</p><h2>{title}</h2></div>
       {hint && <span className="count-badge">{hint}</span>}
     </div>
     <div className="chart-wrap">{children}</div>
@@ -255,35 +253,37 @@ function ChartPanel({ title, hint, children }: { title: string; hint?: string; c
 }
 
 function SystemPanel({ status, onRefresh, refreshing }: { status: SystemStatus | undefined; onRefresh: () => void; refreshing: boolean }) {
-  return <section className="panel" aria-label="System health">
+  const { t, i18n } = useTranslation()
+  const locale = activeLocale(i18n.resolvedLanguage ?? i18n.language)
+  return <section className="panel" aria-label={t('dashboard.coreHealth')}>
     <div className="panel-heading">
-      <div><p className="kicker">System</p><h2>Core health</h2></div>
+      <div><p className="kicker">{t('dashboard.system')}</p><h2>{t('dashboard.coreHealth')}</h2></div>
       <div className="panel-heading-actions">
-        {status && <Badge color="teal" variant="light" leftSection={<span className="status-dot published" />}>Healthy</Badge>}
-        {!status && <span className="muted">System metrics unavailable.</span>}
-        <button className="mini-button" type="button" aria-label="Refresh system status" onClick={onRefresh}><RefreshCw size={14} className={refreshing ? 'spin' : undefined} /></button>
+        {status && <Badge color="teal" variant="light" leftSection={<span className="status-dot published" />}>{t('dashboard.healthy')}</Badge>}
+        {!status && <span className="muted">{t('dashboard.unavailable')}</span>}
+        <button className="mini-button" type="button" aria-label={t('dashboard.refreshSystem')} onClick={onRefresh}><RefreshCw size={14} className={refreshing ? 'spin' : undefined} /></button>
       </div>
     </div>
     {status && <div className="system-donuts">
-      <SystemDonut label="CPU" percent={status.resources.cpuPercent} />
-      <SystemDonut label="Memory" percent={status.resources.memUsedPercent} />
-      <SystemDonut label="Disk" percent={status.resources.diskUsedPercent} />
+      <SystemDonut label={t('dashboard.cpu')} percent={status.resources.cpuPercent} />
+      <SystemDonut label={t('dashboard.memory')} percent={status.resources.memUsedPercent} />
+      <SystemDonut label={t('dashboard.disk')} percent={status.resources.diskUsedPercent} />
     </div>}
     <div className="system-grid">
-      <SystemCell label="Version" value={status?.version ?? '—'} />
-      <SystemCell label="Uptime" value={status ? formatUptime(status.uptimeSeconds) : '—'} />
-      <SystemCell label="Host" value={status ? [status.host.hostname, status.host.platform].filter(Boolean).join(' · ') : '—'} />
-      <SystemCell label="CPU" value={status ? `${status.resources.cpuCores} cores · ${status.resources.cpuPercent.toFixed(1)}%` : '—'} />
-      <SystemCell label="Memory" value={status ? `${formatBytes(status.resources.memUsedBytes)} / ${formatBytes(status.resources.memTotalBytes)} · ${status.resources.memUsedPercent.toFixed(1)}%` : '—'} />
-      <SystemCell label="Disk" value={status ? `${formatBytes(status.resources.diskUsedBytes)} / ${formatBytes(status.resources.diskTotalBytes)} · ${status.resources.diskUsedPercent.toFixed(1)}%` : '—'} />
-      <SystemCell label="Load average" value={status ? `${status.resources.loadAvg1.toFixed(2)} / ${status.resources.loadAvg5.toFixed(2)} / ${status.resources.loadAvg15.toFixed(2)}` : '—'} />
-      <SystemCell label="Process RSS" value={status ? formatBytes(status.runtime.sysRssBytes) : '—'} />
-      <SystemCell label="Heap" value={status ? formatBytes(status.runtime.heapAllocBytes) : '—'} />
-      <SystemCell label="Goroutines" value={status ? String(status.runtime.numGoroutine) : '—'} />
-      <SystemCell label="Database" value={status ? formatBytes(status.database.sizeBytes) : '—'} />
-      <SystemCell label="Content cache" value={status ? `${status.caches.contentEntries} entries` : '—'} />
-      <SystemCell label="Audit events" value={status ? formatCount(status.auditEventCount) : '—'} />
-      <SystemCell label="Started at" value={status ? new Date(status.startedAt).toLocaleString('en') : '—'} />
+      <SystemCell label={t('dashboard.version')} value={status?.version ?? '—'} />
+      <SystemCell label={t('dashboard.uptime')} value={status ? formatUptime(status.uptimeSeconds, t) : '—'} />
+      <SystemCell label={t('dashboard.host')} value={status ? [status.host.hostname, status.host.platform].filter(Boolean).join(' · ') : '—'} />
+      <SystemCell label={t('dashboard.cpu')} value={status ? `${t('dashboard.cores', { count: status.resources.cpuCores })} · ${status.resources.cpuPercent.toFixed(1)}%` : '—'} />
+      <SystemCell label={t('dashboard.memory')} value={status ? `${formatBytes(status.resources.memUsedBytes)} / ${formatBytes(status.resources.memTotalBytes)} · ${status.resources.memUsedPercent.toFixed(1)}%` : '—'} />
+      <SystemCell label={t('dashboard.disk')} value={status ? `${formatBytes(status.resources.diskUsedBytes)} / ${formatBytes(status.resources.diskTotalBytes)} · ${status.resources.diskUsedPercent.toFixed(1)}%` : '—'} />
+      <SystemCell label={t('dashboard.loadAverage')} value={status ? `${status.resources.loadAvg1.toFixed(2)} / ${status.resources.loadAvg5.toFixed(2)} / ${status.resources.loadAvg15.toFixed(2)}` : '—'} />
+      <SystemCell label={t('dashboard.processRss')} value={status ? formatBytes(status.runtime.sysRssBytes) : '—'} />
+      <SystemCell label={t('dashboard.heap')} value={status ? formatBytes(status.runtime.heapAllocBytes) : '—'} />
+      <SystemCell label={t('dashboard.goroutines')} value={status ? String(status.runtime.numGoroutine) : '—'} />
+      <SystemCell label={t('dashboard.database')} value={status ? formatBytes(status.database.sizeBytes) : '—'} />
+      <SystemCell label={t('dashboard.contentCache')} value={status ? t('common.count.entries', { count: status.caches.contentEntries }) : '—'} />
+      <SystemCell label={t('dashboard.auditEvents')} value={status ? t('common.count.events', { count: status.auditEventCount }) : '—'} />
+      <SystemCell label={t('dashboard.startedAt')} value={status ? formatDateTime(status.startedAt, locale) : '—'} />
     </div>
   </section>
 }
@@ -293,10 +293,11 @@ function SystemCell({ label, value }: { label: string; value: string }) {
 }
 
 function SystemDonut({ label, percent }: { label: string; percent: number }) {
+  const { t } = useTranslation()
   const clamped = Math.min(100, Math.max(0, percent))
   const data = [
-    { name: 'Used', value: clamped },
-    { name: 'Free', value: Math.max(0, 100 - clamped) },
+    { name: t('dashboard.used'), value: clamped },
+    { name: t('dashboard.free'), value: Math.max(0, 100 - clamped) },
   ]
   return <div className="system-donut">
     <div className="system-donut-chart">

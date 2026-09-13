@@ -4,10 +4,12 @@
 // app/admin. Changes here or in render.css must be verified against BOTH
 // surfaces — see packages/render/README.md before diverging.
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useRenderI18n } from "./render-i18n";
 
 export type RenderTocItem = { id: string; label: string; level: 2 | 3 };
 
 export function ArticleToc({ items }: { items: RenderTocItem[] }) {
+  const { t } = useRenderI18n();
   const [activeId, setActiveId] = useState(items[0]?.id ?? "");
   const [progress, setProgress] = useState(0);
   const activeIdRef = useRef(items[0]?.id ?? "");
@@ -29,14 +31,15 @@ export function ArticleToc({ items }: { items: RenderTocItem[] }) {
     window.addEventListener("resize", update);
     return () => { window.removeEventListener("scroll", update); window.removeEventListener("resize", update); };
   }, [items]);
-  return <aside className="articleToc" aria-label="On this page">
-    <div className="articleTocHeading"><span>On this page</span><span>{Math.round(progress * 100)}%</span></div>
+  return <aside className="articleToc" aria-label={t("onThisPage")}>
+    <div className="articleTocHeading"><span>{t("onThisPage")}</span><span>{Math.round(progress * 100)}%</span></div>
     <div className="articleTocTrack" aria-hidden="true"><span style={{ height: `${progress * 100}%` }} /></div>
     <nav>{items.map((item) => <a key={item.id} href={`#${item.id}`} title={item.label} className={`${item.level === 3 ? "tocNested" : ""} ${activeId === item.id ? "articleTocActive" : ""}`} aria-current={activeId === item.id ? "location" : undefined}>{item.label}</a>)}</nav>
   </aside>;
 }
 
-export function ReadingProgress({ label = "Reading" }: { label?: string }) {
+export function ReadingProgress({ label }: { label?: string }) {
+  const { t } = useRenderI18n();
   const [progress, setProgress] = useState(0);
   useEffect(() => {
     const update = () => {
@@ -51,8 +54,8 @@ export function ReadingProgress({ label = "Reading" }: { label?: string }) {
       window.removeEventListener("resize", update);
     };
   }, []);
-  return <aside className="articleToc" aria-label="Reading progress">
-    <div className="articleTocHeading"><span>{label}</span><span>{Math.round(progress * 100)}%</span></div>
+  return <aside className="articleToc" aria-label={t("readingProgress")}>
+    <div className="articleTocHeading"><span>{label ?? t("reading")}</span><span>{Math.round(progress * 100)}%</span></div>
     <div className="articleTocTrack" aria-hidden="true"><span style={{ height: `${progress * 100}%` }} /></div>
   </aside>;
 }
@@ -61,13 +64,14 @@ export function ReadingProgress({ label = "Reading" }: { label?: string }) {
 // orchestration through the slots; admin renders the same shell without them.
 // Without a rail slot the grid drops the reserved rail column ("no-rail").
 export function ReadingShell({ rail, children, toc, discussion, discussionTrigger, composer, endAction, endSlot }: { rail?: ReactNode; children: ReactNode; toc?: RenderTocItem[]; discussion?: ReactNode; discussionTrigger?: ReactNode; composer?: ReactNode; endAction?: ReactNode; endSlot?: ReactNode }) {
+  const { t } = useRenderI18n();
   return <div className={rail == null ? "articleReadingShell no-rail" : "articleReadingShell"}>
     {rail}
     <div className="articleReadingMain">{children}</div>
     {toc && toc.length > 0 && <ArticleToc items={toc} />}
     {endAction}
     {endSlot}
-    {discussion && <section className="articleDiscussionBlock" aria-label="Article discussion">{discussion}{discussionTrigger}</section>}
+    {discussion && <section className="articleDiscussionBlock" aria-label={t("articleDiscussion")}>{discussion}{discussionTrigger}</section>}
     {composer}
   </div>;
 }

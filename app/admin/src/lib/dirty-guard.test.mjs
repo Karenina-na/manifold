@@ -80,7 +80,7 @@ collect("../");
 // Listed explicitly so that renaming a form instance cannot quietly drop a file
 // out of the sweep and leave this test passing while asserting nothing about it.
 const expected = [
-  "../SettingsWorkspace.tsx",
+  "../features/settings/SettingsWorkspace.tsx",
   "../workspaces/ProfileWorkspace.tsx",
   "../workspaces/ThoughtsWorkspace.tsx",
   "../workspaces/WritingsWorkspace.tsx",

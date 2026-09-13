@@ -10,7 +10,7 @@ Manifold 公开阅读端，负责 Home、Thoughts、Writings、Markdown 阅读�
 
 首页按 Profile/Introduction、Background、Recent Content、Updates、My Series、Contact 六段组织共同信息，区块顺序由站点设置的 `sections` 驱动；Recent Content 通过公共内容列表展示 Writings/Thoughts 双列与 Top tags，Updates 使用 Core `homeTimeline()` 返回的轻量、有限且按首发时间排序的最新内容构建可缩放轨道；My Series 使用紧凑索引卡片，Contact 使用纯图标 rail，详情在 hover/focus 时通过脱离局部层叠上下文的浮层展示；页脚在线人数通过 Core presence 心跳返回，不使用 mock；页面数据、状态徽标和内容链接仍以 Core 返回值为准。
 
-源码按职责分层：`app/` 保存路由和 Server Component，`components/` 保存可复用界面，`features/` 保存单一交互域的客户端状态（当前为 chain 的待封块提交生命周期和 comments 的讨论分页），`lib/` 保存无界面的共享函数与 Core 客户端入口。业务数据和规则仍由 Core 与共享契约定义。
+源码按模块与职责分层：`app/` 只保存 App Router 路由、布局和路由样式；`components/layout/` 保存全局壳与 Provider，`components/ui/` 保存跨域小组件；`features/` 下的 archive、chain、comments、content、home 分别聚合各业务域的组件、状态、纯函数和同目录测试；`i18n/` 保存 locale 与翻译资源；`lib/` 只保存 Core client、观测、安全、主题和表达式求值等跨域基础设施。业务数据和规则仍由 Core 与共享契约定义。
 
 安全边界同样按层放置：`proxy.ts` 是唯一的响应头与 CSP 出口（每请求 nonce），`lib/security.ts` 保存内联脚本序列化、CSP 脚本哈希和 cookie `Secure` 判定，两者都不参与业务逻辑；`lib/expression.ts` 提供 REPL 的无 `eval` 算术求值。契约见 [`docs/decisions/web.md`](../../docs/decisions/web.md) 第 6 节。
 

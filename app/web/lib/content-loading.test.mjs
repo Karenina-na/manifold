@@ -15,7 +15,7 @@ const apiSource = await read("./api.ts");
 const layoutSource = await read("../app/layout.tsx");
 const writingSource = await read("../app/writing/[slug]/page.tsx");
 const thoughtsSource = await read("../app/thoughts/[slug]/page.tsx");
-const replSource = await read("../components/floating-repl.tsx");
+const replSource = await read("../features/home/floating-repl.tsx");
 
 test("per-request loaders are memoised so one render pass hits Core once", () => {
   assert.match(apiSource, /export const loadSiteData = cache\(/);

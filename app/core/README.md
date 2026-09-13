@@ -4,6 +4,8 @@ Manifold 唯一的后端服务和业务数据所有者，提供 REST/JSON API、
 
 当前详细契约见 [`docs/core.md`](../../docs/core.md)，其中记录 Core 的路由、公开/Admin API、请求/响应、错误 envelope、`THOUGHT`/`ARTICLE` 模型、metadata 校验、版本控制、迁移、SQLite schema、配置、缓存和异步审计架构。
 
+源码以 `internal/` 下的职责包组织：`handler` 负责 HTTP 边界，`application` 编排写用例，`store` 隔离 SQLite，`github` 封装 GitHub OAuth 上游通信，`system` 采样主机资源，其余鉴权、链、缓存、事件、模型与 seed 各自独立。
+
 ## 运行
 
 ```bash

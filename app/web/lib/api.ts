@@ -1,5 +1,6 @@
 import { cache } from "react";
 import type { Content, ContentDetail, SiteComposition } from "@manifold/contracts";
+import type { Locale } from "../i18n/locale";
 import { ManifoldClient } from "@manifold/sdk";
 
 const coreUrl = process.env.NEXT_PUBLIC_CORE_URL ?? "http://localhost:8080";
@@ -98,7 +99,7 @@ export async function loadFeedData() {
   }
 }
 
-export function formatDate(value: string | null) {
-  if (!value) return "Unpublished";
-  return new Intl.DateTimeFormat("en", { month: "short", day: "2-digit", year: "numeric" }).format(new Date(value));
+export function formatDate(value: string | null, locale: Locale = "en", unpublished = "Unpublished") {
+  if (!value) return unpublished;
+  return new Intl.DateTimeFormat(locale, { month: "short", day: "2-digit", year: "numeric" }).format(new Date(value));
 }

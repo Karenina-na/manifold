@@ -1,3 +1,5 @@
+import { translateRenderMessage, type RenderLocale, type RenderMessageKey } from './i18n/resources'
+
 // Contact icon vocabulary shared by the admin picker, admin preview, and the
 // public renderer. `icon` keys are stable string identifiers stored on the
 // profile contact row; rendering lives in contact-icon-ui.tsx so this module
@@ -108,6 +110,24 @@ export const CONTACT_ICONS: ContactIconDef[] = [
 
 export const CONTACT_ICON_LABELS: Record<string, string> = Object.fromEntries(CONTACT_ICONS.map((def) => [def.key, def.label]))
 
+const CONTACT_LABEL_KEYS: Record<string, RenderMessageKey> = {
+  mail: 'contactEmail',
+  podcast: 'contactPodcast',
+  message: 'contactMessaging',
+  at: 'contactHandle',
+  radio: 'contactRadio',
+  '': 'contactGlobeFallback',
+}
+
+export function getContactIcons(locale: RenderLocale = 'en'): ContactIconDef[] {
+  return CONTACT_ICONS.map((def) => ({
+    ...def,
+    label: CONTACT_LABEL_KEYS[def.key]
+      ? translateRenderMessage(locale, CONTACT_LABEL_KEYS[def.key])
+      : def.label,
+  }))
+}
+
 const CONTACT_KEYS = new Set(CONTACT_ICONS.map((def) => def.key))
 
 /** True when `key` is a known icon key (or the globe fallback). */
@@ -214,8 +234,9 @@ export function resolveContactKey(contact: { icon?: string | null; label: string
 }
 
 /** Resolve a key to its human label for hint text ("Renders as …"). */
-export function contactIconLabel(key: string): string {
-  const label = CONTACT_ICON_LABELS[key]
-  if (label) return label
-  return key === 'globe' || key === '' ? 'the globe fallback icon' : key
+export function contactIconLabel(key: string, locale: RenderLocale = 'en'): string {
+  if (key === 'globe') return translateRenderMessage(locale, 'contactGlobeFallbackIcon')
+  const messageKey = CONTACT_LABEL_KEYS[key]
+  if (messageKey) return translateRenderMessage(locale, messageKey)
+  return CONTACT_ICON_LABELS[key] ?? key
 }

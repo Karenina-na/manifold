@@ -1,0 +1,40 @@
+const en = {
+  imageFailedToLoad: "Image failed to load",
+  plainText: "Plain Text",
+  copied: "Copied",
+  copyCode: "Copy code",
+  copy: "Copy",
+  collapse: "Collapse",
+  expandAllLines: "Expand all {count} lines",
+  copyLink: "Copy link",
+  copiedLink: "Copied link",
+  copyLinkToSection: "Copy link to this section",
+  calloutNote: "Note",
+  calloutTip: "Tip",
+  calloutImportant: "Important",
+  calloutWarning: "Warning",
+  calloutCaution: "Caution",
+  onThisPage: "On this page",
+  reading: "Reading",
+  readingProgress: "Reading progress",
+  articleDiscussion: "Article discussion",
+  thoughtMetadata: "Thought metadata",
+  thought: "Thought",
+  thoughtFallbackTitle: "A thought",
+  writing: "Writing",
+  writingFallbackTitle: "A writing",
+  footnoteBackToReference: "Back to reference",
+  now: "Now",
+  contactEmail: "Email",
+  contactPodcast: "Podcast",
+  contactMessaging: "Messaging",
+  contactHandle: "Handle",
+  contactRadio: "Radio",
+  contactGlobeFallback: "Globe (fallback)",
+  contactGlobeFallbackIcon: "the globe fallback icon",
+} as const;
+
+export type RenderMessageKey = keyof typeof en;
+export type RenderMessages = Record<RenderMessageKey, string>;
+
+export default en;

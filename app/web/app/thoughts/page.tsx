@@ -1,7 +1,7 @@
 import { createServerClient } from "../../lib/api";
 import type { Content } from "@manifold/contracts";
-import { readSearchPage, readSearchTags, readSearchText } from "../../lib/search-params";
-import ThoughtArchive from "./thought-archive";
+import { readSearchPage, readSearchTags, readSearchText } from "../../features/archive/search-params";
+import ThoughtArchive from "../../features/archive/thought-archive-view";
 
 export const dynamic = "force-dynamic";
 

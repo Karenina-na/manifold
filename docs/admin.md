@@ -14,7 +14,7 @@ Core 负责最终鉴权和状态转换；Admin 只持有 session token，组织�
 
 ```text
 Vite + React 19
-├── App.tsx: session / Login / Sidebar / lazy workspaces
+├── app/App.tsx: session / Login / Sidebar / lazy workspaces
 ├── Mantine 9: controls and feedback
 ├── React Hook Form + Zod: form boundary
 ├── TanStack Query: server state and invalidation
@@ -26,9 +26,11 @@ Vite + React 19
 └── @manifold/sdk -> Core /api/v1/admin
 ```
 
-主要模块：`src/App.tsx` 管理登录、hash 路由（`#/writings`、`#/writings/{id}`、`#/writings/{id}/comments?…` 等二级页面，支持 hash query）和未保存离开确认；`src/api.ts` 创建 SDK client；`src/lib/` 提供 hash 路由、dirty 守卫和共享包导出的 Core 派生规则——`dirty-guard.ts` 既供 `requestNavigate` 在站内跳转前查询未保存状态，也在模块加载时注册一个 `beforeunload` 监听（`hasUnsavedChanges()` 为真时 `preventDefault()`），覆盖刷新、关标签页这类不经过站内导航代码路径的离开方式；持有脏表单的四个工作区（`workspaces/ProfileWorkspace`、`SettingsWorkspace`、`WritingsWorkspace`、`ThoughtsWorkspace`）都必须注册 `setDirtyGuard` 并在卸载时清除，`dirty-guard.test.mjs` 以"任何读取 `formState.isDirty`（实例名可为 `form`/`profileForm`）的文件都必须调用 `setDirtyGuard`"的不变量钉住这条接线。浏览器 hash 后退/前进只触发 `hashchange`，既不触发 `beforeunload` 也不经过 `requestNavigate`，因此 `useHashRoute.ts` 自己注册 `hashchange` 监听，判定逻辑抽到无 DOM 依赖的 `lib/hash-guard.ts`（`hash-guard.test.mjs` 钉住各分支）：自身写入产生的 hash（mark 按值匹配而非布尔标记，避免一次空写入遗留的 mark 被下一次真实手势消费）、未脏、以及未注册确认 Modal 三种情况直接应用；脏表单且确认 Modal 已注册时用 `history.replaceState` 把 URL 退回 UI 实际所在的 hash，并把尝试的目标交给与站内导航同一个确认 Modal 决定是否丢弃（`replaceState` 不触发 `hashchange`，不会回环）；`src/components/` 提供内容工作区共享组件（`ContentListPanel`/`ContentEditorShell`/`ContentCommentsPanel`/`SaveBar`/`ChipsInput`/`ConfirmButton`/`MarkdownEditor`/`Pager`/`LinkRowsField`）；`SettingsWorkspace.tsx` 管理站点设置（身份、导航、评论开关、首页区块组合）；`workspaces/` 下分别负责 Dashboard（数据总览）、Profile、Writings、Thoughts、Media（图片上传与媒体库）和评论管理；`ErrorBoundary.tsx` 负责渲染恢复。组件文件用 PascalCase，工具与 hook 用 kebab-case。
+主要模块：`src/app/App.tsx` 管理登录、hash 路由（`#/writings`、`#/writings/{id}`、`#/writings/{id}/comments?…` 等二级页面，支持 hash query）和未保存离开确认，`src/app/ErrorBoundary.tsx` 负责渲染恢复；`src/lib/api.ts` 创建 SDK client，`src/lib/` 还提供 hash 路由、dirty 守卫和观测基础设施——`dirty-guard.ts` 既供 `requestNavigate` 在站内跳转前查询未保存状态，也在模块加载时注册一个 `beforeunload` 监听（`hasUnsavedChanges()` 为真时 `preventDefault()`），覆盖刷新、关标签页这类不经过站内导航代码路径的离开方式；持有脏表单的四个工作区（`workspaces/ProfileWorkspace`、`features/settings/SettingsWorkspace`、`workspaces/WritingsWorkspace`、`workspaces/ThoughtsWorkspace`）都必须注册 `setDirtyGuard` 并在卸载时清除，`dirty-guard.test.mjs` 以"任何读取 `formState.isDirty`（实例名可为 `form`/`profileForm`）的文件都必须调用 `setDirtyGuard`"的不变量钉住这条接线。浏览器 hash 后退/前进只触发 `hashchange`，既不触发 `beforeunload` 也不经过 `requestNavigate`，因此 `useHashRoute.ts` 自己注册 `hashchange` 监听，判定逻辑抽到无 DOM 依赖的 `lib/hash-guard.ts`（`hash-guard.test.mjs` 钉住各分支）：自身写入产生的 hash（mark 按值匹配而非布尔标记，避免一次空写入遗留的 mark 被下一次真实手势消费）、未脏、以及未注册确认 Modal 三种情况直接应用；脏表单且确认 Modal 已注册时用 `history.replaceState` 把 URL 退回 UI 实际所在的 hash，并把尝试的目标交给与站内导航同一个确认 Modal 决定是否丢弃（`replaceState` 不触发 `hashchange`，不会回环）。`src/components/common/`、`src/components/content/`、`src/components/forms/` 分别放跨工作区控件、内容编辑器族和表单输入，`src/features/settings/` 聚合 Settings 页面、校验 schema 与安全面板，`src/workspaces/` 保留 Dashboard、Profile、Writings、Thoughts、Media 和 Comments 页面；组件文件用 PascalCase，工具与 hook 用 kebab-case。
 
-Dashboard、Profile、Writings、Thoughts、Comments、Settings 通过 lazy chunk 加载，登录壳同步加载。
+Dashboard、Profile、Writings、Thoughts、Media、Comments、Settings 通过 lazy chunk 加载，登录壳同步加载。
+
+Admin UI 支持英语与简体中文。`src/i18n/` 维护 `en`/`zh-CN` 资源，`react-i18next` 提供组件翻译；初始语言优先读取 `localStorage` 的 `manifold.locale`，其次读取浏览器语言，最后回退英语。语言切换器位于登录页工具栏和登录后的顶部栏，会即时更新 `document.documentElement.lang` 并持久化偏好；存储不可用时仍保持当前会话内语言。Mantine 日期组件、Vditor 工具栏、日期/数字格式和 `@manifold/render` 预览随同一 locale 切换，不复制渲染包文案。
 
 ## 3. 登录和会话
 
@@ -66,7 +68,7 @@ Refresh 按钮同时 refetch 四个 query。
 
 - interests 使用 chip 输入（Enter/逗号添加、× 移除、Backspace 删除末项）；
 - education/experience/series/contacts 为可增删、上下排序的行编辑器，不再手写 JSON；
-- education/experience 的 period 用两个日历月选择器（`@mantine/dates` `MonthPickerInput`，月份粒度、`valueFormat="YYYY-MM"`、上限今天）分别选 From/To；To 留空 = `Now`（开始已填时为开放区间 `… - Now`，此时 To 禁用，提示可补结束月），产物为 `2020 - 2024` / `2020 - Now` 文本；旧自由文本（如 `Ongoing`）只读展示并提供 Edit/Clear 切换（解析/格式化见 `@manifold/render` 的 `period.ts`）；
+- education/experience 的 period 用两个日历月选择器（`@mantine/dates` `MonthPickerInput`，月份粒度、`valueFormat="YYYY-MM"`、上限今天）分别选 From/To；To 留空表示开放区间。现有模型仍是 `period: string`，因此 Admin 复用 `@manifold/render/period.ts` 的最小兼容格式：写入始终使用默认 locale 生成稳定的规范值 `2020 - Now`（`Now` 在这里是协议 token，不随 UI 语言改变，也不会写入“至今”），表单提示和预览再按当前 locale 显示 `Now`/`至今`；读取到旧版 `2020 - 至今` 时会解析并规范化，其他旧自由文本（如 `Ongoing`）保持只读并提供 Edit/Clear 切换；
 - contacts 每行带图标网格 picker（品牌图标用 react-icons 的 si/fa6，如 GitHub/QQ/微信/WhatsApp/Telegram/YouTube/Bilibili/LinkedIn/掘金/知乎/小红书…；通用图标仍用 lucide；空 = globe 兜底），行内实时提示公开渲染结果；图标词汇表与 `resolveContactKey` 启发式统一收在 `@manifold/render` 的 `contact-icon.ts`/`contact-icon-ui.tsx`，Admin 与 Web 渲染端共用同一份，不再各自维护；
 - 校验分工：zod schema 是 UX 层的即时反馈，不是权威——同一组长度与 URL scheme 规则由 Core 在 `PUT /admin/profile` 上独立执行（字段清单与上限见 `docs/core.md` §6），绕过表单的调用方同样被约束，Core 返回的 422 消息直接落位到表单；avatar/website/resume 允许空或 http(s)，contacts/series URL 必填且为 http(s) 或 mailto；headline/bio 显示字符计数；
 - Avatar URL 与 Resume PDF URL 支持直接上传：Avatar 接受图片（png/jpeg/webp/gif/avif），Resume 接受 PDF，上传后把 Core 返回的 `media.url` 写回表单并短暂提示“已上传”；有值时可点眼睛在新标签页预览；
@@ -101,7 +103,7 @@ Thoughts 工作区为同构的二级页面（`#/thoughts`、`#/thoughts/new`、`
 
 Meta tab 字段：正文在 Context tab（vditor IR）必填；title、slug 可选（slug 为空时 Core 使用 ID，更新时置空即清除）；summary（`✦` 标记，Web 卡片与详情均渲染）；tags（chip 输入）；溯源组按 Web 图标语义分组——mood（Sparkles）、question（反引 blockquote）、context（Compass）、source（BookOpen）。Render tab 直接复用 `@manifold/render` 的 `ThoughtSurface`（含 ReadingProgress）。保存条、锁定切换、快捷键、vditor 提交时序与 409 处理与 Writings 一致；详情数据来自 `['admin-content-item', 'THOUGHT', id]`。
 
-共享模块：`lib/useHashRoute.ts`（hash 解析/导航/受守卫的 `requestNavigate`）、`lib/dirty-guard.ts`（编辑器注册 dirty 检查，App 侧栏与返回链接共用确认 Modal）、`@manifold/render` 的 `content-derive`（excerpt/阅读时长/TOC 的共享纯函数）、`components/ContentListPanel.tsx`（列表面板、可聚焦行（`role="button"` + Enter/Space）、状态/排序/分页）、`components/ChipsInput.tsx`（标签 chips 输入）、`components/SaveBar.tsx`（未保存横条与跨 Tab 提交按钮）、`components/ContentEditorShell.tsx`（详情页壳：三 Tab、锁定切换、状态操作、409 Modal）、`components/ConfirmButton.tsx`（Popover 内联二次确认，支持 icon-only）与 `components/MarkdownEditor.tsx`（vditor IR 封装：初始化就绪门槛 `after()`、`input`/`setValue` 值桥、锁定 `disabled()/enable()`；GFM 扩展工具栏经 `gfmToolbar()` 生成，只写 Markdown 源——Callout/脚注/kbd/mark/diff 的最终渲染语义与清洗都在 `@manifold/render`，编辑器不做 HTML 承诺）。`ProfileWorkspace` 的 interests chip 输入复用同一 `ChipsInput`；日期展示统一使用 `@manifold/render` 的 `formatDate`。
+共享模块：`lib/useHashRoute.ts`（hash 解析/导航/受守卫的 `requestNavigate`）、`lib/dirty-guard.ts`（编辑器注册 dirty 检查，App 侧栏与返回链接共用确认 Modal）、`@manifold/render` 的 `content-derive`（excerpt/阅读时长/TOC 的共享纯函数）、`components/content/ContentListPanel.tsx`（列表面板、可聚焦行（`role="button"` + Enter/Space）、状态/排序/分页）、`components/forms/ChipsInput.tsx`（标签 chips 输入）、`components/content/SaveBar.tsx`（未保存横条与跨 Tab 提交按钮）、`components/content/ContentEditorShell.tsx`（详情页壳：三 Tab、锁定切换、状态操作、409 Modal）、`components/common/ConfirmButton.tsx`（Popover 内联二次确认，支持 icon-only）与 `components/content/MarkdownEditor.tsx`（vditor IR 封装：初始化就绪门槛 `after()`、`input`/`setValue` 值桥、锁定 `disabled()/enable()`；GFM 扩展工具栏经 `gfmToolbar()` 生成，只写 Markdown 源——Callout/脚注/kbd/mark/diff 的最终渲染语义与清洗都在 `@manifold/render`，编辑器不做 HTML 承诺）。`ProfileWorkspace` 的 interests chip 输入复用同一 `ChipsInput`；Admin 日期、时间和数字展示统一使用 `src/i18n/format.ts` 并显式传入当前 locale。
 
 规则：所有更新带 `expectedVersion`；新建总是 DRAFT；两个内容工作区的写入失效统一使用 `['admin-content']` 前缀并同步失效 `admin-overview`（Thoughts 另失效 `admin-thought-config`，保证置顶选择器同步）。
 
@@ -121,7 +123,7 @@ Writings/Thoughts 编辑页在 Meta/Context/Render 之外提供 Comments tab（�
 
 ### Settings
 
-Site 调用 `GET/PUT /api/v1/admin/site`，对整个站点设置做结构化表单（`src/lib/siteSettingsSchema.ts` 为唯一 Zod schema 与 `SiteSettingsForm` 类型源）：
+Site 调用 `GET/PUT /api/v1/admin/site`，对整个站点设置做结构化表单（`src/features/settings/siteSettingsSchema.ts` 为唯一 Zod schema 与 `SiteSettingsForm` 类型源）：
 
 - **Identity**：`title`（必填 ≤80）、`description`（≤200）、`footer`（≤200）和 `social`（≤6 项，`LinkRowsField` 行编辑：label/href/"Opens in a new tab" 复选框 + 上下移/删除）。
 - **Navigation**：同一 `LinkRowsField`，1..10 项，替换历史上的 JSON textarea。
@@ -132,7 +134,7 @@ Site 调用 `GET/PUT /api/v1/admin/site`，对整个站点设置做结构化表�
 
 ### Security
 
-Settings 底部的独立 panel（`components/SecuritySection.tsx`），不属于站点设置表单：
+Settings 底部的独立 panel（`features/settings/SecuritySection.tsx`），不属于站点设置表单：
 
 - **改密码**：current + new + confirm 三个 `PasswordInput`（Zod 校验 ≥8 且两次一致），调 `changePassword`；成功后按钮 2.4s 回显 "Password updated"，失败 Alert 提示检查当前密码。Core 端成功后吊销其他设备会话，当前会话保持有效。
 - **Sign out everywhere**：调 `logoutAllSessions`，成功后回显 "Sessions revoked" 并回调 `onLoggedOut`（由 `App.tsx` 清 session 回登录页）。
@@ -176,7 +178,7 @@ pnpm --filter @manifold/admin build
 pnpm --filter @manifold/admin preview
 ```
 
-`test` 先执行 `node --test src/lib/*.test.mjs`（纯 Node 的模块级回归测试，Node 22 直接加载 `.ts`，不需要额外转译或测试框架），再执行 `tsc -b` 作为类型门槛。
+`test` 先执行 `node --test src/lib/*.test.mjs src/i18n/*.test.mjs`（纯 Node 的模块级回归测试，Node 22 直接加载 `.ts`，不需要额外转译或测试框架）；`src/i18n` 用例覆盖 locale 解析、en/zh-CN 资源 key 一致性、显式 locale 格式化，以及登录页、错误页、设置页、全部工作区和共享页面组件的静态翻译 key/可见 JSX 文案覆盖，再执行 `tsc -b` 作为类型门槛。
 
 根目录 `pnpm browser-test` 会启动隔离 Core/Web/Admin，验证登录、stats、反应、评论提交与回复、软删除和恢复，以及 Writings/Thoughts 的二级页面流程：列表搜索、hash 路由跳转、slug 建议、Meta/Context/Render 三 Tab、vditor 输入保存为 Markdown、Render Tab 与 Web 阅读面同构（标题/正文/TOC）、aiAssisted/summary 保存、发布 Popover、锁定态切换、dirty 离开确认和行内删除 Popover。
 

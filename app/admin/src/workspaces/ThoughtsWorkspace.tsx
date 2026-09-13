@@ -4,31 +4,35 @@ import { Alert, Button, Switch, Textarea, TextInput } from '@mantine/core'
 import { BookOpen, Compass, Plus, Sparkles } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
+import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import type { AdminContent, ThoughtMetadataInput } from '@manifold/contracts'
 import { ThoughtSurface } from '@manifold/render'
 import { ApiError } from '@manifold/sdk'
 import { z } from 'zod'
-import { createAdminClient, webBaseUrl } from '../api'
+import { createAdminClient, webBaseUrl } from '../lib/api'
 import { setDirtyGuard } from '../lib/dirty-guard'
 import { navigate, requestNavigate, replaceRoute } from '../lib/useHashRoute'
-import { ChipsInput } from '../components/ChipsInput'
-import { ContentListPanel, type TransitionAction } from '../components/ContentListPanel'
-import { ContentEditorShell, type EditorMode } from '../components/ContentEditorShell'
-import { ContentCommentsPanel } from '../components/ContentCommentsPanel'
-import { MarkdownEditor } from '../components/MarkdownEditor'
+import { ChipsInput } from '../components/forms/ChipsInput'
+import { ContentListPanel, type TransitionAction } from '../components/content/ContentListPanel'
+import { ContentEditorShell, type EditorMode } from '../components/content/ContentEditorShell'
+import { ContentCommentsPanel } from '../components/content/ContentCommentsPanel'
+import { MarkdownEditor } from '../components/content/MarkdownEditor'
 
-const schema = z.object({
-  slug: z.string().trim().min(1, 'Slug is required.'),
-  title: z.string(),
-  summary: z.string().max(4000),
-  body: z.string().min(1, 'Content is required.'),
-  tags: z.array(z.string().trim().min(1).max(60)),
-  mood: z.string().max(120),
-  question: z.string().max(500),
-  context: z.string().max(400),
-  source: z.string().max(200),
-})
-type Form = z.infer<typeof schema>
+function createSchema(t: TFunction) {
+  return z.object({
+    slug: z.string().trim().min(1, t('validation.slugRequired')),
+    title: z.string(),
+    summary: z.string().max(4000, t('validation.maxCharacters', { count: 4000 })),
+    body: z.string().min(1, t('validation.contentRequired')),
+    tags: z.array(z.string().trim().min(1, t('validation.valueRequired')).max(60, t('validation.maxCharacters', { count: 60 }))),
+    mood: z.string().max(120, t('validation.maxCharacters', { count: 120 })),
+    question: z.string().max(500, t('validation.maxCharacters', { count: 500 })),
+    context: z.string().max(400, t('validation.maxCharacters', { count: 400 })),
+    source: z.string().max(200, t('validation.maxCharacters', { count: 200 })),
+  })
+}
+type Form = z.infer<ReturnType<typeof createSchema>>
 const empty: Form = { slug: '', title: '', summary: '', body: '', tags: [], mood: '', question: '', context: '', source: '' }
 
 function metadataFrom(form: Form): ThoughtMetadataInput {
@@ -83,6 +87,7 @@ function useThoughtPin(client: ReturnType<typeof createAdminClient>) {
 }
 
 function ThoughtsListPage({ client }: { client: ReturnType<typeof createAdminClient> }) {
+  const { t } = useTranslation()
   const queryClient = useQueryClient()
   const pin = useThoughtPin(client)
   const invalidate = () => {
@@ -95,11 +100,11 @@ function ThoughtsListPage({ client }: { client: ReturnType<typeof createAdminCli
     onSuccess: () => invalidate(),
   })
   return <section className="workspace">
-    <div className="page-heading"><div><p className="kicker">Thoughts</p><h1>Capture as you go.</h1><p className="subheading">Fragments, methods, and reading notes that stay light.</p></div><Button className="button button-primary" onClick={() => navigate('#/thoughts/new')} leftSection={<Plus size={16} />}>New thought</Button></div>
+    <div className="page-heading"><div><p className="kicker">{t('thoughts.kicker')}</p><h1>{t('thoughts.title')}</h1><p className="subheading">{t('thoughts.copy')}</p></div><Button className="button button-primary" onClick={() => navigate('#/thoughts/new')} leftSection={<Plus size={16} />}>{t('thoughts.new')}</Button></div>
     <ContentListPanel
       client={client}
       kind="THOUGHT"
-      singular="thought"
+      singular={t('common.thought')}
       onEdit={(content) => navigate(`#/thoughts/${content.id}`)}
       onTransition={(content, action) => transition.mutate({ id: content.id, action })}
       hrefFor={(content) => `${webBaseUrl}/thoughts/${content.slug}`}
@@ -109,6 +114,8 @@ function ThoughtsListPage({ client }: { client: ReturnType<typeof createAdminCli
 }
 
 function ThoughtEditorPage({ client, editingId, commentsRequested, routeQuery }: { client: ReturnType<typeof createAdminClient>; editingId: string; commentsRequested: boolean; routeQuery: URLSearchParams }) {
+  const { t } = useTranslation()
+  const schema = useMemo(() => createSchema(t), [t])
   const queryClient = useQueryClient()
   const isNew = editingId === 'new'
   const pin = useThoughtPin(client)
@@ -178,8 +185,8 @@ function ThoughtEditorPage({ client, editingId, commentsRequested, routeQuery }:
   })
   const pinSection = isNew ? null : <div className="pin-section">
     <Switch
-      label="Pin to the thoughts archive"
-      description="Pins this thought in the Featured row at the top of the public Thoughts page. Multiple thoughts can be pinned."
+      label={t('thoughts.pin')}
+      description={t('thoughts.pinDescription')}
       checked={pin.config.data?.pinnedIds.includes(editingId) ?? false}
       disabled={pin.setPin.isPending}
       onChange={(event) => pin.setPin.mutate(
@@ -188,28 +195,28 @@ function ThoughtEditorPage({ client, editingId, commentsRequested, routeQuery }:
           : (pin.config.data?.pinnedIds ?? []).filter((id) => id !== editingId)
       )}
     />
-    {pin.setPin.isError && <Alert color="red" variant="light">The pin could not be updated.</Alert>}
+    {pin.setPin.isError && <Alert color="red" variant="light">{t('thoughts.pinError')}</Alert>}
   </div>
   const metaTab = <form className="form-stack" id="thought-form" noValidate onSubmit={submitForm}>
-    {!isNew && item.isError && <Alert color="red" variant="light">This thought could not be loaded. Go back and try again.</Alert>}
-    <TextInput label="Title" {...form.register('title')} placeholder="Optional" />
-    <TextInput label="Slug" description={`${webBaseUrl}/thoughts/${watched.slug || '…'}`} {...form.register('slug')} placeholder="a-readable-url" error={form.formState.errors.slug?.message} />
-    <Textarea label="Summary" description={`✦ ${watched.summary.trim().length}/4000 — shown with the ✦ mark on cards`} {...form.register('summary')} minRows={2} error={form.formState.errors.summary?.message} />
-    <div><label>Tags</label><ChipsInput value={watched.tags} onChange={(next) => form.setValue('tags', next, { shouldDirty: true })} placeholder="Add tag and press Enter" /></div>
+    {!isNew && item.isError && <Alert color="red" variant="light">{t('thoughts.loadError')}</Alert>}
+    <TextInput label={t('thoughts.titleLabel')} {...form.register('title')} placeholder={t('thoughts.optional')} />
+    <TextInput label={t('thoughts.slug')} description={`${webBaseUrl}/thoughts/${watched.slug || '…'}`} {...form.register('slug')} placeholder={t('thoughts.slugPlaceholder')} error={form.formState.errors.slug?.message} />
+    <Textarea label={t('thoughts.summary')} description={t('thoughts.summaryDescription', { count: watched.summary.trim().length })} {...form.register('summary')} minRows={2} error={form.formState.errors.summary?.message} />
+    <div><label>{t('thoughts.tags')}</label><ChipsInput value={watched.tags} onChange={(next) => form.setValue('tags', next, { shouldDirty: true })} placeholder={t('thoughts.addTag')} /></div>
     <div className="form-stack provenance-stack">
-      <p className="kicker">Provenance</p>
-      <TextInput label="Mood" description="Sparkles — a short state of mind" leftSection={<Sparkles size={14} />} {...form.register('mood')} />
-      <Textarea label="Question" description="Rendered as the reflection blockquote" {...form.register('question')} minRows={2} />
+      <p className="kicker">{t('thoughts.provenance')}</p>
+      <TextInput label={t('thoughts.mood')} description={t('thoughts.moodDescription')} leftSection={<Sparkles size={14} />} {...form.register('mood')} />
+      <Textarea label={t('thoughts.question')} description={t('thoughts.questionDescription')} {...form.register('question')} minRows={2} />
       <div className="form-grid">
-        <TextInput label="Context" description="Compass — where it came from" leftSection={<Compass size={14} />} {...form.register('context')} />
-        <TextInput label="Source" description="Book — book, paper, or conversation" leftSection={<BookOpen size={14} />} {...form.register('source')} />
+        <TextInput label={t('thoughts.context')} description={t('thoughts.contextDescription')} leftSection={<Compass size={14} />} {...form.register('context')} />
+        <TextInput label={t('thoughts.source')} description={t('thoughts.sourceDescription')} leftSection={<BookOpen size={14} />} {...form.register('source')} />
       </div>
     </div>
-    {save.isError && !conflict && <Alert color="red" variant="light">Could not save this thought. Check the fields and Core status.</Alert>}
+    {save.isError && !conflict && <Alert color="red" variant="light">{t('thoughts.saveError')}</Alert>}
   </form>
 
   const contextTab = <div className="context-editor">
-    <p className="field-hint">Write in the instant-rendering editor — images paste, drop or upload from the toolbar and are stored in Core. The stored value is plain Markdown.</p>
+    <p className="field-hint">{t('thoughts.editorHint')}</p>
     <MarkdownEditor value={bodyText} disabled={mode === 'view'} onChange={(next) => form.setValue('body', next, { shouldDirty: true })} onUploadImage={async (file) => (await client.uploadMedia(file, file.name)).url} />
     {form.formState.errors.body?.message && <Alert color="red" variant="light">{form.formState.errors.body.message}</Alert>}
   </div>
@@ -246,7 +253,7 @@ function ThoughtEditorPage({ client, editingId, commentsRequested, routeQuery }:
   />
 
   return <ContentEditorShell
-    kindLabel="Thought"
+    kindLabel={t('common.thought')}
     hrefFor={(content) => `${webBaseUrl}/thoughts/${content.slug}`}
     selected={draft}
     mode={mode}

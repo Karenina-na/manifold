@@ -1,26 +1,27 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import "@radix-ui/themes/styles.css";
-import { Providers } from "../components/providers";
-import { SiteNav } from "../components/site-nav";
-import { BackgroundCanvas } from "../components/background-canvas";
-import { SiteFooter } from "../components/site-footer";
-import { FloatingRepl } from "../components/floating-repl";
-import { RouteRefresh } from "../components/route-refresh";
+import { Providers } from "../components/layout/providers";
+import { SiteNav } from "../components/layout/site-nav";
+import { BackgroundCanvas } from "../components/layout/background-canvas";
+import { SiteFooter } from "../components/layout/site-footer";
+import { FloatingRepl } from "../features/home/floating-repl";
+import { RouteRefresh } from "../components/layout/route-refresh";
 import { loadSiteData, fallbackSiteDescription, fallbackSiteFooter, fallbackSiteTitle } from "../lib/api";
 import { themeInitScript } from "../lib/theme";
+import { getServerI18n } from "../i18n/i18n-server";
 import "./globals.css";
 
 export async function generateMetadata(): Promise<Metadata> {
-  const site = await loadSiteData();
+  const [site, { t }] = await Promise.all([loadSiteData(), getServerI18n()]);
   const title = site?.title || fallbackSiteTitle;
   return {
     metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"),
     title: {
-      default: `${title} | Profile, writings, and thoughts`,
+      default: t("metadata.defaultTitle", { title }),
       template: `%s | ${title}`,
     },
-    description: site?.description || fallbackSiteDescription,
+    description: site?.description || t("metadata.fallbackDescription") || fallbackSiteDescription,
     alternates: { canonical: "/" },
   };
 }
@@ -35,22 +36,22 @@ async function contentSecurityPolicyNonce() {
 }
 
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  const [site, nonce] = await Promise.all([loadSiteData(), contentSecurityPolicyNonce()]);
+  const [site, nonce, { locale, t }] = await Promise.all([loadSiteData(), contentSecurityPolicyNonce(), getServerI18n()]);
   return (
     // `themeInitScript` below writes `data-theme` on this element before React
     // hydrates, and the server cannot know a reader's stored preference, so the
     // attribute is always "unexpected" to the client render. Suppressing it here
     // is the supported way to keep the pre-paint script: it covers this element's
     // own attributes only, not the subtree.
-    <html lang="en" suppressHydrationWarning>
+    <html lang={locale} suppressHydrationWarning>
       <body>
         <script nonce={nonce} dangerouslySetInnerHTML={{ __html: themeInitScript }} />
-        <Providers>
+        <Providers locale={locale}>
           <BackgroundCanvas />
           <SiteNav navigation={site?.navigation} />
           <RouteRefresh />
           <div className="siteContent">{children}</div>
-          <FloatingRepl displayName={site?.title || fallbackSiteTitle} handle="@manifold" focus="Open focus" />
+          <FloatingRepl displayName={site?.title || fallbackSiteTitle} handle="@manifold" focus={t("repl.focus")} />
           <SiteFooter footer={site?.footer || fallbackSiteFooter} social={site?.social} />
         </Providers>
       </body>

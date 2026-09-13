@@ -21,6 +21,6 @@ pnpm --filter @manifold/admin preview
 
 生产发布使用 Vite 的 `dist` 静态产物，不使用 `vite preview`。根目录 `pnpm package:release -- --env .env.production` 将 `VITE_CORE_URL` 与 `VITE_WEB_URL` 固化到 Admin bundle；独立域名反向代理通过 `ADMIN_PUBLIC_URL` 记录 Admin 的公开 origin。管理员密码 hash 为空时，打包脚本生成随机初始密码、写回 hash，并在当前终端显示一次。包内 supervisor 通过无第三方运行时依赖的 Node 静态服务器在 `:5173` 提供 dist、PWA 和 vditor 资源。
 
-目录约定：`workspaces/` 放各工作区页面组件（PascalCase）；`components/` 放跨工作区共享组件（PascalCase）；`lib/` 放工具与 hook（kebab-case）。
+目录约定：`src/app/` 放登录、导航和错误恢复壳；`src/workspaces/` 放 Dashboard、Profile、Writings、Thoughts、Media、Comments 页面；`src/features/settings/` 聚合 Settings 页面、校验与安全面板；`src/components/common/`、`src/components/content/`、`src/components/forms/` 按职责放跨工作区组件；`src/i18n/` 放语言资源与格式化；`src/lib/` 放 SDK client、观测和无界面 hook。组件文件用 PascalCase，工具与 hook 用 kebab-case。
 
 修改 Admin 工作区、API 调用、表单或依赖时，必须同时检查 [`docs/admin.md`](../../docs/admin.md)、[`docs/core.md`](../../docs/core.md)、[`packages/sdk/README.md`](../../packages/sdk/README.md) 和根目录 [`AGENTS.md`](../../AGENTS.md)。

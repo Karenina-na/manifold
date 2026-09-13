@@ -48,21 +48,21 @@ chi Router
 app/core/
 ├── cmd/server/main.go              # 配置、seed 解析、数据库、HTTP server、优雅关闭
 ├── internal/config/config.go       # CORE_* 环境变量与 .env 自动加载
-├── internal/handler/                 # HTTP 路由、中间件、handler、错误和分页
-│   ├── routes.go                     # 路由注册
-│   ├── response.go                   # handler 依赖、生命周期和 Router
-│   └── response_helpers.go            # JSON、错误、集合和健康检查响应
+├── internal/handler/               # HTTP 路由、中间件、handler、错误和分页
+│   ├── routes.go                   # 路由注册
+│   ├── response.go                 # handler 依赖、生命周期和 Router
+│   └── response_helpers.go         # JSON、错误、集合和健康检查响应
 ├── internal/application/           # 写用例及 audit、anchor、cache 编排
 ├── internal/auth/auth.go           # bcrypt、JWT、Casbin
+├── internal/github/                # GitHub OAuth 上游客户端及其协议测试
 ├── internal/model/content.go       # Core 领域 JSON model
 ├── internal/store/bootstrap.go     # SQLite 初始化、迁移和 seed 应用
 ├── internal/store/                 # 领域数据查询和写入
 ├── internal/seed/                  # 种子数据文件（bootstrap.json、dev.json）与解析校验
 ├── internal/cache/                 # 内容/统计缓存
 ├── internal/events/                # 审计发布器和 worker
-├── db/migrations/0001_init.sql     # baseline schema
-├── db/migrations/0002_init.sql     # admin security (credentials + sessions)
-├── db/migrations/0003_init.sql     # comment moderation hide state
+├── internal/system/                # Admin system endpoint 的主机资源采样
+├── db/migrations/                 # 按版本顺序执行的 SQLite schema
 └── Dockerfile
 ```
 

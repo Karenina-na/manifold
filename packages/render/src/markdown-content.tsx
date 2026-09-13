@@ -5,7 +5,9 @@
 // see packages/render/README.md before diverging.
 import "./render.css";
 import { remarkFootnotes } from "./footnotes";
+import type { RenderMessageKey } from "./i18n/resources";
 import type { MdNode } from "./mdast";
+import { useRenderI18n, type RenderI18n } from "./render-i18n";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { AlertTriangle, BadgeInfo, Check, Copy, ImageOff, Info, Lightbulb, Link as LinkIcon, ShieldAlert } from "lucide-react";
 import ReactMarkdown, { type Components } from "react-markdown";
@@ -43,12 +45,12 @@ const renderSchema = {
   },
 };
 
-const CALLOUT_META: Record<string, { label: string; icon: typeof Info }> = {
-  note: { label: "Note", icon: Info },
-  tip: { label: "Tip", icon: Lightbulb },
-  important: { label: "Important", icon: BadgeInfo },
-  warning: { label: "Warning", icon: AlertTriangle },
-  caution: { label: "Caution", icon: ShieldAlert },
+const CALLOUT_META: Record<string, { labelKey: RenderMessageKey; icon: typeof Info }> = {
+  note: { labelKey: "calloutNote", icon: Info },
+  tip: { labelKey: "calloutTip", icon: Lightbulb },
+  important: { labelKey: "calloutImportant", icon: BadgeInfo },
+  warning: { labelKey: "calloutWarning", icon: AlertTriangle },
+  caution: { labelKey: "calloutCaution", icon: ShieldAlert },
 };
 
 const headingId = (value: React.ReactNode) => String(value).toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]+/g, "-").replace(/(^-|-$)/g, "");
@@ -63,7 +65,7 @@ const extractText = (node: React.ReactNode): string => {
   return "";
 };
 
-function ImageWithFallback({ node: _node, ...props }: React.ComponentProps<"img"> & { node?: unknown }) {
+function ImageWithFallback({ failedLabel, node: _node, ...props }: React.ComponentProps<"img"> & { failedLabel: string; node?: unknown }) {
   const imgRef = useRef<HTMLImageElement | null>(null);
   const [failed, setFailed] = useState(false);
   const [loaded, setLoaded] = useState(false);
@@ -84,7 +86,7 @@ function ImageWithFallback({ node: _node, ...props }: React.ComponentProps<"img"
 
   if (failed) {
     return (
-      <span className="mdrImgFallback" role="img" aria-label={props.alt || "Image failed to load"}>
+      <span className="mdrImgFallback" role="img" aria-label={props.alt || failedLabel}>
         <ImageOff size={20} aria-hidden="true" />
         {props.alt ? <span>{props.alt}</span> : null}
       </span>
@@ -153,7 +155,7 @@ function remarkCallouts() {
   };
 }
 
-function CodeBlock({ children }: { children: React.ReactNode }) {
+function CodeBlock({ children, i18n }: { children: React.ReactNode; i18n: RenderI18n }) {
   const preRef = useRef<HTMLPreElement>(null);
   const [copied, setCopied] = useState(false);
 
@@ -185,10 +187,10 @@ function CodeBlock({ children }: { children: React.ReactNode }) {
   return (
     <div className="codeFrame">
       <div className="codeToolbar">
-        <span>{language ? language : "Plain Text"}</span>
-        <button type="button" className={`codeCopy${copied ? " is-copied" : ""}`} onClick={copyCode} aria-label={copied ? "Copied" : "Copy code"} title={copied ? "Copied" : "Copy code"}>
+        <span>{language ? language : i18n.t("plainText")}</span>
+        <button type="button" className={`codeCopy${copied ? " is-copied" : ""}`} onClick={copyCode} aria-label={copied ? i18n.t("copied") : i18n.t("copyCode")} title={copied ? i18n.t("copied") : i18n.t("copyCode")}>
           {copied ? <Check size={14} /> : <Copy size={14} />}
-          <span>{copied ? "Copied" : "Copy"}</span>
+          <span>{copied ? i18n.t("copied") : i18n.t("copy")}</span>
         </button>
       </div>
       <div className={`codeCollapseWrap${expanded ? " is-expanded" : ""}`}>
@@ -201,7 +203,7 @@ function CodeBlock({ children }: { children: React.ReactNode }) {
       </div>
       {collapsible ? (
         <button type="button" className="codeExpandBtn" onClick={() => setExpanded((value) => !value)}>
-          {expanded ? "收起" : `展开全部 ${lineCount} 行`}
+          {expanded ? i18n.t("collapse") : i18n.t("expandAllLines", { count: lineCount })}
         </button>
       ) : null}
     </div>
@@ -226,7 +228,7 @@ function createHeadingLineIds(content: string, headingIds: string[]) {
   return lineIds;
 }
 
-function createComponents(content: string, headingIds: string[] = [], hideFirstH1 = false): Components {
+function createComponents(content: string, i18n: RenderI18n, headingIds: string[] = [], hideFirstH1 = false): Components {
   const headingLineIds = createHeadingLineIds(content, headingIds);
   const nextHeadingId = (children: React.ReactNode, node?: { position?: { start?: { line?: number } } }) => {
     const line = node?.position?.start?.line;
@@ -244,7 +246,7 @@ function createComponents(content: string, headingIds: string[] = [], hideFirstH
       });
     };
     const anchor = (
-      <a className="mdr-anchor" href={`#${id}`} onClick={copyAnchor} title={copied ? "Copied" : "Copy link"} aria-label={copied ? "Copied link" : "Copy link to this section"}>
+      <a className="mdr-anchor" href={`#${id}`} onClick={copyAnchor} title={copied ? i18n.t("copied") : i18n.t("copyLink")} aria-label={copied ? i18n.t("copiedLink") : i18n.t("copyLinkToSection")}>
         <LinkIcon size={13} aria-hidden="true" />
       </a>
     );
@@ -261,7 +263,7 @@ function createComponents(content: string, headingIds: string[] = [], hideFirstH
     h4: (props) => anchorHeading("h4", props),
     h5: (props) => anchorHeading("h5", props),
     h6: (props) => anchorHeading("h6", props),
-    pre: ({ children }) => <CodeBlock>{children}</CodeBlock>,
+    pre: ({ children }) => <CodeBlock i18n={i18n}>{children}</CodeBlock>,
     blockquote: ({ className, children }) => {
       const type = String(className ?? "").match(/mdrCallout-(\w+)/)?.[1];
       const meta = type ? CALLOUT_META[type] : undefined;
@@ -269,7 +271,7 @@ function createComponents(content: string, headingIds: string[] = [], hideFirstH
       const Icon = meta.icon;
       return (
         <blockquote className={className}>
-          <span className="mdrCalloutTag"><Icon size={13} aria-hidden="true" />{meta.label}</span>
+          <span className="mdrCalloutTag"><Icon size={13} aria-hidden="true" />{i18n.t(meta.labelKey)}</span>
           {children}
         </blockquote>
       );
@@ -277,7 +279,7 @@ function createComponents(content: string, headingIds: string[] = [], hideFirstH
     table: ({ children }) => <TableWrap><table>{children}</table></TableWrap>,
     img: (props) => {
       const { title, ...rest } = props;
-      const image = <ImageWithFallback {...rest} />;
+      const image = <ImageWithFallback {...rest} failedLabel={i18n.t("imageFailedToLoad")} />;
       if (!title) return image;
       return (
         <figure className="mdrFigure">
@@ -290,12 +292,13 @@ function createComponents(content: string, headingIds: string[] = [], hideFirstH
 }
 
 export function MarkdownContent({ content, headingIds, hideFirstH1 = false }: { content: string; headingIds?: string[]; hideFirstH1?: boolean }) {
+  const i18n = useRenderI18n();
   return (
     <ReactMarkdown
-      remarkPlugins={[remarkCallouts, remarkGfm, remarkFootnotes, remarkMath]}
+      remarkPlugins={[remarkCallouts, remarkGfm, [remarkFootnotes, { backToReferenceLabel: i18n.t("footnoteBackToReference") }], remarkMath]}
       remarkRehypeOptions={{ allowDangerousHtml: true, clobberPrefix: "" }}
       rehypePlugins={[[rehypeRaw], [rehypeSanitize, { ...renderSchema, clobberPrefix: "" }], rehypeKatex, rehypeHighlight]}
-      components={createComponents(content, headingIds, hideFirstH1)}
+      components={createComponents(content, i18n, headingIds, hideFirstH1)}
     >
       {content}
     </ReactMarkdown>

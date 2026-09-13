@@ -13,9 +13,9 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 Read the repository [`AGENTS.md`](../../AGENTS.md), [`docs/web.md`](../../docs/web.md), [`docs/decisions/web.md`](../../docs/decisions/web.md), [`packages/contracts/README.md`](../../packages/contracts/README.md), and [`packages/sdk/README.md`](../../packages/sdk/README.md) before changing this workspace.
 
 - `app/` contains routes and Server Components.
-- `components/` contains reusable UI components.
-- `features/` contains client state for a single interaction domain.
-- `lib/` contains UI-independent helpers and the Core client entry point.
+- `components/layout/` contains the application shell and providers; `components/ui/` contains cross-feature UI primitives.
+- `features/` owns each interaction domain's components, state, pure helpers, and colocated tests.
+- `i18n/` owns locale resolution and translation resources; `lib/` contains only cross-feature infrastructure and the Core client entry point.
 - Core is accessed only through `@manifold/sdk`; Web must not duplicate Core publication, statistics, permission, or pagination rules.
 - Shared Markdown/content rendering belongs in `packages/render`. Keep sanitization at the rendering boundary and preserve Server/Client Component boundaries.
 

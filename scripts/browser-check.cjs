@@ -186,7 +186,28 @@ async function main() {
     await web.goto(webUrl, { waitUntil: 'networkidle' });
     await web.getByRole('heading', { name: 'Writings and thoughts' }).waitFor({ state: 'visible' });
     await web.getByRole('heading', { name: 'My Series' }).waitFor({ state: 'visible' });
-    await web.getByRole('contentinfo').getByText(/\d+ readers online/).waitFor({ state: 'visible', timeout: 5000 });
+    await web.getByRole('button', { name: 'Change language' }).click();
+    await web.getByRole('menuitemradio', { name: '简体中文' }).click();
+    await web.getByRole('heading', { name: 'Writings 与 Thoughts' }).waitFor({ state: 'visible', timeout: 5000 });
+    for (const [section, label] of [
+      ['#profile-section', 'Profile'],
+      ['#background-section', 'Background'],
+      ['#recent-content-section', 'Recent content'],
+      ['#updates-section', 'Updates'],
+      ['#series-section', 'My Series'],
+      ['#contact-section', 'Contact'],
+    ]) {
+      await web.locator(section).getByText(label, { exact: true }).waitFor({ state: 'attached', timeout: 5000 });
+    }
+    await web.goto(`${webUrl}/chain`, { waitUntil: 'networkidle' });
+    for (const label of ['◇ Anchoring chain', '◇ Spine', '✦ Verify', '↗ Anchor', '◈ Ledger', '⌁ Proof path']) {
+      await web.getByText(label, { exact: true }).waitFor({ state: 'attached', timeout: 5000 });
+    }
+    await web.getByRole('button', { name: '切换语言' }).click();
+    await web.getByRole('menuitemradio', { name: 'English' }).click();
+    await web.goto(webUrl, { waitUntil: 'networkidle' });
+    await web.getByRole('heading', { name: 'Writings and thoughts' }).waitFor({ state: 'visible', timeout: 5000 });
+    await web.getByRole('contentinfo').getByText(/\d+ readers? online/).waitFor({ state: 'visible', timeout: 5000 });
     if (await web.locator('[data-manifold-physics]').count() !== 1) throw new Error('Manifold physics canvas is missing');
     const firstMetadataMarker = web.locator('[data-metadata-marker]').first();
     await firstMetadataMarker.hover();
@@ -461,6 +482,13 @@ async function main() {
     if (!thoughtMood?.includes('Curious')) throw new Error('Thought mood badge is missing');
     if (!(await web.locator('[class*="thoughtActions"]').first().textContent())?.includes('Likes')) throw new Error('Thought counts are missing');
     await web.getByRole('heading', { name: 'The thread' }).waitFor({ state: 'visible' });
+    await web.getByRole('button', { name: 'Change language' }).click();
+    await web.getByRole('menuitemradio', { name: '简体中文' }).click();
+    await web.getByRole('heading', { name: '评论区' }).waitFor({ state: 'visible', timeout: 5000 });
+    await web.locator('#comments').getByText('Discussion', { exact: true }).waitFor({ state: 'attached', timeout: 5000 });
+    await web.getByRole('button', { name: '切换语言' }).click();
+    await web.getByRole('menuitemradio', { name: 'English' }).click();
+    await web.getByRole('heading', { name: 'The thread' }).waitFor({ state: 'visible', timeout: 5000 });
     // the composer opens on the identity gate; pick Guest to reveal the visitor form
     await web.getByRole('button', { name: 'Guest', exact: true }).waitFor({ state: 'visible' });
     await web.getByRole('button', { name: 'Guest', exact: true }).click();
@@ -822,6 +850,12 @@ async function main() {
     await admin.waitForFunction((id) => window.location.hash === `#/media/${id}`, media.id, { timeout: 5000 });
     await admin.getByRole('heading', { name: 'probe.png', level: 1 }).waitFor({ state: 'visible', timeout: 5000 });
     await admin.locator('.media-detail-info').waitFor({ state: 'visible', timeout: 5000 });
+    await admin.locator('.language-switcher select').selectOption('zh-CN');
+    await admin.getByRole('button', { name: '返回媒体' }).waitFor({ state: 'visible', timeout: 5000 });
+    await admin.getByRole('heading', { name: '引用', level: 2 }).waitFor({ state: 'visible', timeout: 5000 });
+    await admin.getByText('使用位置', { exact: true }).waitFor({ state: 'visible', timeout: 5000 });
+    await admin.locator('.language-switcher select').selectOption('en');
+    await admin.getByRole('button', { name: 'Back to media' }).waitFor({ state: 'visible', timeout: 5000 });
     const mediaRefRow = admin.locator('.media-ref-row').filter({ hasText: 'Media render probe' });
     await mediaRefRow.waitFor({ state: 'visible', timeout: 5000 });
     if (await mediaRefRow.locator('.status-dot.published').count() !== 1) throw new Error('Reference row should show a published status dot');

@@ -1,3 +1,4 @@
+import { getRenderMessages } from "./i18n/resources";
 import { escapeHtml, mdastText, type MdNode } from "./mdast";
 
 // GFM footnotes have no first-class component in react-markdown v10, so they
@@ -15,7 +16,11 @@ import { escapeHtml, mdastText, type MdNode } from "./mdast";
 // and a note written as [^note] still gets a plain #fn-1 target.
 type FootnoteDefinition = { id: string; number: number; text: string; refIds: string[] };
 
-export function remarkFootnotes() {
+export function remarkFootnotes({
+  backToReferenceLabel = getRenderMessages("en").footnoteBackToReference,
+}: {
+  backToReferenceLabel?: string;
+} = {}) {
   return (tree: MdNode) => {
     const defs: FootnoteDefinition[] = [];
     const byId = new Map<string, FootnoteDefinition>();
@@ -66,7 +71,7 @@ export function remarkFootnotes() {
         // One back-reference per reference site, so a note cited three times
         // can return the reader to each of them.
         const backrefs = def.refIds
-          .map((refId) => `<a href="#${refId}" data-footnote-backref aria-label="Back to reference">&#8617;</a>`)
+          .map((refId) => `<a href="#${refId}" data-footnote-backref aria-label="${escapeHtml(backToReferenceLabel)}">&#8617;</a>`)
           .join("");
         return `<li id="fn-${def.number}"><p>${escapeHtml(def.text)}${backrefs ? ` ${backrefs}` : ""}</p></li>`;
       })

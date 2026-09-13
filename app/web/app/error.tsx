@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ErrorState } from "../components/error-state";
+import { ErrorState } from "../components/layout/error-state";
 import { createTraceId, reportClientError } from "../lib/observability";
 
 export default function Error({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {

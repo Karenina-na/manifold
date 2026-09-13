@@ -9,6 +9,7 @@ import (
 
 	"github.com/manifold-space/manifold/app/core/internal/apierror"
 	"github.com/manifold-space/manifold/app/core/internal/model"
+	"github.com/manifold-space/manifold/app/core/internal/system"
 )
 
 func (h *apiHandler) adminStats(w http.ResponseWriter, r *http.Request) {
@@ -76,7 +77,7 @@ func (h *apiHandler) adminSystem(w http.ResponseWriter, r *http.Request) {
 	}
 	var memStats runtime.MemStats
 	runtime.ReadMemStats(&memStats)
-	resources, rssBytes := systemResources(h.cfg.DatabasePath)
+	resources, host, rssBytes := system.Snapshot(h.cfg.DatabasePath)
 	WriteJSON(w, http.StatusOK, model.SystemStatus{
 		Version:         coreVersion,
 		StartedAt:       processStartedAt.Format(time.RFC3339),
@@ -85,7 +86,7 @@ func (h *apiHandler) adminSystem(w http.ResponseWriter, r *http.Request) {
 		Caches:          model.SystemCaches{ContentEntries: h.contentCache.Len()},
 		Runtime:         model.SystemRuntime{HeapAllocBytes: memStats.HeapAlloc, NumGoroutine: runtime.NumGoroutine(), SysRSSBytes: rssBytes},
 		Resources:       resources,
-		Host:            systemHost(),
+		Host:            host,
 		AuditEventCount: auditEventCount,
 	})
 }

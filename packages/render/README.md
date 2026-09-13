@@ -12,6 +12,11 @@
 | `ReadingShell` | 长文阅读三栏网格骨架；web 通过 `rail/discussion/composer` slots 注入评论编排，admin 只传正文与 TOC。未传 `rail` 时自动切到 `no-rail` 网格（正文列 + TOC，无预留 rail 列） |
 | `ArticleSurface` / `ThoughtSurface` / `ThoughtHeader` / `ThoughtBody` | 文章与 Thought 的详情面组成件（标题块、meta 行、溯源组）；`ThoughtHeader`/`ThoughtSurface` 的 `meta` slot 在 meta 行行尾追加调用方内容（web 用于锚定徽标） |
 | `formatDate` | 详情面统一的日期格式 |
+| `RenderI18nProvider` / `useRenderI18n` | 共享阅读面国际化边界；当前支持 `en` / `zh-CN`，消费端必须在应用根部传入当前 locale |
+
+## 国际化契约
+
+`src/i18n/` 是共享渲染文案的唯一来源，覆盖 Markdown 工具、目录/阅读进度、脚注、联系图标、时间段与 Article/Thought 阅读面。Web 从 cookie/请求语言解析 locale，Admin 从本地偏好解析 locale，两端都通过 `RenderI18nProvider` 注入；未提供 Provider 时仅作为防御性回退使用英语。新增用户可见文案必须同时补齐 `en.ts` 与 `zh-CN.ts`，不得由 Web/Admin 在外部覆写或复制。
 
 ## 样式契约
 
@@ -28,7 +33,7 @@
 > 1. `pnpm --filter @manifold/web test && pnpm --filter @manifold/web build`
 > 2. `pnpm --filter @manifold/admin build && pnpm browser-test`
 >
-> 新增类名时，确认 `render.css` 与组件 JSX 同步。本包只负责**内容渲染**（Markdown、正文排版、评论）的样式；两端的应用外壳样式——web 的 `app/site.module.css` 与 admin 的 `src/App.css`——由各端自己维护，它们是应用布局而不是本包样式的平行副本，也不应被本包取代。
+> 新增类名时，确认 `render.css` 与组件 JSX 同步。本包只负责**内容渲染**（Markdown、正文排版、评论）的样式；两端的应用外壳样式——web 的 `app/site.module.css` 与 admin 的 `src/app/App.css`——由各端自己维护，它们是应用布局而不是本包样式的平行副本，也不应被本包取代。
 
 ## 依赖说明
 

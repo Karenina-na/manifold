@@ -1,7 +1,7 @@
 import type { ContentSort } from "@manifold/contracts";
 import { createServerClient } from "../../lib/api";
-import { readSearchPage, readSearchParam, readSearchTags, readSearchText } from "../../lib/search-params";
-import WritingArchive from "./writing-archive";
+import { readSearchPage, readSearchParam, readSearchTags, readSearchText } from "../../features/archive/search-params";
+import WritingArchive from "../../features/archive/writing-archive-view";
 
 export const dynamic = "force-dynamic";
 
