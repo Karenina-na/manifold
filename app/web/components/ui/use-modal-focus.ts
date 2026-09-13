@@ -9,12 +9,17 @@ import { FOCUSABLE_SELECTOR, focusWrapTarget } from "./modal-focus";
 // out into the page behind the scrim, and without the restore the keyboard user
 // is dropped at the top of the document on close.
 //
-// Call this *before* any effect that moves focus into the dialog: the opener has
-// to be captured while it is still the active element.
-export function useModalFocus(active: boolean, containerRef: RefObject<HTMLElement | null>) {
+// Call this *before* any effect that moves focus into the dialog. Callers whose
+// trigger becomes hidden can synchronously capture the active element before
+// opening and supply that ref, since a passive effect may otherwise see body.
+export function useModalFocus(
+  active: boolean,
+  containerRef: RefObject<HTMLElement | null>,
+  returnFocusRef?: RefObject<HTMLElement | null>,
+) {
   useEffect(() => {
     if (!active) return;
-    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const opener = returnFocusRef?.current ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Tab") return;
       const container = containerRef.current;
@@ -33,5 +38,5 @@ export function useModalFocus(active: boolean, containerRef: RefObject<HTMLEleme
       // the browser put it is better than focusing a detached node.
       if (opener?.isConnected) opener.focus();
     };
-  }, [active, containerRef]);
+  }, [active, containerRef, returnFocusRef]);
 }

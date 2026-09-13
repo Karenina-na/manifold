@@ -51,7 +51,13 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
           <SiteNav navigation={site?.navigation} />
           <RouteRefresh />
           <div className="siteContent">{children}</div>
-          <FloatingRepl displayName={site?.title || fallbackSiteTitle} handle="@manifold" focus={t("repl.focus")} />
+          <FloatingRepl
+            displayName={site?.title || fallbackSiteTitle}
+            handle="@manifold"
+            description={site?.description || fallbackSiteDescription}
+            focus={t("repl.focus")}
+            links={site?.social?.map((item) => ({ label: item.label, href: item.href })) ?? []}
+          />
           <SiteFooter footer={site?.footer || fallbackSiteFooter} social={site?.social} />
         </Providers>
       </body>
