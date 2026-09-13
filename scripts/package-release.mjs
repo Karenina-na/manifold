@@ -259,6 +259,10 @@ async function copyCompleteSwcHelpers(targetWebRoot) {
   }
 }
 
+export async function archiveBundle(archivePath, bundleRoot) {
+  await run('zip', ['-qry', archivePath, '.'], { cwd: bundleRoot })
+}
+
 async function buildRelease({ envPath, outputDirectory }) {
   await preflight()
   const resolvedEnvPath = resolve(envPath)
@@ -327,7 +331,7 @@ async function buildRelease({ envPath, outputDirectory }) {
     console.log(`Validated ${validation.nativeModules} Linux x64 native binaries.`)
     await mkdir(releaseDirectory, { recursive: true })
     await rm(archivePath, { force: true })
-    await run('zip', ['-qry', archivePath, bundleName], { cwd: temporaryRoot })
+    await archiveBundle(archivePath, bundleRoot)
     await chmod(archivePath, 0o600)
     console.log(`Release created: ${archivePath}`)
     console.warn('The archive contains production secrets from the supplied .env file; store and transfer it securely.')

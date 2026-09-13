@@ -108,7 +108,7 @@ Core 使用 `caarlos0/env` 读取 `CORE_` 前缀变量；启动时自动从工�
 
 ### 统一发布包
 
-根目录 `pnpm package:release -- --env .env.production` 为 Linux x64 交叉编译纯 Go Core，并与 Web/Admin 产物一起写入 zip。生产配置原样保存为包内 `.env`；若 `CORE_ADMIN_PASSWORD_HASH` 为空，脚本生成随机初始密码、调用 Core 的 bcrypt 工具计算 hash，并以 `0600` 权限原子写回源配置，明文只在当前终端显示一次。打包前仍会拒绝开发默认密钥、开发默认密码 hash、非 `:8080` 地址、非 `./data/manifold.db` 路径、localhost 公开 URL、非法可信代理 CIDR 和缺少 Web/Admin 来源的 CORS 配置。公开 URL 可使用与内部监听端口不同的 HTTP(S) origin；归档不包含 SQLite 文件，首次启动按生产 seed 规则只初始化结构骨架。
+根目录 `pnpm package:release -- --env .env.production` 为 Linux x64 交叉编译纯 Go Core，并与 Web/Admin 产物一起写入 zip。归档内容直接位于 ZIP 根目录，不包含额外的版本目录；生产配置原样保存为包内 `.env`；若 `CORE_ADMIN_PASSWORD_HASH` 为空，脚本生成随机初始密码、调用 Core 的 bcrypt 工具计算 hash，并以 `0600` 权限原子写回源配置，明文只在当前终端显示一次。打包前仍会拒绝开发默认密钥、开发默认密码 hash、非 `:8080` 地址、非 `./data/manifold.db` 路径、localhost 公开 URL、非法可信代理 CIDR 和缺少 Web/Admin 来源的 CORS 配置。公开 URL 可使用与内部监听端口不同的 HTTP(S) origin；归档不包含 SQLite 文件，首次启动按生产 seed 规则只初始化结构骨架。
 
 解压后的 `./manifold start|stop|restart|status` 只管理该归档记录的 supervisor PID。运行器将 `.env`、日志和 PID 状态限制为 `0600`，将 `data/`、`logs/`、`run/` 限制为 `0700`；启动子进程前会清除宿主环境中的 `CORE_*`、`NEXT_PUBLIC_*` 和 `VITE_*`，再注入包内 `.env`，避免服务器 shell 配置覆盖已验证的发布值。Core 日志写入 `logs/core.log`，数据库写入 `data/manifold.db`。正常停止仍走现有 SIGTERM 优雅关闭与审计队列 drain。该发布能力不改变 Core 路由、响应或业务契约。
 

@@ -1,12 +1,15 @@
 import assert from 'node:assert/strict'
+import { execFile } from 'node:child_process'
 import { chmod, mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { promisify } from 'node:util'
 import test from 'node:test'
 
-import { parseArguments, prepareReleaseConfig, pruneNonTargetArtifacts, validateStagedBundle } from './package-release.mjs'
+import { archiveBundle, parseArguments, prepareReleaseConfig, pruneNonTargetArtifacts, validateStagedBundle } from './package-release.mjs'
 
 const generatedHash = '$2a$10$tT6zviyM5ANs0OHmn18g4eqtgsvaprMNl9n4CTkccoZW9N/aTcd8X'
+const execute = promisify(execFile)
 
 function linuxElf(machine = 62) {
   const bytes = Buffer.alloc(64)
@@ -56,6 +59,24 @@ test('parseArguments requires an env file and accepts an output directory', () =
   })
   assert.throws(() => parseArguments([]), /--env is required/)
   assert.throws(() => parseArguments(['--unknown']), /Unknown argument/)
+})
+
+test('archives release contents without a wrapper directory', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'manifold-archive-'))
+  const bundleRoot = join(root, 'manifold-555cc0bdd8ff-linux-x64-glibc')
+  const archivePath = join(root, 'release.zip')
+  await mkdir(join(bundleRoot, 'bin'), { recursive: true })
+  await writeFile(join(bundleRoot, '.env'), 'CORE_ENV=production\n')
+  await writeFile(join(bundleRoot, 'bin', 'manifold-core'), 'binary')
+  try {
+    await archiveBundle(archivePath, bundleRoot)
+    const { stdout } = await execute('zip', ['-sf', archivePath])
+    const entries = stdout.split(/\r?\n/).map((line) => line.trim())
+    assert.equal(entries.some((entry) => entry === './.env' || entry === '.env'), true)
+    assert.equal(entries.some((entry) => entry.startsWith('manifold-555cc0bdd8ff-linux-x64-glibc/')), false)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
 })
 
 test('prepareReleaseConfig generates an initial admin password once and persists its hash', async () => {

@@ -156,7 +156,7 @@ pnpm package:release -- --env .env.production
 
 产物位于 `dist/releases/manifold-<git-sha>-linux-x64-glibc.zip`。归档包含 Linux Core 二进制、Next.js standalone、Admin 静态文件、生产 `.env` 和运行管理器，不包含数据库、日志或 PID；打包校验会拒绝任何 `.db`、`.db3`、`.sqlite`、`.sqlite3` 及其 `-wal`/`-shm` 侧车文件。由于 `.env` 含生产密钥，归档必须通过受保护通道传输并限制访问。
 
-上传并解压后，在归档根目录运行：
+上传并解压后，文件会直接落在目标目录，不会额外套一层版本目录；在该目录运行：
 
 ```bash
 ./manifold start
