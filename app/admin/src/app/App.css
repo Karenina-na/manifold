@@ -70,7 +70,7 @@ button { cursor: pointer; }
 .button-ghost:hover { background: var(--surface); }
 .form-error, .callout.error { color: var(--danger); font-size: 13px; line-height: 1.5; }
 .success-text { color: var(--success); font-size: 13px; }
-.error-shell { min-height: 100svh; display: grid; place-items: center; padding: 24px; background: var(--paper); }.error-panel { width: min(100%, 620px); padding: 42px; border: 1px solid var(--line); background: var(--surface); box-shadow: var(--shadow); }.error-panel h1 { max-width: 520px; margin: 0 0 16px; font-family: Georgia, serif; font-size: clamp(36px, 7vw, 62px); font-weight: 400; line-height: 1; }.error-copy { max-width: 460px; margin: 0 0 28px; color: var(--muted); line-height: 1.7; }.error-panel small { display: block; margin-top: 28px; color: var(--muted); font-family: ui-monospace, monospace; font-size: 11px; overflow-wrap: anywhere; }
+.error-shell { min-height: 100svh; display: grid; place-items: center; padding: 24px; background: var(--paper); }.error-panel { width: min(100%, 620px); padding: 42px; border: 1px solid var(--line); background: var(--surface); box-shadow: var(--shadow); }.error-panel h1 { max-width: 520px; margin: 0 0 16px; font-family: Georgia, "Noto Serif CJK SC", "Source Han Serif SC", "PingFang SC", serif; font-size: clamp(36px, 7vw, 62px); font-weight: 400; line-height: 1.2; }.error-copy { max-width: 460px; margin: 0 0 28px; color: var(--muted); line-height: 1.7; }.error-panel small { display: block; margin-top: 28px; color: var(--muted); font-family: ui-monospace, monospace; font-size: 11px; overflow-wrap: anywhere; }
 
 .admin-shell { min-height: 100svh; display: grid; grid-template-columns: 236px minmax(0, 1fr); background: var(--paper); }
 .sidebar { display: flex; flex-direction: column; min-height: 100svh; padding: 25px 14px; border-right: 1px solid var(--line); background: #eeece5; }
@@ -218,7 +218,7 @@ button { cursor: pointer; }
 .status-dot.published { background: var(--success); }
 .status-dot.draft { background: #c58c36; }
 .status-dot.deleted { background: var(--danger); }
-.mini-button { display: inline-grid; place-items: center; width: 30px; height: 30px; color: var(--muted); background: transparent; border-radius: 2px; }
+.mini-button { display: inline-grid; place-items: center; min-width: 30px; width: auto; height: 30px; padding: 0 4px; color: var(--muted); background: transparent; border-radius: 2px; line-height: 1.2; white-space: nowrap; }
 .mini-button:hover { color: var(--ink); background: var(--accent-soft); }
 .mini-button.danger { color: var(--danger); }
 .editor-panel { position: sticky; top: 18px; }
@@ -369,6 +369,7 @@ button { cursor: pointer; }
 .list-row-top.series-row { grid-template-columns: 26px minmax(0, 1fr) auto; }
 .list-row-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; min-width: 0; }
 .list-row-fields .field-full { grid-column: 1 / -1; }
+.list-row-fields .period-editor { grid-column: 1 / -1; }
 .list-row-actions { display: flex; gap: 2px; }
 .list-index { padding-top: 8px; color: var(--muted); font-family: ui-monospace, monospace; font-size: 11px; }
 .list-row-top.link-row { grid-template-columns: 26px minmax(0, 1fr) auto; }
@@ -409,7 +410,7 @@ button { cursor: pointer; }
 .period-editor { display: grid; gap: 4px; min-width: 0; }
 .period-inputs { display: flex; align-items: center; gap: 8px; }
 .period-inputs .mantine-MonthPickerInput-root { flex: 1; min-width: 0; }
-.period-editor .mantine-MonthPickerInput-input { min-height: 34px; border: 1px solid var(--line); border-radius: 2px; background: #fff; font-size: 13px; }
+.period-editor .mantine-MonthPickerInput-input { height: 34px; min-height: 34px; padding-top: 0; padding-bottom: 0; border: 1px solid var(--line); border-radius: 2px; background: #fff; font-size: 13px; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .period-editor .mantine-MonthPickerInput-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .period-sep { color: var(--muted); flex: 0 0 auto; }
 .period-clear { justify-self: start; }

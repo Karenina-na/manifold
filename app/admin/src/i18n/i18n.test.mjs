@@ -117,6 +117,53 @@ test('English and Simplified Chinese resources have identical leaf keys', () => 
   assert.deepEqual(leafKeys(en).sort(), leafKeys(zhCN).sort())
 })
 
+test('decorative Admin kickers stay in English across locales', () => {
+  const kickerKeys = [
+    ['login', 'kicker'],
+    ['errorBoundary', 'kicker'],
+    ['comments', 'moderationKicker'],
+    ['security', 'kicker'],
+    ['dashboard', 'kicker'],
+    ['profile', 'pageKicker'],
+    ['settings', 'kicker'],
+    ['writings', 'kicker'],
+    ['thoughts', 'kicker'],
+    ['media', 'kicker'],
+    ['dashboard', 'ranking'],
+    ['dashboard', 'community'],
+    ['dashboard', 'audit'],
+    ['dashboard', 'trend'],
+    ['dashboard', 'system'],
+    ['profile', 'preview'],
+    ['profile', 'identity'],
+    ['profile', 'links'],
+    ['profile', 'interests'],
+    ['profile', 'cv'],
+    ['profile', 'series'],
+    ['profile', 'contact'],
+    ['settings', 'identity'],
+    ['settings', 'navigation'],
+    ['settings', 'comments'],
+    ['settings', 'homepage'],
+    ['thoughts', 'provenance'],
+    ['media', 'usedBy'],
+  ]
+
+  for (const [section, key] of kickerKeys) {
+    assert.equal(zhCN[section][key], en[section][key], `${section}.${key} should stay stable`)
+  }
+})
+
+test('Profile does not expose redundant resume or legacy-period hints', () => {
+  const source = fs.readFileSync(path.join(sourceRoot, 'workspaces', 'ProfileWorkspace.tsx'), 'utf8')
+
+  assert.doesNotMatch(source, /resumeDescription|legacyPeriod/)
+  assert.equal(leafKeys(en).includes('profile.resumeDescription'), false)
+  assert.equal(leafKeys(en).includes('profile.legacyPeriod'), false)
+  assert.equal(leafKeys(zhCN).includes('profile.resumeDescription'), false)
+  assert.equal(leafKeys(zhCN).includes('profile.legacyPeriod'), false)
+})
+
 test('every Admin page keeps user-facing copy behind the translation boundary', () => {
   const violations = uiSourceFiles().flatMap((filename) => visibleCopyViolations(sourceFile(filename)))
 

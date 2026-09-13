@@ -125,7 +125,7 @@ function MediaListPage({ client }: { client: ReturnType<typeof createAdminClient
   }
 
   return <section className="workspace">
-    <div className="page-heading"><div><p className="kicker">{t('common.media')}</p><h1>{t('media.title')}</h1><p className="subheading">{t('media.copy')}</p></div></div>
+    <div className="page-heading"><div><p className="kicker">{t('media.kicker')}</p><h1>{t('media.title')}</h1><p className="subheading">{t('media.copy')}</p></div></div>
     <div className="content-toolbar">
       <TextInput
         leftSection={<Search size={14} />}
@@ -231,7 +231,7 @@ function MediaDetailPage({ client, mediaId }: { client: ReturnType<typeof create
     </div>
     <div className="page-heading">
       <div>
-        <p className="kicker">{t('common.media')}</p>
+        <p className="kicker">{t('media.kicker')}</p>
         <h1>{media.filename}</h1>
         <p className="subheading">{t('media.uploadedAt', { date: formatDate(media.createdAt, locale), size: formatSize(media.size, locale) })}</p>
       </div>

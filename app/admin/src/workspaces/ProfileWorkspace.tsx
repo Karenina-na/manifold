@@ -233,7 +233,6 @@ function PeriodEditor({ form, path }: { form: UseFormReturn<ProfileForm>; path: 
         <span className="period-static-text">{raw || t('profile.period')}</span>
         <button type="button" className="mini-button" aria-label={t('profile.editPeriod')} onClick={() => { setManual(true); form.setValue(path, '', { shouldDirty: true }) }}>{t('profile.edit')}</button>
       </div>
-      <p className="icon-hint">{t('profile.legacyPeriod')}</p>
     </div>
   }
   return <div className="period-editor" data-period-editor>
@@ -351,7 +350,7 @@ function ResumeField({ form, client }: { form: UseFormReturn<ProfileForm>; clien
     uploadTimer.current = window.setTimeout(() => setUploaded(false), 2400)
   }
   return <div>
-    <TextInput label={t('profile.resumeUrl')} description={t('profile.resumeDescription')} value={value} onChange={(event) => form.setValue('resumeUrl', event.currentTarget.value, { shouldDirty: true })} error={form.formState.errors.resumeUrl?.message ?? uploadError ?? undefined} />
+    <TextInput label={t('profile.resumeUrl')} value={value} onChange={(event) => form.setValue('resumeUrl', event.currentTarget.value, { shouldDirty: true })} error={form.formState.errors.resumeUrl?.message ?? uploadError ?? undefined} />
     <div className="upload-actions">
       <Button variant="default" size="compact-sm" loading={uploading} disabled={uploading} leftSection={<UploadCloud size={14} />} onClick={() => inputRef.current?.click()}>{t('common.upload')}</Button>
       {value && <Button variant="subtle" size="compact-sm" aria-label={t('profile.previewResume')} onClick={() => window.open(value, '_blank', 'noopener')} leftSection={<Eye size={14} />}>{t('common.preview')}</Button>}
