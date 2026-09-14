@@ -10,7 +10,7 @@ Manifold 是一个 API-first 的个人 digital garden：同一套内容和个人
 - 匿名评论提交与 Admin 评论管理、`LIKE` 访客反应。
 - Admin 登录、可撤销会话（logout/logout-all）、在线改密码、内容发布生命周期、评论管理、Profile、Site 和首页 composition 管理。
 - Go Core、SQLite、JWT + Casbin 鉴权（DB 会话校验、可撤销）、请求/追踪 ID、审计事件和 TTL 缓存。
-- **锚定链**：Core 内嵌单写者 PoW 锚定链——每次业务数据变更自动锚定为可验证承诺（只存哈希、站点密钥签名），公开访客也可提交任意 payload 求锚定；sim/proof 双挖矿模式 + 缓冲成块，全链重放验证。`/chain` 提供链浏览器与验证页，详情页展示锚定徽标。契约见 [`docs/chain.md`](docs/chain.md)。
+- **锚定链**：Core 内嵌单写者 PoW 锚定链——每次业务数据变更自动锚定为可验证承诺（只存哈希、站点密钥签名），公开访客也可提交任意 payload 求锚定；sim/proof 双挖矿模式 + 缓冲成块，全链重放验证。`/chain` 提供轻量入口，`/chain/explorer` 浏览区块与证书，`/chain/tools` 提供验证与公开提交，详情页展示锚定徽标。契约见 [`docs/chain.md`](docs/chain.md)。
 
 ## 架构
 
@@ -186,7 +186,9 @@ OpenResty 使用独立域名时，将 Web、Admin、Core 分别代理到 `http:/
 - `/writing/:slug`：Markdown 详情、标签、评论和反应。
 - `/thoughts`：Thoughts 时间线归档。
 - `/thoughts/:slug`：Thought 详情、评论和反应。
-- `/chain`：锚定链浏览器与验证页——浏览区块/证书、按 payload/哈希/slug 三种模式查证、提交公开锚定、查看站点公钥。
+- `/chain`：锚定链概览与入口。
+- `/chain/explorer`：按页浏览区块/证书，筛选证书并查看详情。
+- `/chain/tools`：按 payload/哈希/slug/comment 查证，提交公开锚定并查看 pending 记录。
 
 正文使用 `react-markdown` + `remark-gfm` + `rehype-sanitize`；评论无需注册，反应通过浏览器持久化的 `X-Visitor-ID` 区分访客。
 

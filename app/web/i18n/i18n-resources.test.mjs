@@ -73,7 +73,9 @@ test("fixed product and protocol labels render directly at their call sites", ()
   const writing = fs.readFileSync(new URL("../features/archive/writing-archive-view.tsx", import.meta.url), "utf8");
   const thoughts = fs.readFileSync(new URL("../features/archive/thought-archive-view.tsx", import.meta.url), "utf8");
   const chain = fs.readFileSync(new URL("../app/chain/page.tsx", import.meta.url), "utf8");
+  const overview = fs.readFileSync(new URL("../features/chain/chain-overview.tsx", import.meta.url), "utf8");
   const explorer = fs.readFileSync(new URL("../features/chain/chain-explorer.tsx", import.meta.url), "utf8");
+  const tools = fs.readFileSync(new URL("../features/chain/chain-tools.tsx", import.meta.url), "utf8");
   const comments = fs.readFileSync(new URL("../features/comments/comment-thread.tsx", import.meta.url), "utf8");
   const footer = fs.readFileSync(new URL("../components/layout/site-footer.tsx", import.meta.url), "utf8");
 
@@ -82,11 +84,14 @@ test("fixed product and protocol labels render directly at their call sites", ()
   assert.match(chain, /> Mining<\/span>/);
   assert.match(chain, />◇ Anchoring chain<\/span>/);
   assert.match(comments, /className=\{styles\.eyebrow\}>Discussion<\/span>/);
-  for (const label of ["◇ Spine", "✦ Verify", "↗ Anchor", "◈ Ledger", "⌁ Proof path"]) {
+  for (const label of ["◈ Blocks", "◇ Certificates"]) {
     assert.match(explorer, new RegExp(`className=\\{styles\\.eyebrow\\}>${label}<`));
   }
+  for (const label of ["✦ Verify", "↗ Anchor", "⌁ Proof path"]) {
+    assert.match(tools, new RegExp(`className=\\{styles\\.eyebrow\\}>${label}<`));
+  }
   for (const label of ["Height", "Commitments", "Proof", "Site key"]) {
-    assert.match(explorer, new RegExp(`label="${label}"`));
+    assert.match(overview, new RegExp(`label="${label}"`));
   }
   assert.match(footer, />Powered by <strong>Manifold<\/strong>/);
   assert.match(footer, /"Counting readers"/);

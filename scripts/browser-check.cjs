@@ -200,9 +200,20 @@ async function main() {
       await web.locator(section).getByText(label, { exact: true }).waitFor({ state: 'attached', timeout: 5000 });
     }
     await web.goto(`${webUrl}/chain`, { waitUntil: 'networkidle' });
-    for (const label of ['◇ Anchoring chain', '◇ Spine', '✦ Verify', '↗ Anchor', '◈ Ledger', '⌁ Proof path']) {
+    for (const label of ['◇ Anchoring chain', '◇ Chain map', '◈ Blocks', '◇ Certificates']) {
       await web.getByText(label, { exact: true }).waitFor({ state: 'attached', timeout: 5000 });
     }
+    await web.locator('a[href="/chain/explorer"]').first().click();
+    await web.waitForURL(/\/chain\/explorer/);
+    await web.locator('[role="tab"]').first().waitFor({ state: 'visible', timeout: 5000 });
+    await web.locator('[role="tab"]').nth(1).click();
+    await web.getByText('◇ Certificates', { exact: true }).waitFor({ state: 'attached', timeout: 5000 });
+    await web.goto(`${webUrl}/chain/tools`, { waitUntil: 'networkidle' });
+    for (const label of ['✦ Verify', '⌁ Proof path']) {
+      await web.getByText(label, { exact: true }).waitFor({ state: 'attached', timeout: 5000 });
+    }
+    await web.locator('[role="tab"]').nth(1).click();
+    await web.getByText('↗ Anchor', { exact: true }).waitFor({ state: 'attached', timeout: 5000 });
     await web.getByRole('button', { name: '切换语言' }).click();
     await web.getByRole('menuitemradio', { name: 'English' }).click();
     await web.goto(webUrl, { waitUntil: 'networkidle' });

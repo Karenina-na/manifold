@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import { createServerClient } from "../../../lib/api";
+import { headers } from "next/headers";
+import { Suspense } from "react";
 import { getServerI18n } from "../../../i18n/i18n-server";
+import { BackLink } from "../../../features/content/back-link";
 import { ChainTools } from "../../../features/chain/chain-tools";
 import { Reveal } from "../../../components/ui/reveal";
 import styles from "../../site.module.css";
@@ -14,23 +15,21 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function ChainToolsPage() {
-  const client = createServerClient();
-  const [info, blocks, { t }] = await Promise.all([
-    client.chain().catch(() => null),
-    client.chainBlocks({ pageSize: 20 }).catch(() => null),
-    getServerI18n(),
-  ]);
+  const [{ t }, requestHeaders] = await Promise.all([getServerI18n(), headers()]);
+  const referrer = requestHeaders.get("referer");
+  const host = requestHeaders.get("host");
+  const canGoBack = !!referrer && !!host && (() => { try { return new URL(referrer).host === host; } catch { return false; } })();
   return (
     <main className={styles.page} data-route="chain">
       <div className={styles.chainShell}>
         <Reveal className={styles.chainReveal}>
-          <div className={styles.chainBack}><Link href="/chain">← {t("chain.title")}</Link></div>
+          <div className={styles.chainBack}><BackLink href="/chain" label={t("chain.backToChain")} canGoBack={canGoBack} /></div>
           <header className={styles.chainHero}>
             <div><span className={styles.eyebrow}>✦ Tools</span><h1>{t("chain.tools")}</h1></div>
             <div className={styles.chainHeroStatus}><span className={styles.chainPulse}><span className={styles.chainPulseDot} aria-hidden="true" /> Mining</span><span className={styles.chainHeroTip}>{t("chain.permissionless")}</span></div>
           </header>
         </Reveal>
-        <ChainTools info={info} initialBlocks={blocks ? { items: blocks.data, page: blocks.pagination.page, totalPages: blocks.pagination.totalPages } : null} />
+        <Suspense fallback={null}><ChainTools /></Suspense>
       </div>
     </main>
   );

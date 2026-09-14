@@ -2,6 +2,7 @@ import type { AnchorSource } from "@manifold/contracts";
 
 export type ExplorerTab = "blocks" | "anchors";
 export type ToolsTab = "verify" | "submit";
+export type VerifyMode = "payload" | "hash" | "content" | "comment";
 
 export type ExplorerState = {
   tab: ExplorerTab;
@@ -54,8 +55,22 @@ export function readToolsTab(params: URLSearchParams): ToolsTab {
   return params.get("tab") === "submit" ? "submit" : "verify";
 }
 
-export function toolsHref(tab: ToolsTab = "verify"): string {
-  return tab === "submit" ? "/chain/tools?tab=submit" : "/chain/tools";
+export function readToolsState(params: URLSearchParams): { tab: ToolsTab; mode: VerifyMode; value: string } {
+  const rawMode = params.get("mode");
+  const mode: VerifyMode = rawMode === "hash" || rawMode === "content" || rawMode === "comment" ? rawMode : "payload";
+  return { tab: readToolsTab(params), mode, value: mode === "payload" ? "" : readText(params.get("value")) ?? "" };
+}
+
+export function toolsHref(tab: ToolsTab = "verify", options?: { mode?: VerifyMode; value?: string }): string {
+  const params = new URLSearchParams();
+  if (tab === "submit") {
+    params.set("tab", "submit");
+  } else if (options?.mode && options.mode !== "payload") {
+    params.set("mode", options.mode);
+    if (options.value?.trim()) params.set("value", options.value.trim());
+  }
+  const query = params.toString();
+  return query ? `/chain/tools?${query}` : "/chain/tools";
 }
 
 function readPage(value: string | null): number {

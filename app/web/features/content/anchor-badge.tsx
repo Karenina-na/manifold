@@ -5,6 +5,7 @@ import { ShieldCheck } from "lucide-react";
 import type { ContentDetail } from "@manifold/contracts";
 import styles from "../../app/site.module.css";
 import { useLocale } from "../../components/layout/i18n-provider";
+import { explorerHref, toolsHref } from "../chain/chain-url";
 
 type AnchorBadgeProps = { latestAnchor: ContentDetail["latestAnchor"] };
 
@@ -17,10 +18,7 @@ export function AnchorBadge({ latestAnchor }: AnchorBadgeProps) {
   if (!latestAnchor) return null;
   const anchored = latestAnchor.status === "anchored";
   const blockLabel = anchored && latestAnchor.blockId ? `${t("chain.block")} #${latestAnchor.blockId.replace("block_", "")}` : t("detail.sealing");
-  // Sealed anchors deep-link to their block in the chain explorer's Sealed
-  // sequence (?block=), so a click lands on the exact certificate that this
-  // content is committed to; unsealed ones just open the explorer.
-  const href = anchored && latestAnchor.blockId ? `/chain?block=${latestAnchor.blockId}` : "/chain";
+  const href = anchored && latestAnchor.blockId ? explorerHref({ tab: "blocks", blockId: latestAnchor.blockId }) : toolsHref("submit");
   return (
     <Link href={href} className={styles.anchorBadge} data-anchored={anchored} title={t("detail.fingerprint", { hash: latestAnchor.subjectHash })}>
       <ShieldCheck size={13} aria-hidden="true" />

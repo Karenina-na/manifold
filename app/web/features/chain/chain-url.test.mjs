@@ -4,6 +4,7 @@ import {
   explorerHref,
   legacyChainHref,
   readExplorerState,
+  readToolsState,
   readToolsTab,
   toolsHref,
 } from "./chain-url.ts";
@@ -46,6 +47,8 @@ test("maps legacy chain deep links into the explorer", () => {
 test("keeps tools tab state explicit and defaults to verification", () => {
   assert.equal(readToolsTab(new URLSearchParams("tab=submit")), "submit");
   assert.equal(readToolsTab(new URLSearchParams("tab=unknown")), "verify");
+  assert.deepEqual(readToolsState(new URLSearchParams("mode=comment&value=comment_1")), { tab: "verify", mode: "comment", value: "comment_1" });
   assert.equal(toolsHref(), "/chain/tools");
   assert.equal(toolsHref("submit"), "/chain/tools?tab=submit");
+  assert.equal(toolsHref("verify", { mode: "hash", value: "abc123" }), "/chain/tools?mode=hash&value=abc123");
 });

@@ -314,12 +314,12 @@ export interface AnchorQuery { source?: AnchorSource; ref?: string; page?: numbe
 
 ## 12. Web 展示
 
-1. **内容详情页徽标**（Writing 与 Thought 详情页）：由 `ContentDetail.latestAnchor` 驱动，展示内容指纹（`subjectHash` 截断）、`pending`（挖矿中）/`anchored`（含块高）状态；点击跳转 `/chain` 的对应证书页。
-2. **`/chain` 路由（链浏览器 + 验证页）**：
-   - 概览：高度、证书总数、pending 数、当前 proofMode/difficulty、站点公钥、tip 哈希。
-   - 区块列表/区块详情：索引、时间、prevHash/hash、certRoot、nonce、模式、难度、内含证书（source/label/metadata 以 key-value 形式展示）。
-   - 验证表单：贴原文（POST verify）、按哈希查证、按内容 slug 查证。
-   - Web 不做任何哈希/规范化——一律调 Core。
+1. **内容详情页徽标**（Writing 与 Thought 详情页）：由 `ContentDetail.latestAnchor` 驱动，展示内容指纹（`subjectHash` 截断）、`pending`（挖矿中）/`anchored`（含块高）状态；已封存证书深链 `/chain/explorer?tab=blocks&block=<blockId>`，pending 状态进入 `/chain/tools?tab=submit`。
+2. **`/chain` 路由组**：
+   - `/chain` 只负责高度、证书总数、pending 数、当前 proofMode/difficulty、站点公钥、genesis/tip 和最近活动，并提供 Explorer/Tools 入口。
+   - `/chain/explorer` 负责区块与证书分页浏览；证书支持 source/ref 筛选，区块和证书详情使用查询参数保持可寻址，并可在详情间继续跳转。
+   - `/chain/tools` 提供贴原文（POST verify）、按哈希、内容 slug、评论 ID 查证，以及公开提交和 pending 记录。
+   - Web 不做任何哈希/规范化——一律调 Core。旧 `/chain?block=<id>` 与 `/chain?page=N` 由 Web 服务端兼容导向 Explorer。
 3. Admin 本轮不新增 UI。
 
 ## 13. 错误处理

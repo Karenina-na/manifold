@@ -850,6 +850,9 @@ html { scroll-behavior: smooth; }
 .chainPanelHead h2 { margin: 6px 0 0; font-family: var(--app-font-serif); font-size: 25px; font-weight: 400; letter-spacing: -.01em; }
 .chainPanelHint { padding-bottom: 4px; color: var(--color-muted); font: 10px var(--font-mono); letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; }
 .chainOverviewIntro { max-width: 620px; margin: -2px 0 2px; color: var(--color-muted); font-size: 13px; line-height: 1.65; }
+.chainBack { padding-top: 24px; }
+.chainBack a { display: inline-flex; align-items: center; gap: 6px; color: var(--color-muted); font: 10px var(--font-mono); letter-spacing: .06em; text-decoration: none; text-transform: uppercase; }
+.chainBack a:hover, .chainBack a:focus-visible { color: var(--color-accent); }
 .chainEntryGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .chainEntry { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: 11px; min-height: 72px; padding: 12px 13px; border: 1px solid color-mix(in srgb, var(--color-line) 70%, transparent); border-radius: 8px; color: inherit; text-decoration: none; transition: border-color var(--motion-base, 320ms) var(--motion-ease, ease), background var(--motion-base, 320ms) var(--motion-ease, ease), transform var(--motion-base, 320ms) var(--motion-ease, ease); }
 .chainEntry:hover, .chainEntry:focus-visible { border-color: color-mix(in srgb, var(--color-accent) 48%, var(--color-line)); background: color-mix(in srgb, var(--color-accent-soft) 48%, transparent); transform: translateY(-2px); }
@@ -878,6 +881,54 @@ html { scroll-behavior: smooth; }
 .chainRecentMain span, .chainRecentList time { overflow: hidden; color: var(--color-muted); font: 9px var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
 .chainRecentList time { display: inline-flex; align-items: center; gap: 4px; }
 .chainRecentList a > svg { color: var(--color-muted); }
+
+.chainWorkspaceTabs { display: inline-flex; justify-self: start; gap: 3px; padding: 3px; border: 1px solid var(--color-line); border-radius: 999px; }
+.chainWorkspaceTab { display: inline-flex; align-items: center; gap: 6px; padding: 7px 13px; border: 0; border-radius: 999px; background: transparent; color: var(--color-muted); font: 10px var(--font-mono); letter-spacing: .07em; text-transform: uppercase; cursor: pointer; transition: color var(--motion-base, 320ms) var(--motion-ease, ease), background var(--motion-base, 320ms) var(--motion-ease, ease); }
+.chainWorkspaceTab:hover, .chainWorkspaceTab:focus-visible { color: var(--color-ink); outline: none; }
+.chainWorkspaceTabActive { background: color-mix(in srgb, var(--color-accent) 14%, transparent); color: var(--color-accent); }
+.chainExplorerGrid { display: grid; grid-template-columns: minmax(0, 1.08fr) minmax(280px, .92fr); gap: 18px; align-items: start; }
+.chainExplorerGrid[data-detail-open="false"] { grid-template-columns: minmax(0, 1fr); }
+.chainExplorerList { min-width: 0; }
+.chainExplorerDetail { display: grid; align-self: start; gap: 14px; min-width: 0; padding: 15px 16px; border: 1px solid color-mix(in srgb, var(--color-accent) 30%, var(--color-line)); border-radius: 9px; background: color-mix(in srgb, var(--surface-paper) 91%, var(--color-accent-soft)); position: sticky; top: 24px; }
+.chainExplorerEmpty { display: grid; place-items: center; align-content: center; gap: 8px; min-height: 190px; padding: 24px; border: 1px dashed color-mix(in srgb, var(--color-line) 78%, transparent); border-radius: 8px; color: var(--color-muted); text-align: center; }
+.chainExplorerEmpty p { max-width: 240px; margin: 0; font: 11px var(--font-mono); line-height: 1.6; }
+.chainDetailBack { display: inline-flex; align-items: center; justify-self: start; gap: 6px; padding: 0; border: 0; background: transparent; color: var(--color-muted); font: 10px var(--font-mono); letter-spacing: .06em; text-transform: uppercase; cursor: pointer; }
+.chainDetailBack:hover, .chainDetailBack:focus-visible { color: var(--color-accent); outline: none; }
+.chainDetailTitle { display: grid; gap: 5px; min-width: 0; }
+.chainDetailTitle h2 { margin: 0; overflow-wrap: anywhere; color: var(--color-ink); font-family: var(--app-font-serif); font-size: 24px; font-weight: 400; line-height: 1.15; }
+.chainDetailTitle > span:last-child { color: var(--color-muted); font: 10px var(--font-mono); }
+.chainDetailStatus { display: inline-flex; align-items: center; justify-self: start; gap: 6px; color: var(--color-accent); font: 10px var(--font-mono); letter-spacing: .08em; text-transform: uppercase; }
+.chainDetailStatus[data-status="anchored"] { color: var(--color-success); }
+.chainDetailFields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; padding: 12px 0; border-top: 1px dashed color-mix(in srgb, var(--color-line) 78%, transparent); border-bottom: 1px dashed color-mix(in srgb, var(--color-line) 78%, transparent); }
+.chainDetailSectionHead { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.chainDetailSectionHead > span:last-child { color: var(--color-muted); font: 10px var(--font-mono); }
+.chainExplorerCert { min-width: 0; }
+.chainExplorerCertButton { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto auto; align-items: center; gap: 9px; width: 100%; padding: 9px 10px; border: 1px solid color-mix(in srgb, var(--color-line) 60%, transparent); border-radius: 7px; background: color-mix(in srgb, var(--surface-paper) 90%, transparent); color: inherit; text-align: left; cursor: pointer; }
+.chainExplorerCertButton:hover, .chainExplorerCertButton:focus-visible { border-color: color-mix(in srgb, var(--color-accent) 48%, var(--color-line)); outline: none; }
+.chainAnchorFilters { display: grid; grid-template-columns: minmax(120px, .45fr) minmax(180px, 1fr) auto; align-items: end; gap: 10px; margin-bottom: 12px; }
+.chainAnchorFilters label { display: grid; gap: 5px; min-width: 0; color: var(--color-muted); font: 9px var(--font-mono); letter-spacing: .07em; text-transform: uppercase; }
+.chainAnchorFilters select, .chainAnchorFilters input { min-width: 0; padding: 9px 10px; border: 1px solid var(--color-line); border-radius: 7px; background: color-mix(in srgb, var(--surface-paper) 94%, var(--color-accent-soft)); color: var(--color-ink); font: 11px var(--font-mono); }
+.chainAnchorFilters select:focus-visible, .chainAnchorFilters input:focus-visible { outline: none; border-color: var(--color-accent); }
+.chainFilterButton { min-height: 34px; padding: 8px 13px; border: 1px solid var(--color-accent); border-radius: 999px; background: transparent; color: var(--color-accent); font: 10px var(--font-mono); letter-spacing: .07em; text-transform: uppercase; cursor: pointer; }
+.chainFilterButton:hover, .chainFilterButton:focus-visible { background: var(--color-accent-soft); outline: none; }
+.chainAnchorList { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.chainAnchorListRow { display: grid; grid-template-columns: auto minmax(0, 1fr) auto minmax(116px, auto) auto; align-items: center; gap: 9px; width: 100%; padding: 10px 8px; border: 0; border-top: 1px solid color-mix(in srgb, var(--color-line) 60%, transparent); background: transparent; color: inherit; text-align: left; cursor: pointer; font: 10px var(--font-mono); }
+.chainAnchorList li:last-child .chainAnchorListRow { border-bottom: 1px solid color-mix(in srgb, var(--color-line) 60%, transparent); }
+.chainAnchorListRow:hover, .chainAnchorListRow:focus-visible, .chainAnchorListRow[data-selected="true"] { background: color-mix(in srgb, var(--color-accent-soft) 46%, transparent); outline: none; }
+.chainAnchorListRow time { overflow: hidden; color: var(--color-muted); font: 9px var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
+.chainInlineLink { display: inline-flex; align-items: center; gap: 5px; padding: 0; border: 0; background: transparent; color: var(--color-accent); font: inherit; cursor: pointer; }
+.chainInlineLink:hover, .chainInlineLink:focus-visible { text-decoration: underline; outline: none; }
+.chainTargetLink { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; color: var(--color-accent); font: 11px var(--font-mono); overflow-wrap: anywhere; text-decoration: none; }
+.chainTargetLink:hover, .chainTargetLink:focus-visible { text-decoration: underline; }
+.chainDetailActions { display: flex; flex-wrap: wrap; gap: 8px; }
+.chainButtonSecondary { display: inline-flex; align-items: center; gap: 7px; padding: 8px 12px; border: 1px solid color-mix(in srgb, var(--color-line) 78%, transparent); border-radius: 999px; color: var(--color-ink); font: 10px var(--font-mono); letter-spacing: .06em; text-decoration: none; text-transform: uppercase; }
+.chainButtonSecondary:hover, .chainButtonSecondary:focus-visible { border-color: var(--color-accent); color: var(--color-accent); outline: none; }
+.chainMetadataDisclosure { border-top: 1px dashed color-mix(in srgb, var(--color-line) 78%, transparent); color: var(--color-muted); font: 10px var(--font-mono); }
+.chainMetadataDisclosure summary { padding-top: 11px; cursor: pointer; }
+.chainMetadataDisclosure pre { max-height: 220px; margin: 10px 0 0; overflow: auto; color: var(--color-ink); font: 9px/1.55 var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+.chainToolIntro { display: grid; gap: 7px; }
+.chainToolIntro p { max-width: 640px; margin: 0; color: var(--color-muted); font-size: 13px; line-height: 1.65; }
+.chainSubmitTool { display: grid; gap: 12px; max-width: 720px; }
 
 .chainStats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .chainStat { display: grid; gap: 5px; padding: 2px 18px 2px 0; border-right: 1px solid color-mix(in srgb, var(--color-line) 66%, transparent); }
@@ -1103,6 +1154,19 @@ html { scroll-behavior: smooth; }
   .chainStat:nth-child(2n) { border-right: 0; }
   .chainPanel, .chainSection { padding: 16px 15px; }
   .chainPanelHead { align-items: flex-start; flex-direction: column; gap: 8px; }
+  .chainExplorerGrid { grid-template-columns: 1fr; }
+  .chainExplorerGrid[data-detail-open="false"] { grid-template-columns: 1fr; }
+  .chainExplorerDetail { position: static; }
+  .chainDetailFields { grid-template-columns: 1fr; }
+  .chainAnchorFilters { grid-template-columns: 1fr; align-items: stretch; }
+  .chainFilterButton { justify-self: start; }
+  .chainAnchorListRow { grid-template-columns: auto minmax(0, 1fr) auto; }
+  .chainAnchorListRow time { grid-column: 2; grid-row: 2; }
+  .chainAnchorListRow > svg { grid-column: 3; grid-row: 2; justify-self: end; }
+  .chainExplorerCertButton { grid-template-columns: auto minmax(0, 1fr) auto; }
+  .chainExplorerCertButton > .chainCertStatus { grid-column: 3; grid-row: 1; }
+  .chainExplorerCertButton > .chainCertSigned { grid-column: 2; grid-row: 2; }
+  .chainExplorerCertButton > svg { grid-column: 3; grid-row: 2; justify-self: end; }
   .chainPrimer { grid-template-columns: 1fr; }
   .chainEntryGrid, .chainRecentGrid { grid-template-columns: 1fr; }
   .chainSpineDetail { grid-template-columns: 1fr; }

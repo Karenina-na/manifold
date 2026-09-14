@@ -45,7 +45,7 @@ export async function ChainOverview({ info, blocks, anchors }: ChainOverviewProp
           </div>
           <p className={styles.chainOverviewIntro}>{t("chain.overviewIntro")}</p>
           <div className={styles.chainEntryGrid}>
-            <Link className={styles.chainEntry} href={explorerHref({ tab: "blocks" })}>
+            <Link className={styles.chainEntry} href={explorerHref()}>
               <span className={styles.chainEntryIcon}><Boxes size={17} aria-hidden="true" /></span>
               <span className={styles.chainEntryBody}><strong>{t("chain.explore")}</strong><span>{t("chain.exploreBody")}</span></span>
               <ArrowRight size={15} aria-hidden="true" />
