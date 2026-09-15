@@ -355,9 +355,10 @@ button { cursor: pointer; }
 .preview-block { display: grid; gap: 6px; padding-top: 10px; border-top: 1px solid var(--line); }
 .preview-block.first { padding-top: 0; border-top: 0; }
 .preview-block-title { margin: 0; color: var(--muted); font-family: ui-monospace, monospace; font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; }
-.preview-line { display: grid; grid-template-columns: 64px minmax(0, 1fr) auto; gap: 8px; align-items: baseline; margin: 0; }
+.preview-line { display: grid; grid-template-columns: 64px minmax(0, 1fr) minmax(0, 1fr); gap: 8px; align-items: baseline; margin: 0; }
 .preview-line span { color: var(--muted); font-family: ui-monospace, monospace; font-size: 10px; }
-.preview-line strong { font-size: 12.5px; font-weight: 500; overflow-wrap: anywhere; }
+.preview-line strong, .preview-line em { min-width: 0; overflow-wrap: anywhere; }
+.preview-line strong { font-size: 12.5px; font-weight: 500; }
 .preview-line em { color: var(--muted); font-size: 11px; font-style: normal; }
 .preview-icons { display: flex; flex-wrap: wrap; gap: 6px; }
 .preview-icons span { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); }
