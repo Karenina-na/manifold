@@ -39,11 +39,9 @@ export async function ChainOverview({ info, blocks, anchors }: ChainOverviewProp
           <div className={styles.chainPanelHead}>
             <div>
               <span className={styles.eyebrow}>◇ Chain map</span>
-              <h2>{t("chain.choosePath")}</h2>
             </div>
             <span className={styles.chainPanelHint}>{t("chain.overviewHint")}</span>
           </div>
-          <p className={styles.chainOverviewIntro}>{t("chain.overviewIntro")}</p>
           <div className={styles.chainEntryGrid}>
             <Link className={styles.chainEntry} href={explorerHref()}>
               <span className={styles.chainEntryIcon}><Boxes size={17} aria-hidden="true" /></span>

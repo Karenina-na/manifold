@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import { createServerClient } from "../../../lib/api";
@@ -27,10 +26,6 @@ export default async function ChainExplorerPage({ searchParams }: { searchParams
     if (typeof value === "string") params.set(key, value);
   }
   const state = readExplorerState(params);
-  const requestHeaders = await headers();
-  const referrer = requestHeaders.get("referer");
-  const host = requestHeaders.get("host");
-  const canGoBack = !!referrer && !!host && (() => { try { return new URL(referrer).host === host; } catch { return false; } })();
   const client = createServerClient();
   const [info, blocks, anchors, { t }] = await Promise.all([
     client.chain().catch(() => null),
@@ -50,7 +45,7 @@ export default async function ChainExplorerPage({ searchParams }: { searchParams
     <main className={styles.page} data-route="chain">
       <div className={styles.chainShell}>
         <Reveal className={styles.chainReveal}>
-          <div className={styles.chainBack}><BackLink href="/chain" label={t("chain.backToChain")} canGoBack={canGoBack} /></div>
+          <div className={styles.chainBack}><BackLink href="/chain" label={t("chain.backToChain")} canGoBack={false} /></div>
           <header className={styles.chainHero}>
             <div><span className={styles.eyebrow}>◇ Explore</span><h1>{t("chain.explore")}</h1></div>
             <div className={styles.chainHeroStatus}><span className={styles.chainPulse}><span className={styles.chainPulseDot} aria-hidden="true" /> Mining</span><span className={styles.chainHeroTip}>{t("chain.blocksTotal", { count: info?.height ?? 0 })}</span></div>

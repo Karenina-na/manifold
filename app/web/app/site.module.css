@@ -849,10 +849,7 @@ html { scroll-behavior: smooth; }
 .chainPanelHead { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; }
 .chainPanelHead h2 { margin: 6px 0 0; font-family: var(--app-font-serif); font-size: 25px; font-weight: 400; letter-spacing: -.01em; }
 .chainPanelHint { padding-bottom: 4px; color: var(--color-muted); font: 10px var(--font-mono); letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; }
-.chainOverviewIntro { max-width: 620px; margin: -2px 0 2px; color: var(--color-muted); font-size: 13px; line-height: 1.65; }
 .chainBack { padding-top: 24px; }
-.chainBack a { display: inline-flex; align-items: center; gap: 6px; color: var(--color-muted); font: 10px var(--font-mono); letter-spacing: .06em; text-decoration: none; text-transform: uppercase; }
-.chainBack a:hover, .chainBack a:focus-visible { color: var(--color-accent); }
 .chainEntryGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .chainEntry { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: 11px; min-height: 72px; padding: 12px 13px; border: 1px solid color-mix(in srgb, var(--color-line) 70%, transparent); border-radius: 8px; color: inherit; text-decoration: none; transition: border-color var(--motion-base, 320ms) var(--motion-ease, ease), background var(--motion-base, 320ms) var(--motion-ease, ease), transform var(--motion-base, 320ms) var(--motion-ease, ease); }
 .chainEntry:hover, .chainEntry:focus-visible { border-color: color-mix(in srgb, var(--color-accent) 48%, var(--color-line)); background: color-mix(in srgb, var(--color-accent-soft) 48%, transparent); transform: translateY(-2px); }
@@ -889,11 +886,9 @@ html { scroll-behavior: smooth; }
 .chainExplorerGrid { display: grid; grid-template-columns: minmax(0, 1.08fr) minmax(280px, .92fr); gap: 18px; align-items: start; }
 .chainExplorerGrid[data-detail-open="false"] { grid-template-columns: minmax(0, 1fr); }
 .chainExplorerList { min-width: 0; }
-.chainExplorerDetail { display: grid; align-self: start; gap: 14px; min-width: 0; padding: 15px 16px; border: 1px solid color-mix(in srgb, var(--color-accent) 30%, var(--color-line)); border-radius: 9px; background: color-mix(in srgb, var(--surface-paper) 91%, var(--color-accent-soft)); position: sticky; top: 24px; }
+.chainExplorerDetail { display: grid; align-self: start; gap: 14px; min-width: 0; padding: 15px 16px; border: 1px solid color-mix(in srgb, var(--color-accent) 30%, var(--color-line)); border-radius: 9px; background: color-mix(in srgb, var(--surface-paper) 91%, var(--color-accent-soft)); position: sticky; top: 88px; }
 .chainExplorerEmpty { display: grid; place-items: center; align-content: center; gap: 8px; min-height: 190px; padding: 24px; border: 1px dashed color-mix(in srgb, var(--color-line) 78%, transparent); border-radius: 8px; color: var(--color-muted); text-align: center; }
 .chainExplorerEmpty p { max-width: 240px; margin: 0; font: 11px var(--font-mono); line-height: 1.6; }
-.chainDetailBack { display: inline-flex; align-items: center; justify-self: start; gap: 6px; padding: 0; border: 0; background: transparent; color: var(--color-muted); font: 10px var(--font-mono); letter-spacing: .06em; text-transform: uppercase; cursor: pointer; }
-.chainDetailBack:hover, .chainDetailBack:focus-visible { color: var(--color-accent); outline: none; }
 .chainDetailTitle { display: grid; gap: 5px; min-width: 0; }
 .chainDetailTitle h2 { margin: 0; overflow-wrap: anywhere; color: var(--color-ink); font-family: var(--app-font-serif); font-size: 24px; font-weight: 400; line-height: 1.15; }
 .chainDetailTitle > span:last-child { color: var(--color-muted); font: 10px var(--font-mono); }
@@ -1032,7 +1027,7 @@ html { scroll-behavior: smooth; }
 /* Prove a commitment — left input/receipt, right live proof path */
 .chainVerifyGrid { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr); gap: 18px; align-items: start; }
 .chainVerifyLeft { display: grid; gap: 12px; min-width: 0; }
-.chainVerifyRight { display: grid; gap: 12px; min-width: 0; position: sticky; top: 24px; }
+.chainVerifyRight { display: grid; gap: 12px; min-width: 0; position: sticky; top: 88px; }
 @media (max-width: 900px) {
   .chainVerifyGrid { grid-template-columns: 1fr; }
   .chainVerifyRight { position: static; }
@@ -1097,8 +1092,9 @@ html { scroll-behavior: smooth; }
 .chainGraphPreimagePipe { color: var(--color-muted); font-weight: 400; }
 .chainGraphPreimageArrow { margin-left: auto; color: var(--color-accent); font: 9px var(--font-mono); letter-spacing: .05em; white-space: nowrap; }
 .chainGraphComps { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; border-top: 1px dashed color-mix(in srgb, var(--color-line) 78%, transparent); padding-top: 7px; }
-.chainGraphCompRow { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto auto; gap: 6px; align-items: baseline; }
+.chainGraphCompRow { display: grid; grid-template-columns: 22px minmax(0, 2fr) auto minmax(0, 1fr); gap: 6px; align-items: baseline; }
 .chainGraphCompLevel { color: var(--color-muted); font: 8.5px var(--font-mono); letter-spacing: .08em; }
+.chainGraphCompExpr, .chainGraphCompVal { min-width: 0; overflow-wrap: anywhere; }
 .chainGraphCompExpr { color: var(--color-muted); font: 9px var(--font-mono); line-height: 1.6; word-break: break-all; }
 .chainGraphCompEq { color: var(--color-muted); font: 10px var(--font-mono); }
 .chainGraphCompVal { color: var(--color-accent); font: 9px var(--font-mono); line-height: 1.6; word-break: break-all; }
@@ -1242,11 +1238,12 @@ html { scroll-behavior: smooth; }
 :global(main .articleSurface .articleBack) { padding-top: 8px; margin-bottom: 10px; }
 :global(main .articleSurface .articleTitleBlock .articleHeader) { padding-top: 28px; }
 
-/* Detail-page back links share the site's pill-button language and a larger touch target. */
-:global(main .articleSurface .articleBack a) {
+/* Return links share the site's pill-button language and a larger touch target. */
+:global(main .articleBack a), .chainBack a, .chainDetailBack {
   display: inline-flex;
   align-items: center;
   gap: 7px;
+  justify-self: start;
   padding: 9px 16px;
   border: 1px solid var(--color-line);
   border-radius: 999px;
@@ -1255,9 +1252,10 @@ html { scroll-behavior: smooth; }
   font-family: var(--font-mono);
   font-size: 12px;
   letter-spacing: .02em;
+  cursor: pointer;
   transition: border-color .2s ease, color .2s ease, background .2s ease, transform .2s ease;
 }
-:global(main .articleSurface .articleBack a:hover) {
+:global(main .articleBack a:hover), .chainBack a:hover, .chainDetailBack:hover {
   border-color: color-mix(in srgb, var(--color-accent) 46%, var(--color-line));
   color: var(--color-accent);
   background: color-mix(in srgb, var(--color-accent-soft) 62%, transparent);

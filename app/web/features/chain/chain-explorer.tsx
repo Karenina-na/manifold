@@ -256,7 +256,7 @@ function AnchorDetailPanel({ detail, onClose, onOpenBlock, copied, onCopy }: { d
 }
 
 function DetailBack({ onClose, label }: { onClose: () => void; label: string }) {
-  return <button type="button" className={styles.chainDetailBack} onClick={onClose}><ArrowLeft size={13} aria-hidden="true" /> {label}</button>;
+  return <button type="button" className={styles.chainDetailBack} onClick={onClose}><ArrowLeft size={15} aria-hidden="true" /> {label}</button>;
 }
 
 function DetailLoading({ error, onClose }: { error: boolean; onClose: () => void }) {

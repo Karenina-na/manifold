@@ -208,6 +208,8 @@ async function main() {
     await web.locator('[role="tab"]').first().waitFor({ state: 'visible', timeout: 5000 });
     await web.locator('[role="tab"]').nth(1).click();
     await web.getByText('◇ Certificates', { exact: true }).waitFor({ state: 'attached', timeout: 5000 });
+    await web.getByRole('link', { name: /返回 chain/ }).click();
+    await web.waitForURL(/\/chain$/);
     await web.goto(`${webUrl}/chain/tools`, { waitUntil: 'networkidle' });
     for (const label of ['✦ Verify', '⌁ Proof path']) {
       await web.getByText(label, { exact: true }).waitFor({ state: 'attached', timeout: 5000 });

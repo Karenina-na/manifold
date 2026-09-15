@@ -42,6 +42,14 @@ test("English and Simplified Chinese resources keep exact key parity", () => {
   assert.deepEqual(Object.keys(zhCN).sort(), Object.keys(en).sort());
 });
 
+test("chain copy keeps the fixed chain name and omits the landing intro", () => {
+  assert.doesNotMatch(JSON.stringify(zhCN), /存证链/);
+  assert.equal("chain.overviewIntro" in en, false);
+  assert.equal("chain.overviewIntro" in zhCN, false);
+  assert.equal(zhCN["chain.explore"], "浏览 chain");
+  assert.equal(zhCN["chain.backToChain"], "返回 chain");
+});
+
 test("fixed product and protocol labels stay outside locale resources", () => {
   const fixedKeys = [
     "common.inMotion",

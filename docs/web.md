@@ -6,7 +6,7 @@ Web 的当前详细架构和 API 消费说明位于 [`docs/decisions/web.md`](de
 
 评论隐藏由 Core 返回的 `Comment.hidden` 表示：未软删的隐藏行保留线程位置，但公开响应不包含作者名、网站、正文或头像种子，Web 渲染固定占位符 `This comment was hidden by moderation.`；隐藏不级联回复，隐藏行也不参与公开搜索或 `comment_count`。评论相关事实以 `docs/decisions/web.md` 和 `docs/core.md` 为准。
 
-`/chain` 是轻量锚定链入口（契约见 [`docs/chain.md`](chain.md)）：保留 1080px shell、`Height`/`Commitments`/`Proof`/`Site key` 概览、genesis/tip 状态和最近活动，并以 `◇ Chain map` 提供两个明确入口。`/chain/explorer` 负责 Blocks/Certificates 两个页签：区块和证书列表支持分页，证书支持 source/ref 筛选，点击项在同一页打开详情；详情状态、筛选和页码通过 URL 保存，区块可进入证书，证书可打开目标或跳转 Tools 验证。`/chain/tools` 负责 Verify/Submit 两个页签，保留 payload、SHA-256、slug、comment 四种验证入口、Core 全链重放、公开提交、限流/冷却和 pending 记录。Explorer 与 Tools 页头使用同源历史返回，内容详情页的 `AnchorBadge` 分别深链到对应区块或提交页；旧 `/chain?block=<id>`、`/chain?page=N` 链接服务端兼容导向 Explorer。所有哈希/规范化仍由 Core 完成，Web 不复制链逻辑。
+`/chain` 是轻量锚定链入口（契约见 [`docs/chain.md`](chain.md)）：保留 1080px shell、`Height`/`Commitments`/`Proof`/`Site key` 概览、genesis/tip 状态和最近活动，并以 `◇ Chain map` 提供两个明确入口。`/chain/explorer` 负责 Blocks/Certificates 两个页签：区块和证书列表支持分页，证书支持 source/ref 筛选，点击项在同一页打开详情；详情状态、筛选和页码通过 URL 保存，区块可进入证书，证书可打开目标或跳转 Tools 验证。`/chain/tools` 负责 Verify/Submit 两个页签，保留 payload、SHA-256、slug、comment 四种验证入口、Core 全链重放、公开提交、限流/冷却和 pending 记录。Explorer 与 Tools 页头固定链接回 `/chain`，不依赖浏览器历史；内容详情页的 `AnchorBadge` 分别深链到对应区块或提交页；旧 `/chain?block=<id>`、`/chain?page=N` 链接服务端兼容导向 Explorer。Chain 专有名词在中英文界面统一使用 `chain`，辅助句仍按 locale 翻译。所有哈希/规范化仍由 Core 完成，Web 不复制链逻辑。
 
 Web 由 `app/web/proxy.ts` 下发带 per-request nonce 的 `Content-Security-Policy`（`script-src` 不含 `'unsafe-inline'`），访客会话与 OAuth cookie 在 TLS 下带 `Secure`；具体指令、matcher 排除规则和 cookie 属性判定见 [`docs/decisions/web.md`](decisions/web.md) 第 6 节。
 
