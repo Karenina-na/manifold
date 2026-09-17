@@ -1,0 +1,118 @@
+package providers_test
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"io"
+	"net/http"
+	"strings"
+	"testing"
+
+	"github.com/manifold-space/manifold/app/core/internal/agent"
+	"github.com/manifold-space/manifold/app/core/internal/agent/providers"
+)
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) { return f(request) }
+
+func TestOpenAIProviderMapsResponsesToolCalls(t *testing.T) {
+	requestCount := 0
+	client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		requestCount++
+		if r.URL.Path != "/v1/responses" || r.Header.Get("Authorization") != "Bearer secret" {
+			t.Fatalf("unexpected request: %s", r.URL.Path)
+		}
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		if body["store"] != false || body["parallel_tool_calls"] != false {
+			t.Fatalf("unexpected request body: %+v", body)
+		}
+		if requestCount == 2 {
+			inputs := body["input"].([]any)
+			hasReasoning := false
+			for _, input := range inputs {
+				item := input.(map[string]any)
+				if item["type"] == "reasoning" {
+					hasReasoning = true
+				}
+			}
+			if !hasReasoning {
+				t.Fatalf("second request did not preserve reasoning context: %+v", inputs)
+			}
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"id":"resp_1","status":"completed","output":[{"type":"reasoning","id":"rs_1","summary":[]},{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Checking."}]},{"type":"function_call","call_id":"call_1","name":"get_current_time","arguments":"{}"}],"usage":{"input_tokens":12,"output_tokens":4,"total_tokens":16}}`))}, nil
+	})}
+
+	provider := providers.NewOpenAI("secret", "https://api.openai.test/v1", client)
+	response, err := provider.Chat(context.Background(), agent.ChatRequest{
+		Model:    "test-model",
+		Messages: []agent.Message{{Role: agent.RoleSystem, Content: "Be concise."}, {Role: agent.RoleUser, Content: "What time is it?"}},
+		Tools:    []agent.ToolDefinition{{Name: "get_current_time", Description: "Current time", Parameters: json.RawMessage(`{"type":"object","properties":{},"additionalProperties":false}`)}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.Content != "Checking." || len(response.ToolCalls) != 1 || response.ToolCalls[0].ID != "call_1" || response.FinishReason != agent.FinishToolCalls {
+		t.Fatalf("unexpected response: %+v", response)
+	}
+	if len(response.ToolCalls[0].ProviderContext) != 1 {
+		t.Fatalf("expected reasoning context to be preserved for the next tool round: %+v", response.ToolCalls[0])
+	}
+	if response.Usage.TotalTokens != 16 {
+		t.Fatalf("unexpected usage: %+v", response.Usage)
+	}
+	if _, err := provider.Chat(context.Background(), agent.ChatRequest{Model: "test-model", Messages: []agent.Message{{Role: agent.RoleAssistant, Content: response.Content, ToolCalls: response.ToolCalls}, {Role: agent.RoleTool, ToolCallID: "call_1", Content: `{"date":"2026-09-17"}`}}}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestOpenAIProviderNormalizesBaseURL(t *testing.T) {
+	tests := []struct {
+		name    string
+		baseURL string
+		path    string
+	}{
+		{name: "trims whitespace and adds v1", baseURL: "  https://api.openai.test  ", path: "/v1/responses"},
+		{name: "keeps existing v1", baseURL: "https://api.openai.test/v1/", path: "/v1/responses"},
+		{name: "keeps nested v1", baseURL: "https://api.openai.test/proxy/v1/", path: "/proxy/v1/responses"},
+		{name: "adds v1 after a path prefix", baseURL: "https://api.openai.test/proxy/", path: "/proxy/v1/responses"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+				if r.URL.Path != test.path {
+					t.Fatalf("unexpected request path: %s", r.URL.Path)
+				}
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Header:     http.Header{"Content-Type": []string{"application/json"}},
+					Body:       io.NopCloser(strings.NewReader(`{"status":"completed","output":[]}`)),
+				}, nil
+			})}
+			provider := providers.NewOpenAI("secret", test.baseURL, client)
+			if _, err := provider.Chat(context.Background(), agent.ChatRequest{Model: "test-model"}); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func TestOpenAIProviderPreservesSafeUpstreamErrorMetadata(t *testing.T) {
+	client := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: http.StatusServiceUnavailable, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"error":{"code":"model_not_found","message":"No available channel for model auto:default"}}`))}, nil
+	})}
+	provider := providers.NewOpenAI("secret", "https://api.openai.test/v1", client)
+	_, err := provider.Chat(context.Background(), agent.ChatRequest{Model: "auto:default"})
+	if err == nil {
+		t.Fatal("expected upstream error")
+	}
+	var upstream *providers.UpstreamError
+	if !errors.As(err, &upstream) || upstream.StatusCode != http.StatusServiceUnavailable || upstream.Code != "model_not_found" || upstream.Message != "No available channel for model auto:default" {
+		t.Fatalf("unexpected upstream metadata: %v", err)
+	}
+}

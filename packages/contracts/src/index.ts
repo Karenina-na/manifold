@@ -76,6 +76,12 @@ export const API_ERROR_CODES = [
   "AUDIT_UNAVAILABLE",
   "STATS_UNAVAILABLE",
   "SYSTEM_UNAVAILABLE",
+  // Agent
+  "AGENT_UNAVAILABLE",
+  "AGENT_RUN_FAILED",
+  "AGENT_SETTINGS_UNAVAILABLE",
+  "AGENT_SETTINGS_UPDATE_FAILED",
+  "AGENT_MESSAGE_NOT_FOUND",
   // 公开端聚合视图
   "PRESENCE_UNAVAILABLE",
   "TAGS_UNAVAILABLE",
@@ -263,6 +269,76 @@ export interface MediaQuery { page?: number; pageSize?: number; q?: string }
 export interface LoginInput { username: string; password: string }
 export interface LoginResponse { accessToken: string; tokenType: "Bearer"; expiresIn: number; user: { username: string; role: "admin" } }
 export interface ChangePasswordInput { currentPassword: string; newPassword: string }
+
+export interface AgentRunInput { message: string }
+export type AgentProvider = "openai";
+export interface AgentSettings {
+  provider: AgentProvider;
+  model: string;
+  maxToolRounds: number;
+  historyLimit: number;
+  maxOutputTokens: number;
+  openAIBaseURL: string;
+  apiKeyConfigured: boolean;
+  updatedAt: string;
+}
+export interface AgentSettingsInput {
+  provider: AgentProvider;
+  model: string;
+  maxToolRounds: number;
+  historyLimit: number;
+  maxOutputTokens: number;
+  openAIBaseURL: string;
+  /** Omit to keep the stored key, set a string to replace it, or null to clear it. */
+  apiKey?: string | null;
+}
+export type AgentMessageRole = "user" | "assistant";
+export interface AgentUsage { inputTokens: number; outputTokens: number; totalTokens: number }
+export type AgentFinishReason = "stop" | "tool_calls" | "max_tokens" | "error";
+export type AgentTraceStep =
+  | { id: string; kind: "reasoning"; status: "running" | "complete" }
+  | { id: string; kind: "tool"; name: string; input: unknown; output?: unknown; status: "running" | "complete" | "error" }
+  | { id: string; kind: "error"; message: string };
+export interface AgentMessageTrace { steps: AgentTraceStep[]; finishReason: AgentFinishReason; usage: AgentUsage }
+export interface AgentMessage { id: string; role: AgentMessageRole; content: string; createdAt: string; trace?: AgentMessageTrace }
+export interface AgentMessageList { messages: AgentMessage[] }
+export interface AgentUndoResult { draft: string; messages: AgentMessage[] }
+export type AgentStreamEvent =
+  | { type: "run.started"; runId: string; messageId: string }
+  | { type: "reasoning.started"; runId: string }
+  | { type: "reasoning.completed"; runId: string }
+  | { type: "content.delta"; delta: string }
+  | { type: "tool.started"; callId: string; name: string; input: unknown }
+  | { type: "tool.completed"; callId: string; name: string; output: unknown; isError: boolean }
+  | { type: "run.completed"; runId: string; finishReason: AgentFinishReason; usage: AgentUsage }
+  | { type: "run.error"; runId: string; code: ApiErrorCode; message: string };
+
+export function isAgentStreamEvent(value: unknown): value is AgentStreamEvent {
+  if (!value || typeof value !== "object" || !("type" in value)) return false;
+  const event = value as Record<string, unknown>;
+  const hasRunId = typeof event.runId === "string";
+  switch (event.type) {
+    case "run.started":
+      return hasRunId && typeof event.messageId === "string";
+    case "reasoning.started":
+    case "reasoning.completed":
+      return hasRunId;
+    case "content.delta":
+      return typeof event.delta === "string";
+    case "tool.started":
+      return typeof event.callId === "string" && typeof event.name === "string" && "input" in event;
+    case "tool.completed":
+      return typeof event.callId === "string" && typeof event.name === "string" && "output" in event && typeof event.isError === "boolean";
+    case "run.completed": {
+      const usage = event.usage as Record<string, unknown> | undefined;
+      return hasRunId && ["stop", "tool_calls", "max_tokens", "error"].includes(String(event.finishReason)) && !!usage && typeof usage.inputTokens === "number" && typeof usage.outputTokens === "number" && typeof usage.totalTokens === "number";
+    }
+    case "run.error":
+      return hasRunId && isApiErrorCode(event.code) && typeof event.message === "string";
+    default:
+      return false;
+  }
+}
 // status excludes DELETED because the reference lookup only ever reads live
 // content; expressing it as an Exclude keeps the link to ContentStatus visible
 // instead of restating the two literals.

@@ -96,6 +96,12 @@ func buildRouter(h *apiHandler, cfg config.Config) chi.Router {
 			admin.Delete("/media/{id}", h.adminDeleteMedia)
 			admin.Get("/media/{id}/references", h.adminListMediaReferences)
 			admin.Post("/chain/anchors", h.adminSubmitAnchor)
+			admin.Get("/agent/settings", h.adminAgentSettings)
+			admin.Put("/agent/settings", h.adminUpdateAgentSettings)
+			admin.Get("/agent/messages", h.adminAgentMessages)
+			admin.Post("/agent/messages", h.adminRunAgent)
+			admin.Delete("/agent/messages", h.adminClearAgentMessages)
+			admin.Delete("/agent/messages/{id}", h.adminUndoAgentMessage)
 		})
 	})
 	return router

@@ -80,6 +80,7 @@ collect("../");
 // Listed explicitly so that renaming a form instance cannot quietly drop a file
 // out of the sweep and leave this test passing while asserting nothing about it.
 const expected = [
+  "../features/settings/AgentSettingsSection.tsx",
   "../features/settings/SettingsWorkspace.tsx",
   "../workspaces/ProfileWorkspace.tsx",
   "../workspaces/ThoughtsWorkspace.tsx",
@@ -97,7 +98,12 @@ test("every workspace that owns a dirty form registers the guard", () => {
     "a new dirty-form owner appeared; add it to `expected` and make sure it registers the guard",
   );
   for (const [name, source] of owners) {
-    assert.match(source, /setDirtyGuard\(\(\) => dirtyRef\.current\)/, `${name} must register the dirty guard`);
-    assert.match(source, /return \(\) => setDirtyGuard\(null\)/, `${name} must clear the guard on unmount`);
+    if (name.endsWith("AgentSettingsSection.tsx")) {
+      assert.match(source, /onDirtyChange\(form\.formState\.isDirty\)/, `${name} must report dirty state to its owning workspace`);
+      assert.match(source, /return \(\) => onDirtyChange\(false\)/, `${name} must clear delegated dirty state on unmount`);
+    } else {
+      assert.match(source, /setDirtyGuard\(\(\) => dirtyRef\.current\)/, `${name} must register the dirty guard`);
+      assert.match(source, /return \(\) => setDirtyGuard\(null\)/, `${name} must clear the guard on unmount`);
+    }
   }
 });

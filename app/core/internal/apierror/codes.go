@@ -98,6 +98,15 @@ const (
 	SystemUnavailable    = "SYSTEM_UNAVAILABLE"
 )
 
+// Agent
+const (
+	AgentUnavailable          = "AGENT_UNAVAILABLE"
+	AgentRunFailed            = "AGENT_RUN_FAILED"
+	AgentSettingsUnavailable  = "AGENT_SETTINGS_UNAVAILABLE"
+	AgentSettingsUpdateFailed = "AGENT_SETTINGS_UPDATE_FAILED"
+	AgentMessageNotFound      = "AGENT_MESSAGE_NOT_FOUND"
+)
+
 // 公开端聚合视图
 const (
 	PresenceUnavailable = "PRESENCE_UNAVAILABLE"

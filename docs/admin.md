@@ -4,7 +4,7 @@
 
 ## 1. 背景与边界
 
-`app/admin` 是单一 owner 使用的私有管理端，负责登录、统计、Profile、Writings/Thoughts 发布、评论管理（隐藏/取消隐藏、软删除/恢复和作者资料覆盖）、媒体和首页 composition。它是独立的 Vite/React 应用，不复用 Web 页面组件、不访问 Core SQLite、不复制 Core 业务规则。
+`app/admin` 是单一 owner 使用的私有管理端，负责登录、统计、Profile、Writings/Thoughts 发布、评论管理（隐藏/取消隐藏、软删除/恢复和作者资料覆盖）、媒体、首页 composition 和 Agent 交互。它是独立的 Vite/React 应用，不复用 Web 页面组件、不访问 Core SQLite、不复制 Core 业务规则。
 
 Core 负责最终鉴权和状态转换；Admin 只持有 session token，组织表单、查询缓存和用户反馈。
 
@@ -22,6 +22,7 @@ Vite + React 19
 ├── Lucide React: actions and navigation icons
 ├── vditor (IR mode): Context tab markdown editor
 ├── @manifold/render: shared reading surface for the Render tab
+├── AgentDialog: session history + SSE reasoning/tool/content events
 ├── vite-plugin-pwa: manifest / service worker
 └── @manifold/sdk -> Core /api/v1/admin
 ```
@@ -29,6 +30,8 @@ Vite + React 19
 主要模块：`src/app/App.tsx` 管理登录、hash 路由（`#/writings`、`#/writings/{id}`、`#/writings/{id}/comments?…` 等二级页面，支持 hash query）和未保存离开确认，`src/app/ErrorBoundary.tsx` 负责渲染恢复；`src/lib/api.ts` 创建 SDK client，`src/lib/` 还提供 hash 路由、dirty 守卫和观测基础设施——`dirty-guard.ts` 既供 `requestNavigate` 在站内跳转前查询未保存状态，也在模块加载时注册一个 `beforeunload` 监听（`hasUnsavedChanges()` 为真时 `preventDefault()`），覆盖刷新、关标签页这类不经过站内导航代码路径的离开方式；持有脏表单的四个工作区（`workspaces/ProfileWorkspace`、`features/settings/SettingsWorkspace`、`workspaces/WritingsWorkspace`、`workspaces/ThoughtsWorkspace`）都必须注册 `setDirtyGuard` 并在卸载时清除，`dirty-guard.test.mjs` 以"任何读取 `formState.isDirty`（实例名可为 `form`/`profileForm`）的文件都必须调用 `setDirtyGuard`"的不变量钉住这条接线。浏览器 hash 后退/前进只触发 `hashchange`，既不触发 `beforeunload` 也不经过 `requestNavigate`，因此 `useHashRoute.ts` 自己注册 `hashchange` 监听，判定逻辑抽到无 DOM 依赖的 `lib/hash-guard.ts`（`hash-guard.test.mjs` 钉住各分支）：自身写入产生的 hash（mark 按值匹配而非布尔标记，避免一次空写入遗留的 mark 被下一次真实手势消费）、未脏、以及未注册确认 Modal 三种情况直接应用；脏表单且确认 Modal 已注册时用 `history.replaceState` 把 URL 退回 UI 实际所在的 hash，并把尝试的目标交给与站内导航同一个确认 Modal 决定是否丢弃（`replaceState` 不触发 `hashchange`，不会回环）。`src/components/common/`、`src/components/content/`、`src/components/forms/` 分别放跨工作区控件、内容编辑器族和表单输入，`src/features/settings/` 聚合 Settings 页面、校验 schema 与安全面板，`src/workspaces/` 保留 Dashboard、Profile、Writings、Thoughts、Media 和 Comments 页面；组件文件用 PascalCase，工具与 hook 用 kebab-case。
 
 Dashboard、Profile、Writings、Thoughts、Media、Comments、Settings 通过 lazy chunk 加载，登录壳同步加载。
+
+顶部栏 Agent 按钮打开居中的模态对话框，不新增 hash 路由。对话框从顶部渐入，背景使用半透明遮罩与 blur；通过 `agentMessages()` 恢复当前 session 的 user/assistant 历史和 assistant `trace`，通过 `runAgent()` 消费 SSE。每轮对话绑定自己的回答、运行轨迹和 token 用量；`reasoning.started/completed` 显示为紧凑状态步骤，不展示隐藏推理文本，运行完成后轨迹仍保留并显示 **Thought through/已思考**，默认收起但可再次展开；`tool.started/completed` 显示可折叠的工具名、输入与输出，`content.delta` 累加到对应 assistant 消息，`max_tokens` 会标记输出已截断。每个 user/assistant 气泡右下角提供 Copy；仅 user 气泡提供 Undo。Undo 调 `undoAgentMessage(userMessageId)`，由 Core 删除该用户消息及后续轮次，并把返回的 `draft` 放回 composer 供修改。运行中禁用 Undo。对话不进入 TanStack Query：流式状态由对话框局部 state 管理，Core session memory 才是跨开关对话框的权威；关闭模态或登出会通过 `AbortSignal` 取消未完成的流，异常 EOF 会显示为未完成运行。清空按钮调用 `clearAgentMessages()`。
 
 Admin UI 支持英语与简体中文。`src/i18n/` 维护 `en`/`zh-CN` 资源，`react-i18next` 提供组件翻译；初始语言优先读取 `localStorage` 的 `manifold.locale`，其次读取浏览器语言，最后回退英语。语言切换器位于登录页工具栏和登录后的顶部栏，会即时更新 `document.documentElement.lang` 并持久化偏好；存储不可用时仍保持当前会话内语言。Mantine 日期组件、Vditor 工具栏、日期/数字格式和 `@manifold/render` 预览随同一 locale 切换，不复制渲染包文案。
 
@@ -132,6 +135,8 @@ Site 调用 `GET/PUT /api/v1/admin/site`，对整个站点设置做结构化表�
 
 站点设置是单个全量 PUT（一个保存条、`['admin-site']` 失效）。内容置顶（pin）在各自工作区设置：Writings 用 `['admin-writings-config']` + `updateWritingConfig`，Thoughts 用 `['admin-thought-config']` + `updateThoughtConfig`；Core 校验非空引用必须是已发布的对应类型内容。
 
+同一 Settings 页面包含独立的 **Agent** panel，使用 `GET/PUT /api/v1/admin/agent/settings` 与 query key `['admin-agent-settings']`。表单管理 OpenAI Provider、模型、最大工具回合、上下文历史条数、最大输出 token 与 Base URL；Base URL 保存时会清理首尾空白、去掉尾部斜杠，并在路径中缺少 `v1` 时自动补齐 `/v1`；这些值保存后从下一次 Agent 运行起生效。API key 是只写字段：留空保留已有值，输入新值替换，勾选清除则提交 `null`；GET 和 PUT 响应只返回 `apiKeyConfigured`。Agent 表单有独立保存按钮，同时向 Settings 的 dirty guard 报告未保存状态。
+
 ### Security
 
 Settings 底部的独立 panel（`features/settings/SecuritySection.tsx`），不属于站点设置表单：
@@ -155,6 +160,7 @@ Settings 底部的独立 panel（`features/settings/SecuritySection.tsx`），�
 | `admin-content-item` + kind + id | 详情页 `adminContentItem(id)` | 单条保存、发布/撤回后直接 setDraft 更新；重载时失效该 key |
 | `admin-profile` | `adminProfile()` | 保存 Profile |
 | `admin-site` | `adminSite()` | 保存 Site（全量 PUT，含身份/social/评论开关/首页组合） |
+| `admin-agent-settings` | `adminAgentSettings()` | `updateAgentSettings()` 保存 Agent 模型、运行上限、Base URL 与只写 API key |
 | `admin-thought-config` | `adminThoughtConfig()` | 保存 Thoughts 置顶配置 |
 | `admin-media` + `{ q, page }` | Media 库 `listMedia({ q?, page? })` | 上传、删除（统一失效 `['admin-media']` 前缀） |
 | `admin-media-item` + mediaId | 详情页基本信息 `listMedia({ q: mediaId, pageSize: 50 })` 精确 id 取项 | 不失效（媒体不可变） |
@@ -178,7 +184,7 @@ pnpm --filter @manifold/admin build
 pnpm --filter @manifold/admin preview
 ```
 
-`test` 先执行 `node --test src/lib/*.test.mjs src/i18n/*.test.mjs`（纯 Node 的模块级回归测试，Node 22 直接加载 `.ts`，不需要额外转译或测试框架）；`src/i18n` 用例覆盖 locale 解析、en/zh-CN 资源 key 一致性、显式 locale 格式化，以及登录页、错误页、设置页、全部工作区和共享页面组件的静态翻译 key/可见 JSX 文案覆盖，再执行 `tsc -b` 作为类型门槛。
+`test` 先执行 `node --test src/lib/*.test.mjs src/i18n/*.test.mjs`（纯 Node 的模块级回归测试，Node 22 直接加载 `.ts`，不需要额外转译或测试框架），再执行 `node --experimental-strip-types --test src/components/agent/*.test.mjs` 覆盖 Agent 对话轮次和工具 payload 展示逻辑，最后执行 `tsc -b` 作为类型门槛。`src/i18n` 用例覆盖 locale 解析、en/zh-CN 资源 key 一致性、显式 locale 格式化，以及登录页、错误页、设置页、全部工作区和共享页面组件的静态翻译 key/可见 JSX 文案覆盖。
 
 根目录 `pnpm browser-test` 会启动隔离 Core/Web/Admin，验证登录、stats、反应、评论提交与回复、软删除和恢复，以及 Writings/Thoughts 的二级页面流程：列表搜索、hash 路由跳转、slug 建议、Meta/Context/Render 三 Tab、vditor 输入保存为 Markdown、Render Tab 与 Web 阅读面同构（标题/正文/TOC）、aiAssisted/summary 保存、发布 Popover、锁定态切换、dirty 离开确认和行内删除 Popover。
 

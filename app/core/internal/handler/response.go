@@ -8,6 +8,9 @@ import (
 
 	"github.com/go-playground/validator/v10"
 
+	"github.com/manifold-space/manifold/app/core/internal/agent"
+	"github.com/manifold-space/manifold/app/core/internal/agent/repository"
+	agentscenarios "github.com/manifold-space/manifold/app/core/internal/agent/scenarios"
 	"github.com/manifold-space/manifold/app/core/internal/application"
 	"github.com/manifold-space/manifold/app/core/internal/auth"
 	"github.com/manifold-space/manifold/app/core/internal/cache"
@@ -29,6 +32,15 @@ type apiHandler struct {
 	ledger        *chain.Ledger
 	mutations     *application.Service
 	githubClient  *http.Client
+	agentRuntime  agentRunner
+}
+
+type agentRunner interface {
+	Ready(ctx context.Context) error
+	Run(ctx context.Context, sessionID, userMessage string, emit func(agent.StreamEvent) error) error
+	List(ctx context.Context, sessionID string, limit int) ([]repository.Message, error)
+	Clear(ctx context.Context, sessionID string) error
+	Undo(ctx context.Context, sessionID, messageID string) (repository.Message, []repository.Message, error)
 }
 
 // coreVersion is the build version reported by /healthz and the admin system endpoint.
@@ -80,6 +92,7 @@ func newRouterWithMiner(cfg config.Config, database *store.Store, ledger *chain.
 		panic(err)
 	}
 	h := &apiHandler{cfg: cfg, store: database, auth: authService, validate: validator.New(), contentCache: cache.NewContentCache(cfg.ContentCacheTTL), statsCache: cache.NewStatsCache(cfg.StatsCacheTTL), overviewCache: cache.NewOverviewCache(cfg.StatsCacheTTL), auditEvents: auditEvents, ledger: ledger, githubClient: &http.Client{Timeout: 12 * time.Second}}
+	h.agentRuntime = newAgentRuntime(database, ledger)
 	h.mutations = application.NewService(database, ledger, auditEvents, h.contentCache, h.statsCache, h.overviewCache)
 	miner := startChainMiner(h, database, ledger)
 	closeMiner := func() {
@@ -88,4 +101,21 @@ func newRouterWithMiner(cfg config.Config, database *store.Store, ledger *chain.
 		}
 	}
 	return buildRouter(h, cfg), closeMiner
+}
+
+func newAgentRuntime(database *store.Store, ledger *chain.Ledger) agentRunner {
+	scenarios := agent.NewScenarioRegistry()
+	dependencies := agentscenarios.ManifoldDependencies{Profile: database, Content: database}
+	if ledger != nil {
+		dependencies.Chain = ledger
+	}
+	if err := agentscenarios.RegisterManifold(scenarios, dependencies); err != nil {
+		panic(err)
+	}
+	scenario, err := scenarios.Build(agentscenarios.Manifold)
+	if err != nil {
+		panic(err)
+	}
+	memory := repository.NewMemory()
+	return newConfiguredAgentRuntime(database, scenario, memory)
 }

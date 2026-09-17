@@ -1,6 +1,112 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { ApiError, ManifoldClient } from "./index.js";
+
+test("streams typed agent events across arbitrary response chunks", async () => {
+	const encoder = new TextEncoder();
+	const chunks = [
+		"event: run.started\ndata: {\"type\":\"run.started\",\"runId\":\"run_1\",\"messageId\":\"msg_1\"}\n\n",
+		"event: content.delta\ndata: {\"type\":\"content.delta\",\"delta\":\"Hel",
+		"lo\"}\n\nevent: run.completed\ndata: {\"type\":\"run.completed\",\"runId\":\"run_1\",\"finishReason\":\"stop\",\"usage\":{\"inputTokens\":2,\"outputTokens\":1,\"totalTokens\":3}}\n\n",
+	];
+	const client = new ManifoldClient({
+		baseUrl: "http://core.test",
+		token: "token-1",
+		fetch: async () => new Response(new ReadableStream({
+			start(controller) {
+				for (const chunk of chunks) controller.enqueue(encoder.encode(chunk));
+				controller.close();
+			},
+		}), { status: 200, headers: { "Content-Type": "text/event-stream" } }),
+	});
+
+	const events = [];
+	for await (const event of client.runAgent({ message: "Hello" })) events.push(event);
+
+	assert.deepEqual(events, [
+		{ type: "run.started", runId: "run_1", messageId: "msg_1" },
+		{ type: "content.delta", delta: "Hello" },
+		{ type: "run.completed", runId: "run_1", finishReason: "stop", usage: { inputTokens: 2, outputTokens: 1, totalTokens: 3 } },
+	]);
+});
+
+test("forwards an abort signal to the Agent stream request", async () => {
+	let capturedSignal: AbortSignal | null | undefined;
+	const client = new ManifoldClient({
+		baseUrl: "http://core.test",
+		fetch: async (_input, init) => {
+			capturedSignal = init?.signal;
+			return new Response("event: run.started\ndata: {\"type\":\"run.started\",\"runId\":\"run_1\",\"messageId\":\"msg_1\"}\n\n", { status: 200, headers: { "Content-Type": "text/event-stream" } });
+		},
+	});
+	const controller = new AbortController();
+	const stream = client.runAgent({ message: "Stop me" }, { signal: controller.signal });
+	await stream.next();
+	assert.equal(capturedSignal, controller.signal);
+});
+
+test("loads and clears session-scoped agent messages", async () => {
+	const requests: Request[] = [];
+	const client = new ManifoldClient({
+		baseUrl: "http://core.test",
+		token: "token-1",
+		fetch: async (input, init) => {
+			requests.push(new Request(input, init));
+			return requests.length === 1
+				? new Response(JSON.stringify({ messages: [] }), { status: 200 })
+				: new Response(null, { status: 204 });
+		},
+	});
+
+	assert.deepEqual(await client.agentMessages(), { messages: [] });
+	await client.clearAgentMessages();
+	assert.equal(requests[0]?.url, "http://core.test/api/v1/admin/agent/messages");
+	assert.equal(requests[1]?.method, "DELETE");
+});
+
+test("undoes an agent turn from a user message and returns the editable draft", async () => {
+	let captured: Request | undefined;
+	const payload = { draft: "Revise this", messages: [{ id: "msg_1", role: "user", content: "Earlier", createdAt: "2026-09-17T00:00:00Z" }] };
+	const client = new ManifoldClient({
+		baseUrl: "http://core.test",
+		token: "token-1",
+		fetch: async (input, init) => {
+			captured = new Request(input, init);
+			return new Response(JSON.stringify(payload), { status: 200 });
+		},
+	});
+
+	assert.deepEqual(await client.undoAgentMessage("msg 2/x"), payload);
+	assert.equal(captured?.url, "http://core.test/api/v1/admin/agent/messages/msg%202%2Fx");
+	assert.equal(captured?.method, "DELETE");
+});
+
+test("reads and updates write-only agent settings", async () => {
+	const requests: Request[] = [];
+	const settings = { provider: "openai", model: "gpt-5-mini", maxToolRounds: 6, historyLimit: 40, maxOutputTokens: 2048, openAIBaseURL: "https://api.openai.com/v1", apiKeyConfigured: true, updatedAt: "2026-09-17T00:00:00Z" } as const;
+	const client = new ManifoldClient({
+		baseUrl: "http://core.test",
+		token: "token-1",
+		fetch: async (input, init) => {
+			requests.push(new Request(input, init));
+			return new Response(JSON.stringify(settings), { status: 200 });
+		},
+	});
+
+	assert.deepEqual(await client.adminAgentSettings(), settings);
+	await client.updateAgentSettings({
+		provider: "openai",
+		model: "gpt-5-mini",
+		maxToolRounds: 6,
+		historyLimit: 40,
+		maxOutputTokens: 2048,
+		openAIBaseURL: "https://api.openai.com/v1",
+		apiKey: "replacement",
+	});
+	assert.equal(requests[0]?.url, "http://core.test/api/v1/admin/agent/settings");
+	assert.equal(requests[1]?.method, "PUT");
+	assert.deepEqual(await requests[1]?.json(), { provider: "openai", model: "gpt-5-mini", maxToolRounds: 6, historyLimit: 40, maxOutputTokens: 2048, openAIBaseURL: "https://api.openai.com/v1", apiKey: "replacement" });
+});
 test("throws ApiError for structured failures", async () => {
 	const client = new ManifoldClient({ baseUrl: "http://core.test", fetch: async () => new Response(JSON.stringify({ error: { code: "UNAUTHORIZED", message: "Token required", details: { reason: "expired" }, requestId: "req_1", traceId: "trace_1" } }), { status: 401 }) });
 	await assert.rejects(client.health(), (error: unknown) => error instanceof ApiError && error.status === 401 && error.code === "UNAUTHORIZED" && error.message === "Token required" && error.requestId === "req_1" && error.traceId === "trace_1" && (error.details as { reason: string }).reason === "expired");

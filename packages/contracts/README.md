@@ -41,6 +41,12 @@ app/core JSON <--> packages/contracts <--> packages/sdk <--> Web / Admin
 - `Media` / `MediaQuery`：管理端媒体对象（`url` 为绝对地址，写入 Markdown 正文使用；键恒存在，Core 不省略）与媒体库列表参数。
 - `MediaReference`：媒体被内容引用时的引用条目 `{ contentId, kind, title, slug, status }`，出现在 `DELETE /admin/media/{id}` 的 409 `MEDIA_IN_USE` 错误 `details.references` 中，也作为 `GET /admin/media/{id}/references` 的 `{ references: [...] }` 返回项；`status` 只可能是 `DRAFT`/`PUBLISHED`（引用查询已排除已删除内容）。
 - `ChangePasswordInput`：`POST /admin/password` 请求体 `{ currentPassword, newPassword }`（新密码 ≥8 字符）。
+- `AgentRunInput` / `AgentMessageList`：Admin Agent 的提问输入与当前 JWT session 的临时对话历史；历史包含 user/assistant 最终消息，assistant 可附带 `AgentMessageTrace` 以恢复已完成的思考、工具步骤和用量。
+- `AgentUndoResult`：Undo 返回的可编辑 `draft` 与按撤回边界重组后的 `messages`。
+- `AgentMessageTrace` / `AgentTraceStep`：assistant 消息的运行摘要；只记录阶段状态与工具输入输出，不包含模型隐藏推理文本。
+- `AgentSettings` / `AgentSettingsInput`：Agent 持久化运行设置。响应只含 `apiKeyConfigured`；输入的 `openAIBaseURL` 保存时会清理首尾空白、去掉尾部斜杠并确保路径包含 `/v1`；输入的 `apiKey` 省略表示保留、字符串表示替换、`null` 表示清除。
+- `AgentStreamEvent`：SSE 判别联合，包含 `run.started`、`reasoning.started/completed`、`content.delta`、`tool.started/completed`、`run.completed` 与 `run.error`。`run.started.messageId` 是已写入 session memory 的用户消息 ID；reasoning 事件只表达处理状态，不携带隐藏推理文本；`tool.completed.isError` 始终存在。
+- `AgentUsage` / `AgentFinishReason`：一次运行的累计 token 统计与 `stop | tool_calls | max_tokens | error` 结束原因。
 
 响应端 `ArticleMetadata`：`readingMinutes`、`toc`、`language`、`aiAssisted`；前两项由 Core 派生。响应端 `ThoughtMetadata`：`mood`/`question`/`context`/`source` 全部输出，可空值用 `null`。
 
@@ -73,7 +79,7 @@ app/core JSON <--> packages/contracts <--> packages/sdk <--> Web / Admin
 - `AdminCommentQuery`：管理评论参数 `contentId`/`q`/`page`/`pageSize`/`focus`。
 - `LikeSummary`：点赞统计和当前访客状态。
 - `ApiErrorBody`：Core 结构化错误响应字段，`code` 为下面的 `ApiErrorCode`；SDK 的运行时 `ApiError` 见 [`packages/sdk/README.md`](../sdk/README.md)。
-- `ApiErrorCode` / `API_ERROR_CODES` / `isApiErrorCode`：Core 能返回的全部错误码（`UNAUTHORIZED`、`VALIDATION_ERROR`、`SLUG_TAKEN`、`VERSION_CONFLICT`、`MEDIA_IN_USE`、`PAYLOAD_TOO_LARGE`、`RATE_LIMITED`、`GITHUB_AUTH_FAILED`…）。类型由数组派生，两者不可能互相漂移；Go 侧的常量在 `app/core/internal/apierror/codes.go`，两侧由 `test/error-codes.test.ts` 强制逐项相等。客户端可以据此对 `error.code` 做穷尽 `switch`。
+- `ApiErrorCode` / `API_ERROR_CODES` / `isApiErrorCode`：Core 能返回的全部错误码（`UNAUTHORIZED`、`VALIDATION_ERROR`、`SLUG_TAKEN`、`VERSION_CONFLICT`、`MEDIA_IN_USE`、`PAYLOAD_TOO_LARGE`、`RATE_LIMITED`、`GITHUB_AUTH_FAILED`、`AGENT_UNAVAILABLE`、`AGENT_RUN_FAILED`…）。类型由数组派生，两者不可能互相漂移；Go 侧的常量在 `app/core/internal/apierror/codes.go`，两侧由 `test/error-codes.test.ts` 强制逐项相等。客户端可以据此对 `error.code` 做穷尽 `switch`。
 
 ### 锚定链（`docs/chain.md`）
 

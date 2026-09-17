@@ -194,7 +194,7 @@ OpenResty 使用独立域名时，将 Web、Admin、Core 分别代理到 `http:/
 
 ### Admin
 
-登录后提供 Dashboard、Thoughts、Writings、Comments、Media、Profile 和 Settings 工作区，分别覆盖统计、内容全量编辑、评论管理、媒体、Profile/Site 配置。Admin 使用 Core 签发的 Bearer JWT；当前没有公开注册、访客登录或多用户账号体系。
+登录后提供 Dashboard、Thoughts、Writings、Comments、Media、Profile 和 Settings 工作区，并可从顶部打开居中的 Agent 对话框。Agent 的 Provider、模型、运行上限、OpenAI Base URL 与 API key 在 Settings 中管理，不使用发布环境变量；对话仅使用当前 Admin session 的进程内记忆，可读取作者画像、已发布内容摘要和链状态，不读取正文。Admin 使用 Core 签发的 Bearer JWT；当前没有公开注册、访客登录或多用户账号体系。
 
 ## Core API 概览
 

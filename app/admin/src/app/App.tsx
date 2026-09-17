@@ -1,6 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Alert, Button, Modal, PasswordInput, TextInput } from '@mantine/core'
-import { LayoutDashboard, FileText, Image as ImageIcon, LogOut, Menu, MessageCircle, Feather, Send, SlidersHorizontal, User } from 'lucide-react'
+import { LayoutDashboard, FileText, Image as ImageIcon, LogOut, Menu, MessageCircle, Feather, Send, SlidersHorizontal, Sparkles, User } from 'lucide-react'
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
@@ -20,6 +20,7 @@ const ThoughtsWorkspace = lazy(() => import('../workspaces/ThoughtsWorkspace'))
 const MediaWorkspace = lazy(() => import('../workspaces/MediaWorkspace'))
 const CommentsWorkspace = lazy(() => import('../workspaces/CommentsWorkspace'))
 const SettingsWorkspace = lazy(() => import('../features/settings/SettingsWorkspace').then(({ SettingsWorkspace }) => ({ default: SettingsWorkspace })))
+const AgentDialog = lazy(() => import('../components/agent/AgentDialog').then(({ AgentDialog }) => ({ default: AgentDialog })))
 
 type LoginForm = { username: string; password: string }
 
@@ -70,13 +71,14 @@ function App() {
   const route = useHashRoute()
   const [collapsed, setCollapsed] = useState(false)
   const [pendingNav, setPendingNav] = useState<string | null>(null)
+  const [agentOpened, setAgentOpened] = useState(false)
   const view = (route.segments[0] ?? 'dashboard') as View
   useEffect(() => {
     setNavConfirm((to) => setPendingNav(to))
     return () => setNavConfirm(null)
   }, [])
   useEffect(() => {
-    const logout = () => { clearSession(); setSession(null) }
+    const logout = () => { clearSession(); setSession(null); setAgentOpened(false) }
     window.addEventListener(unauthorizedEvent, logout)
     return () => window.removeEventListener(unauthorizedEvent, logout)
   }, [])
@@ -87,6 +89,7 @@ function App() {
   if (!session) return <LoginScreen onLogin={setSession} />
   const logout = () => {
     const token = session.accessToken
+    setAgentOpened(false)
     clearSession()
     setSession(null)
     if (token) void createAdminClient(token).logoutSession().catch(() => {})
@@ -97,6 +100,7 @@ function App() {
     <main className="admin-main">
       <header className="topbar">
         <span className="mobile-brand">manifold.</span>
+        <button className="agent-trigger" type="button" onClick={() => setAgentOpened(true)} aria-label={t('agent.open')}><Sparkles size={15} /><span>{t('agent.title')}</span></button>
         <LanguageSwitcher />
         <span className="operator"><span className="operator-dot" /> {session.username}</span>
       </header>
@@ -109,6 +113,7 @@ function App() {
         {view === 'comments' && <CommentsWorkspace token={session.accessToken} />}
         {view === 'settings' && <SettingsWorkspace token={session.accessToken} onLoggedOut={logout} />}
       </Suspense>
+      {agentOpened && <Suspense fallback={null}><AgentDialog token={session.accessToken} opened onClose={() => setAgentOpened(false)} /></Suspense>}
     </main>
     {pendingNav !== null && <Modal opened onClose={() => setPendingNav(null)} title={t('app.unsavedTitle')} closeButtonProps={{ 'aria-label': t('common.closeDialog') }} centered>
       <p>{t('app.unsavedLeave')}</p>

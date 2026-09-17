@@ -51,6 +51,8 @@ func (r *statusRecorder) Write(body []byte) (int, error) {
 	return r.ResponseWriter.Write(body)
 }
 
+func (r *statusRecorder) Unwrap() http.ResponseWriter { return r.ResponseWriter }
+
 var correlationIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$`)
 
 func correlationID(value, prefix string) string {

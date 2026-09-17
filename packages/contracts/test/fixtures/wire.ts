@@ -14,6 +14,9 @@ import type {
   AdminOverview,
   AdminSessionList,
   AnalyticsViews,
+  AgentMessageList,
+  AgentStreamEvent,
+  AgentUndoResult,
   ApiErrorBody,
   AuditEvent,
   AuditEventCollection,
@@ -306,6 +309,38 @@ export const sessionList = {
   ],
 } satisfies AdminSessionList;
 
+export const agentMessages = {
+  messages: [{
+    id: "msg_1",
+    role: "assistant",
+    content: "Hello.",
+    createdAt: "2026-09-17T00:00:00Z",
+    trace: {
+      steps: [
+        { id: "run_1-reasoning-0", kind: "reasoning", status: "complete" },
+        { id: "call_1", kind: "tool", name: "get_current_time", input: {}, output: { date: "2026-09-17" }, status: "complete" },
+      ],
+      finishReason: "stop",
+      usage: { inputTokens: 2, outputTokens: 1, totalTokens: 3 },
+    },
+  }],
+} satisfies AgentMessageList;
+
+export const agentUndo = {
+  draft: "Revise this",
+  messages: [{ id: "msg_1", role: "user", content: "Earlier", createdAt: "2026-09-17T00:00:00Z" }],
+} satisfies AgentUndoResult;
+
+export const agentEvents = [
+  { type: "run.started", runId: "run_1", messageId: "msg_1" },
+  { type: "reasoning.started", runId: "run_1" },
+  { type: "tool.started", callId: "call_1", name: "get_current_time", input: {} },
+  { type: "tool.completed", callId: "call_1", name: "get_current_time", output: { date: "2026-09-17" }, isError: false },
+  { type: "reasoning.completed", runId: "run_1" },
+  { type: "content.delta", delta: "Hello." },
+  { type: "run.completed", runId: "run_1", finishReason: "stop", usage: { inputTokens: 2, outputTokens: 1, totalTokens: 3 } },
+] satisfies AgentStreamEvent[];
+
 export const chainInfo = {
   height: 3,
   totalAnchors: 7,
@@ -414,6 +449,9 @@ export const wire = {
   mediaReferences,
   error,
   sessionList,
+  agentMessages,
+  agentUndo,
+  agentEvents,
   chainInfo,
   chainAnchor,
   chainBlock,

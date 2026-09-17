@@ -55,6 +55,7 @@ func (h *apiHandler) adminLogoutSession(w http.ResponseWriter, r *http.Request) 
 		WriteError(w, http.StatusInternalServerError, apierror.SessionRevokeFailed, "Session could not be revoked.")
 		return
 	}
+	h.clearAgentSession(r, claims.ID)
 	h.mutations.RecordAuthChange(r.Context(), mutationRequest(r), claims.Subject, "logout", claims.ID)
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -88,6 +89,7 @@ func (h *apiHandler) adminLogoutSessionByID(w http.ResponseWriter, r *http.Reque
 		WriteError(w, http.StatusInternalServerError, apierror.SessionRevokeFailed, "Session could not be revoked.")
 		return
 	}
+	h.clearAgentSession(r, targetID)
 	h.mutations.RecordAuthChange(r.Context(), mutationRequest(r), claims.Subject, "logout", targetID)
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -98,9 +100,15 @@ func (h *apiHandler) adminLogoutSessions(w http.ResponseWriter, r *http.Request)
 		WriteError(w, http.StatusUnauthorized, apierror.Unauthorized, "A valid session is required.")
 		return
 	}
+	sessions, _ := h.store.AdminSessions(r.Context(), claims.Subject)
 	if err := h.store.RevokeSessions(r.Context(), claims.Subject, claims.ID, time.Now().UTC()); err != nil {
 		WriteError(w, http.StatusInternalServerError, apierror.SessionRevokeFailed, "Sessions could not be revoked.")
 		return
+	}
+	for _, session := range sessions {
+		if session.ID != claims.ID {
+			h.clearAgentSession(r, session.ID)
+		}
 	}
 	h.mutations.RecordAuthChange(r.Context(), mutationRequest(r), claims.Subject, "logout-all", claims.ID)
 	w.WriteHeader(http.StatusNoContent)
@@ -163,6 +171,7 @@ func (h *apiHandler) adminChangePassword(w http.ResponseWriter, r *http.Request)
 		WriteError(w, http.StatusUnauthorized, apierror.Unauthorized, "A valid session is required.")
 		return
 	}
+	sessions, _ := h.store.AdminSessions(r.Context(), claims.Subject)
 	if err := h.auth.UpdateCredential(r.Context(), claims.Subject, input.CurrentPassword, input.NewPassword, claims.ID); err != nil {
 		if errors.Is(err, auth.ErrInvalidCredentials) {
 			WriteError(w, http.StatusUnauthorized, apierror.InvalidCredentials, "Current password is incorrect.")
@@ -171,6 +180,17 @@ func (h *apiHandler) adminChangePassword(w http.ResponseWriter, r *http.Request)
 		WriteError(w, http.StatusInternalServerError, apierror.PasswordChangeFailed, "Password could not be updated.")
 		return
 	}
+	for _, session := range sessions {
+		if session.ID != claims.ID {
+			h.clearAgentSession(r, session.ID)
+		}
+	}
 	h.mutations.RecordAuthChange(r.Context(), mutationRequest(r), claims.Subject, "password-changed", claims.ID)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *apiHandler) clearAgentSession(r *http.Request, sessionID string) {
+	if h.agentRuntime != nil {
+		_ = h.agentRuntime.Clear(r.Context(), sessionID)
+	}
 }

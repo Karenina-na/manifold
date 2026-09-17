@@ -125,6 +125,7 @@ POST /api/v1/chain/anchors ─┼──> handler 构造 payload ──> chain.Su
 | `audit_events` 写入 | 结构性不能上链：挖块产生审计事件 → 审计事件又要求上链 → 无限回归 |
 | `identities` upsert（OAuth 换发时刷新第三方账号资料） | 第三方账号资料镜像，可再生（下次 GitHub 登录重新拉取），非本站用户内容，无承诺价值 |
 | `chain_keys` 站点密钥创建 | 链自身的签名基础设施，不是被承诺的业务内容；对它的承诺会是循环的（证书由该密钥签名） |
+| `agent_settings` 更新 | 私有运行配置，不代表公开内容或用户交互事实；只写 `agent.settings.updated` 审计，元数据不得包含 API key 明文 |
 
 新增数据库写路径时，必须先在本清单登记（或说明归入哪条例外），再合并实现；见第 14 节。
 
@@ -179,11 +180,11 @@ POST /api/v1/chain/anchors ─┼──> handler 构造 payload ──> chain.Su
 | --- | --- | --- |
 | `POST` | `/api/v1/admin/chain/anchors` | 管理员提交任意 payload，source = `admin`，请求体与响应同公开通道；无独立限流（已有 JWT 门槛） |
 
-Admin 本轮不新增链相关 workspace；管理员用公开浏览器与公开 verify 接口。内部 source（content/comment 等）的证书在对应业务操作中自动产生，无需管理动作。
+Admin 不新增链相关 workspace；管理员用公开浏览器与公开 verify 接口。Core Agent 在链启用时注册只读 `get_chain_status` 工具，复用 `Ledger.ChainInfo` 返回 height/tip/anchor 统计，不提交 payload、不新增 source、也不写链表。内部 source（content/comment 等）的证书在对应业务操作中自动产生，无需管理动作。
 
 ## 8. 数据模型
 
-迁移 `db/migrations/0005_init.sql` 引入锚定链三表（`chain_keys`、`chain_anchors`、`chain_blocks`）。当前 Core `schemaVersion` 为 6；后续迁移 `db/migrations/0006_init.sql` 引入第三方身份和评论 provider 字段：
+迁移 `db/migrations/0005_init.sql` 引入锚定链三表（`chain_keys`、`chain_anchors`、`chain_blocks`）。当前 Core `schemaVersion` 为 7；后续迁移 `db/migrations/0006_init.sql` 引入第三方身份和评论 provider 字段，`0007_init.sql` 引入不锚定的 `agent_settings` 运行配置：
 
 ```sql
 CREATE TABLE IF NOT EXISTS chain_keys (

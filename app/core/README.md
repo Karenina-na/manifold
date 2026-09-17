@@ -1,10 +1,10 @@
 # `app/core`
 
-Manifold 唯一的后端服务和业务数据所有者，提供 REST/JSON API、DB 会话校验的 JWT/Casbin 鉴权（可撤销会话、在线改密码）、SQLite、内容生命周期、首页时间线聚合、公开正文摘录派生、Thoughts 归档与置顶配置、评论管理、访客反应、统计、缓存和审计。
+Manifold 唯一的后端服务和业务数据所有者，提供 REST/JSON API、DB 会话校验的 JWT/Casbin 鉴权（可撤销会话、在线改密码）、SQLite、内容生命周期、首页时间线聚合、公开正文摘录派生、Thoughts 归档与置顶配置、评论管理、访客反应、统计、缓存、审计，以及 Admin 专用的场景化 session 内存 Agent、SQLite 运行设置与 SSE 运行流。
 
 当前详细契约见 [`docs/core.md`](../../docs/core.md)，其中记录 Core 的路由、公开/Admin API、请求/响应、错误 envelope、`THOUGHT`/`ARTICLE` 模型、metadata 校验、版本控制、迁移、SQLite schema、配置、缓存和异步审计架构。
 
-源码以 `internal/` 下的职责包组织：`handler` 负责 HTTP 边界，`application` 编排写用例，`store` 隔离 SQLite，`github` 封装 GitHub OAuth 上游通信，`system` 采样主机资源，其余鉴权、链、缓存、事件、模型与 seed 各自独立。
+源码以 `internal/` 下的职责包组织：`handler` 负责 HTTP 边界，`application` 编排写用例，`store` 隔离 SQLite，`agent` 负责 Provider/工具循环/上下文/临时记忆，`github` 封装 GitHub OAuth 上游通信，`system` 采样主机资源，其余鉴权、链、缓存、事件、模型与 seed 各自独立。
 
 ## 运行
 

@@ -11,7 +11,7 @@ import (
 	"github.com/manifold-space/manifold/app/core/internal/model"
 )
 
-const schemaVersion = 6
+const schemaVersion = 7
 
 // likePattern wraps a literal search value in a LIKE pattern and neutralises the
 // metacharacters inside it. SQLite's LIKE has no default escape character, so

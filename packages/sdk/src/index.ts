@@ -1,5 +1,5 @@
-import type { ApiErrorCode, AdminComment, AdminCommentQuery, AdminContent, AdminContentQuery, AdminOverview, AdminSessionList, AdminStats, AnalyticsViews, AnalyticsViewsQuery, AnchorQuery, AuditEventCollection, AuditQuery, AuthMeResponse, ChainAnchor, ChainBlockDetail, ChainBlockSummary, ChainInfo, ChainPublicKey, ChangePasswordInput, Collection, Comment, CommentQuery, Content, ContentDetail, ContentDetailQuery, ContentInput, ContentQuery, CreateCommentInput, GitHubExchangeInput, GitHubExchangeResponse, HealthStatus, HomeTimeline, HomeTimelineQuery, LikeSummary, LoginInput, LoginResponse, Media, MediaQuery, MediaReferenceList, PresenceStatus, Profile, ProfileInput, SiteComposition, SiteConfig, SiteConfigInput, Stats, SubmitAnchorInput, SubmitAnchorResponse, SystemStatus, TagQuery, TagSummary, ThoughtConfig, ThoughtConfigInput, UpdateCommentInput, UpdateContentInput, VerifyResponse, WritingConfig, WritingConfigInput } from "@manifold/contracts";
-import { isApiErrorCode } from "@manifold/contracts";
+import type { AgentMessageList, AgentRunInput, AgentSettings, AgentSettingsInput, AgentStreamEvent, AgentUndoResult, ApiErrorCode, AdminComment, AdminCommentQuery, AdminContent, AdminContentQuery, AdminOverview, AdminSessionList, AdminStats, AnalyticsViews, AnalyticsViewsQuery, AnchorQuery, AuditEventCollection, AuditQuery, AuthMeResponse, ChainAnchor, ChainBlockDetail, ChainBlockSummary, ChainInfo, ChainPublicKey, ChangePasswordInput, Collection, Comment, CommentQuery, Content, ContentDetail, ContentDetailQuery, ContentInput, ContentQuery, CreateCommentInput, GitHubExchangeInput, GitHubExchangeResponse, HealthStatus, HomeTimeline, HomeTimelineQuery, LikeSummary, LoginInput, LoginResponse, Media, MediaQuery, MediaReferenceList, PresenceStatus, Profile, ProfileInput, SiteComposition, SiteConfig, SiteConfigInput, Stats, SubmitAnchorInput, SubmitAnchorResponse, SystemStatus, TagQuery, TagSummary, ThoughtConfig, ThoughtConfigInput, UpdateCommentInput, UpdateContentInput, VerifyResponse, WritingConfig, WritingConfigInput } from "@manifold/contracts";
+import { isAgentStreamEvent, isApiErrorCode } from "@manifold/contracts";
 
 // The SDK synthesises this when a response carries no parseable error body (a
 // proxy 502, an HTML error page), so it is observable on ApiError.code but is
@@ -31,6 +31,7 @@ export function createTraceId() {
 }
 
 export interface ManifoldClientOptions { baseUrl: string; fetch?: typeof globalThis.fetch; token?: string; browserVisitorCookie?: boolean }
+export interface AgentRunOptions { signal?: AbortSignal }
 
 const VISITOR_COOKIE = "manifold-visitor";
 
@@ -118,6 +119,35 @@ export class ManifoldClient {
 	verifyComment(id: string) { return this.request<VerifyResponse>(`/api/v1/chain/verify/comment/${this.path(id)}`); }
 	chainKeys() { return this.request<{ keys: ChainPublicKey[] }>("/api/v1/chain/keys"); }
 	adminSubmitAnchor(input: SubmitAnchorInput) { return this.request<SubmitAnchorResponse>("/api/v1/admin/chain/anchors", { method: "POST", body: input }); }
+	adminAgentSettings() { return this.request<AgentSettings>("/api/v1/admin/agent/settings"); }
+	updateAgentSettings(input: AgentSettingsInput) { return this.request<AgentSettings>("/api/v1/admin/agent/settings", { method: "PUT", body: input }); }
+	agentMessages() { return this.request<AgentMessageList>("/api/v1/admin/agent/messages"); }
+	clearAgentMessages() { return this.request<void>("/api/v1/admin/agent/messages", { method: "DELETE" }); }
+	undoAgentMessage(id: string) { return this.request<AgentUndoResult>(`/api/v1/admin/agent/messages/${this.path(id)}`, { method: "DELETE" }); }
+	async *runAgent(input: AgentRunInput, options: AgentRunOptions = {}): AsyncGenerator<AgentStreamEvent> {
+		const response = await this.rawRequest("/api/v1/admin/agent/messages", { method: "POST", body: input, accept: "text/event-stream", signal: options.signal });
+		if (!response.body) throw new Error("Agent response did not include a stream.");
+		const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+		let buffer = "";
+		for (;;) {
+			const { value, done } = await reader.read();
+			buffer += value ?? "";
+			buffer = buffer.replaceAll("\r\n", "\n");
+			let boundary = buffer.indexOf("\n\n");
+			while (boundary >= 0) {
+				const frame = buffer.slice(0, boundary);
+				buffer = buffer.slice(boundary + 2);
+				const data = frame.split("\n").filter((line) => line.startsWith("data:")).map((line) => line.slice(5).trimStart()).join("\n");
+				if (data) {
+					const event: unknown = JSON.parse(data);
+					if (!isAgentStreamEvent(event)) throw new Error("Core returned an invalid agent stream event.");
+					yield event;
+				}
+				boundary = buffer.indexOf("\n\n");
+			}
+			if (done) break;
+		}
+	}
 
 	private path(segment: string) { return encodeURIComponent(segment); }
 
@@ -134,7 +164,13 @@ export class ManifoldClient {
 	}
 
 	private async request<T>(path: string, options: { method?: string; body?: unknown; headers?: Record<string, string> } = {}): Promise<T> {
-		const headers = new Headers({ Accept: "application/json" });
+		const response = await this.rawRequest(path, options);
+		if (response.status === 204) return undefined as T;
+		return response.json() as Promise<T>;
+	}
+
+	private async rawRequest(path: string, options: { method?: string; body?: unknown; headers?: Record<string, string>; accept?: string; signal?: AbortSignal } = {}): Promise<Response> {
+		const headers = new Headers({ Accept: options.accept ?? "application/json" });
 		headers.set("X-Trace-ID", createTraceId());
 		if (options.body instanceof Blob) {
 			// Binary uploads pass the Blob through untouched; Core sniffs the
@@ -148,7 +184,7 @@ export class ManifoldClient {
 		}
 		for (const [key, value] of Object.entries(options.headers ?? {})) headers.set(key, value);
 		const body = options.body === undefined ? undefined : options.body instanceof Blob ? options.body : JSON.stringify(options.body);
-		const response = await this.fetcher(`${this.baseUrl}${path}`, { method: options.method ?? "GET", headers, body });
+		const response = await this.fetcher(`${this.baseUrl}${path}`, { method: options.method ?? "GET", headers, body, signal: options.signal });
 		if (!response.ok) {
 			const body = await response.json().catch(() => undefined) as { error?: { code?: string; message?: string; details?: unknown; requestId?: string; traceId?: string } } | undefined;
 			// ApiError.code is a closed union, so an unrecognised code is treated the
@@ -159,7 +195,6 @@ export class ManifoldClient {
 			const code = isApiErrorCode(body?.error?.code) ? body.error.code : REQUEST_FAILED_CODE;
 			throw new ApiError(response.status, code, body?.error?.message ?? `Request failed with status ${response.status}`, body?.error?.details, body?.error?.requestId, body?.error?.traceId ?? response.headers.get("X-Trace-ID") ?? undefined);
 		}
-		if (response.status === 204) return undefined as T;
-		return response.json() as Promise<T>;
+		return response;
 	}
 }

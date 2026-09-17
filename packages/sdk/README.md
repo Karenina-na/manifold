@@ -27,7 +27,7 @@ const page = await client.content({ kind: "ARTICLE", pageSize: 20 })
 每次请求：
 
 1. 以 `baseUrl + path` 组合 URL；所有路径段一律经 `encodeURIComponent` 编码。
-2. 设置 `Accept: application/json`。
+2. 默认设置 `Accept: application/json`；`runAgent()` 使用 `text/event-stream`。
 3. 生成并发送 `X-Trace-ID`。
 4. 有 body 时设置 `Content-Type: application/json` 并 `JSON.stringify`；body 为 `Blob` 时按二进制透传（仅当 Blob 携带类型时设置 `Content-Type`）。
 5. 有 token 时设置 `Authorization: Bearer <token>`。
@@ -85,6 +85,12 @@ const page = await client.content({ kind: "ARTICLE", pageSize: 20 })
 | `logoutSessionById(id)` | POST | `/api/v1/admin/session/{id}/logout` | `void`，204；按 id 吊销当前用户的指定会话（来自 `adminSessions()` 列表），吊销后该行从列表软删除 |
 | `logoutAllSessions()` | POST | `/api/v1/admin/session/logout-all` | `void`，204；吊销该用户除当前外所有会话 |
 | `changePassword(input)` | POST | `/api/v1/admin/password` | `void`，204；body `ChangePasswordInput{currentPassword,newPassword}`，成功后吊销其他会话；旧密码错误抛 `ApiError` 401 |
+| `adminAgentSettings()` | GET | `/api/v1/admin/agent/settings` | `AgentSettings`，API key 只返回是否已配置 |
+| `updateAgentSettings(input)` | PUT | `/api/v1/admin/agent/settings` | `AgentSettings`；`openAIBaseURL` 会规范化为无首尾空白、无尾部斜杠且包含 `/v1`；`apiKey` 省略保留、字符串替换、`null` 清除 |
+| `agentMessages()` | GET | `/api/v1/admin/agent/messages` | `AgentMessageList`，当前 JWT session 的临时 user/assistant 历史；assistant 可能携带可恢复的运行轨迹 |
+| `runAgent(input, { signal? })` | POST | `/api/v1/admin/agent/messages` | `AsyncGenerator<AgentStreamEvent>`；增量解析任意网络分片下的 SSE 帧，支持用 `AbortSignal` 在关闭对话层或登出时取消请求 |
+| `clearAgentMessages()` | DELETE | `/api/v1/admin/agent/messages` | `void`，204；清除当前 session 的临时记忆 |
+| `undoAgentMessage(id)` | DELETE | `/api/v1/admin/agent/messages/{id}` | `AgentUndoResult`；删除目标用户消息及其后的轮次，返回可编辑 draft 与重组历史 |
 | `adminStats()` | GET | `/api/v1/admin/stats` | `AdminStats` |
 | `adminOverview()` | GET | `/api/v1/admin/overview` | `AdminOverview`（TTL 缓存聚合） |
 | `adminAnalyticsViews(query?)` | GET | `/api/v1/admin/analytics/views` | `AnalyticsViews` |
