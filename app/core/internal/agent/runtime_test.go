@@ -3,6 +3,7 @@ package agent_test
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/manifold-space/manifold/app/core/internal/agent"
@@ -24,7 +25,7 @@ func (p *scriptedProvider) Chat(_ context.Context, request agent.ChatRequest) (*
 type echoTool struct{}
 
 func (echoTool) Definition() agent.ToolDefinition {
-	return agent.ToolDefinition{Name: "echo", Description: "Echo text", Parameters: json.RawMessage(`{"type":"object","properties":{"text":{"type":"string"}},"required":["text"],"additionalProperties":false}`)}
+	return agent.ToolDefinition{Name: "echo", Description: "Echo text", Usage: "Use for echoing text.", Parameters: json.RawMessage(`{"type":"object","properties":{"text":{"type":"string"}},"required":["text"],"additionalProperties":false}`)}
 }
 
 func (echoTool) Execute(_ context.Context, arguments json.RawMessage) (any, error) {
@@ -49,7 +50,7 @@ func TestRuntimeCompletesAToolLoopAndStoresConversation(t *testing.T) {
 		t.Fatal(err)
 	}
 	memory := repository.NewMemory()
-	runtime := agent.NewRuntime(agent.RuntimeConfig{Provider: "test", Model: "test-model", MaxToolRounds: 3, HistoryLimit: 20}, providers, agent.Scenario{SystemPrompt: "System prompt", Tools: toolRegistry}, memory)
+	runtime := agent.NewRuntime(agent.RuntimeConfig{Provider: "test", Model: "test-model", MaxToolRounds: 3, HistoryLimit: 20}, providers, agent.Scenario{Prompt: agent.PromptSpec{Intro: "System prompt"}, Tools: toolRegistry}, memory)
 
 	var events []agent.StreamEvent
 	if err := runtime.Run(t.Context(), "session_1", "Use the echo tool", func(event agent.StreamEvent) error {
@@ -61,6 +62,9 @@ func TestRuntimeCompletesAToolLoopAndStoresConversation(t *testing.T) {
 
 	if len(provider.requests) != 2 {
 		t.Fatalf("expected two model calls, got %d", len(provider.requests))
+	}
+	if len(provider.requests[0].Messages) == 0 || !strings.Contains(provider.requests[0].Messages[0].Content, "echo: Use for echoing text.") {
+		t.Fatalf("registered tool guidance was not built into the system prompt: %+v", provider.requests[0].Messages)
 	}
 	second := provider.requests[1].Messages
 	if second[len(second)-1].Role != agent.RoleTool || second[len(second)-1].ToolCallID != "call_1" {
@@ -105,7 +109,7 @@ func TestContextBuilderLimitsHistoryAndKeepsSystemFirst(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	builder := agent.NewContextBuilder(memory, "System prompt", 2)
+	builder := agent.NewContextBuilder(memory, agent.PromptSpec{Intro: "System prompt"}, agent.NewToolRegistry(), 2)
 	messages, err := builder.Build(t.Context(), "session_1", "next")
 	if err != nil {
 		t.Fatal(err)
@@ -126,7 +130,7 @@ func TestContextBuilderDropsAnOrphanAssistantAtTheHistoryBoundary(t *testing.T) 
 		}
 	}
 
-	messages, err := agent.NewContextBuilder(memory, "System prompt", 1).Build(t.Context(), "session_1", "next")
+	messages, err := agent.NewContextBuilder(memory, agent.PromptSpec{Intro: "System prompt"}, agent.NewToolRegistry(), 1).Build(t.Context(), "session_1", "next")
 	if err != nil {
 		t.Fatal(err)
 	}

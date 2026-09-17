@@ -21,6 +21,7 @@ type Message struct {
 type ToolDefinition struct {
 	Name        string
 	Description string
+	Usage       string
 	Parameters  json.RawMessage
 }
 

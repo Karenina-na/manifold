@@ -15,7 +15,7 @@ type ProfileReader interface {
 type UserProfile struct{ Store ProfileReader }
 
 func (UserProfile) Definition() agent.ToolDefinition {
-	return agent.ToolDefinition{Name: "get_user_profile", Description: "Get the author's current profile, background, interests and public links.", Parameters: json.RawMessage(`{"type":"object","properties":{},"required":[],"additionalProperties":false}`)}
+	return agent.ToolDefinition{Name: "get_user_profile", Description: "Get the author's current profile, background, interests and public links.", Usage: "Use for the author's profile, background, interests, preferences, or public links; do not infer profile facts that are not returned.", Parameters: json.RawMessage(`{"type":"object","properties":{},"required":[],"additionalProperties":false}`)}
 }
 
 func (tool UserProfile) Execute(ctx context.Context, _ json.RawMessage) (any, error) {

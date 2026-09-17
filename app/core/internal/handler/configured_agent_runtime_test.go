@@ -47,7 +47,7 @@ func TestConfiguredAgentRuntimeUsesSavedSettingsOnTheNextRun(t *testing.T) {
 	}
 
 	memory := repository.NewMemory()
-	runtime := newConfiguredAgentRuntime(database, agent.Scenario{SystemPrompt: "test", Tools: agent.NewToolRegistry()}, memory)
+	runtime := newConfiguredAgentRuntime(database, agent.Scenario{Prompt: agent.PromptSpec{Intro: "test"}, Tools: agent.NewToolRegistry()}, memory)
 	if err := runtime.Run(t.Context(), "session-1", "first", func(agent.StreamEvent) error { return nil }); err != nil {
 		t.Fatal(err)
 	}

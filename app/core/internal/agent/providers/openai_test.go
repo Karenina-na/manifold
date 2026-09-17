@@ -31,6 +31,11 @@ func TestOpenAIProviderMapsResponsesToolCalls(t *testing.T) {
 		if body["store"] != false || body["parallel_tool_calls"] != false {
 			t.Fatalf("unexpected request body: %+v", body)
 		}
+		if tools, ok := body["tools"].([]any); ok && len(tools) > 0 {
+			if _, hasUsage := tools[0].(map[string]any)["usage"]; hasUsage {
+				t.Fatal("prompt-only tool usage must not be sent as provider schema")
+			}
+		}
 		if requestCount == 2 {
 			inputs := body["input"].([]any)
 			hasReasoning := false
@@ -51,7 +56,7 @@ func TestOpenAIProviderMapsResponsesToolCalls(t *testing.T) {
 	response, err := provider.Chat(context.Background(), agent.ChatRequest{
 		Model:    "test-model",
 		Messages: []agent.Message{{Role: agent.RoleSystem, Content: "Be concise."}, {Role: agent.RoleUser, Content: "What time is it?"}},
-		Tools:    []agent.ToolDefinition{{Name: "get_current_time", Description: "Current time", Parameters: json.RawMessage(`{"type":"object","properties":{},"additionalProperties":false}`)}},
+		Tools:    []agent.ToolDefinition{{Name: "get_current_time", Description: "Current time", Usage: "Use for the current date.", Parameters: json.RawMessage(`{"type":"object","properties":{},"additionalProperties":false}`)}},
 	})
 	if err != nil {
 		t.Fatal(err)

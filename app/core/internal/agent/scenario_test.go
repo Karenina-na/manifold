@@ -9,7 +9,7 @@ import (
 
 func TestScenarioRegistryBuildsRegisteredScenarios(t *testing.T) {
 	registry := agent.NewScenarioRegistry()
-	want := agent.Scenario{SystemPrompt: "prompt", Tools: agent.NewToolRegistry()}
+	want := agent.Scenario{Prompt: agent.PromptSpec{Intro: "prompt"}, Tools: agent.NewToolRegistry()}
 	if err := registry.Register("manifold", func() (agent.Scenario, error) { return want, nil }); err != nil {
 		t.Fatal(err)
 	}
@@ -18,7 +18,7 @@ func TestScenarioRegistryBuildsRegisteredScenarios(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.SystemPrompt != want.SystemPrompt || got.Tools != want.Tools {
+	if got.Prompt.Intro != want.Prompt.Intro || got.Tools != want.Tools {
 		t.Fatalf("unexpected scenario: %+v", got)
 	}
 }

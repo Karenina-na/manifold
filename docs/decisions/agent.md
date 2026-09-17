@@ -12,7 +12,7 @@ Admin 需要一个能读取作者画像、公开内容摘要与锚定链状态�
 
 Agent 运行时位于 `app/core/internal/agent`。Core 内部类型隔离上游协议：Provider 只实现 `Chat(context.Context, ChatRequest) (*ChatResponse, error)`，Registry 按名称解析 Provider、Scenario 和 Tool；Runtime 执行有限回合的 `LLM → tool → result → LLM` 循环；Context Builder 统一组装 system prompt、session 历史与本次输入。
 
-场景是 Prompt 与可用工具集合的唯一业务定制边界。`ScenarioRegistry` 注册按需构建场景的工厂，`internal/agent/scenarios` 保存具体场景；当前 `manifold` 工厂持有 Manifold 私有助手 Prompt，并按 Store/Ledger 能力组装画像、内容、时间、计算器与只读链工具。Runtime 只消费构建完成的 `Scenario`，不识别场景名称或具体工具。新增场景只需注册新工厂，无需修改 Provider、运行循环、记忆或 HTTP/SSE 契约。
+场景是结构化 Prompt 与可用工具集合的唯一业务定制边界。`ScenarioRegistry` 注册按需构建场景的工厂，`internal/agent/scenarios` 保存具体场景；当前 `manifold` 工厂通过独立的 `ManifoldPrompt` 提供私有助手的各段规则，并按 Store/Ledger 能力组装画像、内容、时间、计算器与只读链工具。`PromptSpec.Build` 只接收通用工具定义，在 `TOOL USE` 段落中动态渲染已注册工具的名称和 `Usage`；工具的 Provider schema 描述仍由 `Description` 与 `Parameters` 负责，两者保持边界。Runtime 只消费构建完成的 `Scenario`，不识别场景名称或具体工具。新增场景只需注册新工厂，无需修改 Provider、运行循环、记忆或 HTTP/SSE 契约。
 
 OpenAI 实现使用 Responses API，`store=false`、`parallel_tool_calls=false`。Runtime 自己执行 function tools，并把 `function_call` 与 `function_call_output` 转成内部 Message；reasoning output item 仅作为 Provider 私有上下文原样带入下一工具回合，不进入 SSE 或共享 contracts。首版 Provider 调用本身是完整响应，Core SSE 用于统一传输运行阶段、工具结果和内容；以后 Provider 支持 token stream 时不需要改变 Admin 的事件联合。
 

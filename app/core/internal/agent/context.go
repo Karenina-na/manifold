@@ -8,12 +8,13 @@ import (
 
 type ContextBuilder struct {
 	messages     repository.MessageRepository
-	systemPrompt string
+	prompt       PromptSpec
+	tools        *ToolRegistry
 	historyLimit int
 }
 
-func NewContextBuilder(messages repository.MessageRepository, systemPrompt string, historyLimit int) *ContextBuilder {
-	return &ContextBuilder{messages: messages, systemPrompt: systemPrompt, historyLimit: historyLimit}
+func NewContextBuilder(messages repository.MessageRepository, prompt PromptSpec, tools *ToolRegistry, historyLimit int) *ContextBuilder {
+	return &ContextBuilder{messages: messages, prompt: prompt, tools: tools, historyLimit: historyLimit}
 }
 
 func (b *ContextBuilder) Build(ctx context.Context, sessionID, userMessage string) ([]Message, error) {
@@ -22,8 +23,12 @@ func (b *ContextBuilder) Build(ctx context.Context, sessionID, userMessage strin
 		return nil, err
 	}
 	result := make([]Message, 0, len(history)+2)
-	if b.systemPrompt != "" {
-		result = append(result, Message{Role: RoleSystem, Content: b.systemPrompt})
+	var registeredTools []ToolDefinition
+	if b.tools != nil {
+		registeredTools = b.tools.Definitions()
+	}
+	if systemPrompt := b.prompt.Build(registeredTools); systemPrompt != "" {
+		result = append(result, Message{Role: RoleSystem, Content: systemPrompt})
 	}
 	start := 0
 	for start < len(history) && Role(history[start].Role) != RoleUser {

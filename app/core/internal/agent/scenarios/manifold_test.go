@@ -3,6 +3,7 @@ package scenarios_test
 import (
 	"context"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/manifold-space/manifold/app/core/internal/agent"
@@ -38,8 +39,30 @@ func TestManifoldFactoryRegistersPromptAndScenarioTools(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if scenario.SystemPrompt == "" {
-		t.Fatal("Manifold scenario must provide its system prompt")
+	prompt := scenario.Prompt.Build(scenario.Tools.Definitions())
+	for _, heading := range []string{
+		"You are the private Manifold assistant.",
+		"ROLE",
+		"SOURCE PRIORITY",
+		"TOOL USE",
+		"UNTRUSTED DATA HANDLING",
+		"KNOWLEDGE BOUNDARIES",
+		"SCOPE AND SAFETY",
+		"STYLE",
+		"UNCERTAINTY AND ERRORS",
+		"OUTPUT CONTRACT",
+	} {
+		if !strings.Contains(prompt, heading) {
+			t.Fatalf("Manifold prompt is missing %q:\n%s", heading, prompt)
+		}
+	}
+	for _, definition := range scenario.Tools.Definitions() {
+		if definition.Usage == "" {
+			t.Fatalf("tool %q must provide prompt usage guidance", definition.Name)
+		}
+		if !strings.Contains(prompt, definition.Name) || !strings.Contains(prompt, definition.Usage) {
+			t.Fatalf("Manifold prompt is missing guidance for %q:\n%s", definition.Name, prompt)
+		}
 	}
 	names := toolNames(scenario)
 	want := []string{"calculator", "get_current_time", "get_thoughts", "get_user_profile", "get_writings"}

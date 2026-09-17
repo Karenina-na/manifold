@@ -6,8 +6,8 @@ import (
 )
 
 type Scenario struct {
-	SystemPrompt string
-	Tools        *ToolRegistry
+	Prompt PromptSpec
+	Tools  *ToolRegistry
 }
 
 type ScenarioFactory func() (Scenario, error)

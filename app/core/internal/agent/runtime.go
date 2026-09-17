@@ -37,7 +37,7 @@ func NewRuntime(config RuntimeConfig, providers *ProviderRegistry, scenario Scen
 	if scenario.Tools == nil {
 		scenario.Tools = NewToolRegistry()
 	}
-	return &Runtime{config: config, providers: providers, tools: scenario.Tools, messages: messages, context: NewContextBuilder(messages, scenario.SystemPrompt, config.HistoryLimit)}
+	return &Runtime{config: config, providers: providers, tools: scenario.Tools, messages: messages, context: NewContextBuilder(messages, scenario.Prompt, scenario.Tools, config.HistoryLimit)}
 }
 
 func (r *Runtime) Run(ctx context.Context, sessionID, userMessage string, emit func(StreamEvent) error) error {
