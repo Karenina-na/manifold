@@ -104,9 +104,10 @@ func newRouterWithMiner(cfg config.Config, database *store.Store, ledger *chain.
 
 func newAgentRuntime(database *store.Store, ledger *chain.Ledger) agentRunner {
 	scenarios := agent.NewScenarioRegistry()
-	dependencies := agentscenarios.ManifoldDependencies{Profile: database, Content: database}
+	dependencies := agentscenarios.ManifoldDependencies{Profile: database, Content: database, ContentDetail: database}
 	if ledger != nil {
 		dependencies.Chain = ledger
+		dependencies.ChainAnchors = ledger
 	}
 	if err := agentscenarios.RegisterManifold(scenarios, dependencies); err != nil {
 		panic(err)

@@ -2,6 +2,7 @@ package scenarios_test
 
 import (
 	"context"
+	"database/sql"
 	"slices"
 	"strings"
 	"testing"
@@ -23,15 +24,24 @@ func (manifoldSource) ListContent(context.Context, bool, store.ContentListOption
 	return store.ContentListResult{}, nil
 }
 
+func (manifoldSource) GetContentBySlug(context.Context, string, bool) (model.Content, error) {
+	title := "A writing"
+	return model.Content{ID: "writing_1", Kind: model.ContentKindArticle, Status: model.StatusPublished, Slug: "a-writing", Title: &title, Body: "# A writing"}, nil
+}
+
 type chainSource struct{}
 
 func (chainSource) ChainInfo(context.Context) (chain.ChainInfoResult, error) {
 	return chain.ChainInfoResult{}, nil
 }
 
+func (chainSource) LatestContentAnchor(context.Context, string) (chain.Anchor, error) {
+	return chain.Anchor{}, sql.ErrNoRows
+}
+
 func TestManifoldFactoryRegistersPromptAndScenarioTools(t *testing.T) {
 	registry := agent.NewScenarioRegistry()
-	if err := scenarios.RegisterManifold(registry, scenarios.ManifoldDependencies{Profile: manifoldSource{}, Content: manifoldSource{}}); err != nil {
+	if err := scenarios.RegisterManifold(registry, scenarios.ManifoldDependencies{Profile: manifoldSource{}, Content: manifoldSource{}, ContentDetail: manifoldSource{}}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -73,7 +83,7 @@ func TestManifoldFactoryRegistersPromptAndScenarioTools(t *testing.T) {
 		}
 	}
 	names := toolNames(scenario)
-	want := []string{"calculator", "get_current_time", "get_thoughts", "get_user_profile", "get_writings"}
+	want := []string{"calculator", "get_current_time", "get_thought", "get_thoughts", "get_user_profile", "get_writing", "get_writings"}
 	if !slices.Equal(names, want) {
 		t.Fatalf("unexpected Manifold tools: %v", names)
 	}
@@ -81,7 +91,7 @@ func TestManifoldFactoryRegistersPromptAndScenarioTools(t *testing.T) {
 
 func TestManifoldFactoryAddsChainToolOnlyWhenAvailable(t *testing.T) {
 	registry := agent.NewScenarioRegistry()
-	if err := scenarios.RegisterManifold(registry, scenarios.ManifoldDependencies{Profile: manifoldSource{}, Content: manifoldSource{}, Chain: chainSource{}}); err != nil {
+	if err := scenarios.RegisterManifold(registry, scenarios.ManifoldDependencies{Profile: manifoldSource{}, Content: manifoldSource{}, ContentDetail: manifoldSource{}, Chain: chainSource{}, ChainAnchors: chainSource{}}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -91,6 +101,9 @@ func TestManifoldFactoryAddsChainToolOnlyWhenAvailable(t *testing.T) {
 	}
 	if names := toolNames(scenario); !slices.Contains(names, "get_chain_status") {
 		t.Fatalf("chain-enabled Manifold scenario is missing get_chain_status: %v", names)
+	}
+	if names := toolNames(scenario); !slices.Contains(names, "get_content_anchor") {
+		t.Fatalf("chain-enabled Manifold scenario is missing get_content_anchor: %v", names)
 	}
 }
 

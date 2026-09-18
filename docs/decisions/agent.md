@@ -26,7 +26,7 @@ Admin 使用顶部栏打开居中的全页模态对话框，不新增工作区�
 
 - 新 Provider 只需实现内部接口并注册，不改变 HTTP 或 Admin 组件。
 - 新场景通过工厂同时注册 Prompt 和工具集合，不需要在 Handler 或 Runtime 中增加业务分支。
-- 工具由 Core 注入真实 Store/Ledger 读取能力；内容列表工具不返回正文，链工具只读。
+- 工具由 Core 注入真实 Store/Ledger 读取能力；内容列表工具返回摘要，`get_writing`/`get_thought` 按 slug 返回已发布正文，链工具只读；`get_content_anchor` 将内容 ID 与最新锚定证书关联，并用 `unanchored`、`pending`、`anchored` 区分无证书、待入块和已入块状态。
 - 当前对话不具备跨 session、跨进程或长期记忆语义。
 - Agent 设置跨进程持久化；API key 的静态保护边界是 Core 数据库文件权限，HTTP、审计与日志均不包含其明文。
 - 上游模型错误在流建立前映射为结构化 API 错误，在流建立后映射为 `run.error`，不把上游响应正文暴露给浏览器。
