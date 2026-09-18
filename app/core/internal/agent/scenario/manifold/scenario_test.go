@@ -73,6 +73,7 @@ func TestFactoryRegistersPromptAndScenarioTools(t *testing.T) {
 		"UNCERTAINTY AND ERRORS",
 		"OUTPUT CONTRACT",
 		"explicitly asks you to remember it",
+		"must successfully call the registered memory-management capability before claiming it was recorded",
 		"clear project decision",
 		"long-term stable preference",
 		"clearly likely to be reused",

@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -58,13 +59,7 @@ func (b *ContextBuilder) Build(ctx context.Context, sessionID, userMessage strin
 	for start < len(recent) && agentprovider.Role(recent[start].Role) != agentprovider.RoleUser {
 		start++
 	}
-	for _, item := range recent[start:] {
-		role := agentprovider.Role(item.Role)
-		if role != agentprovider.RoleUser && role != agentprovider.RoleAssistant {
-			continue
-		}
-		result = append(result, agentprovider.Message{Role: role, Content: item.Content})
-	}
+	result = appendConversationMessages(result, recent[start:])
 	result = append(result, agentprovider.Message{Role: agentprovider.RoleUser, Content: userMessage})
 	return result, nil
 }
@@ -98,6 +93,63 @@ func (b *ContextBuilder) executeCompaction(ctx context.Context, sessionID string
 		return "", fmt.Errorf("save conversation summary: %w", err)
 	}
 	return summary, nil
+}
+
+func appendConversationMessages(result []agentprovider.Message, messages []agentconversation.Message) []agentprovider.Message {
+	for _, item := range messages {
+		switch agentprovider.Role(item.Role) {
+		case agentprovider.RoleUser:
+			result = append(result, agentprovider.Message{Role: agentprovider.RoleUser, Content: item.Content})
+		case agentprovider.RoleAssistant:
+			result = appendAssistantConversation(result, item)
+		}
+	}
+	return result
+}
+
+func appendAssistantConversation(result []agentprovider.Message, item agentconversation.Message) []agentprovider.Message {
+	if item.Trace == nil {
+		return append(result, agentprovider.Message{Role: agentprovider.RoleAssistant, Content: item.Content})
+	}
+	var batch []agentconversation.TraceStep
+	hasToolCall := false
+	flush := func() {
+		if len(batch) == 0 {
+			return
+		}
+		hasToolCall = true
+		assistant := agentprovider.Message{Role: agentprovider.RoleAssistant}
+		for _, step := range batch {
+			arguments, err := json.Marshal(step.Input)
+			if err != nil {
+				arguments = json.RawMessage(`null`)
+			}
+			assistant.ToolCalls = append(assistant.ToolCalls, agenttool.ToolCall{ID: step.ID, Name: step.Name, Arguments: arguments})
+		}
+		result = append(result, assistant)
+		for _, step := range batch {
+			output, err := json.Marshal(step.Output)
+			if err != nil {
+				output = json.RawMessage(`null`)
+			}
+			result = append(result, agentprovider.Message{Role: agentprovider.RoleTool, Content: string(output), ToolCallID: step.ID})
+		}
+		batch = nil
+	}
+	for _, step := range item.Trace.Steps {
+		if step.Kind == "reasoning" {
+			flush()
+			continue
+		}
+		if step.Kind == "tool" && step.ID != "" && step.Name != "" {
+			batch = append(batch, step)
+		}
+	}
+	flush()
+	if item.Content != "" || hasToolCall || len(item.Trace.Steps) == 0 {
+		result = append(result, agentprovider.Message{Role: agentprovider.RoleAssistant, Content: item.Content})
+	}
+	return result
 }
 
 func messagesAfter(messages []agentconversation.Message, sequence uint64) []agentconversation.Message {

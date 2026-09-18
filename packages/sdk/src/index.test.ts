@@ -71,11 +71,11 @@ test("compacts session-scoped agent messages", async () => {
 		token: "token-1",
 		fetch: async (input, init) => {
 			captured = new Request(input, init);
-			return new Response(null, { status: 204 });
+			return new Response(JSON.stringify({ compacted: true }), { status: 200 });
 		},
 	});
 
-	await client.compactAgentMessages();
+	assert.deepEqual(await client.compactAgentMessages(), { compacted: true });
 	assert.equal(captured?.url, "http://core.test/api/v1/admin/agent/messages/compact");
 	assert.equal(captured?.method, "POST");
 });

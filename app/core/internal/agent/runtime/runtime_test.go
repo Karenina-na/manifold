@@ -158,6 +158,33 @@ func TestRuntimeCompletesAToolLoopAndStoresConversation(t *testing.T) {
 	}
 }
 
+func TestRuntimeStoresTraceWhenFinalResponseHasNoVisibleContent(t *testing.T) {
+	provider := &scriptedProvider{answers: []agentprovider.ChatResponse{
+		{ToolCalls: []agenttool.ToolCall{{ID: "call_1", Name: "echo", Arguments: json.RawMessage(`{"text":"hello"}`)}}, FinishReason: agentprovider.FinishToolCalls},
+		{Content: "", FinishReason: agentprovider.FinishStop},
+	}}
+	providers := agentprovider.NewRegistry()
+	if err := providers.Register("test", provider); err != nil {
+		t.Fatal(err)
+	}
+	tools := agenttool.NewRegistry()
+	if err := tools.Register(echoTool{}); err != nil {
+		t.Fatal(err)
+	}
+	history := agentconversation.NewVolatileHistory()
+	runtime := agentruntime.NewRuntime(agentruntime.RuntimeConfig{Provider: "test", Model: "test-model", MaxToolRounds: 2}, providers, agentscenario.Scenario{Prompt: agentprompt.Spec{Intro: "System prompt"}, Tools: tools}, history)
+	if err := runtime.Run(t.Context(), "session_1", "Use the echo tool", func(agentruntime.StreamEvent) error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	messages, err := history.List(t.Context(), "session_1", 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(messages) != 2 || messages[1].Trace == nil || len(messages[1].Trace.Steps) != 3 || messages[1].Trace.Steps[1].Kind != "tool" || messages[1].Trace.Steps[1].Name != "echo" {
+		t.Fatalf("final trace was dropped with an empty answer: %+v", messages)
+	}
+}
+
 func TestRuntimeCompactsBeforeStartingTheProviderRun(t *testing.T) {
 	provider := &scriptedProvider{answers: []agentprovider.ChatResponse{
 		{Content: "Working state summary", FinishReason: agentprovider.FinishStop, Usage: agentprovider.Usage{TotalTokens: 7}},
@@ -228,6 +255,56 @@ func TestRuntimeBuildContextExposesTheCurrentPromptAndConversationAssembly(t *te
 	}
 	if len(messages) != 4 || messages[0].Role != agentprovider.RoleSystem || messages[0].Content != "System prompt\n\nAVAILABLE TOOLS\n- The following registered tools are available for this run.\n- echo [read-only]: Echo text\n  Guidance: Use for echoing text.\n\nCAPABILITY BOUNDARIES\n- Only registered tools are available for this run.\n- Each tool may act only within its declared effect and scope.\n- A tool's existence does not grant capabilities beyond its declared effect.\n- Read-only tools do not change state; session-write tools may change only temporary state bound to the current session." || messages[1].Content != "Earlier question" || messages[2].Content != "Earlier answer" || messages[3].Content != "Current question" {
 		t.Fatalf("unexpected runtime context: %+v", messages)
+	}
+}
+
+func TestRuntimeBuildContextRetainsHistoricalToolCallsAndResults(t *testing.T) {
+	history := agentconversation.NewVolatileHistory()
+	for _, message := range []agentconversation.Message{
+		{Role: "user", Content: "Remember this choice"},
+		{Role: "assistant", Content: "I recorded it.", Trace: &agentconversation.MessageTrace{Steps: []agentconversation.TraceStep{
+			{ID: "reasoning-1", Kind: "reasoning", Status: "complete"},
+			{ID: "memory-call-1", Kind: "tool", Name: "manage_memory", Input: map[string]any{"action": "add", "content": "Use SQLite"}, Output: map[string]any{"item": map[string]any{"id": "memory_1", "content": "Use SQLite"}}, Status: "complete"},
+			{ID: "reasoning-2", Kind: "reasoning", Status: "complete"},
+		}}},
+	} {
+		if _, err := history.Append(t.Context(), "session_1", message); err != nil {
+			t.Fatal(err)
+		}
+	}
+	builder := agentruntime.NewContextBuilder(history, agentprompt.Spec{Intro: "System prompt"}, agenttool.NewRegistry(), 40, 1, nil)
+	messages, err := builder.Build(t.Context(), "session_1", "What did I ask you to remember?")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(messages) != 6 || messages[2].Role != agentprovider.RoleAssistant || len(messages[2].ToolCalls) != 1 || messages[2].ToolCalls[0].ID != "memory-call-1" || messages[3].Role != agentprovider.RoleTool || messages[3].ToolCallID != "memory-call-1" || !strings.Contains(messages[3].Content, "Use SQLite") || messages[4].Role != agentprovider.RoleAssistant || messages[4].Content != "I recorded it." || messages[5].Role != agentprovider.RoleUser || messages[5].Content != "What did I ask you to remember?" {
+		t.Fatalf("historical tool exchange was not retained: %+v", messages)
+	}
+}
+
+func TestRuntimeBuildContextPreservesMultipleHistoricalToolRounds(t *testing.T) {
+	history := agentconversation.NewVolatileHistory()
+	_, err := history.Append(t.Context(), "session_1", agentconversation.Message{Role: "user", Content: "Inspect both sources"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = history.Append(t.Context(), "session_1", agentconversation.Message{Role: "assistant", Content: "Both checks are complete.", Trace: &agentconversation.MessageTrace{Steps: []agentconversation.TraceStep{
+		{ID: "reasoning-1", Kind: "reasoning", Status: "complete"},
+		{ID: "call-1", Kind: "tool", Name: "first", Input: map[string]any{"source": "one"}, Output: map[string]any{"value": 1}, Status: "complete"},
+		{ID: "reasoning-2", Kind: "reasoning", Status: "complete"},
+		{ID: "call-2", Kind: "tool", Name: "second", Input: map[string]any{"source": "two"}, Output: map[string]any{"value": 2}, Status: "complete"},
+		{ID: "reasoning-3", Kind: "reasoning", Status: "complete"},
+	}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	builder := agentruntime.NewContextBuilder(history, agentprompt.Spec{Intro: "System prompt"}, agenttool.NewRegistry(), 40, 1, nil)
+	messages, err := builder.Build(t.Context(), "session_1", "Continue")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(messages) != 8 || messages[2].Role != agentprovider.RoleAssistant || len(messages[2].ToolCalls) != 1 || messages[3].Role != agentprovider.RoleTool || messages[4].Role != agentprovider.RoleAssistant || len(messages[4].ToolCalls) != 1 || messages[5].Role != agentprovider.RoleTool || messages[6].Role != agentprovider.RoleAssistant || messages[6].Content != "Both checks are complete." {
+		t.Fatalf("historical tool rounds were not separated: %+v", messages)
 	}
 }
 

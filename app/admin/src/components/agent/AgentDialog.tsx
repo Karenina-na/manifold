@@ -6,6 +6,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { createAdminClient } from '../../lib/api'
 import { completeAgentCommands, parseAgentCommand, type AgentCommandID } from './agent-commands'
+import { createCompactionNotice, failCompactionNotice, finishCompactionNotice, type AgentNotice } from './agent-notice'
 import { applyAgentEvent, formatAgentPayload, groupAgentMessages, type AgentProcessItem, type AgentTurn } from './agent-transcript'
 
 const agentDialogTitle = 'Talking'
@@ -42,6 +43,15 @@ function RunTrace({ turn }: { turn: AgentTurn }) {
   </details>
 }
 
+function AgentNoticeView({ notice }: { notice: AgentNotice }) {
+  const { t } = useTranslation()
+  const running = notice.status === 'running'
+  const failed = notice.status === 'error'
+  const title = running ? t('agentNotice.compactRunning') : failed ? t('agent.compactError') : notice.compacted ? t('agentNotice.compactComplete') : t('agentNotice.compactNoop')
+  const detail = running ? t('agentNotice.compactProgress') : failed ? t('agentNotice.compactTryAgain') : notice.compacted ? t('agentNotice.compactCompleteDetail') : t('agentNotice.compactNoopDetail')
+  return <div className={`agent-notice ${notice.status}`} role={failed ? 'alert' : 'status'} aria-live="polite" aria-busy={running}><code className="agent-notice-command">{t('agentNotice.compactCommand')}</code><span className="agent-notice-icon">{running ? <Sparkles size={14} aria-hidden="true" /> : failed ? <CircleAlert size={14} aria-hidden="true" /> : <Check size={14} aria-hidden="true" />}</span><span className="agent-notice-copy"><strong>{title}</strong><small>{detail}</small></span></div>
+}
+
 function MessageActions({ message, undoTarget, disabled = false, copied, undoing = false, onCopy, onUndo }: { message: AgentMessage; undoTarget?: AgentMessage; disabled?: boolean; copied: boolean; undoing?: boolean; onCopy: (message: AgentMessage) => void; onUndo?: (message: AgentMessage) => void }) {
   const { t } = useTranslation()
   return <div className="agent-message-actions">
@@ -74,6 +84,7 @@ export function AgentDialog({ token, opened, onClose }: { token: string; opened:
   const [copiedMessageID, setCopiedMessageID] = useState('')
   const [undoingMessageID, setUndoingMessageID] = useState('')
   const [actionError, setActionError] = useState('')
+  const [notices, setNotices] = useState<AgentNotice[]>([])
   const [actionRunning, setActionRunning] = useState<AgentCommandID | ''>('')
   const [commandMenuFocused, setCommandMenuFocused] = useState(false)
   const [activeCommandIndex, setActiveCommandIndex] = useState(0)
@@ -90,7 +101,7 @@ export function AgentDialog({ token, opened, onClose }: { token: string; opened:
       .finally(() => { if (active) setLoading(false) })
     return () => { active = false }
   }, [opened])
-  useEffect(() => { endRef.current?.scrollIntoView({ block: 'end', behavior: running ? 'smooth' : 'auto' }) }, [turns, running])
+  useEffect(() => { endRef.current?.scrollIntoView({ block: 'end', behavior: running || Boolean(actionRunning) ? 'smooth' : 'auto' }) }, [turns, notices, running, actionRunning])
   useEffect(() => { if (opened) requestAnimationFrame(() => inputRef.current?.focus()) }, [opened])
 
   const applyEvent = (event: AgentStreamEvent, turnID: string) => {
@@ -103,6 +114,7 @@ export function AgentDialog({ token, opened, onClose }: { token: string; opened:
     try {
       await client.current.clearAgentMessages()
       setTurns([])
+      setNotices([])
       setCopiedMessageID('')
       setActionError('')
     } catch {
@@ -116,10 +128,14 @@ export function AgentDialog({ token, opened, onClose }: { token: string; opened:
     if (running || actionRunning || undoingMessageID) return
     setActionRunning('compact')
     setActionError('')
+    const noticeID = `compact-${Date.now()}`
+    setNotices((items) => [...items, createCompactionNotice(noticeID)])
     try {
-      await client.current.compactAgentMessages()
+      const result = await client.current.compactAgentMessages()
+      setNotices((items) => items.map((notice) => notice.id === noticeID ? finishCompactionNotice(notice, result.compacted) : notice))
     } catch {
       setActionError(t('agent.compactError'))
+      setNotices((items) => items.map((notice) => notice.id === noticeID ? failCompactionNotice(notice) : notice))
     } finally {
       setActionRunning('')
     }
@@ -231,12 +247,13 @@ export function AgentDialog({ token, opened, onClose }: { token: string; opened:
     <div className="agent-shell">
       <div className="agent-toolbar"><div className="agent-toolbar-copy"><span className="agent-session-mark" /><span>{t('agent.sessionLabel')}</span><small>{t('agent.sessionMemory')}</small></div><div className="agent-toolbar-actions"><span className={`agent-run-status ${busy ? 'running' : ''}`}>{busy ? t('agent.statusRunning') : t('agent.statusReady')}</span><ActionIcon variant="subtle" color="gray" aria-label={t('agent.clear')} title={t('agent.clear')} disabled={busy || Boolean(undoingMessageID) || !hasConversation} onClick={() => void clear()}><Eraser size={16} /></ActionIcon></div></div>
       <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">{busy ? t('agent.statusRunning') : t('agent.statusReady')}</span>
-      <div className="agent-transcript" role="log" aria-busy={running}>
+      <div className="agent-transcript" role="log" aria-busy={busy}>
         {actionError && <div className="agent-action-error" role="alert"><CircleAlert size={14} aria-hidden="true" />{actionError}</div>}
         {loading && <div className="agent-loading"><span className="agent-loading-orb"><Sparkles size={18} aria-hidden="true" /></span><span>{t('common.loading')}</span></div>}
         {!loading && loadError && <div className="agent-empty agent-error-state"><CircleAlert size={22} aria-hidden="true" /><strong>{t('agent.loadError')}</strong><span>{t('agent.tryAgain')}</span></div>}
         {!loading && !loadError && !hasConversation && <div className="agent-empty"><span className="agent-empty-orb"><Sparkles size={22} aria-hidden="true" /></span><strong>{t('agent.emptyTitle')}</strong></div>}
         {!loading && !loadError && turns.map((turn) => <Turn key={turn.id} turn={turn} running={busy} copiedMessageID={copiedMessageID} undoingMessageID={undoingMessageID} onCopy={(message) => void copyMessage(message)} onUndo={(message) => void undoMessage(message)} />)}
+        {notices.map((notice) => <AgentNoticeView key={notice.id} notice={notice} />)}
         <div ref={endRef} />
       </div>
       <form className="agent-composer" onSubmit={submit}>

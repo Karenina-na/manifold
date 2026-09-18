@@ -154,6 +154,14 @@ button { cursor: pointer; }
 .agent-user-bubble .agent-message-actions button { color: rgba(255, 255, 255, .78); }
 .agent-user-bubble .agent-message-actions button:hover, .agent-user-bubble .agent-message-actions button:focus-visible { color: #fff; background: rgba(255, 255, 255, .14); }
 .agent-action-error { display: flex; align-items: center; gap: 7px; margin: 0 0 14px; padding: 9px 11px; border: 1px solid color-mix(in srgb, var(--danger) 35%, var(--line)); border-radius: 8px; color: var(--danger); background: color-mix(in srgb, var(--danger) 6%, var(--surface)); font-size: 11px; }
+.agent-notice { display: flex; align-items: center; gap: 9px; max-width: 680px; margin: 0 auto 18px; padding: 10px 13px; border: 1px solid color-mix(in srgb, var(--line) 80%, var(--accent)); border-radius: 9px; color: var(--muted); background: color-mix(in srgb, var(--surface) 82%, var(--accent-soft)); }
+.agent-notice.running { border-color: color-mix(in srgb, var(--accent) 42%, var(--line)); color: var(--accent); }
+.agent-notice.error { border-color: color-mix(in srgb, var(--danger) 40%, var(--line)); color: var(--danger); }
+.agent-notice-command { flex: 0 0 auto; color: inherit; font-size: 10px; }
+.agent-notice-icon { display: grid; place-items: center; flex: 0 0 auto; width: 24px; height: 24px; border-radius: 7px; background: var(--accent-soft); }
+.agent-notice-copy { display: grid; gap: 2px; min-width: 0; }
+.agent-notice-copy strong { color: var(--ink); font-size: 11px; }
+.agent-notice-copy small { font-size: 10px; line-height: 1.4; }
 .agent-answer-error { margin-top: 7px; color: var(--danger); font-size: 13px; line-height: 1.6; }
 .agent-answer-placeholder { display: flex; gap: 5px; align-items: center; height: 32px; margin-top: 4px; }
 .agent-answer-placeholder span { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); opacity: .38; animation: agent-dot 1.1s ease-in-out infinite; }

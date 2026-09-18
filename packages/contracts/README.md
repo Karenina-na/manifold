@@ -43,6 +43,7 @@ app/core JSON <--> packages/contracts <--> packages/sdk <--> Web / Admin
 - `ChangePasswordInput`：`POST /admin/password` 请求体 `{ currentPassword, newPassword }`（新密码 ≥8 字符）。
 - `AgentRunInput` / `AgentMessageList`：Admin Agent 的提问输入与当前 JWT session 的临时对话历史；历史包含 user/assistant 最终消息，assistant 可附带 `AgentMessageTrace` 以恢复已完成的思考、工具步骤和用量。
 - `AgentUndoResult`：Undo 返回的可编辑 `draft` 与按撤回边界重组后的 `messages`。
+- `AgentCompactionResult`：手动压缩返回的 `compacted`，用于区分 Summary 是否实际推进。
 - `AgentMessageTrace` / `AgentTraceStep`：assistant 消息的运行摘要；只记录阶段状态与工具输入输出，不包含模型隐藏推理文本。
 - `AgentSettings` / `AgentSettingsInput`：Agent 持久化运行设置；`historyLimit` 是加入当前 query 前的未压缩历史消息阈值，`compactionRecentTurns` 控制压缩后原样保留的最近 turns，`compactionMaxOutputTokens` 控制增量 Summary 的输出预算。`compactionRecentTurns` 不超过 `max(1, floor((historyLimit - 2) / 2))`。响应只含 `apiKeyConfigured`；输入的 `openAIBaseURL` 保存时会清理首尾空白、去掉尾部斜杠并确保路径包含 `/v1`；输入的 `apiKey` 省略表示保留、字符串表示替换、`null` 表示清除。
 - `AgentStreamEvent`：SSE 判别联合，包含 `run.started`、`reasoning.started/completed`、`content.delta`、`tool.started/completed`、`run.completed` 与 `run.error`。`run.started.messageId` 是已写入 conversation history 的用户消息 ID；reasoning 事件只表达处理状态，不携带隐藏推理文本；`tool.completed.isError` 始终存在。

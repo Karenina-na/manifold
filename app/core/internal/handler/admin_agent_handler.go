@@ -70,7 +70,8 @@ func (h *apiHandler) adminCompactAgentMessages(w http.ResponseWriter, r *http.Re
 		WriteError(w, http.StatusServiceUnavailable, apierror.AgentUnavailable, "The agent provider is not configured.")
 		return
 	}
-	if err := h.agentRuntime.Compact(r.Context(), claims.ID); err != nil {
+	compacted, err := h.agentRuntime.Compact(r.Context(), claims.ID)
+	if err != nil {
 		if errors.Is(err, errAgentUnavailable) {
 			WriteError(w, http.StatusServiceUnavailable, apierror.AgentUnavailable, "The agent provider is not configured.")
 			return
@@ -78,7 +79,7 @@ func (h *apiHandler) adminCompactAgentMessages(w http.ResponseWriter, r *http.Re
 		WriteError(w, http.StatusInternalServerError, apierror.AgentRunFailed, "Agent messages could not be compacted.")
 		return
 	}
-	w.WriteHeader(http.StatusNoContent)
+	WriteJSON(w, http.StatusOK, map[string]bool{"compacted": compacted})
 }
 
 func (h *apiHandler) adminUndoAgentMessage(w http.ResponseWriter, r *http.Request) {

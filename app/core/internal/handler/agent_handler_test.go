@@ -25,7 +25,7 @@ type fakeAgentRunner struct {
 	history      *agentconversation.VolatileHistory
 	beforeRun    func()
 	runError     error
-	compact      func()
+	compact      func() bool
 	compactError error
 }
 
@@ -36,11 +36,11 @@ func (runner fakeAgentRunner) List(ctx context.Context, sessionID string, limit 
 func (runner fakeAgentRunner) Clear(ctx context.Context, sessionID string) error {
 	return runner.history.Clear(ctx, sessionID)
 }
-func (runner fakeAgentRunner) Compact(context.Context, string) error {
+func (runner fakeAgentRunner) Compact(context.Context, string) (bool, error) {
 	if runner.compact != nil {
-		runner.compact()
+		return runner.compact(), runner.compactError
 	}
-	return runner.compactError
+	return false, runner.compactError
 }
 func (runner fakeAgentRunner) CloseSession(ctx context.Context, sessionID string) error {
 	return runner.history.Clear(ctx, sessionID)
@@ -286,14 +286,14 @@ func TestAdminAgentMessageHistoryIsSessionScopedAndClearable(t *testing.T) {
 func TestAdminAgentCanCompactTheCurrentSession(t *testing.T) {
 	compactCalls := 0
 	router, token, _ := newAgentHTTPTestWithRunner(t, func(runner *fakeAgentRunner) {
-		runner.compact = func() { compactCalls++ }
+		runner.compact = func() bool { compactCalls++; return true }
 	})
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/admin/agent/messages/compact", nil)
 	request.Header.Set("Authorization", "Bearer "+token)
 	router.ServeHTTP(recorder, request)
 
-	if recorder.Code != http.StatusNoContent || compactCalls != 1 {
+	if recorder.Code != http.StatusOK || compactCalls != 1 || !strings.Contains(recorder.Body.String(), `"compacted":true`) {
 		t.Fatalf("unexpected compact response: status=%d calls=%d body=%s", recorder.Code, compactCalls, recorder.Body.String())
 	}
 }

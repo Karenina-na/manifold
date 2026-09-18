@@ -73,9 +73,8 @@ func (r *Runtime) BuildContext(ctx context.Context, sessionID, userMessage strin
 }
 
 // Compact immediately summarizes eligible old turns for a session.
-func (r *Runtime) Compact(ctx context.Context, sessionID string) error {
-	_, err := r.context.Compact(ctx, sessionID)
-	return err
+func (r *Runtime) Compact(ctx context.Context, sessionID string) (bool, error) {
+	return r.context.Compact(ctx, sessionID)
 }
 
 func (r *Runtime) Run(ctx context.Context, sessionID, userMessage string, emit func(StreamEvent) error) error {
@@ -125,6 +124,8 @@ func (r *Runtime) Run(ctx context.Context, sessionID, userMessage string, emit f
 				if err := emit(StreamEvent{Type: EventContentDelta, Delta: response.Content}); err != nil {
 					return err
 				}
+			}
+			if response.Content != "" || len(traceSteps) > 0 {
 				if _, err := r.history.Append(ctx, sessionID, agentconversation.Message{
 					Role:    string(agentprovider.RoleAssistant),
 					Content: response.Content,

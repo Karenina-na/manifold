@@ -76,20 +76,20 @@ func (r *configuredAgentRuntime) Clear(ctx context.Context, sessionID string) er
 	return r.history.Clear(ctx, sessionID)
 }
 
-func (r *configuredAgentRuntime) Compact(ctx context.Context, sessionID string) error {
+func (r *configuredAgentRuntime) Compact(ctx context.Context, sessionID string) (bool, error) {
 	lock := r.sessionLock(sessionID)
 	lock.Lock()
 	defer lock.Unlock()
 	settings, err := r.store.GetAgentSettings(ctx)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if err := validateRunnableAgentSettings(settings); err != nil {
-		return err
+		return false, err
 	}
 	runtime, err := r.runtime(settings)
 	if err != nil {
-		return err
+		return false, err
 	}
 	return runtime.Compact(ctx, sessionID)
 }

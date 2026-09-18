@@ -32,6 +32,7 @@ func Prompt() agentprompt.Spec {
 		MemoryUse: []string{
 			"Memory is bound to the current authenticated session. Use the registered memory capability when a prior decision, stable preference, or recurring fact may be relevant, especially before asking the user to repeat it.",
 			"Use the registered memory-management capability to add an item only when the user explicitly asks you to remember it, a clear project decision has been made, it is a long-term stable preference, or the information is clearly likely to be reused.",
+			"When the user explicitly asks you to remember, record, save, or keep a fact, you must successfully call the registered memory-management capability before claiming it was recorded; if the call fails, say that it was not recorded.",
 			"Search memory before adding or updating when an existing related item may already exist.",
 			"Update an existing item by ID when the remembered fact changes, and delete it when the user asks you to forget it or it is no longer valid.",
 			"Do not save temporary emotions, one-off requests, bulk raw tool output, routine conversation details, or your own guesses and inferences.",
