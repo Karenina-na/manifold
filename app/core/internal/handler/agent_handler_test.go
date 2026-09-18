@@ -41,7 +41,7 @@ func (runner fakeAgentRunner) Clear(ctx context.Context, sessionID string) error
 }
 func (runner fakeAgentRunner) Compact(context.Context, string) (agentruntime.CompactionResult, error) {
 	if runner.compact != nil {
-		return agentruntime.CompactionResult{Compacted: runner.compact(), State: agentruntime.CompactionState{Summary: "Manual summary", CompactedMessages: 2, RecentTurns: 1}}, runner.compactError
+		return agentruntime.CompactionResult{Compacted: runner.compact(), State: agentruntime.CompactionState{Summary: "Manual summary", CompactedMessages: 2, RecentTurns: 1, AfterMessageID: "manual-assistant"}}, runner.compactError
 	}
 	return agentruntime.CompactionResult{}, runner.compactError
 }
@@ -296,7 +296,7 @@ func TestAdminAgentCanCompactTheCurrentSession(t *testing.T) {
 	request.Header.Set("Authorization", "Bearer "+token)
 	router.ServeHTTP(recorder, request)
 
-	if recorder.Code != http.StatusOK || compactCalls != 1 || !strings.Contains(recorder.Body.String(), `"compacted":true`) || !strings.Contains(recorder.Body.String(), `"compactedMessages":2`) || !strings.Contains(recorder.Body.String(), `"recentTurns":1`) || !strings.Contains(recorder.Body.String(), `"summary":"Manual summary"`) {
+	if recorder.Code != http.StatusOK || compactCalls != 1 || !strings.Contains(recorder.Body.String(), `"compacted":true`) || !strings.Contains(recorder.Body.String(), `"compactedMessages":2`) || !strings.Contains(recorder.Body.String(), `"recentTurns":1`) || !strings.Contains(recorder.Body.String(), `"summary":"Manual summary"`) || !strings.Contains(recorder.Body.String(), `"afterMessageId":"manual-assistant"`) {
 		t.Fatalf("unexpected compact response: status=%d calls=%d body=%s", recorder.Code, compactCalls, recorder.Body.String())
 	}
 }
@@ -318,14 +318,21 @@ func TestAdminAgentMessagesExposeTheLatestCompactionState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := history.SaveSummary(t.Context(), payload.ID, agentconversation.Summary{Content: "Working state", ThroughSequence: assistant.Sequence, CompactedMessages: 2, RecentTurns: 3}); err != nil {
+	recentUser, err := history.Append(t.Context(), payload.ID, agentconversation.Message{Role: "user", Content: "Recent"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := history.Append(t.Context(), payload.ID, agentconversation.Message{Role: "assistant", Content: "Recent answer"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := history.SaveSummary(t.Context(), payload.ID, agentconversation.Summary{Content: "Working state", ThroughSequence: assistant.Sequence, AnchorSequence: recentUser.Sequence, CompactedMessages: 2, RecentTurns: 3}); err != nil {
 		t.Fatal(err)
 	}
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/admin/agent/messages", nil)
 	request.Header.Set("Authorization", "Bearer "+token)
 	router.ServeHTTP(recorder, request)
-	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), `"compaction":{"summary":"Working state","compactedMessages":2,"recentTurns":3}`) {
+	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), `"compaction":{"summary":"Working state","compactedMessages":2,"recentTurns":3,"afterMessageId":"`+recentUser.ID+`"}`) {
 		t.Fatalf("unexpected compaction state: status=%d body=%s", recorder.Code, recorder.Body.String())
 	}
 }
@@ -354,9 +361,18 @@ func TestAdminAgentUndoReturnsDraftAndReorganizedHistory(t *testing.T) {
 	if err != nil || json.Unmarshal(decoded, &payload) != nil {
 		t.Fatal("decode test token")
 	}
+	_, err = history.Append(t.Context(), payload.ID, agentconversation.Message{ID: "user-1", Role: "user", Content: "Earlier"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstAssistant, err := history.Append(t.Context(), payload.ID, agentconversation.Message{ID: "assistant-1", Role: "assistant", Content: "Earlier answer"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := history.SaveSummary(t.Context(), payload.ID, agentconversation.Summary{Content: "Working state", ThroughSequence: firstAssistant.Sequence, AnchorSequence: firstAssistant.Sequence, CompactedMessages: 2, RecentTurns: 1}); err != nil {
+		t.Fatal(err)
+	}
 	for _, message := range []agentconversation.Message{
-		{ID: "user-1", Role: "user", Content: "Earlier"},
-		{ID: "assistant-1", Role: "assistant", Content: "Earlier answer"},
 		{ID: "user-2", Role: "user", Content: "Revise this"},
 		{ID: "assistant-2", Role: "assistant", Content: "Latest answer"},
 	} {
@@ -367,7 +383,40 @@ func TestAdminAgentUndoReturnsDraftAndReorganizedHistory(t *testing.T) {
 	request := httptest.NewRequest(http.MethodDelete, "/api/v1/admin/agent/messages/user-2", nil)
 	request.Header.Set("Authorization", "Bearer "+token)
 	router.ServeHTTP(recorder, request)
-	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), `"draft":"Revise this"`) || strings.Contains(recorder.Body.String(), "Latest answer") || !strings.Contains(recorder.Body.String(), "Earlier answer") {
+	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), `"draft":"Revise this"`) || strings.Contains(recorder.Body.String(), "Latest answer") || !strings.Contains(recorder.Body.String(), "Earlier answer") || !strings.Contains(recorder.Body.String(), `"compaction":{"summary":"Working state"`) {
 		t.Fatalf("unexpected undo response: %d %s", recorder.Code, recorder.Body.String())
+	}
+}
+
+func TestAdminAgentUndoClearsCompactionWhenCheckpointIsRemoved(t *testing.T) {
+	router, token, history := newAgentHTTPTest(t)
+	parts := strings.Split(token, ".")
+	var payload struct {
+		ID string `json:"jti"`
+	}
+	decoded, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil || json.Unmarshal(decoded, &payload) != nil {
+		t.Fatal("decode test token")
+	}
+	_, err = history.Append(t.Context(), payload.ID, agentconversation.Message{ID: "user-1", Role: "user", Content: "Earlier"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assistant, err := history.Append(t.Context(), payload.ID, agentconversation.Message{ID: "assistant-1", Role: "assistant", Content: "Earlier answer"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := history.SaveSummary(t.Context(), payload.ID, agentconversation.Summary{Content: "Working state", ThroughSequence: assistant.Sequence, AnchorSequence: assistant.Sequence, CompactedMessages: 2, RecentTurns: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := history.Append(t.Context(), payload.ID, agentconversation.Message{ID: "user-2", Role: "user", Content: "Remove checkpoint"}); err != nil {
+		t.Fatal(err)
+	}
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodDelete, "/api/v1/admin/agent/messages/user-1", nil)
+	request.Header.Set("Authorization", "Bearer "+token)
+	router.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK || strings.Contains(recorder.Body.String(), `"compaction"`) {
+		t.Fatalf("undo should remove the stale compaction state: %d %s", recorder.Code, recorder.Body.String())
 	}
 }

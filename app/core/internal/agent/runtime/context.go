@@ -25,6 +25,7 @@ type CompactionState struct {
 	Summary           string
 	CompactedMessages int
 	RecentTurns       int
+	AfterMessageID    string
 }
 
 type CompactionResult struct {
@@ -82,7 +83,11 @@ func (b *ContextBuilder) Compact(ctx context.Context, sessionID string) (Compact
 	if err != nil {
 		return CompactionResult{}, err
 	}
-	state := CompactionState{Summary: snapshot.Summary.Content, CompactedMessages: snapshot.Summary.CompactedMessages, RecentTurns: b.strategy.RecentTurnCount()}
+	anchorSequence := snapshot.Summary.AnchorSequence
+	if anchorSequence == 0 {
+		anchorSequence = snapshot.Summary.ThroughSequence
+	}
+	state := CompactionState{Summary: snapshot.Summary.Content, CompactedMessages: snapshot.Summary.CompactedMessages, RecentTurns: b.strategy.RecentTurnCount(), AfterMessageID: messageIDAtSequence(snapshot.Messages, anchorSequence)}
 	plan, ok := b.strategy.Force(snapshot)
 	if !ok {
 		return CompactionResult{State: state}, nil
@@ -91,7 +96,19 @@ func (b *ContextBuilder) Compact(ctx context.Context, sessionID string) (Compact
 	if err != nil {
 		return CompactionResult{}, err
 	}
-	return CompactionResult{Compacted: true, State: CompactionState{Summary: summary, CompactedMessages: plan.CompactedMessages, RecentTurns: plan.RecentTurns}}, nil
+	return CompactionResult{Compacted: true, State: CompactionState{Summary: summary, CompactedMessages: plan.CompactedMessages, RecentTurns: plan.RecentTurns, AfterMessageID: messageIDAtSequence(snapshot.Messages, plan.AnchorSequence)}}, nil
+}
+
+func messageIDAtSequence(messages []agentconversation.Message, sequence uint64) string {
+	if sequence == 0 {
+		return ""
+	}
+	for _, message := range messages {
+		if message.Sequence == sequence {
+			return message.ID
+		}
+	}
+	return ""
 }
 
 func (b *ContextBuilder) executeCompaction(ctx context.Context, sessionID string, plan agentcompact.Plan) (string, error) {
@@ -102,7 +119,7 @@ func (b *ContextBuilder) executeCompaction(ctx context.Context, sessionID string
 	if err != nil {
 		return "", fmt.Errorf("compact conversation history: %w", err)
 	}
-	if err := b.history.SaveSummary(ctx, sessionID, agentconversation.Summary{Content: summary, ThroughSequence: plan.ThroughSequence, CompactedMessages: plan.CompactedMessages, RecentTurns: plan.RecentTurns}); err != nil {
+	if err := b.history.SaveSummary(ctx, sessionID, agentconversation.Summary{Content: summary, ThroughSequence: plan.ThroughSequence, AnchorSequence: plan.AnchorSequence, CompactedMessages: plan.CompactedMessages, RecentTurns: plan.RecentTurns}); err != nil {
 		return "", fmt.Errorf("save conversation summary: %w", err)
 	}
 	return summary, nil

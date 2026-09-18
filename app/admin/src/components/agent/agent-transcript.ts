@@ -1,4 +1,5 @@
 import type { AgentFinishReason, AgentMessage, AgentStreamEvent, AgentTraceStep, AgentUsage } from '@manifold/contracts'
+import type { AgentNotice } from './agent-notice'
 
 const maxPayloadChars = 12000
 
@@ -13,6 +14,21 @@ export type AgentTurn = {
   finishReason?: AgentFinishReason
   usage?: AgentUsage
   persisted: boolean
+}
+
+export type AgentTranscriptItem =
+  | { kind: 'turn'; turn: AgentTurn }
+  | { kind: 'compaction'; notice: AgentNotice }
+
+export function buildAgentTranscript(turns: AgentTurn[], notice: AgentNotice | null): AgentTranscriptItem[] {
+  const items: AgentTranscriptItem[] = turns.map((turn) => ({ kind: 'turn', turn }))
+  if (!notice) return items
+  const anchorIndex = notice.afterMessageID
+    ? turns.findIndex((turn) => turn.user?.id === notice.afterMessageID || turn.assistant?.id === notice.afterMessageID)
+    : -1
+  const insertAt = anchorIndex < 0 ? items.length : anchorIndex + 1
+  items.splice(insertAt, 0, { kind: 'compaction', notice })
+  return items
 }
 
 function persistedTrace(message: AgentMessage) {

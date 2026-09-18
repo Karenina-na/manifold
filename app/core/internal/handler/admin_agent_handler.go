@@ -33,13 +33,30 @@ type agentCompactionView struct {
 	Summary           string `json:"summary"`
 	CompactedMessages int    `json:"compactedMessages"`
 	RecentTurns       int    `json:"recentTurns"`
+	AfterMessageID    string `json:"afterMessageId,omitempty"`
 }
 
-func agentCompactionStateView(state agentconversation.Summary) *agentCompactionView {
+func agentCompactionStateView(state agentconversation.Summary, messages []agentconversation.Message) *agentCompactionView {
 	if state.Content == "" {
 		return nil
 	}
-	return &agentCompactionView{Summary: state.Content, CompactedMessages: state.CompactedMessages, RecentTurns: state.RecentTurns}
+	anchorSequence := state.AnchorSequence
+	if anchorSequence == 0 {
+		anchorSequence = state.ThroughSequence
+	}
+	return &agentCompactionView{Summary: state.Content, CompactedMessages: state.CompactedMessages, RecentTurns: state.RecentTurns, AfterMessageID: compactionMessageID(messages, anchorSequence)}
+}
+
+func compactionMessageID(messages []agentconversation.Message, sequence uint64) string {
+	if sequence == 0 {
+		return ""
+	}
+	for _, message := range messages {
+		if message.Sequence == sequence {
+			return message.ID
+		}
+	}
+	return ""
 }
 
 func agentMessageViews(messages []agentconversation.Message) []agentMessageView {
@@ -62,7 +79,7 @@ func (h *apiHandler) adminAgentMessages(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	response := map[string]any{"messages": agentMessageViews(snapshot.Messages)}
-	if compaction := agentCompactionStateView(snapshot.Summary); compaction != nil {
+	if compaction := agentCompactionStateView(snapshot.Summary, snapshot.Messages); compaction != nil {
 		response["compaction"] = compaction
 	}
 	WriteJSON(w, http.StatusOK, response)
@@ -96,7 +113,7 @@ func (h *apiHandler) adminCompactAgentMessages(w http.ResponseWriter, r *http.Re
 		WriteError(w, http.StatusInternalServerError, apierror.AgentRunFailed, "Agent messages could not be compacted.")
 		return
 	}
-	response := map[string]any{"compacted": result.Compacted, "compaction": agentCompactionView{Summary: result.State.Summary, CompactedMessages: result.State.CompactedMessages, RecentTurns: result.State.RecentTurns}}
+	response := map[string]any{"compacted": result.Compacted, "compaction": agentCompactionView{Summary: result.State.Summary, CompactedMessages: result.State.CompactedMessages, RecentTurns: result.State.RecentTurns, AfterMessageID: result.State.AfterMessageID}}
 	WriteJSON(w, http.StatusOK, response)
 }
 
@@ -115,7 +132,16 @@ func (h *apiHandler) adminUndoAgentMessage(w http.ResponseWriter, r *http.Reques
 		WriteError(w, http.StatusInternalServerError, apierror.AgentRunFailed, "The conversation could not be reorganized.")
 		return
 	}
-	WriteJSON(w, http.StatusOK, map[string]any{"draft": restored.Content, "messages": agentMessageViews(messages)})
+	response := map[string]any{"draft": restored.Content, "messages": agentMessageViews(messages)}
+	if snapshot, snapshotErr := h.agentRuntime.Snapshot(r.Context(), claims.ID); snapshotErr == nil {
+		if compaction := agentCompactionStateView(snapshot.Summary, snapshot.Messages); compaction != nil {
+			response["compaction"] = compaction
+		}
+	} else {
+		WriteError(w, http.StatusInternalServerError, apierror.AgentRunFailed, "The conversation could not be reorganized.")
+		return
+	}
+	WriteJSON(w, http.StatusOK, response)
 }
 
 func (h *apiHandler) adminRunAgent(w http.ResponseWriter, r *http.Request) {

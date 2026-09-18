@@ -26,7 +26,7 @@ OpenAI 实现使用 Responses API，`store=false`、`parallel_tool_calls=true`�
 
 Provider、模型、工具回合数、历史上限、输出上限、OpenAI Base URL 与 API key 由 Admin 设置页管理，持久化在 SQLite 的 `agent_settings` 单例，不属于进程环境配置。Base URL 在保存和 Provider 初始化时清理首尾空白、去掉尾部斜杠，并在路径中缺少 `v1` 时补齐 `/v1`。每次运行前读取当前设置并按值复用或重建 Runtime，因此保存后下一次运行立即生效。读取 API 只返回 `apiKeyConfigured`，API key 只支持替换或清除，不回传明文。设置更新产生 `agent.settings.updated` 审计事件；这类运行配置不描述公开内容或业务状态，按 `docs/chain.md` §4.2 不锚定。
 
-Admin 使用顶部栏打开居中的全页模态对话框，不新增工作区路由。模态层从顶部滑入并配合背景虚化，正文按对话轮次归并 user/assistant 消息、运行轨迹与用量；assistant 消息的运行摘要随 conversation history 保存，重新打开后仍可展开思考卡片。所有消息气泡提供 Copy，仅 user 气泡提供 Undo；Undo 后原用户消息回到输入框，Core 返回的截断历史成为后续 Context。工具输入输出使用可折叠详情，思考摘要展示在对应思考步骤中，原始隐藏推理文本不展示。`/compact` 作为 transcript 顶部的横向 compaction turn 显示运行中、完成、无可压缩内容或失败结果，并可展开 Summary 历史上下文与压缩统计，不写入 conversation history。共享 contracts 定义 SSE 判别联合，SDK 负责跨任意网络分片解析帧。
+Admin 使用顶部栏打开居中的全页模态对话框，不新增工作区路由。模态层从顶部滑入并配合背景虚化，正文按对话轮次归并 user/assistant 消息、运行轨迹与用量；assistant 消息的运行摘要随 conversation history 保存，重新打开后仍可展开思考卡片。所有消息气泡提供 Copy，仅 user 气泡提供 Undo；Undo 后原用户消息回到输入框，Core 返回的截断历史成为后续 Context。工具输入输出使用可折叠详情，思考摘要展示在对应思考步骤中，原始隐藏推理文本不展示。`/compact` 作为 transcript 时间线中的特殊 Agent turn 显示运行中、完成、无可压缩内容或失败结果，插入触发压缩的 turn 后并以水平分隔线与后续对话分开；它可展开 Summary 历史上下文与压缩统计，不写入 conversation history。共享 contracts 定义 SSE 判别联合，SDK 负责跨任意网络分片解析帧。
 
 ## 结果
 

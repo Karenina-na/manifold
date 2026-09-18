@@ -7,7 +7,7 @@ import { useTranslation } from 'react-i18next'
 import { createAdminClient } from '../../lib/api'
 import { completeAgentCommands, parseAgentCommand, type AgentCommandID } from './agent-commands'
 import { createCompactionNotice, failCompactionNotice, finishCompactionNotice, restoreCompactionNotice, type AgentNotice } from './agent-notice'
-import { applyAgentEvent, formatAgentPayload, groupAgentMessages, type AgentProcessItem, type AgentTurn } from './agent-transcript'
+import { applyAgentEvent, buildAgentTranscript, formatAgentPayload, groupAgentMessages, type AgentProcessItem, type AgentTurn } from './agent-transcript'
 
 const agentDialogTitle = 'Talking'
 
@@ -52,11 +52,17 @@ function AgentNoticeView({ notice }: { notice: AgentNotice }) {
   const state = notice.compaction
   const detail = running ? t('agentNotice.compactProgress') : failed ? t('agentNotice.compactTryAgain') : notice.compacted ? t('agentNotice.compactCompleteDetail', { count: state?.compactedMessages ?? 0, recentTurns: state?.recentTurns ?? 0 }) : t('agentNotice.compactNoopDetail', { recentTurns: state?.recentTurns ?? 0 })
   return <article className={`agent-turn agent-compaction-turn ${notice.status}`}>
-    <div className={`agent-compaction-card ${notice.status}`} role={failed ? 'alert' : 'status'} aria-live="polite" aria-busy={running}>
-      <details open={running}>
-        <summary><span className="agent-compaction-leading"><code className="agent-notice-command">{t('agentNotice.compactCommand')}</code><span className="agent-notice-icon">{running ? <Sparkles size={14} aria-hidden="true" /> : failed ? <CircleAlert size={14} aria-hidden="true" /> : <Check size={14} aria-hidden="true" />}</span><strong>{title}</strong></span><small>{state?.summary ? t('agentNotice.summaryAvailable') : t('agentNotice.summaryPending')}</small></summary>
-        <div className="agent-compaction-body"><p>{detail}</p>{state?.summary && <div className="agent-compaction-summary"><strong>{t('agentNotice.summaryLabel')}</strong><MarkdownContent content={state.summary} /></div>}</div>
-      </details>
+    <div className="agent-compaction-divider" role="separator"><span><code className="agent-notice-command">{t('agentNotice.compactCommand')}</code><span>{title}</span></span></div>
+    <div className="agent-answer-row agent-compaction-answer-row">
+      <div className="agent-avatar assistant-avatar"><span className="agent-notice-icon">{running ? <Sparkles size={14} aria-hidden="true" /> : failed ? <CircleAlert size={14} aria-hidden="true" /> : <Check size={14} aria-hidden="true" />}</span></div>
+      <div className="agent-answer-copy">
+        <div className="agent-message-meta"><span>{t('agent.assistant')}</span><span className="agent-compaction-label">{title}</span></div>
+        <div className={`agent-answer-content agent-compaction-answer ${notice.status}`} role={failed ? 'alert' : 'status'} aria-live="polite" aria-busy={running}><p>{detail}</p></div>
+        {state?.summary && <details className="agent-compaction-details">
+          <summary><span>{t('agentNotice.summaryLabel')}</span><small>{t('agentNotice.summaryAvailable')}</small></summary>
+          <div className="agent-compaction-summary"><MarkdownContent content={state.summary} /></div>
+        </details>}
+      </div>
     </div>
   </article>
 }
@@ -105,7 +111,14 @@ export function AgentDialog({ token, opened, onClose }: { token: string; opened:
     if (!opened) return
     let active = true
     client.current.agentMessages()
-      .then(({ messages, compaction: savedCompaction }) => { if (active) { setTurns(groupAgentMessages(messages)); setCompaction(savedCompaction ? restoreCompactionNotice('compact-history', savedCompaction) : null) } })
+      .then(({ messages, compaction: savedCompaction }) => {
+        if (!active) return
+        const nextTurns = groupAgentMessages(messages)
+        setTurns(nextTurns)
+        const lastTurn = nextTurns.at(-1)
+        const fallbackAfterMessageID = lastTurn?.assistant?.id ?? lastTurn?.user?.id
+        setCompaction(savedCompaction ? restoreCompactionNotice('compact-history', savedCompaction, fallbackAfterMessageID) : null)
+      })
       .catch(() => { if (active) setLoadError(true) })
       .finally(() => { if (active) setLoading(false) })
     return () => { active = false }
@@ -138,7 +151,9 @@ export function AgentDialog({ token, opened, onClose }: { token: string; opened:
     setActionRunning('compact')
     setActionError('')
     const noticeID = `compact-${Date.now()}`
-    setCompaction(createCompactionNotice(noticeID))
+    const lastTurn = turns.at(-1)
+    const afterMessageID = lastTurn?.assistant?.id ?? lastTurn?.user?.id
+    setCompaction(createCompactionNotice(noticeID, afterMessageID))
     try {
       const result = await client.current.compactAgentMessages()
       setCompaction((notice) => notice?.id === noticeID ? finishCompactionNotice(notice, result) : notice)
@@ -228,7 +243,11 @@ export function AgentDialog({ token, opened, onClose }: { token: string; opened:
         setInput(message.content)
       } else {
         const result = await client.current.undoAgentMessage(message.id)
-        setTurns(groupAgentMessages(result.messages))
+        const nextTurns = groupAgentMessages(result.messages)
+        setTurns(nextTurns)
+        const lastTurn = nextTurns.at(-1)
+        const fallbackAfterMessageID = lastTurn?.assistant?.id ?? lastTurn?.user?.id
+        setCompaction(result.compaction ? restoreCompactionNotice('compact-history', result.compaction, fallbackAfterMessageID) : null)
         setInput(result.draft)
       }
       setCopiedMessageID('')
@@ -261,8 +280,9 @@ export function AgentDialog({ token, opened, onClose }: { token: string; opened:
         {loading && <div className="agent-loading"><span className="agent-loading-orb"><Sparkles size={18} aria-hidden="true" /></span><span>{t('common.loading')}</span></div>}
         {!loading && loadError && <div className="agent-empty agent-error-state"><CircleAlert size={22} aria-hidden="true" /><strong>{t('agent.loadError')}</strong><span>{t('agent.tryAgain')}</span></div>}
         {!loading && !loadError && !hasConversation && <div className="agent-empty"><span className="agent-empty-orb"><Sparkles size={22} aria-hidden="true" /></span><strong>{t('agent.emptyTitle')}</strong></div>}
-        {compaction && <AgentNoticeView notice={compaction} />}
-        {!loading && !loadError && turns.map((turn) => <Turn key={turn.id} turn={turn} running={busy} copiedMessageID={copiedMessageID} undoingMessageID={undoingMessageID} onCopy={(message) => void copyMessage(message)} onUndo={(message) => void undoMessage(message)} />)}
+        {!loading && !loadError && buildAgentTranscript(turns, compaction).map((item) => item.kind === 'compaction'
+          ? <AgentNoticeView key={item.notice.id} notice={item.notice} />
+          : <Turn key={item.turn.id} turn={item.turn} running={busy} copiedMessageID={copiedMessageID} undoingMessageID={undoingMessageID} onCopy={(message) => void copyMessage(message)} onUndo={(message) => void undoMessage(message)} />)}
         <div ref={endRef} />
       </div>
       <form className="agent-composer" onSubmit={submit}>

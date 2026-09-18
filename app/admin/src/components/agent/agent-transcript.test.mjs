@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { applyAgentEvent, formatAgentPayload, groupAgentMessages } from './agent-transcript.ts'
+import { applyAgentEvent, buildAgentTranscript, formatAgentPayload, groupAgentMessages } from './agent-transcript.ts'
 
 test('groups persisted user and assistant messages into conversation turns', () => {
   const messages = [
@@ -59,4 +59,23 @@ test('formats tool payloads predictably for compact details', () => {
   assert.equal(formatAgentPayload('value'), 'value')
   assert.equal(formatAgentPayload({ value: 1 }), '{\n  "value": 1\n}')
   assert.equal(formatAgentPayload('x'.repeat(12001)).length, 12002)
+})
+
+test('inserts compaction after its triggering turn and keeps later turns after it', () => {
+  const turns = groupAgentMessages([
+    { id: 'u1', role: 'user', content: 'First', createdAt: '2026-09-17T00:00:00Z' },
+    { id: 'a1', role: 'assistant', content: 'Answer', createdAt: '2026-09-17T00:00:01Z' },
+    { id: 'u2', role: 'user', content: 'Second', createdAt: '2026-09-17T00:00:02Z' },
+    { id: 'a2', role: 'assistant', content: 'Another answer', createdAt: '2026-09-17T00:00:03Z' },
+    { id: 'u3', role: 'user', content: 'After compact', createdAt: '2026-09-17T00:00:04Z' },
+    { id: 'a3', role: 'assistant', content: 'Follow-up', createdAt: '2026-09-17T00:00:05Z' },
+  ])
+  const items = buildAgentTranscript(turns, { id: 'compact-1', kind: 'compaction', status: 'complete', afterMessageID: 'a2', compacted: true, compaction: { summary: 'Working state', compactedMessages: 2, recentTurns: 1 } })
+  assert.deepEqual(items.map((item) => item.kind === 'turn' ? item.turn.id : item.notice.id), ['u1', 'u2', 'compact-1', 'u3'])
+})
+
+test('appends a restored compaction when its historical anchor is unavailable', () => {
+  const turns = groupAgentMessages([{ id: 'u1', role: 'user', content: 'First', createdAt: '2026-09-17T00:00:00Z' }])
+  const items = buildAgentTranscript(turns, { id: 'compact-1', kind: 'compaction', status: 'complete', afterMessageID: 'missing', compacted: true, compaction: { summary: 'Working state', compactedMessages: 2, recentTurns: 1 } })
+  assert.deepEqual(items.map((item) => item.kind === 'turn' ? item.turn.id : item.notice.id), ['u1', 'compact-1'])
 })

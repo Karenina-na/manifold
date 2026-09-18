@@ -7,6 +7,7 @@ type Plan struct {
 	Messages          []agentconversation.Message
 	Recent            []agentconversation.Message
 	ThroughSequence   uint64
+	AnchorSequence    uint64
 	CompactedMessages int
 	RecentTurns       int
 }
@@ -74,9 +75,22 @@ func (s BasicStrategy) plan(snapshot agentconversation.Snapshot, force bool) (Pl
 		Messages:          selected,
 		Recent:            append([]agentconversation.Message(nil), pending[end:]...),
 		ThroughSequence:   selected[len(selected)-1].Sequence,
+		AnchorSequence:    latestTurnAnchorSequence(snapshot.Messages),
 		CompactedMessages: len(selected),
 		RecentTurns:       recentTurns,
 	}, true
+}
+
+func latestTurnAnchorSequence(messages []agentconversation.Message) uint64 {
+	for index := len(messages) - 1; index >= 0; index-- {
+		if messages[index].Role == "user" {
+			return messages[index].Sequence
+		}
+	}
+	if len(messages) == 0 {
+		return 0
+	}
+	return messages[len(messages)-1].Sequence
 }
 
 type turnBoundary struct {

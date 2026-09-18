@@ -46,6 +46,7 @@ type Message struct {
 type Summary struct {
 	Content           string
 	ThroughSequence   uint64
+	AnchorSequence    uint64
 	CompactedMessages int
 	RecentTurns       int
 }

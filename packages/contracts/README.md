@@ -42,8 +42,8 @@ app/core JSON <--> packages/contracts <--> packages/sdk <--> Web / Admin
 - `MediaReference`：媒体被内容引用时的引用条目 `{ contentId, kind, title, slug, status }`，出现在 `DELETE /admin/media/{id}` 的 409 `MEDIA_IN_USE` 错误 `details.references` 中，也作为 `GET /admin/media/{id}/references` 的 `{ references: [...] }` 返回项；`status` 只可能是 `DRAFT`/`PUBLISHED`（引用查询已排除已删除内容）。
 - `ChangePasswordInput`：`POST /admin/password` 请求体 `{ currentPassword, newPassword }`（新密码 ≥8 字符）。
 - `AgentRunInput` / `AgentMessageList`：Admin Agent 的提问输入与当前 JWT session 的临时对话历史；历史包含 user/assistant 最终消息，assistant 可附带 `AgentMessageTrace` 以恢复 provider 思考摘要、工具步骤和用量；已有 Summary 通过可展开的 `compaction` 状态返回。
-- `AgentUndoResult`：Undo 返回的可编辑 `draft` 与按撤回边界重组后的 `messages`。
-- `AgentCompactionState` / `AgentCompactionResult`：手动压缩与历史读取返回 Summary 文本、压缩消息数和原样保留的最近 turns；`compacted` 区分 Summary 是否实际推进。
+- `AgentUndoResult`：Undo 返回的可编辑 `draft`、按撤回边界重组后的 `messages`，以及 Summary 仍有效时的可选 `compaction` 状态。
+- `AgentCompactionState` / `AgentCompactionResult`：手动压缩与历史读取返回 Summary 文本、压缩消息数、原样保留的最近 turns，以及可选的 `afterMessageId` 时间线锚点；`compacted` 区分 Summary 是否实际推进。
 - `AgentMessageTrace` / `AgentTraceStep`：assistant 消息的运行摘要；记录 provider 返回的思考摘要与工具输入输出，不保存原始隐藏推理上下文。
 - `AgentSettings` / `AgentSettingsInput`：Agent 持久化运行设置；`historyLimit` 是加入当前 query 前的未压缩历史消息阈值，`compactionRecentTurns` 控制压缩后原样保留的最近 turns，`compactionMaxOutputTokens` 控制增量 Summary 的输出预算。`compactionRecentTurns` 不超过 `max(1, floor((historyLimit - 2) / 2))`。响应只含 `apiKeyConfigured`；输入的 `openAIBaseURL` 保存时会清理首尾空白、去掉尾部斜杠并确保路径包含 `/v1`；输入的 `apiKey` 省略表示保留、字符串表示替换、`null` 表示清除。
 - `AgentStreamEvent`：SSE 判别联合，包含 `run.started`、`reasoning.started/completed`、`content.delta`、`tool.started/completed`、`run.completed` 与 `run.error`。`run.started.messageId` 是已写入 conversation history 的用户消息 ID；`reasoning.completed.message` 只携带 provider 提供的思考摘要，不携带原始隐藏推理上下文；`tool.completed.isError` 始终存在。

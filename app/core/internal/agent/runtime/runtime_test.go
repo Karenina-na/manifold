@@ -478,7 +478,7 @@ func TestContextBuilderCanForceIncrementalCompaction(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !result.Compacted || result.State.Summary != "Manual summary" || result.State.CompactedMessages != 2 || result.State.RecentTurns != 1 || len(compactor.requests) != 1 || len(compactor.requests[0].Messages) != 2 {
+	if !result.Compacted || result.State.Summary != "Manual summary" || result.State.CompactedMessages != 2 || result.State.RecentTurns != 1 || result.State.AfterMessageID != "msg_3" || len(compactor.requests) != 1 || len(compactor.requests[0].Messages) != 2 {
 		t.Fatalf("expected one forced compaction request, got result=%+v requests=%+v", result, compactor.requests)
 	}
 	snapshot, err := history.Snapshot(t.Context(), "session_1")
@@ -490,7 +490,7 @@ func TestContextBuilderCanForceIncrementalCompaction(t *testing.T) {
 	}
 
 	result, err = builder.Compact(t.Context(), "session_1")
-	if err != nil || result.Compacted || result.State.Summary != "Manual summary" || result.State.CompactedMessages != 2 || result.State.RecentTurns != 1 {
+	if err != nil || result.Compacted || result.State.Summary != "Manual summary" || result.State.CompactedMessages != 2 || result.State.RecentTurns != 1 || result.State.AfterMessageID != "msg_3" {
 		t.Fatalf("expected a no-op after all old turns were compacted, result=%+v err=%v", result, err)
 	}
 }

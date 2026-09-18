@@ -305,10 +305,10 @@ export type AgentTraceStep =
   | { id: string; kind: "error"; message: string };
 export interface AgentMessageTrace { steps: AgentTraceStep[]; finishReason: AgentFinishReason; usage: AgentUsage }
 export interface AgentMessage { id: string; role: AgentMessageRole; content: string; createdAt: string; trace?: AgentMessageTrace }
-export interface AgentCompactionState { summary: string; compactedMessages: number; recentTurns: number }
+export interface AgentCompactionState { summary: string; compactedMessages: number; recentTurns: number; afterMessageId?: string }
 export interface AgentMessageList { messages: AgentMessage[]; compaction?: AgentCompactionState }
 export interface AgentCompactionResult { compacted: boolean; compaction: AgentCompactionState }
-export interface AgentUndoResult { draft: string; messages: AgentMessage[] }
+export interface AgentUndoResult { draft: string; messages: AgentMessage[]; compaction?: AgentCompactionState }
 export type AgentStreamEvent =
   | { type: "run.started"; runId: string; messageId: string }
   | { type: "reasoning.started"; runId: string }
