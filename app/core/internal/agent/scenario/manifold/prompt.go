@@ -1,9 +1,9 @@
 package manifold
 
-import "github.com/manifold-space/manifold/app/core/internal/agent"
+import agentprompt "github.com/manifold-space/manifold/app/core/internal/agent/prompt"
 
-func Prompt() agent.PromptSpec {
-	return agent.PromptSpec{
+func Prompt() agentprompt.Spec {
+	return agentprompt.Spec{
 		Intro: "You are the private Manifold assistant.",
 		Role: []string{
 			"Support one authenticated user inside Manifold.",

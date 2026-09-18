@@ -1,4 +1,4 @@
-package agent_test
+package runtime_test
 
 import (
 	"context"
@@ -6,16 +6,20 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/manifold-space/manifold/app/core/internal/agent"
+	agentconversation "github.com/manifold-space/manifold/app/core/internal/agent/conversation"
+	agentprompt "github.com/manifold-space/manifold/app/core/internal/agent/prompt"
+	agentprovider "github.com/manifold-space/manifold/app/core/internal/agent/provider"
+	agentruntime "github.com/manifold-space/manifold/app/core/internal/agent/runtime"
+	agentscenario "github.com/manifold-space/manifold/app/core/internal/agent/scenario"
 	agenttool "github.com/manifold-space/manifold/app/core/internal/agent/tool"
 )
 
 type scriptedProvider struct {
-	requests []agent.ChatRequest
-	answers  []agent.ChatResponse
+	requests []agentprovider.ChatRequest
+	answers  []agentprovider.ChatResponse
 }
 
-func (p *scriptedProvider) Chat(_ context.Context, request agent.ChatRequest) (*agent.ChatResponse, error) {
+func (p *scriptedProvider) Chat(_ context.Context, request agentprovider.ChatRequest) (*agentprovider.ChatResponse, error) {
 	p.requests = append(p.requests, request)
 	answer := p.answers[0]
 	p.answers = p.answers[1:]
@@ -37,14 +41,14 @@ func (echoTool) Execute(_ context.Context, arguments json.RawMessage) (any, erro
 }
 
 func TestRuntimeCompletesAToolLoopAndStoresConversation(t *testing.T) {
-	provider := &scriptedProvider{answers: []agent.ChatResponse{
+	provider := &scriptedProvider{answers: []agentprovider.ChatResponse{
 		{ToolCalls: []agenttool.ToolCall{
 			{ID: "call_1", Name: "echo", Arguments: json.RawMessage(`{"text":"hello"}`)},
 			{ID: "call_2", Name: "echo", Arguments: json.RawMessage(`{"text":"world"}`)},
-		}, FinishReason: agent.FinishToolCalls},
-		{Content: "Echoed hello and world.", FinishReason: agent.FinishStop, Usage: agent.Usage{InputTokens: 8, OutputTokens: 3, TotalTokens: 11}},
+		}, FinishReason: agentprovider.FinishToolCalls},
+		{Content: "Echoed hello and world.", FinishReason: agentprovider.FinishStop, Usage: agentprovider.Usage{InputTokens: 8, OutputTokens: 3, TotalTokens: 11}},
 	}}
-	providers := agent.NewProviderRegistry()
+	providers := agentprovider.NewRegistry()
 	if err := providers.Register("test", provider); err != nil {
 		t.Fatal(err)
 	}
@@ -52,11 +56,11 @@ func TestRuntimeCompletesAToolLoopAndStoresConversation(t *testing.T) {
 	if err := toolRegistry.Register(echoTool{}); err != nil {
 		t.Fatal(err)
 	}
-	memory := agent.NewMemory()
-	runtime := agent.NewRuntime(agent.RuntimeConfig{Provider: "test", Model: "test-model", MaxToolRounds: 3, HistoryLimit: 20}, providers, agent.Scenario{Prompt: agent.PromptSpec{Intro: "System prompt"}, Tools: toolRegistry}, memory)
+	history := agentconversation.NewVolatileHistory()
+	runtime := agentruntime.NewRuntime(agentruntime.RuntimeConfig{Provider: "test", Model: "test-model", MaxToolRounds: 3, HistoryLimit: 20}, providers, agentscenario.Scenario{Prompt: agentprompt.Spec{Intro: "System prompt"}, Tools: toolRegistry}, history)
 
-	var events []agent.StreamEvent
-	if err := runtime.Run(t.Context(), "session_1", "Use the echo tool", func(event agent.StreamEvent) error {
+	var events []agentruntime.StreamEvent
+	if err := runtime.Run(t.Context(), "session_1", "Use the echo tool", func(event agentruntime.StreamEvent) error {
 		events = append(events, event)
 		return nil
 	}); err != nil {
@@ -70,16 +74,16 @@ func TestRuntimeCompletesAToolLoopAndStoresConversation(t *testing.T) {
 		t.Fatalf("registered tool guidance was not built into the system prompt: %+v", provider.requests[0].Messages)
 	}
 	second := provider.requests[1].Messages
-	if second[len(second)-2].Role != agent.RoleTool || second[len(second)-2].ToolCallID != "call_1" || second[len(second)-1].Role != agent.RoleTool || second[len(second)-1].ToolCallID != "call_2" {
+	if second[len(second)-2].Role != agentprovider.RoleTool || second[len(second)-2].ToolCallID != "call_1" || second[len(second)-1].Role != agentprovider.RoleTool || second[len(second)-1].ToolCallID != "call_2" {
 		t.Fatalf("expected tool output in the second model call, got %+v", second)
 	}
-	if events[0].Type != agent.EventRunStarted || events[len(events)-1].Type != agent.EventRunCompleted {
+	if events[0].Type != agentruntime.EventRunStarted || events[len(events)-1].Type != agentruntime.EventRunCompleted {
 		t.Fatalf("unexpected event sequence: %+v", events)
 	}
 	if events[0].MessageID == "" {
 		t.Fatalf("run.started must identify the persisted user message: %+v", events[0])
 	}
-	messages, err := memory.List(t.Context(), "session_1", 20)
+	messages, err := history.List(t.Context(), "session_1", 20)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,43 +105,43 @@ func TestRuntimeCompletesAToolLoopAndStoresConversation(t *testing.T) {
 }
 
 func TestContextBuilderLimitsHistoryAndKeepsSystemFirst(t *testing.T) {
-	memory := agent.NewMemory()
-	for _, message := range []agent.SessionMessage{
+	history := agentconversation.NewVolatileHistory()
+	for _, message := range []agentconversation.Message{
 		{Role: "user", Content: "old"},
 		{Role: "assistant", Content: "older answer"},
 		{Role: "user", Content: "recent"},
 		{Role: "assistant", Content: "recent answer"},
 	} {
-		if _, err := memory.Append(t.Context(), "session_1", message); err != nil {
+		if _, err := history.Append(t.Context(), "session_1", message); err != nil {
 			t.Fatal(err)
 		}
 	}
-	builder := agent.NewContextBuilder(memory, agent.PromptSpec{Intro: "System prompt"}, agenttool.NewRegistry(), 2)
+	builder := agentruntime.NewContextBuilder(history, agentprompt.Spec{Intro: "System prompt"}, agenttool.NewRegistry(), 2)
 	messages, err := builder.Build(t.Context(), "session_1", "next")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(messages) != 4 || messages[0].Role != agent.RoleSystem || messages[1].Content != "recent" || messages[3].Content != "next" {
+	if len(messages) != 4 || messages[0].Role != agentprovider.RoleSystem || messages[1].Content != "recent" || messages[3].Content != "next" {
 		t.Fatalf("unexpected context: %+v", messages)
 	}
 }
 
 func TestContextBuilderDropsAnOrphanAssistantAtTheHistoryBoundary(t *testing.T) {
-	memory := agent.NewMemory()
-	for _, message := range []agent.SessionMessage{
+	history := agentconversation.NewVolatileHistory()
+	for _, message := range []agentconversation.Message{
 		{Role: "user", Content: "previous"},
 		{Role: "assistant", Content: "previous answer"},
 	} {
-		if _, err := memory.Append(t.Context(), "session_1", message); err != nil {
+		if _, err := history.Append(t.Context(), "session_1", message); err != nil {
 			t.Fatal(err)
 		}
 	}
 
-	messages, err := agent.NewContextBuilder(memory, agent.PromptSpec{Intro: "System prompt"}, agenttool.NewRegistry(), 1).Build(t.Context(), "session_1", "next")
+	messages, err := agentruntime.NewContextBuilder(history, agentprompt.Spec{Intro: "System prompt"}, agenttool.NewRegistry(), 1).Build(t.Context(), "session_1", "next")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(messages) != 2 || messages[0].Role != agent.RoleSystem || messages[1].Role != agent.RoleUser || messages[1].Content != "next" {
+	if len(messages) != 2 || messages[0].Role != agentprovider.RoleSystem || messages[1].Role != agentprovider.RoleUser || messages[1].Content != "next" {
 		t.Fatalf("unexpected context after turn-boundary normalization: %+v", messages)
 	}
 }

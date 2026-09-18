@@ -45,7 +45,7 @@ app/core JSON <--> packages/contracts <--> packages/sdk <--> Web / Admin
 - `AgentUndoResult`：Undo 返回的可编辑 `draft` 与按撤回边界重组后的 `messages`。
 - `AgentMessageTrace` / `AgentTraceStep`：assistant 消息的运行摘要；只记录阶段状态与工具输入输出，不包含模型隐藏推理文本。
 - `AgentSettings` / `AgentSettingsInput`：Agent 持久化运行设置。响应只含 `apiKeyConfigured`；输入的 `openAIBaseURL` 保存时会清理首尾空白、去掉尾部斜杠并确保路径包含 `/v1`；输入的 `apiKey` 省略表示保留、字符串表示替换、`null` 表示清除。
-- `AgentStreamEvent`：SSE 判别联合，包含 `run.started`、`reasoning.started/completed`、`content.delta`、`tool.started/completed`、`run.completed` 与 `run.error`。`run.started.messageId` 是已写入 session memory 的用户消息 ID；reasoning 事件只表达处理状态，不携带隐藏推理文本；`tool.completed.isError` 始终存在。
+- `AgentStreamEvent`：SSE 判别联合，包含 `run.started`、`reasoning.started/completed`、`content.delta`、`tool.started/completed`、`run.completed` 与 `run.error`。`run.started.messageId` 是已写入 conversation history 的用户消息 ID；reasoning 事件只表达处理状态，不携带隐藏推理文本；`tool.completed.isError` 始终存在。
 - `AgentUsage` / `AgentFinishReason`：一次运行的累计 token 统计与 `stop | tool_calls | max_tokens | error` 结束原因。
 
 响应端 `ArticleMetadata`：`readingMinutes`、`toc`、`language`、`aiAssisted`；前两项由 Core 派生。响应端 `ThoughtMetadata`：`mood`/`question`/`context`/`source` 全部输出，可空值用 `null`。

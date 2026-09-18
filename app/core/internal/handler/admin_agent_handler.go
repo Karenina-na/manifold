@@ -10,8 +10,9 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/manifold-space/manifold/app/core/internal/agent"
-	"github.com/manifold-space/manifold/app/core/internal/agent/providers"
+	agentconversation "github.com/manifold-space/manifold/app/core/internal/agent/conversation"
+	"github.com/manifold-space/manifold/app/core/internal/agent/provider/openai"
+	agentruntime "github.com/manifold-space/manifold/app/core/internal/agent/runtime"
 	"github.com/manifold-space/manifold/app/core/internal/apierror"
 	"github.com/manifold-space/manifold/app/core/internal/auth"
 )
@@ -21,14 +22,14 @@ type agentRunInput struct {
 }
 
 type agentMessageView struct {
-	ID        string              `json:"id"`
-	Role      string              `json:"role"`
-	Content   string              `json:"content"`
-	CreatedAt string              `json:"createdAt"`
-	Trace     *agent.MessageTrace `json:"trace,omitempty"`
+	ID        string                          `json:"id"`
+	Role      string                          `json:"role"`
+	Content   string                          `json:"content"`
+	CreatedAt string                          `json:"createdAt"`
+	Trace     *agentconversation.MessageTrace `json:"trace,omitempty"`
 }
 
-func agentMessageViews(messages []agent.SessionMessage) []agentMessageView {
+func agentMessageViews(messages []agentconversation.Message) []agentMessageView {
 	views := make([]agentMessageView, 0, len(messages))
 	for _, message := range messages {
 		views = append(views, agentMessageView{ID: message.ID, Role: message.Role, Content: message.Content, CreatedAt: message.CreatedAt.UTC().Format(time.RFC3339), Trace: message.Trace})
@@ -39,7 +40,7 @@ func agentMessageViews(messages []agent.SessionMessage) []agentMessageView {
 func (h *apiHandler) adminAgentMessages(w http.ResponseWriter, r *http.Request) {
 	claims := auth.ClaimsFromContext(r.Context())
 	if claims == nil || h.agentRuntime == nil {
-		WriteError(w, http.StatusServiceUnavailable, apierror.AgentUnavailable, "Agent memory is unavailable.")
+		WriteError(w, http.StatusServiceUnavailable, apierror.AgentUnavailable, "Agent conversation is unavailable.")
 		return
 	}
 	messages, err := h.agentRuntime.List(r.Context(), claims.ID, 200)
@@ -53,7 +54,7 @@ func (h *apiHandler) adminAgentMessages(w http.ResponseWriter, r *http.Request) 
 func (h *apiHandler) adminClearAgentMessages(w http.ResponseWriter, r *http.Request) {
 	claims := auth.ClaimsFromContext(r.Context())
 	if claims == nil || h.agentRuntime == nil {
-		WriteError(w, http.StatusServiceUnavailable, apierror.AgentUnavailable, "Agent memory is unavailable.")
+		WriteError(w, http.StatusServiceUnavailable, apierror.AgentUnavailable, "Agent conversation is unavailable.")
 		return
 	}
 	if err := h.agentRuntime.Clear(r.Context(), claims.ID); err != nil {
@@ -66,11 +67,11 @@ func (h *apiHandler) adminClearAgentMessages(w http.ResponseWriter, r *http.Requ
 func (h *apiHandler) adminUndoAgentMessage(w http.ResponseWriter, r *http.Request) {
 	claims := auth.ClaimsFromContext(r.Context())
 	if claims == nil || h.agentRuntime == nil {
-		WriteError(w, http.StatusServiceUnavailable, apierror.AgentUnavailable, "Agent memory is unavailable.")
+		WriteError(w, http.StatusServiceUnavailable, apierror.AgentUnavailable, "Agent conversation is unavailable.")
 		return
 	}
 	restored, messages, err := h.agentRuntime.Undo(r.Context(), claims.ID, chi.URLParam(r, "id"))
-	if errors.Is(err, agent.ErrMessageNotFound) || errors.Is(err, agent.ErrMessageNotUser) {
+	if errors.Is(err, agentconversation.ErrMessageNotFound) || errors.Is(err, agentconversation.ErrMessageNotUser) {
 		WriteError(w, http.StatusNotFound, apierror.AgentMessageNotFound, "The user message is no longer available to undo.")
 		return
 	}
@@ -105,8 +106,8 @@ func (h *apiHandler) adminRunAgent(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	flusher.Flush()
 	runID := ""
-	emit := func(event agent.StreamEvent) error {
-		if event.Type == agent.EventRunStarted {
+	emit := func(event agentruntime.StreamEvent) error {
+		if event.Type == agentruntime.EventRunStarted {
 			runID = event.RunID
 		}
 		payload, err := json.Marshal(event)
@@ -123,18 +124,18 @@ func (h *apiHandler) adminRunAgent(w http.ResponseWriter, r *http.Request) {
 		if r.Context().Err() != nil {
 			return
 		}
-		var upstream *providers.UpstreamError
+		var upstream *openai.UpstreamError
 		if errors.As(err, &upstream) {
 			slog.Error("agent_run_failed", "status", upstream.StatusCode, "code", upstream.Code, "sessionId", claims.ID)
 		} else {
 			slog.Error("agent_run_failed", "errorType", fmt.Sprintf("%T", err), "sessionId", claims.ID)
 		}
-		_ = emit(agent.StreamEvent{Type: agent.EventRunError, RunID: runID, Code: apierror.AgentRunFailed, Message: agentRunErrorMessage(err)})
+		_ = emit(agentruntime.StreamEvent{Type: agentruntime.EventRunError, RunID: runID, Code: apierror.AgentRunFailed, Message: agentRunErrorMessage(err)})
 	}
 }
 
 func agentRunErrorMessage(err error) string {
-	var upstream *providers.UpstreamError
+	var upstream *openai.UpstreamError
 	if !errors.As(err, &upstream) {
 		return "The agent could not complete this request. Check the Core logs and provider settings."
 	}

@@ -89,7 +89,7 @@ const page = await client.content({ kind: "ARTICLE", pageSize: 20 })
 | `updateAgentSettings(input)` | PUT | `/api/v1/admin/agent/settings` | `AgentSettings`；`openAIBaseURL` 会规范化为无首尾空白、无尾部斜杠且包含 `/v1`；`apiKey` 省略保留、字符串替换、`null` 清除 |
 | `agentMessages()` | GET | `/api/v1/admin/agent/messages` | `AgentMessageList`，当前 JWT session 的临时 user/assistant 历史；assistant 可能携带可恢复的运行轨迹 |
 | `runAgent(input, { signal? })` | POST | `/api/v1/admin/agent/messages` | `AsyncGenerator<AgentStreamEvent>`；增量解析任意网络分片下的 SSE 帧，支持用 `AbortSignal` 在关闭对话层或登出时取消请求 |
-| `clearAgentMessages()` | DELETE | `/api/v1/admin/agent/messages` | `void`，204；清除当前 session 的临时记忆 |
+| `clearAgentMessages()` | DELETE | `/api/v1/admin/agent/messages` | `void`，204；清除当前 session 对应的 conversation history |
 | `undoAgentMessage(id)` | DELETE | `/api/v1/admin/agent/messages/{id}` | `AgentUndoResult`；删除目标用户消息及其后的轮次，返回可编辑 draft 与重组历史 |
 | `adminStats()` | GET | `/api/v1/admin/stats` | `AdminStats` |
 | `adminOverview()` | GET | `/api/v1/admin/overview` | `AdminOverview`（TTL 缓存聚合） |

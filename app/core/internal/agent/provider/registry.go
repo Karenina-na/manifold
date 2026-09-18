@@ -1,4 +1,4 @@
-package agent
+package provider
 
 import (
 	"errors"
@@ -8,16 +8,16 @@ import (
 
 var ErrNotRegistered = errors.New("agent dependency is not registered")
 
-type ProviderRegistry struct {
+type Registry struct {
 	mu        sync.RWMutex
 	providers map[string]Provider
 }
 
-func NewProviderRegistry() *ProviderRegistry {
-	return &ProviderRegistry{providers: map[string]Provider{}}
+func NewRegistry() *Registry {
+	return &Registry{providers: map[string]Provider{}}
 }
 
-func (r *ProviderRegistry) Register(name string, provider Provider) error {
+func (r *Registry) Register(name string, provider Provider) error {
 	if name == "" || provider == nil {
 		return errors.New("provider name and implementation are required")
 	}
@@ -30,7 +30,7 @@ func (r *ProviderRegistry) Register(name string, provider Provider) error {
 	return nil
 }
 
-func (r *ProviderRegistry) Get(name string) (Provider, error) {
+func (r *Registry) Get(name string) (Provider, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	provider, ok := r.providers[name]

@@ -8,25 +8,28 @@ import (
 	"sync"
 	"time"
 
-	"github.com/manifold-space/manifold/app/core/internal/agent"
-	"github.com/manifold-space/manifold/app/core/internal/agent/providers"
+	agentconversation "github.com/manifold-space/manifold/app/core/internal/agent/conversation"
+	agentprovider "github.com/manifold-space/manifold/app/core/internal/agent/provider"
+	"github.com/manifold-space/manifold/app/core/internal/agent/provider/openai"
+	agentruntime "github.com/manifold-space/manifold/app/core/internal/agent/runtime"
+	agentscenario "github.com/manifold-space/manifold/app/core/internal/agent/scenario"
 	"github.com/manifold-space/manifold/app/core/internal/model"
 	"github.com/manifold-space/manifold/app/core/internal/store"
 )
 
 type configuredAgentRuntime struct {
 	store    *store.Store
-	scenario agent.Scenario
-	memory   agent.SessionMemory
+	scenario agentscenario.Scenario
+	history  agentconversation.History
 
 	mu           sync.Mutex
-	cached       *agent.Runtime
+	cached       *agentruntime.Runtime
 	cachedValue  model.AgentSettings
 	sessionLocks sync.Map
 }
 
-func newConfiguredAgentRuntime(database *store.Store, scenario agent.Scenario, memory agent.SessionMemory) *configuredAgentRuntime {
-	return &configuredAgentRuntime{store: database, scenario: scenario, memory: memory}
+func newConfiguredAgentRuntime(database *store.Store, scenario agentscenario.Scenario, history agentconversation.History) *configuredAgentRuntime {
+	return &configuredAgentRuntime{store: database, scenario: scenario, history: history}
 }
 
 func (r *configuredAgentRuntime) Ready(ctx context.Context) error {
@@ -37,7 +40,7 @@ func (r *configuredAgentRuntime) Ready(ctx context.Context) error {
 	return validateRunnableAgentSettings(settings)
 }
 
-func (r *configuredAgentRuntime) Run(ctx context.Context, sessionID, userMessage string, emit func(agent.StreamEvent) error) error {
+func (r *configuredAgentRuntime) Run(ctx context.Context, sessionID, userMessage string, emit func(agentruntime.StreamEvent) error) error {
 	lock := r.sessionLock(sessionID)
 	lock.Lock()
 	defer lock.Unlock()
@@ -55,25 +58,25 @@ func (r *configuredAgentRuntime) Run(ctx context.Context, sessionID, userMessage
 	return runtime.Run(ctx, sessionID, userMessage, emit)
 }
 
-func (r *configuredAgentRuntime) List(ctx context.Context, sessionID string, limit int) ([]agent.SessionMessage, error) {
+func (r *configuredAgentRuntime) List(ctx context.Context, sessionID string, limit int) ([]agentconversation.Message, error) {
 	lock := r.sessionLock(sessionID)
 	lock.Lock()
 	defer lock.Unlock()
-	return r.memory.List(ctx, sessionID, limit)
+	return r.history.List(ctx, sessionID, limit)
 }
 
 func (r *configuredAgentRuntime) Clear(ctx context.Context, sessionID string) error {
 	lock := r.sessionLock(sessionID)
 	lock.Lock()
 	defer lock.Unlock()
-	return r.memory.Delete(ctx, sessionID)
+	return r.history.Clear(ctx, sessionID)
 }
 
-func (r *configuredAgentRuntime) Undo(ctx context.Context, sessionID, messageID string) (agent.SessionMessage, []agent.SessionMessage, error) {
+func (r *configuredAgentRuntime) Undo(ctx context.Context, sessionID, messageID string) (agentconversation.Message, []agentconversation.Message, error) {
 	lock := r.sessionLock(sessionID)
 	lock.Lock()
 	defer lock.Unlock()
-	return r.memory.UndoTurn(ctx, sessionID, messageID)
+	return r.history.Undo(ctx, sessionID, messageID)
 }
 
 func (r *configuredAgentRuntime) sessionLock(sessionID string) *sync.Mutex {
@@ -81,23 +84,23 @@ func (r *configuredAgentRuntime) sessionLock(sessionID string) *sync.Mutex {
 	return value.(*sync.Mutex)
 }
 
-func (r *configuredAgentRuntime) runtime(settings model.AgentSettings) (*agent.Runtime, error) {
+func (r *configuredAgentRuntime) runtime(settings model.AgentSettings) (*agentruntime.Runtime, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.cached != nil && r.cachedValue == settings {
 		return r.cached, nil
 	}
 
-	providerRegistry := agent.NewProviderRegistry()
+	providerRegistry := agentprovider.NewRegistry()
 	switch settings.Provider {
 	case "openai":
-		if err := providerRegistry.Register("openai", providers.NewOpenAI(settings.OpenAIAPIKey, settings.OpenAIBaseURL, &http.Client{Timeout: 60 * time.Second})); err != nil {
+		if err := providerRegistry.Register("openai", openai.New(settings.OpenAIAPIKey, settings.OpenAIBaseURL, &http.Client{Timeout: 60 * time.Second})); err != nil {
 			return nil, err
 		}
 	default:
 		return nil, errors.New("unsupported agent provider")
 	}
-	r.cached = agent.NewRuntime(agent.RuntimeConfig{Provider: settings.Provider, Model: settings.Model, MaxToolRounds: settings.MaxToolRounds, HistoryLimit: settings.HistoryLimit, MaxOutputTokens: settings.MaxOutputTokens}, providerRegistry, r.scenario, r.memory)
+	r.cached = agentruntime.NewRuntime(agentruntime.RuntimeConfig{Provider: settings.Provider, Model: settings.Model, MaxToolRounds: settings.MaxToolRounds, HistoryLimit: settings.HistoryLimit, MaxOutputTokens: settings.MaxOutputTokens}, providerRegistry, r.scenario, r.history)
 	r.cachedValue = settings
 	return r.cached, nil
 }

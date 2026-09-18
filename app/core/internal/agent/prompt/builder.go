@@ -1,4 +1,4 @@
-package agent
+package prompt
 
 import (
 	"fmt"
@@ -8,26 +8,9 @@ import (
 	agenttool "github.com/manifold-space/manifold/app/core/internal/agent/tool"
 )
 
-// PromptSpec contains scenario-owned prompt sections. Tool guidance is added
-// from the definitions supplied to Build so a scenario never hard-codes its
-// registered tool set into the common prompt builder.
-type PromptSpec struct {
-	Intro                 string
-	Role                  []string
-	InstructionScope      []string
-	SourcePriority        []string
-	ToolUse               []string
-	UntrustedDataHandling []string
-	KnowledgeBoundaries   []string
-	ScopeAndSafety        []string
-	Style                 []string
-	UncertaintyAndErrors  []string
-	OutputContract        []string
-}
-
 // Build renders the prompt in a stable section order and appends guidance for
 // the tools that are registered for the current scenario.
-func (spec PromptSpec) Build(tools []agenttool.ToolDefinition) string {
+func Build(spec Spec, tools []agenttool.ToolDefinition) string {
 	sections := make([]string, 0, 10)
 	if intro := strings.TrimSpace(spec.Intro); intro != "" {
 		sections = append(sections, intro)

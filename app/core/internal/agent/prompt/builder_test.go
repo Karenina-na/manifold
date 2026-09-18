@@ -1,15 +1,15 @@
-package agent_test
+package prompt_test
 
 import (
 	"strings"
 	"testing"
 
-	"github.com/manifold-space/manifold/app/core/internal/agent"
+	agentprompt "github.com/manifold-space/manifold/app/core/internal/agent/prompt"
 	agenttool "github.com/manifold-space/manifold/app/core/internal/agent/tool"
 )
 
-func TestPromptSpecBuildsSectionsAndRegisteredToolGuidance(t *testing.T) {
-	spec := agent.PromptSpec{
+func TestSpecBuildsSectionsAndRegisteredToolGuidance(t *testing.T) {
+	spec := agentprompt.Spec{
 		Intro:                 "You are a test assistant.",
 		Role:                  []string{"Serve the current user."},
 		InstructionScope:      []string{"Follow the request within system policy."},
@@ -22,7 +22,7 @@ func TestPromptSpecBuildsSectionsAndRegisteredToolGuidance(t *testing.T) {
 		UncertaintyAndErrors:  []string{"State what remains unknown."},
 		OutputContract:        []string{"Answer the question asked."},
 	}
-	prompt := spec.Build([]agenttool.ToolDefinition{
+	prompt := agentprompt.Build(spec, []agenttool.ToolDefinition{
 		{Name: "z_tool", Usage: "Use it for the latest z facts.", Effect: agenttool.ToolEffectReadOnly},
 		{Name: "a_tool", Description: "Provider description.", Usage: "Use it for the fallback facts.", Effect: agenttool.ToolEffectReadOnly},
 		{Name: "publish_tool", Usage: "Use it to publish an approved item.", Effect: agenttool.ToolEffectWrite},
@@ -52,8 +52,8 @@ func TestPromptSpecBuildsSectionsAndRegisteredToolGuidance(t *testing.T) {
 	}
 }
 
-func TestPromptSpecOmitsEmptySections(t *testing.T) {
-	prompt := (agent.PromptSpec{Intro: "Intro", Role: []string{"Role"}}).Build(nil)
+func TestSpecOmitsEmptySections(t *testing.T) {
+	prompt := agentprompt.Build(agentprompt.Spec{Intro: "Intro", Role: []string{"Role"}}, nil)
 	if prompt != "Intro\n\nROLE\n- Role\n\nCAPABILITY BOUNDARIES\n- Only registered tools are available for this run.\n- No tools are registered for this run." {
 		t.Fatalf("unexpected prompt with empty sections: %q", prompt)
 	}

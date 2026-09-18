@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	manifoldtools "github.com/manifold-space/manifold/app/core/internal/agent/scenarios/manifold/tools"
+	manifoldtools "github.com/manifold-space/manifold/app/core/internal/agent/scenario/manifold/tools"
 	"github.com/manifold-space/manifold/app/core/internal/chain"
 )
 

@@ -1,4 +1,4 @@
-package agent
+package runtime
 
 import (
 	"context"
@@ -7,6 +7,9 @@ import (
 	"fmt"
 	"sync/atomic"
 
+	agentconversation "github.com/manifold-space/manifold/app/core/internal/agent/conversation"
+	agentprovider "github.com/manifold-space/manifold/app/core/internal/agent/provider"
+	agentscenario "github.com/manifold-space/manifold/app/core/internal/agent/scenario"
 	agenttool "github.com/manifold-space/manifold/app/core/internal/agent/tool"
 )
 
@@ -20,15 +23,15 @@ type RuntimeConfig struct {
 
 type Runtime struct {
 	config    RuntimeConfig
-	providers *ProviderRegistry
+	providers *agentprovider.Registry
 	tools     *agenttool.Registry
 	executor  *agenttool.Executor
-	messages  SessionMessageRepository
+	history   agentconversation.History
 	context   *ContextBuilder
 	sequence  atomic.Uint64
 }
 
-func NewRuntime(config RuntimeConfig, providers *ProviderRegistry, scenario Scenario, messages SessionMessageRepository) *Runtime {
+func NewRuntime(config RuntimeConfig, providers *agentprovider.Registry, scenario agentscenario.Scenario, history agentconversation.History) *Runtime {
 	if config.MaxToolRounds < 1 {
 		config.MaxToolRounds = 6
 	}
@@ -38,7 +41,7 @@ func NewRuntime(config RuntimeConfig, providers *ProviderRegistry, scenario Scen
 	if scenario.Tools == nil {
 		scenario.Tools = agenttool.NewRegistry()
 	}
-	return &Runtime{config: config, providers: providers, tools: scenario.Tools, executor: agenttool.NewExecutor(scenario.Tools), messages: messages, context: NewContextBuilder(messages, scenario.Prompt, scenario.Tools, config.HistoryLimit)}
+	return &Runtime{config: config, providers: providers, tools: scenario.Tools, executor: agenttool.NewExecutor(scenario.Tools), history: history, context: NewContextBuilder(history, scenario.Prompt, scenario.Tools, config.HistoryLimit)}
 }
 
 func (r *Runtime) Run(ctx context.Context, sessionID, userMessage string, emit func(StreamEvent) error) error {
@@ -50,7 +53,7 @@ func (r *Runtime) Run(ctx context.Context, sessionID, userMessage string, emit f
 	if err != nil {
 		return err
 	}
-	persistedUser, err := r.messages.Append(ctx, sessionID, SessionMessage{Role: string(RoleUser), Content: userMessage})
+	persistedUser, err := r.history.Append(ctx, sessionID, agentconversation.Message{Role: string(agentprovider.RoleUser), Content: userMessage})
 	if err != nil {
 		return err
 	}
@@ -59,16 +62,16 @@ func (r *Runtime) Run(ctx context.Context, sessionID, userMessage string, emit f
 	if err := emit(StreamEvent{Type: EventRunStarted, RunID: runID, MessageID: persistedUser.ID}); err != nil {
 		return err
 	}
-	totalUsage := Usage{}
-	traceSteps := make([]TraceStep, 0)
+	totalUsage := agentprovider.Usage{}
+	traceSteps := make([]agentconversation.TraceStep, 0)
 	for round := 0; round <= r.config.MaxToolRounds; round++ {
 		reasoningID := fmt.Sprintf("%s-reasoning-%d", runID, round)
 		reasoningIndex := len(traceSteps)
-		traceSteps = append(traceSteps, TraceStep{ID: reasoningID, Kind: "reasoning", Status: "running"})
+		traceSteps = append(traceSteps, agentconversation.TraceStep{ID: reasoningID, Kind: "reasoning", Status: "running"})
 		if err := emit(StreamEvent{Type: EventReasoningStarted, RunID: runID}); err != nil {
 			return err
 		}
-		response, err := provider.Chat(ctx, ChatRequest{Messages: messages, Tools: r.tools.Definitions(), Model: r.config.Model, Options: ChatOptions{MaxOutputTokens: r.config.MaxOutputTokens}})
+		response, err := provider.Chat(ctx, agentprovider.ChatRequest{Messages: messages, Tools: r.tools.Definitions(), Model: r.config.Model, Options: agentprovider.ChatOptions{MaxOutputTokens: r.config.MaxOutputTokens}})
 		if err != nil {
 			return err
 		}
@@ -88,13 +91,13 @@ func (r *Runtime) Run(ctx context.Context, sessionID, userMessage string, emit f
 				if err := emit(StreamEvent{Type: EventContentDelta, Delta: response.Content}); err != nil {
 					return err
 				}
-				if _, err := r.messages.Append(ctx, sessionID, SessionMessage{
-					Role:    string(RoleAssistant),
+				if _, err := r.history.Append(ctx, sessionID, agentconversation.Message{
+					Role:    string(agentprovider.RoleAssistant),
 					Content: response.Content,
-					Trace: &MessageTrace{
-						Steps:        append([]TraceStep(nil), traceSteps...),
+					Trace: &agentconversation.MessageTrace{
+						Steps:        append([]agentconversation.TraceStep(nil), traceSteps...),
 						FinishReason: string(response.FinishReason),
-						Usage: TraceUsage{
+						Usage: agentconversation.TraceUsage{
 							InputTokens:  totalUsage.InputTokens,
 							OutputTokens: totalUsage.OutputTokens,
 							TotalTokens:  totalUsage.TotalTokens,
@@ -111,7 +114,7 @@ func (r *Runtime) Run(ctx context.Context, sessionID, userMessage string, emit f
 			return fmt.Errorf("tool round limit reached")
 		}
 
-		messages = append(messages, Message{Role: RoleAssistant, Content: response.Content, ToolCalls: response.ToolCalls, ProviderContext: response.ProviderContext})
+		messages = append(messages, agentprovider.Message{Role: agentprovider.RoleAssistant, Content: response.Content, ToolCalls: response.ToolCalls, ProviderContext: response.ProviderContext})
 		toolIndexes := make([]int, len(response.ToolCalls))
 		for index, call := range response.ToolCalls {
 			var input any
@@ -120,7 +123,7 @@ func (r *Runtime) Run(ctx context.Context, sessionID, userMessage string, emit f
 			}
 			toolIndex := len(traceSteps)
 			toolIndexes[index] = toolIndex
-			traceSteps = append(traceSteps, TraceStep{ID: call.ID, Kind: "tool", Name: call.Name, Input: input, Status: "running"})
+			traceSteps = append(traceSteps, agentconversation.TraceStep{ID: call.ID, Kind: "tool", Name: call.Name, Input: input, Status: "running"})
 			if err := emit(StreamEvent{Type: EventToolStarted, CallID: call.ID, Name: call.Name, Input: input}); err != nil {
 				return err
 			}
@@ -144,7 +147,7 @@ func (r *Runtime) Run(ctx context.Context, sessionID, userMessage string, emit f
 			if marshalErr != nil {
 				return marshalErr
 			}
-			messages = append(messages, Message{Role: RoleTool, Content: string(raw), ToolCallID: result.CallID})
+			messages = append(messages, agentprovider.Message{Role: agentprovider.RoleTool, Content: string(raw), ToolCallID: result.CallID})
 		}
 	}
 	return errors.New("agent run did not complete")

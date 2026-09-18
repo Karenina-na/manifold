@@ -7,7 +7,10 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/manifold-space/manifold/app/core/internal/agent"
+	agentconversation "github.com/manifold-space/manifold/app/core/internal/agent/conversation"
+	agentprompt "github.com/manifold-space/manifold/app/core/internal/agent/prompt"
+	agentruntime "github.com/manifold-space/manifold/app/core/internal/agent/runtime"
+	agentscenario "github.com/manifold-space/manifold/app/core/internal/agent/scenario"
 	agenttool "github.com/manifold-space/manifold/app/core/internal/agent/tool"
 	"github.com/manifold-space/manifold/app/core/internal/store"
 )
@@ -46,16 +49,16 @@ func TestConfiguredAgentRuntimeUsesSavedSettingsOnTheNextRun(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	memory := agent.NewMemory()
-	runtime := newConfiguredAgentRuntime(database, agent.Scenario{Prompt: agent.PromptSpec{Intro: "test"}, Tools: agenttool.NewRegistry()}, memory)
-	if err := runtime.Run(t.Context(), "session-1", "first", func(agent.StreamEvent) error { return nil }); err != nil {
+	history := agentconversation.NewVolatileHistory()
+	runtime := newConfiguredAgentRuntime(database, agentscenario.Scenario{Prompt: agentprompt.Spec{Intro: "test"}, Tools: agenttool.NewRegistry()}, history)
+	if err := runtime.Run(t.Context(), "session-1", "first", func(agentruntime.StreamEvent) error { return nil }); err != nil {
 		t.Fatal(err)
 	}
 	settings.Model = "model-two"
 	if err := database.UpdateAgentSettings(t.Context(), settings); err != nil {
 		t.Fatal(err)
 	}
-	if err := runtime.Run(t.Context(), "session-1", "second", func(agent.StreamEvent) error { return nil }); err != nil {
+	if err := runtime.Run(t.Context(), "session-1", "second", func(agentruntime.StreamEvent) error { return nil }); err != nil {
 		t.Fatal(err)
 	}
 	messages, err := runtime.List(t.Context(), "session-1", 20)

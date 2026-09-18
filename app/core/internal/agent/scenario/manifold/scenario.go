@@ -3,8 +3,8 @@ package manifold
 import (
 	"errors"
 
-	"github.com/manifold-space/manifold/app/core/internal/agent"
-	manifoldtools "github.com/manifold-space/manifold/app/core/internal/agent/scenarios/manifold/tools"
+	agentscenario "github.com/manifold-space/manifold/app/core/internal/agent/scenario"
+	manifoldtools "github.com/manifold-space/manifold/app/core/internal/agent/scenario/manifold/tools"
 	agenttool "github.com/manifold-space/manifold/app/core/internal/agent/tool"
 )
 
@@ -17,14 +17,14 @@ type Dependencies struct {
 	ChainAnchors manifoldtools.ContentAnchorReader
 }
 
-func Register(registry *agent.ScenarioRegistry, dependencies Dependencies) error {
+func Register(registry *agentscenario.Registry, dependencies Dependencies) error {
 	if registry == nil {
 		return errors.New("scenario registry is required")
 	}
 	if dependencies.Profile == nil || dependencies.Content == nil {
 		return errors.New("Manifold profile and content readers are required")
 	}
-	return registry.Register(Name, func() (agent.Scenario, error) {
+	return registry.Register(Name, func() (agentscenario.Scenario, error) {
 		tools := agenttool.NewRegistry()
 		for _, registered := range []agenttool.Tool{
 			manifoldtools.CurrentTime{},
@@ -34,19 +34,19 @@ func Register(registry *agent.ScenarioRegistry, dependencies Dependencies) error
 			manifoldtools.ContentGet{Store: dependencies.Content},
 		} {
 			if err := tools.Register(registered); err != nil {
-				return agent.Scenario{}, err
+				return agentscenario.Scenario{}, err
 			}
 		}
 		if dependencies.Chain != nil {
 			if err := tools.Register(manifoldtools.ChainStatus{Ledger: dependencies.Chain}); err != nil {
-				return agent.Scenario{}, err
+				return agentscenario.Scenario{}, err
 			}
 		}
 		if dependencies.ChainAnchors != nil {
 			if err := tools.Register(manifoldtools.ContentAnchor{Ledger: dependencies.ChainAnchors}); err != nil {
-				return agent.Scenario{}, err
+				return agentscenario.Scenario{}, err
 			}
 		}
-		return agent.Scenario{Prompt: Prompt(), Tools: tools}, nil
+		return agentscenario.Scenario{Prompt: Prompt(), Tools: tools}, nil
 	})
 }

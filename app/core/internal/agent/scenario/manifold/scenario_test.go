@@ -7,8 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/manifold-space/manifold/app/core/internal/agent"
-	"github.com/manifold-space/manifold/app/core/internal/agent/scenarios/manifold"
+	agentprompt "github.com/manifold-space/manifold/app/core/internal/agent/prompt"
+	agentscenario "github.com/manifold-space/manifold/app/core/internal/agent/scenario"
+	"github.com/manifold-space/manifold/app/core/internal/agent/scenario/manifold"
 	agenttool "github.com/manifold-space/manifold/app/core/internal/agent/tool"
 	"github.com/manifold-space/manifold/app/core/internal/chain"
 	"github.com/manifold-space/manifold/app/core/internal/model"
@@ -41,7 +42,7 @@ func (chainSource) LatestContentAnchor(context.Context, string) (chain.Anchor, e
 }
 
 func TestFactoryRegistersPromptAndScenarioTools(t *testing.T) {
-	registry := agent.NewScenarioRegistry()
+	registry := agentscenario.NewRegistry()
 	if err := manifold.Register(registry, manifold.Dependencies{Profile: manifoldSource{}, Content: manifoldSource{}}); err != nil {
 		t.Fatal(err)
 	}
@@ -50,7 +51,7 @@ func TestFactoryRegistersPromptAndScenarioTools(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	prompt := scenario.Prompt.Build(scenario.Tools.Definitions())
+	prompt := agentprompt.Build(scenario.Prompt, scenario.Tools.Definitions())
 	for _, heading := range []string{
 		"You are the private Manifold assistant.",
 		"ROLE",
@@ -91,7 +92,7 @@ func TestFactoryRegistersPromptAndScenarioTools(t *testing.T) {
 }
 
 func TestFactoryAddsChainToolsOnlyWhenAvailable(t *testing.T) {
-	registry := agent.NewScenarioRegistry()
+	registry := agentscenario.NewRegistry()
 	if err := manifold.Register(registry, manifold.Dependencies{Profile: manifoldSource{}, Content: manifoldSource{}, Chain: chainSource{}, ChainAnchors: chainSource{}}); err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +109,7 @@ func TestFactoryAddsChainToolsOnlyWhenAvailable(t *testing.T) {
 	}
 }
 
-func toolNames(scenario agent.Scenario) []string {
+func toolNames(scenario agentscenario.Scenario) []string {
 	definitions := scenario.Tools.Definitions()
 	names := make([]string, 0, len(definitions))
 	for _, definition := range definitions {

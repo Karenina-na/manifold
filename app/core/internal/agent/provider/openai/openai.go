@@ -1,4 +1,4 @@
-package providers
+package openai
 
 import (
 	"bytes"
@@ -10,7 +10,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/manifold-space/manifold/app/core/internal/agent"
+	agentprovider "github.com/manifold-space/manifold/app/core/internal/agent/provider"
 	agenttool "github.com/manifold-space/manifold/app/core/internal/agent/tool"
 )
 
@@ -30,22 +30,22 @@ func (e *UpstreamError) Error() string {
 	return fmt.Sprintf("OpenAI returned status %d (%s)", e.StatusCode, e.Code)
 }
 
-type OpenAI struct {
+type Provider struct {
 	apiKey     string
 	baseURL    string
 	httpClient *http.Client
 }
 
-func NewOpenAI(apiKey, baseURL string, httpClient *http.Client) *OpenAI {
+func New(apiKey, baseURL string, httpClient *http.Client) *Provider {
 	if httpClient == nil {
 		httpClient = http.DefaultClient
 	}
-	return &OpenAI{apiKey: apiKey, baseURL: NormalizeOpenAIBaseURL(baseURL), httpClient: httpClient}
+	return &Provider{apiKey: apiKey, baseURL: NormalizeBaseURL(baseURL), httpClient: httpClient}
 }
 
-// NormalizeOpenAIBaseURL trims surrounding whitespace, removes trailing
+// NormalizeBaseURL trims surrounding whitespace, removes trailing
 // slashes, and ensures the OpenAI API version path is present.
-func NormalizeOpenAIBaseURL(raw string) string {
+func NormalizeBaseURL(raw string) string {
 	normalized := strings.TrimSpace(raw)
 	parsed, err := url.Parse(normalized)
 	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
@@ -111,7 +111,7 @@ type responseEnvelope struct {
 	} `json:"error"`
 }
 
-func (p *OpenAI) Chat(ctx context.Context, request agent.ChatRequest) (*agent.ChatResponse, error) {
+func (p *Provider) Chat(ctx context.Context, request agentprovider.ChatRequest) (*agentprovider.ChatResponse, error) {
 	if p.apiKey == "" {
 		return nil, fmt.Errorf("OpenAI API key is not configured")
 	}
@@ -125,9 +125,9 @@ func (p *OpenAI) Chat(ctx context.Context, request agent.ChatRequest) (*agent.Ch
 	}
 	for _, message := range request.Messages {
 		switch message.Role {
-		case agent.RoleSystem:
+		case agentprovider.RoleSystem:
 			wire.Instructions = strings.TrimSpace(strings.Join([]string{wire.Instructions, message.Content}, "\n\n"))
-		case agent.RoleUser, agent.RoleAssistant:
+		case agentprovider.RoleUser, agentprovider.RoleAssistant:
 			if message.Content != "" {
 				if err := appendInput(responseInput{Role: string(message.Role), Content: message.Content}); err != nil {
 					return nil, err
@@ -139,7 +139,7 @@ func (p *OpenAI) Chat(ctx context.Context, request agent.ChatRequest) (*agent.Ch
 					return nil, err
 				}
 			}
-		case agent.RoleTool:
+		case agentprovider.RoleTool:
 			if err := appendInput(responseInput{Type: "function_call_output", CallID: message.ToolCallID, Output: message.Content}); err != nil {
 				return nil, err
 			}
@@ -177,8 +177,8 @@ func (p *OpenAI) Chat(ctx context.Context, request agent.ChatRequest) (*agent.Ch
 	if decoded.Error != nil {
 		return nil, &UpstreamError{StatusCode: response.StatusCode, Code: "response_error", Message: decoded.Error.Message}
 	}
-	result := &agent.ChatResponse{FinishReason: agent.FinishStop, Usage: agent.Usage{InputTokens: decoded.Usage.InputTokens, OutputTokens: decoded.Usage.OutputTokens, TotalTokens: decoded.Usage.TotalTokens}}
-	providerContext := []json.RawMessage{}
+	result := &agentprovider.ChatResponse{FinishReason: agentprovider.FinishStop, Usage: agentprovider.Usage{InputTokens: decoded.Usage.InputTokens, OutputTokens: decoded.Usage.OutputTokens, TotalTokens: decoded.Usage.TotalTokens}}
+	providerContext := agentprovider.ProviderContext{}
 	for _, rawItem := range decoded.Output {
 		var item struct {
 			Type      string `json:"type"`
@@ -208,13 +208,13 @@ func (p *OpenAI) Chat(ctx context.Context, request agent.ChatRequest) (*agent.Ch
 	}
 	result.ProviderContext = providerContext
 	if len(result.ToolCalls) > 0 {
-		result.FinishReason = agent.FinishToolCalls
+		result.FinishReason = agentprovider.FinishToolCalls
 	}
 	if decoded.Status == "incomplete" && decoded.IncompleteDetails != nil && decoded.IncompleteDetails.Reason == "max_output_tokens" {
-		result.FinishReason = agent.FinishMaxTokens
+		result.FinishReason = agentprovider.FinishMaxTokens
 	}
 	if decoded.Status == "failed" {
-		result.FinishReason = agent.FinishError
+		result.FinishReason = agentprovider.FinishError
 		return nil, fmt.Errorf("OpenAI response failed")
 	}
 	return result, nil

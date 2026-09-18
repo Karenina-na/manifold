@@ -4,7 +4,7 @@
 
 ## 1. 背景与边界
 
-`app/core` 是 Manifold 唯一的后端服务和业务数据所有者。它为公开 Web 和私有 Admin 提供 REST/JSON API，并负责 SQLite、鉴权、内容生命周期、评论管理、访客反应、匿名在线 Presence、统计、缓存、审计，以及 Admin 专用 Agent 的运行时、工具和 session 临时记忆。
+`app/core` 是 Manifold 唯一的后端服务和业务数据所有者。它为公开 Web 和私有 Admin 提供 REST/JSON API，并负责 SQLite、鉴权、内容生命周期、评论管理、访客反应、匿名在线 Presence、统计、缓存、审计，以及 Admin 专用 Agent 的运行时、工具和临时 conversation history。
 
 Core 不负责页面布局、Markdown HTML 展示、浏览器状态、Admin 表单或 PWA。Web/Admin 只能通过 `packages/sdk` 访问 Core，不能读 SQLite 或导入 Core 的 Go 内部包。
 
@@ -53,9 +53,15 @@ app/core/
 │   ├── response.go                 # handler 依赖、生命周期和 Router
 │   └── response_helpers.go         # JSON、错误、集合和健康检查响应
 ├── internal/application/           # 写用例及 audit、anchor、cache 编排
-├── internal/agent/                 # Provider、运行循环、上下文构建与 session 内存
-│   ├── tool/                       # Tool 协议、定义、调用、结果、Registry 与并行 Executor
-│   └── scenarios/manifold/         # Manifold Prompt、依赖装配与场景专属工具
+├── internal/agent/                 # Agent 七模块边界；runtime 是顶层运行编排入口
+│   ├── runtime/                    # 上下文构建、工具循环、trace 与 SSE 运行事件
+│   ├── provider/                   # 模型协议与 Registry；openai/ 是 OpenAI 适配
+│   ├── conversation/               # 当前对话消息、History 与 VolatileHistory
+│   ├── memory/                     # 跨对话长期记忆的独立所有权边界
+│   ├── prompt/                     # 行为型 Spec 与能力说明 Build
+│   ├── scenario/                   # Scenario contract、Registry 与场景目录
+│   │   └── manifold/               # Manifold Prompt、依赖组装与场景专属工具
+│   └── tool/                       # Tool 协议、定义、调用、结果、Registry 与并行 Executor
 ├── internal/auth/auth.go           # bcrypt、JWT、Casbin
 ├── internal/github/                # GitHub OAuth 上游客户端及其协议测试
 ├── internal/model/content.go       # Core 领域 JSON model
@@ -296,17 +302,21 @@ Admin 与 visitor token 使用从 `CORE_JWT_SECRET` 按用途派生的不同签�
 | `DELETE` | `/api/v1/admin/agent/messages` | 清空当前 session 的 Agent 对话，204 |
 | `DELETE` | `/api/v1/admin/agent/messages/{messageId}` | Undo 指定用户消息：原子删除该消息及其后的全部消息，返回 `{draft,messages}`；目标不存在或不是用户消息时返回 404 `AGENT_MESSAGE_NOT_FOUND` |
 
-Agent SSE 事件是判别联合：`run.started` → 每次模型调用的 `reasoning.started` / `reasoning.completed` → 可选的 `tool.started` / `tool.completed` → `content.delta` → `run.completed`；流建立后的失败以 `run.error` 收尾。`run.started.messageId` 是 Core 已写入 session memory 的用户消息 ID，Admin 用它把乐观消息替换为可 Undo 的稳定目标。reasoning 事件只表示运行状态，不包含模型隐藏推理文本。`run.completed.usage` 是本次工具循环内全部 Provider 调用的累计 token 数。
+Agent SSE 事件是判别联合：`run.started` → 每次模型调用的 `reasoning.started` / `reasoning.completed` → 可选的 `tool.started` / `tool.completed` → `content.delta` → `run.completed`；流建立后的失败以 `run.error` 收尾。`run.started.messageId` 是 Core 已写入 conversation history 的用户消息 ID，Admin 用它把乐观消息替换为可 Undo 的稳定目标。reasoning 事件只表示运行状态，不包含模型隐藏推理文本。`run.completed.usage` 是本次工具循环内全部 Provider 调用的累计 token 数。
 
-Agent Runtime 以 `Provider.Chat(ctx, ChatRequest) (*ChatResponse, error)` 为唯一模型边界；`ChatRequest` 统一 Messages/Tools/Model/Options，`ChatResponse` 统一 Content/ToolCalls/Usage/FinishReason。`internal/agent/tool` 是独立工具模块：`Tool` 定义实现契约，`ToolDefinition` 描述 Provider schema、Prompt 用法与 Effect，`ToolCall`/`ToolResult` 统一调用和逐调用结果，`Registry` 负责注册、定义校验和能力快照，`Executor` 负责只读权限门禁与并行调度。Executor 并发执行同一轮全部调用，但按输入调用顺序返回结果；Runtime 因而可以按稳定顺序写入 trace、SSE 和下一轮 Provider message。OpenAI Responses 请求启用 `parallel_tool_calls=true`。
+Agent 内部收敛为 `runtime`、`provider`、`conversation`、`memory`、`prompt`、`scenario` 与 `tool` 七个模块。Conversation 表示当前对话及其临时历史，Memory 表示跨对话长期记忆，Context 仅表示 Runtime 为一次 Provider 调用构造的输入，三者互不等同。依赖方向以 Runtime 为组装边界：`runtime` 可以依赖其他模块，其他模块不得依赖 `runtime`；HTTP handler 只在 Core 组装点组合当前运行所需的依赖。该拆分不改变 HTTP、SSE、数据库或链公共契约。
 
-场景注册表按名称调用工厂，场景同时提供行为型 `PromptSpec` 与该场景允许的工具注册表；具体 Prompt、依赖接口与工具实现归属于 `internal/agent/scenarios/<scenario>`，当前 Manifold 位于 `scenarios/manifold`，其工具位于同目录的 `tools` 子包。Runtime 只消费构建完成的 `Scenario`，不识别场景名称或具体工具。`PromptSpec.Build` 按固定顺序渲染 `ROLE`、`INSTRUCTION SCOPE`、`SOURCE PRIORITY`、`TOOL USE`、运行时生成的 `CAPABILITY BOUNDARIES`、`UNTRUSTED DATA HANDLING`、`KNOWLEDGE BOUNDARIES`、`SCOPE AND SAFETY`、`STYLE`、`UNCERTAINTY AND ERRORS`、`OUTPUT CONTRACT`。`ToolDefinition` 注册时必须显式提供名称、Provider `Description`、Prompt `Usage`、合法 `Effect` 与有效 JSON `Parameters`；`Usage` 和 `Effect` 投影为 Prompt 能力说明，`Description`/`Parameters` 只用于 Provider function schema。`Registry` 是能力真相源；当前 Executor 只执行 `read_only` 工具，写入和破坏性工具在授权机制落地前会被拒绝。
+`provider.Provider.Chat(ctx, ChatRequest) (*ChatResponse, error)` 是唯一模型边界；`ChatRequest` 统一 Messages/Tools/Model/Options，`ChatResponse` 统一 Content/ToolCalls/Usage/FinishReason，Provider Registry 属于 `provider`，OpenAI Responses 适配位于 `provider/openai`。`tool` 是独立工具模块：`Tool` 定义实现契约，`ToolDefinition` 描述 Provider schema、Prompt 用法与 Effect，`ToolCall`/`ToolResult` 统一调用和逐调用结果，`Registry` 负责注册、定义校验和能力快照，`Executor` 负责只读权限门禁与并行调度。Executor 并发执行同一轮全部调用，但按输入调用顺序返回结果；Runtime 因而可以按稳定顺序写入 trace、SSE 和下一轮 Provider message。OpenAI Responses 请求启用 `parallel_tool_calls=true`。
 
-当前 `manifold` 场景提供 `get_current_time`、`calculator`、`get_user_profile`、`content_list`、`content_get`；`content_list` 返回混合的已发布 content 基本信息与摘要，并可按 `ARTICLE`/`THOUGHT` 过滤，`content_get` 按 slug 返回单篇已发布 content 的完整 Markdown body 与 metadata。锚定链启用时追加只读 `get_chain_status` 和 `get_content_anchor`；后者按 `content_get` 返回的内容 ID 查询最新内容证书，`status` 为 `unanchored`、`pending` 或 `anchored`，其中 `anchored` 仅表示证书已写入区块，链工具不提交证书。Context Builder 每次构建时从 PromptSpec 和当前工具注册表生成 system prompt，再拼接当前 session 最近消息和本次 user 消息；若消息数截断落在一轮对话中间，会丢弃开头孤立的 assistant 消息。
+`scenario.Registry` 按名称调用工厂，场景同时提供 `prompt.Spec` 与该场景允许的工具注册表；具体 Prompt、依赖接口与工具实现归属于 `internal/agent/scenario/<scenario>`，当前 Manifold 位于 `scenario/manifold`，其工具位于同目录的 `tools` 子包。Runtime 只消费构建完成的 `scenario.Scenario`，不识别场景名称或具体工具。`prompt.Build` 按固定顺序渲染 `ROLE`、`INSTRUCTION SCOPE`、`SOURCE PRIORITY`、`TOOL USE`、运行时生成的 `CAPABILITY BOUNDARIES`、`UNTRUSTED DATA HANDLING`、`KNOWLEDGE BOUNDARIES`、`SCOPE AND SAFETY`、`STYLE`、`UNCERTAINTY AND ERRORS`、`OUTPUT CONTRACT`。`ToolDefinition` 注册时必须显式提供名称、Provider `Description`、Prompt `Usage`、合法 `Effect` 与有效 JSON `Parameters`；`Usage` 和 `Effect` 投影为 Prompt 能力说明，`Description`/`Parameters` 只用于 Provider function schema。`tool.Registry` 是能力真相源；当前 Executor 只执行 `read_only` 工具，写入和破坏性工具在授权机制落地前会被拒绝。
+
+当前 `manifold` 场景提供 `get_current_time`、`calculator`、`get_user_profile`、`content_list`、`content_get`；`content_list` 返回混合的已发布 content 基本信息与摘要，并可按 `ARTICLE`/`THOUGHT` 过滤，`content_get` 按 slug 返回单篇已发布 content 的完整 Markdown body 与 metadata。锚定链启用时追加只读 `get_chain_status` 和 `get_content_anchor`；后者按 `content_get` 返回的内容 ID 查询最新内容证书，`status` 为 `unanchored`、`pending` 或 `anchored`，其中 `anchored` 仅表示证书已写入区块，链工具不提交证书。Context Builder 每次构建时从 `prompt.Spec` 和当前工具注册表生成 system prompt，再拼接当前 conversation history 和本次 user 消息；若消息数截断落在一轮对话中间，会丢弃开头孤立的 assistant 消息。
 
 Agent 设置由迁移 `0007` 的 `agent_settings` 单例保存，默认值为 OpenAI / `gpt-5-mini` / 6 个工具回合 / 40 条历史 / 2048 输出 token / `https://api.openai.com/v1`，API key 默认为空。Core 不读取对应的 `CORE_AGENT_*` 或 `CORE_OPENAI_*` 环境变量。`openAIBaseURL` 在保存和运行时都会清理首尾空白、去掉尾部斜杠，并在路径中缺少 `v1` 时自动补齐 `/v1`。每次运行前读取当前行；API key 为空时历史读取与清空仍可用，运行在建立 SSE 前返回 503 `AGENT_UNAVAILABLE`。API key 在 SQLite 中保存，但响应、审计元数据和日志仅暴露是否已配置。
 
-对话记忆由 `internal/agent` 中的 `SessionMessageRepository`/`SessionMemory` 能力接口和 `Memory` 进程内实现承载，以 Admin JWT `jti` 隔离；运行服务与 HTTP handler 不依赖具体内存类型。持久消息类型为 `SessionMessage`，与 Provider 对话使用的 `Message` 分开。Run、List、Clear 与 Undo 统一经过 session 锁，清空或注销不会与正在生成的同 session 回复交错。assistant 消息同时保存不含隐藏推理文本的运行摘要，供 Admin 重新打开 Agent 时恢复思考卡片。Undo 以用户消息 ID 为边界，删除该消息及所有后续 user/assistant 消息，使下一次运行从重组后的历史继续。显式清空、当前/指定 session 注销、logout-all 和改密码吊销其他 session 时删除对应记忆；Core 重启也会全部丢失。该路径不写 SQLite，不属于 `docs/chain.md` 第 4 节的数据库写清单，也不产生锚定证书。
+当前对话由 `internal/agent/conversation` 中的 `History` 能力接口和 `VolatileHistory` 进程内实现承载，以 Admin JWT `jti` 隔离；运行服务与 HTTP handler 不依赖具体 history 实现。对话消息类型为 `conversation.Message`，与 `provider.Message` 分开。Run、List、Clear 与 Undo 统一经过 session 锁，清空或注销不会与正在生成的同 session 回复交错。assistant 消息同时保存不含隐藏推理文本的运行摘要，供 Admin 重新打开 Agent 时恢复思考卡片。Undo 以用户消息 ID 为边界，删除该消息及所有后续 user/assistant 消息，使下一次运行从重组后的历史继续。显式清空、当前/指定 session 注销、logout-all 和改密码吊销其他 session 时删除对应 conversation history；Core 重启也会全部丢失。该路径不写 SQLite，不属于 `docs/chain.md` 第 4 节的数据库写清单，也不产生锚定证书。
+
+`internal/agent/memory` 独立拥有跨 conversation 的长期记忆边界。当前没有定义长期记忆 contract、持久化 schema、检索语义或 Runtime 注入行为；`memory` 不复用 conversation history，也不参与现有 HTTP/SSE 流程。
 
 内容创建和更新的 Article 必须有非空 `title` 和 `slug`；Thought 两者可为空。更新使用 PUT，必须提交完整内容和 `expectedVersion`，版本不匹配返回 `409 VERSION_CONFLICT`。类型转换为 Article 时，最终 title/slug 也必须满足 Article 规则。
 

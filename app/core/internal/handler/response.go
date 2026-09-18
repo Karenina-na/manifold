@@ -8,8 +8,10 @@ import (
 
 	"github.com/go-playground/validator/v10"
 
-	"github.com/manifold-space/manifold/app/core/internal/agent"
-	agentscenario "github.com/manifold-space/manifold/app/core/internal/agent/scenarios/manifold"
+	agentconversation "github.com/manifold-space/manifold/app/core/internal/agent/conversation"
+	agentruntime "github.com/manifold-space/manifold/app/core/internal/agent/runtime"
+	agentscenario "github.com/manifold-space/manifold/app/core/internal/agent/scenario"
+	"github.com/manifold-space/manifold/app/core/internal/agent/scenario/manifold"
 	"github.com/manifold-space/manifold/app/core/internal/application"
 	"github.com/manifold-space/manifold/app/core/internal/auth"
 	"github.com/manifold-space/manifold/app/core/internal/cache"
@@ -36,10 +38,10 @@ type apiHandler struct {
 
 type agentRunner interface {
 	Ready(ctx context.Context) error
-	Run(ctx context.Context, sessionID, userMessage string, emit func(agent.StreamEvent) error) error
-	List(ctx context.Context, sessionID string, limit int) ([]agent.SessionMessage, error)
+	Run(ctx context.Context, sessionID, userMessage string, emit func(agentruntime.StreamEvent) error) error
+	List(ctx context.Context, sessionID string, limit int) ([]agentconversation.Message, error)
 	Clear(ctx context.Context, sessionID string) error
-	Undo(ctx context.Context, sessionID, messageID string) (agent.SessionMessage, []agent.SessionMessage, error)
+	Undo(ctx context.Context, sessionID, messageID string) (agentconversation.Message, []agentconversation.Message, error)
 }
 
 // coreVersion is the build version reported by /healthz and the admin system endpoint.
@@ -103,19 +105,19 @@ func newRouterWithMiner(cfg config.Config, database *store.Store, ledger *chain.
 }
 
 func newAgentRuntime(database *store.Store, ledger *chain.Ledger) agentRunner {
-	scenarios := agent.NewScenarioRegistry()
-	dependencies := agentscenario.Dependencies{Profile: database, Content: database}
+	scenarios := agentscenario.NewRegistry()
+	dependencies := manifold.Dependencies{Profile: database, Content: database}
 	if ledger != nil {
 		dependencies.Chain = ledger
 		dependencies.ChainAnchors = ledger
 	}
-	if err := agentscenario.Register(scenarios, dependencies); err != nil {
+	if err := manifold.Register(scenarios, dependencies); err != nil {
 		panic(err)
 	}
-	scenario, err := scenarios.Build(agentscenario.Name)
+	scenario, err := scenarios.Build(manifold.Name)
 	if err != nil {
 		panic(err)
 	}
-	memory := agent.NewMemory()
-	return newConfiguredAgentRuntime(database, scenario, memory)
+	history := agentconversation.NewVolatileHistory()
+	return newConfiguredAgentRuntime(database, scenario, history)
 }

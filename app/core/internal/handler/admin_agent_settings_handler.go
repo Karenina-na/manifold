@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/manifold-space/manifold/app/core/internal/agent/providers"
+	"github.com/manifold-space/manifold/app/core/internal/agent/provider/openai"
 	"github.com/manifold-space/manifold/app/core/internal/apierror"
 	"github.com/manifold-space/manifold/app/core/internal/model"
 )
@@ -50,7 +50,7 @@ func (h *apiHandler) adminUpdateAgentSettings(w http.ResponseWriter, r *http.Req
 	settings.MaxToolRounds = *input.MaxToolRounds
 	settings.HistoryLimit = *input.HistoryLimit
 	settings.MaxOutputTokens = *input.MaxOutputTokens
-	settings.OpenAIBaseURL = providers.NormalizeOpenAIBaseURL(*input.OpenAIBaseURL)
+	settings.OpenAIBaseURL = openai.NormalizeBaseURL(*input.OpenAIBaseURL)
 	if input.APIKey != nil {
 		if bytes.Equal(bytes.TrimSpace(input.APIKey), []byte("null")) {
 			settings.OpenAIAPIKey = ""

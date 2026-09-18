@@ -6,7 +6,7 @@ import (
 	"errors"
 	"testing"
 
-	manifoldtools "github.com/manifold-space/manifold/app/core/internal/agent/scenarios/manifold/tools"
+	manifoldtools "github.com/manifold-space/manifold/app/core/internal/agent/scenario/manifold/tools"
 	agenttool "github.com/manifold-space/manifold/app/core/internal/agent/tool"
 	"github.com/manifold-space/manifold/app/core/internal/model"
 	"github.com/manifold-space/manifold/app/core/internal/store"

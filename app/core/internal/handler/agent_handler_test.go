@@ -12,7 +12,9 @@ import (
 	"github.com/go-playground/validator/v10"
 	"golang.org/x/crypto/bcrypt"
 
-	"github.com/manifold-space/manifold/app/core/internal/agent"
+	agentconversation "github.com/manifold-space/manifold/app/core/internal/agent/conversation"
+	agentprovider "github.com/manifold-space/manifold/app/core/internal/agent/provider"
+	agentruntime "github.com/manifold-space/manifold/app/core/internal/agent/runtime"
 	"github.com/manifold-space/manifold/app/core/internal/auth"
 	"github.com/manifold-space/manifold/app/core/internal/config"
 	"github.com/manifold-space/manifold/app/core/internal/events"
@@ -20,42 +22,42 @@ import (
 )
 
 type fakeAgentRunner struct {
-	memory    *agent.Memory
+	history   *agentconversation.VolatileHistory
 	beforeRun func()
 	runError  error
 }
 
 func (fakeAgentRunner) Ready(context.Context) error { return nil }
-func (runner fakeAgentRunner) List(ctx context.Context, sessionID string, limit int) ([]agent.SessionMessage, error) {
-	return runner.memory.List(ctx, sessionID, limit)
+func (runner fakeAgentRunner) List(ctx context.Context, sessionID string, limit int) ([]agentconversation.Message, error) {
+	return runner.history.List(ctx, sessionID, limit)
 }
 func (runner fakeAgentRunner) Clear(ctx context.Context, sessionID string) error {
-	return runner.memory.Delete(ctx, sessionID)
+	return runner.history.Clear(ctx, sessionID)
 }
-func (runner fakeAgentRunner) Run(_ context.Context, _ string, _ string, emit func(agent.StreamEvent) error) error {
+func (runner fakeAgentRunner) Run(_ context.Context, _ string, _ string, emit func(agentruntime.StreamEvent) error) error {
 	if runner.beforeRun != nil {
 		runner.beforeRun()
 	}
 	if runner.runError != nil {
 		return runner.runError
 	}
-	usage := agent.Usage{InputTokens: 2, OutputTokens: 1, TotalTokens: 3}
-	for _, event := range []agent.StreamEvent{{Type: agent.EventRunStarted, RunID: "run_1", MessageID: "msg_1"}, {Type: agent.EventContentDelta, Delta: "Hello"}, {Type: agent.EventRunCompleted, RunID: "run_1", FinishReason: agent.FinishStop, Usage: &usage}} {
+	usage := agentprovider.Usage{InputTokens: 2, OutputTokens: 1, TotalTokens: 3}
+	for _, event := range []agentruntime.StreamEvent{{Type: agentruntime.EventRunStarted, RunID: "run_1", MessageID: "msg_1"}, {Type: agentruntime.EventContentDelta, Delta: "Hello"}, {Type: agentruntime.EventRunCompleted, RunID: "run_1", FinishReason: agentprovider.FinishStop, Usage: &usage}} {
 		if err := emit(event); err != nil {
 			return err
 		}
 	}
 	return nil
 }
-func (runner fakeAgentRunner) Undo(ctx context.Context, sessionID, messageID string) (agent.SessionMessage, []agent.SessionMessage, error) {
-	return runner.memory.UndoTurn(ctx, sessionID, messageID)
+func (runner fakeAgentRunner) Undo(ctx context.Context, sessionID, messageID string) (agentconversation.Message, []agentconversation.Message, error) {
+	return runner.history.Undo(ctx, sessionID, messageID)
 }
 
-func newAgentHTTPTest(t *testing.T) (http.Handler, string, *agent.Memory) {
+func newAgentHTTPTest(t *testing.T) (http.Handler, string, *agentconversation.VolatileHistory) {
 	return newAgentHTTPTestWithRunner(t, nil)
 }
 
-func newAgentHTTPTestWithRunner(t *testing.T, configure func(*fakeAgentRunner)) (http.Handler, string, *agent.Memory) {
+func newAgentHTTPTestWithRunner(t *testing.T, configure func(*fakeAgentRunner)) (http.Handler, string, *agentconversation.VolatileHistory) {
 	t.Helper()
 	hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.MinCost)
 	database, err := store.Open(t.Context(), ":memory:", store.WithAdminCredential("admin", string(hash)))
@@ -72,13 +74,13 @@ func newAgentHTTPTestWithRunner(t *testing.T, configure func(*fakeAgentRunner)) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	memory := agent.NewMemory()
-	runner := fakeAgentRunner{memory: memory}
+	history := agentconversation.NewVolatileHistory()
+	runner := fakeAgentRunner{history: history}
 	if configure != nil {
 		configure(&runner)
 	}
 	h := &apiHandler{cfg: cfg, store: database, auth: authService, validate: validator.New(), auditEvents: events.NewSynchronousAuditPublisher(recordAuditEvent(database)), agentRuntime: runner}
-	return buildRouter(h, cfg), token, memory
+	return buildRouter(h, cfg), token, history
 }
 
 func TestAdminAgentSettingsArePersistentAndAPIKeyIsWriteOnly(t *testing.T) {
@@ -212,7 +214,7 @@ func TestAdminAgentDoesNotEmitAnErrorAfterTheClientCancels(t *testing.T) {
 }
 
 func TestAdminAgentMessageHistoryIsSessionScopedAndClearable(t *testing.T) {
-	router, token, memory := newAgentHTTPTest(t)
+	router, token, history := newAgentHTTPTest(t)
 	parts := strings.Split(token, ".")
 	if len(parts) != 3 {
 		t.Fatal("invalid token")
@@ -226,13 +228,13 @@ func TestAdminAgentMessageHistoryIsSessionScopedAndClearable(t *testing.T) {
 	if err != nil || json.Unmarshal(decoded, &payload) != nil {
 		t.Fatal("decode test token")
 	}
-	_, _ = memory.Append(t.Context(), payload.ID, agent.SessionMessage{
+	_, _ = history.Append(t.Context(), payload.ID, agentconversation.Message{
 		Role:    "assistant",
 		Content: "Remembered",
-		Trace: &agent.MessageTrace{
-			Steps:        []agent.TraceStep{{ID: "reasoning-1", Kind: "reasoning", Status: "complete"}},
+		Trace: &agentconversation.MessageTrace{
+			Steps:        []agentconversation.TraceStep{{ID: "reasoning-1", Kind: "reasoning", Status: "complete"}},
 			FinishReason: "stop",
-			Usage:        agent.TraceUsage{InputTokens: 2, OutputTokens: 1, TotalTokens: 3},
+			Usage:        agentconversation.TraceUsage{InputTokens: 2, OutputTokens: 1, TotalTokens: 3},
 		},
 	})
 
@@ -251,14 +253,14 @@ func TestAdminAgentMessageHistoryIsSessionScopedAndClearable(t *testing.T) {
 	if clear.Code != http.StatusNoContent {
 		t.Fatalf("unexpected clear status: %d", clear.Code)
 	}
-	messages, _ := memory.List(t.Context(), payload.ID, 20)
+	messages, _ := history.List(t.Context(), payload.ID, 20)
 	if len(messages) != 0 {
-		t.Fatalf("memory was not cleared: %+v", messages)
+		t.Fatalf("conversation history was not cleared: %+v", messages)
 	}
 }
 
 func TestAdminAgentUndoReturnsDraftAndReorganizedHistory(t *testing.T) {
-	router, token, memory := newAgentHTTPTest(t)
+	router, token, history := newAgentHTTPTest(t)
 	parts := strings.Split(token, ".")
 	var payload struct {
 		ID string `json:"jti"`
@@ -267,13 +269,13 @@ func TestAdminAgentUndoReturnsDraftAndReorganizedHistory(t *testing.T) {
 	if err != nil || json.Unmarshal(decoded, &payload) != nil {
 		t.Fatal("decode test token")
 	}
-	for _, message := range []agent.SessionMessage{
+	for _, message := range []agentconversation.Message{
 		{ID: "user-1", Role: "user", Content: "Earlier"},
 		{ID: "assistant-1", Role: "assistant", Content: "Earlier answer"},
 		{ID: "user-2", Role: "user", Content: "Revise this"},
 		{ID: "assistant-2", Role: "assistant", Content: "Latest answer"},
 	} {
-		_, _ = memory.Append(t.Context(), payload.ID, message)
+		_, _ = history.Append(t.Context(), payload.ID, message)
 	}
 
 	recorder := httptest.NewRecorder()

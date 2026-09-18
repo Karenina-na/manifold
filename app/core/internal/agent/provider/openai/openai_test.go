@@ -1,4 +1,4 @@
-package providers_test
+package openai_test
 
 import (
 	"context"
@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/manifold-space/manifold/app/core/internal/agent"
-	"github.com/manifold-space/manifold/app/core/internal/agent/providers"
+	agentprovider "github.com/manifold-space/manifold/app/core/internal/agent/provider"
+	"github.com/manifold-space/manifold/app/core/internal/agent/provider/openai"
 	agenttool "github.com/manifold-space/manifold/app/core/internal/agent/tool"
 )
 
@@ -57,16 +57,16 @@ func TestOpenAIProviderMapsResponsesToolCalls(t *testing.T) {
 		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"id":"resp_1","status":"completed","output":[{"type":"reasoning","id":"rs_1","summary":[]},{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Checking."}]},{"type":"function_call","call_id":"call_1","name":"get_current_time","arguments":"{}"}],"usage":{"input_tokens":12,"output_tokens":4,"total_tokens":16}}`))}, nil
 	})}
 
-	provider := providers.NewOpenAI("secret", "https://api.openai.test/v1", client)
-	response, err := provider.Chat(context.Background(), agent.ChatRequest{
+	openAI := openai.New("secret", "https://api.openai.test/v1", client)
+	response, err := openAI.Chat(context.Background(), agentprovider.ChatRequest{
 		Model:    "test-model",
-		Messages: []agent.Message{{Role: agent.RoleSystem, Content: "Be concise."}, {Role: agent.RoleUser, Content: "What time is it?"}},
+		Messages: []agentprovider.Message{{Role: agentprovider.RoleSystem, Content: "Be concise."}, {Role: agentprovider.RoleUser, Content: "What time is it?"}},
 		Tools:    []agenttool.ToolDefinition{{Name: "get_current_time", Description: "Current time", Usage: "Use for the current date.", Effect: agenttool.ToolEffectReadOnly, Parameters: json.RawMessage(`{"type":"object","properties":{},"additionalProperties":false}`)}},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if response.Content != "Checking." || len(response.ToolCalls) != 1 || response.ToolCalls[0].ID != "call_1" || response.FinishReason != agent.FinishToolCalls {
+	if response.Content != "Checking." || len(response.ToolCalls) != 1 || response.ToolCalls[0].ID != "call_1" || response.FinishReason != agentprovider.FinishToolCalls {
 		t.Fatalf("unexpected response: %+v", response)
 	}
 	if len(response.ProviderContext) != 1 {
@@ -75,7 +75,7 @@ func TestOpenAIProviderMapsResponsesToolCalls(t *testing.T) {
 	if response.Usage.TotalTokens != 16 {
 		t.Fatalf("unexpected usage: %+v", response.Usage)
 	}
-	if _, err := provider.Chat(context.Background(), agent.ChatRequest{Model: "test-model", Messages: []agent.Message{{Role: agent.RoleAssistant, Content: response.Content, ToolCalls: response.ToolCalls, ProviderContext: response.ProviderContext}, {Role: agent.RoleTool, ToolCallID: "call_1", Content: `{"date":"2026-09-17"}`}}}); err != nil {
+	if _, err := openAI.Chat(context.Background(), agentprovider.ChatRequest{Model: "test-model", Messages: []agentprovider.Message{{Role: agentprovider.RoleAssistant, Content: response.Content, ToolCalls: response.ToolCalls, ProviderContext: response.ProviderContext}, {Role: agentprovider.RoleTool, ToolCallID: "call_1", Content: `{"date":"2026-09-17"}`}}}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -104,8 +104,8 @@ func TestOpenAIProviderNormalizesBaseURL(t *testing.T) {
 					Body:       io.NopCloser(strings.NewReader(`{"status":"completed","output":[]}`)),
 				}, nil
 			})}
-			provider := providers.NewOpenAI("secret", test.baseURL, client)
-			if _, err := provider.Chat(context.Background(), agent.ChatRequest{Model: "test-model"}); err != nil {
+			openAI := openai.New("secret", test.baseURL, client)
+			if _, err := openAI.Chat(context.Background(), agentprovider.ChatRequest{Model: "test-model"}); err != nil {
 				t.Fatal(err)
 			}
 		})
@@ -116,12 +116,12 @@ func TestOpenAIProviderPreservesSafeUpstreamErrorMetadata(t *testing.T) {
 	client := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
 		return &http.Response{StatusCode: http.StatusServiceUnavailable, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"error":{"code":"model_not_found","message":"No available channel for model auto:default"}}`))}, nil
 	})}
-	provider := providers.NewOpenAI("secret", "https://api.openai.test/v1", client)
-	_, err := provider.Chat(context.Background(), agent.ChatRequest{Model: "auto:default"})
+	openAI := openai.New("secret", "https://api.openai.test/v1", client)
+	_, err := openAI.Chat(context.Background(), agentprovider.ChatRequest{Model: "auto:default"})
 	if err == nil {
 		t.Fatal("expected upstream error")
 	}
-	var upstream *providers.UpstreamError
+	var upstream *openai.UpstreamError
 	if !errors.As(err, &upstream) || upstream.StatusCode != http.StatusServiceUnavailable || upstream.Code != "model_not_found" || upstream.Message != "No available channel for model auto:default" {
 		t.Fatalf("unexpected upstream metadata: %v", err)
 	}
