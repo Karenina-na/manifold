@@ -6,7 +6,7 @@ test("streams typed agent events across arbitrary response chunks", async () => 
 	const encoder = new TextEncoder();
 	const chunks = [
 		"event: run.started\ndata: {\"type\":\"run.started\",\"runId\":\"run_1\",\"messageId\":\"msg_1\"}\n\n",
-		"event: content.delta\ndata: {\"type\":\"content.delta\",\"delta\":\"Hel",
+		"event: reasoning.completed\ndata: {\"type\":\"reasoning.completed\",\"runId\":\"run_1\",\"message\":\"I checked the context.\"}\n\nevent: content.delta\ndata: {\"type\":\"content.delta\",\"delta\":\"Hel",
 		"lo\"}\n\nevent: run.completed\ndata: {\"type\":\"run.completed\",\"runId\":\"run_1\",\"finishReason\":\"stop\",\"usage\":{\"inputTokens\":2,\"outputTokens\":1,\"totalTokens\":3}}\n\n",
 	];
 	const client = new ManifoldClient({
@@ -25,6 +25,7 @@ test("streams typed agent events across arbitrary response chunks", async () => 
 
 	assert.deepEqual(events, [
 		{ type: "run.started", runId: "run_1", messageId: "msg_1" },
+		{ type: "reasoning.completed", runId: "run_1", message: "I checked the context." },
 		{ type: "content.delta", delta: "Hello" },
 		{ type: "run.completed", runId: "run_1", finishReason: "stop", usage: { inputTokens: 2, outputTokens: 1, totalTokens: 3 } },
 	]);
@@ -71,11 +72,11 @@ test("compacts session-scoped agent messages", async () => {
 		token: "token-1",
 		fetch: async (input, init) => {
 			captured = new Request(input, init);
-			return new Response(JSON.stringify({ compacted: true }), { status: 200 });
+			return new Response(JSON.stringify({ compacted: true, compaction: { summary: "Working state", compactedMessages: 4, recentTurns: 2 } }), { status: 200 });
 		},
 	});
 
-	assert.deepEqual(await client.compactAgentMessages(), { compacted: true });
+	assert.deepEqual(await client.compactAgentMessages(), { compacted: true, compaction: { summary: "Working state", compactedMessages: 4, recentTurns: 2 } });
 	assert.equal(captured?.url, "http://core.test/api/v1/admin/agent/messages/compact");
 	assert.equal(captured?.method, "POST");
 });

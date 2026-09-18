@@ -69,6 +69,13 @@ func (r *configuredAgentRuntime) List(ctx context.Context, sessionID string, lim
 	return r.history.List(ctx, sessionID, limit)
 }
 
+func (r *configuredAgentRuntime) Snapshot(ctx context.Context, sessionID string) (agentconversation.Snapshot, error) {
+	lock := r.sessionLock(sessionID)
+	lock.Lock()
+	defer lock.Unlock()
+	return r.history.Snapshot(ctx, sessionID)
+}
+
 func (r *configuredAgentRuntime) Clear(ctx context.Context, sessionID string) error {
 	lock := r.sessionLock(sessionID)
 	lock.Lock()
@@ -76,20 +83,20 @@ func (r *configuredAgentRuntime) Clear(ctx context.Context, sessionID string) er
 	return r.history.Clear(ctx, sessionID)
 }
 
-func (r *configuredAgentRuntime) Compact(ctx context.Context, sessionID string) (bool, error) {
+func (r *configuredAgentRuntime) Compact(ctx context.Context, sessionID string) (agentruntime.CompactionResult, error) {
 	lock := r.sessionLock(sessionID)
 	lock.Lock()
 	defer lock.Unlock()
 	settings, err := r.store.GetAgentSettings(ctx)
 	if err != nil {
-		return false, err
+		return agentruntime.CompactionResult{}, err
 	}
 	if err := validateRunnableAgentSettings(settings); err != nil {
-		return false, err
+		return agentruntime.CompactionResult{}, err
 	}
 	runtime, err := r.runtime(settings)
 	if err != nil {
-		return false, err
+		return agentruntime.CompactionResult{}, err
 	}
 	return runtime.Compact(ctx, sessionID)
 }

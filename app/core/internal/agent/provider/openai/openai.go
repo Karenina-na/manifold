@@ -185,7 +185,11 @@ func (p *Provider) Chat(ctx context.Context, request agentprovider.ChatRequest) 
 			CallID    string `json:"call_id"`
 			Name      string `json:"name"`
 			Arguments string `json:"arguments"`
-			Content   []struct {
+			Summary   []struct {
+				Type string `json:"type"`
+				Text string `json:"text"`
+			} `json:"summary"`
+			Content []struct {
 				Type string `json:"type"`
 				Text string `json:"text"`
 			} `json:"content"`
@@ -196,6 +200,11 @@ func (p *Provider) Chat(ctx context.Context, request agentprovider.ChatRequest) 
 		switch item.Type {
 		case "reasoning":
 			providerContext = append(providerContext, append(json.RawMessage(nil), rawItem...))
+			for _, summary := range item.Summary {
+				if strings.TrimSpace(summary.Text) != "" {
+					result.Reasoning = append(result.Reasoning, strings.TrimSpace(summary.Text))
+				}
+			}
 		case "message":
 			for _, content := range item.Content {
 				if content.Type == "output_text" {

@@ -87,9 +87,9 @@ const page = await client.content({ kind: "ARTICLE", pageSize: 20 })
 | `changePassword(input)` | POST | `/api/v1/admin/password` | `void`，204；body `ChangePasswordInput{currentPassword,newPassword}`，成功后吊销其他会话；旧密码错误抛 `ApiError` 401 |
 | `adminAgentSettings()` | GET | `/api/v1/admin/agent/settings` | `AgentSettings`，包含工具/回答上限和三项压缩参数；API key 只返回是否已配置 |
 | `updateAgentSettings(input)` | PUT | `/api/v1/admin/agent/settings` | `AgentSettings`；全量提交 `historyLimit`、`compactionRecentTurns`、`compactionMaxOutputTokens` 等非密钥字段；`openAIBaseURL` 会规范化为无首尾空白、无尾部斜杠且包含 `/v1`；`apiKey` 省略保留、字符串替换、`null` 清除 |
-| `agentMessages()` | GET | `/api/v1/admin/agent/messages` | `AgentMessageList`，当前 JWT session 的临时 user/assistant 历史；assistant 可能携带可恢复的运行轨迹 |
+| `agentMessages()` | GET | `/api/v1/admin/agent/messages` | `AgentMessageList`，当前 JWT session 的临时 user/assistant 历史；assistant 可能携带可恢复的思考摘要与运行轨迹，已有 Summary 通过 `compaction` 返回 |
 | `runAgent(input, { signal? })` | POST | `/api/v1/admin/agent/messages` | `AsyncGenerator<AgentStreamEvent>`；增量解析任意网络分片下的 SSE 帧，支持用 `AbortSignal` 在关闭对话层或登出时取消请求 |
-| `compactAgentMessages()` | POST | `/api/v1/admin/agent/messages/compact` | `AgentCompactionResult`；按当前 Agent 设置立即增量压缩当前 session 的旧完整 turns，返回是否实际推进了 Summary checkpoint |
+| `compactAgentMessages()` | POST | `/api/v1/admin/agent/messages/compact` | `AgentCompactionResult`；按当前 Agent 设置立即增量压缩旧完整 turns，返回是否推进 Summary、压缩消息数、Summary 文本与原样保留的最近 turns |
 | `clearAgentMessages()` | DELETE | `/api/v1/admin/agent/messages` | `void`，204；清除当前 session 对应的 conversation history |
 | `undoAgentMessage(id)` | DELETE | `/api/v1/admin/agent/messages/{id}` | `AgentUndoResult`；删除目标用户消息及其后的轮次，返回可编辑 draft 与重组历史 |
 | `adminStats()` | GET | `/api/v1/admin/stats` | `AdminStats` |

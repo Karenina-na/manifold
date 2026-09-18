@@ -185,6 +185,41 @@ func TestRuntimeStoresTraceWhenFinalResponseHasNoVisibleContent(t *testing.T) {
 	}
 }
 
+func TestRuntimePersistsProviderReasoningSummaryOnEachThinkingStep(t *testing.T) {
+	provider := &scriptedProvider{answers: []agentprovider.ChatResponse{
+		{Reasoning: []string{"I will check the current time before answering."}, Content: "The check is complete.", FinishReason: agentprovider.FinishStop},
+	}}
+	providers := agentprovider.NewRegistry()
+	if err := providers.Register("test", provider); err != nil {
+		t.Fatal(err)
+	}
+	history := agentconversation.NewVolatileHistory()
+	runtime := agentruntime.NewRuntime(agentruntime.RuntimeConfig{Provider: "test", Model: "test-model"}, providers, agentscenario.Scenario{Prompt: agentprompt.Spec{Intro: "System prompt"}, Tools: agenttool.NewRegistry()}, history)
+	var events []agentruntime.StreamEvent
+	if err := runtime.Run(t.Context(), "session_1", "What time is it?", func(event agentruntime.StreamEvent) error { events = append(events, event); return nil }); err != nil {
+		t.Fatal(err)
+	}
+	messages, err := history.List(t.Context(), "session_1", 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(messages) != 2 || messages[1].Trace == nil || len(messages[1].Trace.Steps) != 1 || messages[1].Trace.Steps[0].Message != "I will check the current time before answering." {
+		t.Fatalf("provider reasoning summary was not persisted: %+v", messages)
+	}
+	streamedReasoning := false
+	for _, event := range events {
+		if event.Type == agentruntime.EventReasoningCompleted {
+			streamedReasoning = true
+			if event.Message != "I will check the current time before answering." {
+				t.Fatalf("reasoning summary was not streamed: %+v", event)
+			}
+		}
+	}
+	if !streamedReasoning {
+		t.Fatalf("reasoning completion event was not emitted: %+v", events)
+	}
+}
+
 func TestRuntimeCompactsBeforeStartingTheProviderRun(t *testing.T) {
 	provider := &scriptedProvider{answers: []agentprovider.ChatResponse{
 		{Content: "Working state summary", FinishReason: agentprovider.FinishStop, Usage: agentprovider.Usage{TotalTokens: 7}},
@@ -439,12 +474,12 @@ func TestContextBuilderCanForceIncrementalCompaction(t *testing.T) {
 	compactor := &scriptedCompactor{summaries: []string{"Manual summary"}}
 	builder := agentruntime.NewContextBuilder(history, agentprompt.Spec{Intro: "System prompt"}, agenttool.NewRegistry(), 40, 1, compactor)
 
-	compacted, err := builder.Compact(t.Context(), "session_1")
+	result, err := builder.Compact(t.Context(), "session_1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !compacted || len(compactor.requests) != 1 || len(compactor.requests[0].Messages) != 2 {
-		t.Fatalf("expected one forced compaction request, got compacted=%v requests=%+v", compacted, compactor.requests)
+	if !result.Compacted || result.State.Summary != "Manual summary" || result.State.CompactedMessages != 2 || result.State.RecentTurns != 1 || len(compactor.requests) != 1 || len(compactor.requests[0].Messages) != 2 {
+		t.Fatalf("expected one forced compaction request, got result=%+v requests=%+v", result, compactor.requests)
 	}
 	snapshot, err := history.Snapshot(t.Context(), "session_1")
 	if err != nil {
@@ -454,8 +489,8 @@ func TestContextBuilderCanForceIncrementalCompaction(t *testing.T) {
 		t.Fatalf("unexpected manual compaction checkpoint: %+v", snapshot)
 	}
 
-	compacted, err = builder.Compact(t.Context(), "session_1")
-	if err != nil || compacted {
-		t.Fatalf("expected a no-op after all old turns were compacted, compacted=%v err=%v", compacted, err)
+	result, err = builder.Compact(t.Context(), "session_1")
+	if err != nil || result.Compacted || result.State.Summary != "Manual summary" || result.State.CompactedMessages != 2 || result.State.RecentTurns != 1 {
+		t.Fatalf("expected a no-op after all old turns were compacted, result=%+v err=%v", result, err)
 	}
 }

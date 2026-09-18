@@ -41,7 +41,7 @@ export function applyAgentEvent(turn: AgentTurn, event: AgentStreamEvent): Agent
   if (event.type === 'reasoning.completed') {
     const last = [...turn.process].reverse().findIndex((item) => item.kind === 'reasoning' && item.status === 'running')
     const index = last < 0 ? -1 : turn.process.length - 1 - last
-    return index < 0 ? turn : { ...turn, process: turn.process.map((item, itemIndex) => itemIndex === index ? { ...item, status: 'complete' } : item) }
+    return index < 0 ? turn : { ...turn, process: turn.process.map((item, itemIndex) => itemIndex === index ? { ...item, status: 'complete', ...(event.message ? { message: event.message } : {}) } : item) }
   }
   if (event.type === 'tool.started') return { ...turn, status: 'running', process: [...turn.process, { id: event.callId, kind: 'tool', name: event.name, input: event.input, status: 'running' }] }
   if (event.type === 'tool.completed') return { ...turn, process: turn.process.map((item) => item.kind === 'tool' && item.id === event.callId ? { ...item, output: event.output, status: event.isError ? 'error' : 'complete' } : item) }

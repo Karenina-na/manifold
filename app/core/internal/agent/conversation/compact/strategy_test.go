@@ -26,7 +26,7 @@ func TestBasicStrategyCompactsCompleteOldTurnsAndKeepsRecentTurnsRaw(t *testing.
 	if !ok {
 		t.Fatal("expected compaction plan")
 	}
-	if plan.PreviousSummary != "Summary V1" || plan.ThroughSequence != 6 {
+	if plan.PreviousSummary != "Summary V1" || plan.ThroughSequence != 6 || plan.CompactedMessages != 4 || plan.RecentTurns != 1 {
 		t.Fatalf("unexpected incremental boundary: %+v", plan)
 	}
 	if len(plan.Messages) != 4 || plan.Messages[0].Content != "turn two" || plan.Messages[3].Content != "answer three" {

@@ -41,8 +41,9 @@ type agentRunner interface {
 	Ready(ctx context.Context) error
 	Run(ctx context.Context, sessionID, userMessage string, emit func(agentruntime.StreamEvent) error) error
 	List(ctx context.Context, sessionID string, limit int) ([]agentconversation.Message, error)
+	Snapshot(ctx context.Context, sessionID string) (agentconversation.Snapshot, error)
 	Clear(ctx context.Context, sessionID string) error
-	Compact(ctx context.Context, sessionID string) (bool, error)
+	Compact(ctx context.Context, sessionID string) (agentruntime.CompactionResult, error)
 	CloseSession(ctx context.Context, sessionID string) error
 	Undo(ctx context.Context, sessionID, messageID string) (agentconversation.Message, []agentconversation.Message, error)
 }

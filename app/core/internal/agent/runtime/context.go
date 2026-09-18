@@ -21,6 +21,17 @@ type ContextBuilder struct {
 	compactor agentcompact.Compactor
 }
 
+type CompactionState struct {
+	Summary           string
+	CompactedMessages int
+	RecentTurns       int
+}
+
+type CompactionResult struct {
+	Compacted bool
+	State     CompactionState
+}
+
 func NewContextBuilder(history agentconversation.History, prompt agentprompt.Spec, tools *agenttool.Registry, threshold, recentTurns int, compactor agentcompact.Compactor) *ContextBuilder {
 	return &ContextBuilder{
 		history: history, prompt: prompt, tools: tools,
@@ -66,19 +77,21 @@ func (b *ContextBuilder) Build(ctx context.Context, sessionID, userMessage strin
 
 // Compact advances the summary checkpoint immediately when at least one old,
 // complete turn exists outside the configured recent-turn window.
-func (b *ContextBuilder) Compact(ctx context.Context, sessionID string) (bool, error) {
+func (b *ContextBuilder) Compact(ctx context.Context, sessionID string) (CompactionResult, error) {
 	snapshot, err := b.history.Snapshot(ctx, sessionID)
 	if err != nil {
-		return false, err
+		return CompactionResult{}, err
 	}
+	state := CompactionState{Summary: snapshot.Summary.Content, CompactedMessages: snapshot.Summary.CompactedMessages, RecentTurns: b.strategy.RecentTurnCount()}
 	plan, ok := b.strategy.Force(snapshot)
 	if !ok {
-		return false, nil
+		return CompactionResult{State: state}, nil
 	}
-	if _, err := b.executeCompaction(ctx, sessionID, plan); err != nil {
-		return false, err
+	summary, err := b.executeCompaction(ctx, sessionID, plan)
+	if err != nil {
+		return CompactionResult{}, err
 	}
-	return true, nil
+	return CompactionResult{Compacted: true, State: CompactionState{Summary: summary, CompactedMessages: plan.CompactedMessages, RecentTurns: plan.RecentTurns}}, nil
 }
 
 func (b *ContextBuilder) executeCompaction(ctx context.Context, sessionID string, plan agentcompact.Plan) (string, error) {
@@ -89,7 +102,7 @@ func (b *ContextBuilder) executeCompaction(ctx context.Context, sessionID string
 	if err != nil {
 		return "", fmt.Errorf("compact conversation history: %w", err)
 	}
-	if err := b.history.SaveSummary(ctx, sessionID, agentconversation.Summary{Content: summary, ThroughSequence: plan.ThroughSequence}); err != nil {
+	if err := b.history.SaveSummary(ctx, sessionID, agentconversation.Summary{Content: summary, ThroughSequence: plan.ThroughSequence, CompactedMessages: plan.CompactedMessages, RecentTurns: plan.RecentTurns}); err != nil {
 		return "", fmt.Errorf("save conversation summary: %w", err)
 	}
 	return summary, nil

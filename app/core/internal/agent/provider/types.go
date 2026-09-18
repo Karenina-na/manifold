@@ -55,6 +55,7 @@ const (
 type ChatResponse struct {
 	Content         string
 	ToolCalls       []agenttool.ToolCall
+	Reasoning       []string
 	ProviderContext ProviderContext
 	Usage           Usage
 	FinishReason    FinishReason

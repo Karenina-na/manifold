@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"sync/atomic"
 
 	agentconversation "github.com/manifold-space/manifold/app/core/internal/agent/conversation"
@@ -73,8 +74,12 @@ func (r *Runtime) BuildContext(ctx context.Context, sessionID, userMessage strin
 }
 
 // Compact immediately summarizes eligible old turns for a session.
-func (r *Runtime) Compact(ctx context.Context, sessionID string) (bool, error) {
+func (r *Runtime) Compact(ctx context.Context, sessionID string) (CompactionResult, error) {
 	return r.context.Compact(ctx, sessionID)
+}
+
+func (r *Runtime) Snapshot(ctx context.Context, sessionID string) (agentconversation.Snapshot, error) {
+	return r.history.Snapshot(ctx, sessionID)
 }
 
 func (r *Runtime) Run(ctx context.Context, sessionID, userMessage string, emit func(StreamEvent) error) error {
@@ -111,10 +116,13 @@ func (r *Runtime) Run(ctx context.Context, sessionID, userMessage string, emit f
 		if response == nil {
 			return errors.New("provider returned no response")
 		}
-		if err := emit(StreamEvent{Type: EventReasoningCompleted, RunID: runID}); err != nil {
+		if err := emit(StreamEvent{Type: EventReasoningCompleted, RunID: runID, Message: strings.Join(response.Reasoning, "\n\n")}); err != nil {
 			return err
 		}
 		traceSteps[reasoningIndex].Status = "complete"
+		if len(response.Reasoning) > 0 {
+			traceSteps[reasoningIndex].Message = strings.Join(response.Reasoning, "\n\n")
+		}
 		totalUsage.InputTokens += response.Usage.InputTokens
 		totalUsage.OutputTokens += response.Usage.OutputTokens
 		totalUsage.TotalTokens += response.Usage.TotalTokens

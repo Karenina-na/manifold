@@ -3,10 +3,12 @@ package compact
 import agentconversation "github.com/manifold-space/manifold/app/core/internal/agent/conversation"
 
 type Plan struct {
-	PreviousSummary string
-	Messages        []agentconversation.Message
-	Recent          []agentconversation.Message
-	ThroughSequence uint64
+	PreviousSummary   string
+	Messages          []agentconversation.Message
+	Recent            []agentconversation.Message
+	ThroughSequence   uint64
+	CompactedMessages int
+	RecentTurns       int
 }
 
 type BasicStrategy struct {
@@ -24,15 +26,19 @@ func (s BasicStrategy) Force(snapshot agentconversation.Snapshot) (Plan, bool) {
 	return s.plan(snapshot, true)
 }
 
+func (s BasicStrategy) RecentTurnCount() int {
+	if s.RecentTurns < 1 {
+		return 8
+	}
+	return s.RecentTurns
+}
+
 func (s BasicStrategy) plan(snapshot agentconversation.Snapshot, force bool) (Plan, bool) {
 	threshold := s.Threshold
 	if threshold < 1 {
 		threshold = 40
 	}
-	recentTurns := s.RecentTurns
-	if recentTurns < 1 {
-		recentTurns = 8
-	}
+	recentTurns := s.RecentTurnCount()
 
 	pending := make([]agentconversation.Message, 0, len(snapshot.Messages))
 	for _, message := range snapshot.Messages {
@@ -64,10 +70,12 @@ func (s BasicStrategy) plan(snapshot agentconversation.Snapshot, force bool) (Pl
 	end := turns[compactCount-1].end
 	selected := append([]agentconversation.Message(nil), pending[:end]...)
 	return Plan{
-		PreviousSummary: snapshot.Summary.Content,
-		Messages:        selected,
-		Recent:          append([]agentconversation.Message(nil), pending[end:]...),
-		ThroughSequence: selected[len(selected)-1].Sequence,
+		PreviousSummary:   snapshot.Summary.Content,
+		Messages:          selected,
+		Recent:            append([]agentconversation.Message(nil), pending[end:]...),
+		ThroughSequence:   selected[len(selected)-1].Sequence,
+		CompactedMessages: len(selected),
+		RecentTurns:       recentTurns,
 	}, true
 }
 

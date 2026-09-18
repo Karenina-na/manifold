@@ -300,18 +300,19 @@ export type AgentMessageRole = "user" | "assistant";
 export interface AgentUsage { inputTokens: number; outputTokens: number; totalTokens: number }
 export type AgentFinishReason = "stop" | "tool_calls" | "max_tokens" | "error";
 export type AgentTraceStep =
-  | { id: string; kind: "reasoning"; status: "running" | "complete" }
+  | { id: string; kind: "reasoning"; status: "running" | "complete"; message?: string }
   | { id: string; kind: "tool"; name: string; input: unknown; output?: unknown; status: "running" | "complete" | "error" }
   | { id: string; kind: "error"; message: string };
 export interface AgentMessageTrace { steps: AgentTraceStep[]; finishReason: AgentFinishReason; usage: AgentUsage }
 export interface AgentMessage { id: string; role: AgentMessageRole; content: string; createdAt: string; trace?: AgentMessageTrace }
-export interface AgentMessageList { messages: AgentMessage[] }
-export interface AgentCompactionResult { compacted: boolean }
+export interface AgentCompactionState { summary: string; compactedMessages: number; recentTurns: number }
+export interface AgentMessageList { messages: AgentMessage[]; compaction?: AgentCompactionState }
+export interface AgentCompactionResult { compacted: boolean; compaction: AgentCompactionState }
 export interface AgentUndoResult { draft: string; messages: AgentMessage[] }
 export type AgentStreamEvent =
   | { type: "run.started"; runId: string; messageId: string }
   | { type: "reasoning.started"; runId: string }
-  | { type: "reasoning.completed"; runId: string }
+  | { type: "reasoning.completed"; runId: string; message?: string }
   | { type: "content.delta"; delta: string }
   | { type: "tool.started"; callId: string; name: string; input: unknown }
   | { type: "tool.completed"; callId: string; name: string; output: unknown; isError: boolean }
@@ -327,7 +328,7 @@ export function isAgentStreamEvent(value: unknown): value is AgentStreamEvent {
       return hasRunId && typeof event.messageId === "string";
     case "reasoning.started":
     case "reasoning.completed":
-      return hasRunId;
+      return hasRunId && (!('message' in event) || typeof event.message === "string");
     case "content.delta":
       return typeof event.delta === "string";
     case "tool.started":

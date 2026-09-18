@@ -29,6 +29,19 @@ type agentMessageView struct {
 	Trace     *agentconversation.MessageTrace `json:"trace,omitempty"`
 }
 
+type agentCompactionView struct {
+	Summary           string `json:"summary"`
+	CompactedMessages int    `json:"compactedMessages"`
+	RecentTurns       int    `json:"recentTurns"`
+}
+
+func agentCompactionStateView(state agentconversation.Summary) *agentCompactionView {
+	if state.Content == "" {
+		return nil
+	}
+	return &agentCompactionView{Summary: state.Content, CompactedMessages: state.CompactedMessages, RecentTurns: state.RecentTurns}
+}
+
 func agentMessageViews(messages []agentconversation.Message) []agentMessageView {
 	views := make([]agentMessageView, 0, len(messages))
 	for _, message := range messages {
@@ -43,12 +56,16 @@ func (h *apiHandler) adminAgentMessages(w http.ResponseWriter, r *http.Request) 
 		WriteError(w, http.StatusServiceUnavailable, apierror.AgentUnavailable, "Agent conversation is unavailable.")
 		return
 	}
-	messages, err := h.agentRuntime.List(r.Context(), claims.ID, 200)
+	snapshot, err := h.agentRuntime.Snapshot(r.Context(), claims.ID)
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, apierror.AgentRunFailed, "Agent messages could not be loaded.")
 		return
 	}
-	WriteJSON(w, http.StatusOK, map[string]any{"messages": agentMessageViews(messages)})
+	response := map[string]any{"messages": agentMessageViews(snapshot.Messages)}
+	if compaction := agentCompactionStateView(snapshot.Summary); compaction != nil {
+		response["compaction"] = compaction
+	}
+	WriteJSON(w, http.StatusOK, response)
 }
 
 func (h *apiHandler) adminClearAgentMessages(w http.ResponseWriter, r *http.Request) {
@@ -70,7 +87,7 @@ func (h *apiHandler) adminCompactAgentMessages(w http.ResponseWriter, r *http.Re
 		WriteError(w, http.StatusServiceUnavailable, apierror.AgentUnavailable, "The agent provider is not configured.")
 		return
 	}
-	compacted, err := h.agentRuntime.Compact(r.Context(), claims.ID)
+	result, err := h.agentRuntime.Compact(r.Context(), claims.ID)
 	if err != nil {
 		if errors.Is(err, errAgentUnavailable) {
 			WriteError(w, http.StatusServiceUnavailable, apierror.AgentUnavailable, "The agent provider is not configured.")
@@ -79,7 +96,8 @@ func (h *apiHandler) adminCompactAgentMessages(w http.ResponseWriter, r *http.Re
 		WriteError(w, http.StatusInternalServerError, apierror.AgentRunFailed, "Agent messages could not be compacted.")
 		return
 	}
-	WriteJSON(w, http.StatusOK, map[string]bool{"compacted": compacted})
+	response := map[string]any{"compacted": result.Compacted, "compaction": agentCompactionView{Summary: result.State.Summary, CompactedMessages: result.State.CompactedMessages, RecentTurns: result.State.RecentTurns}}
+	WriteJSON(w, http.StatusOK, response)
 }
 
 func (h *apiHandler) adminUndoAgentMessage(w http.ResponseWriter, r *http.Request) {

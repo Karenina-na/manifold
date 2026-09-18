@@ -54,7 +54,7 @@ func TestOpenAIProviderMapsResponsesToolCalls(t *testing.T) {
 				t.Fatalf("second request did not preserve reasoning context: %+v", inputs)
 			}
 		}
-		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"id":"resp_1","status":"completed","output":[{"type":"reasoning","id":"rs_1","summary":[]},{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Checking."}]},{"type":"function_call","call_id":"call_1","name":"get_current_time","arguments":"{}"}],"usage":{"input_tokens":12,"output_tokens":4,"total_tokens":16}}`))}, nil
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"id":"resp_1","status":"completed","output":[{"type":"reasoning","id":"rs_1","summary":[{"type":"summary_text","text":"I will verify the current time."}]},{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Checking."}]},{"type":"function_call","call_id":"call_1","name":"get_current_time","arguments":"{}"}],"usage":{"input_tokens":12,"output_tokens":4,"total_tokens":16}}`))}, nil
 	})}
 
 	openAI := openai.New("secret", "https://api.openai.test/v1", client)
@@ -66,7 +66,7 @@ func TestOpenAIProviderMapsResponsesToolCalls(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if response.Content != "Checking." || len(response.ToolCalls) != 1 || response.ToolCalls[0].ID != "call_1" || response.FinishReason != agentprovider.FinishToolCalls {
+	if response.Content != "Checking." || len(response.ToolCalls) != 1 || response.ToolCalls[0].ID != "call_1" || response.FinishReason != agentprovider.FinishToolCalls || len(response.Reasoning) != 1 || response.Reasoning[0] != "I will verify the current time." {
 		t.Fatalf("unexpected response: %+v", response)
 	}
 	if len(response.ProviderContext) != 1 {

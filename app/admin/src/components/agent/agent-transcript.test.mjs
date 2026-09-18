@@ -5,7 +5,7 @@ import { applyAgentEvent, formatAgentPayload, groupAgentMessages } from './agent
 test('groups persisted user and assistant messages into conversation turns', () => {
   const messages = [
     { id: 'u1', role: 'user', content: 'First', createdAt: '2026-09-17T00:00:00Z' },
-    { id: 'a1', role: 'assistant', content: 'Answer', createdAt: '2026-09-17T00:00:01Z', trace: { steps: [{ id: 'reasoning-1', kind: 'reasoning', status: 'complete' }, { id: 'call-1', kind: 'tool', name: 'calculator', input: { expression: '2+2' }, output: { result: 4 }, status: 'complete' }], finishReason: 'stop', usage: { inputTokens: 4, outputTokens: 2, totalTokens: 6 } } },
+    { id: 'a1', role: 'assistant', content: 'Answer', createdAt: '2026-09-17T00:00:01Z', trace: { steps: [{ id: 'reasoning-1', kind: 'reasoning', status: 'complete', message: 'I checked the available evidence.' }, { id: 'call-1', kind: 'tool', name: 'calculator', input: { expression: '2+2' }, output: { result: 4 }, status: 'complete' }], finishReason: 'stop', usage: { inputTokens: 4, outputTokens: 2, totalTokens: 6 } } },
     { id: 'u2', role: 'user', content: 'Second', createdAt: '2026-09-17T00:00:02Z' },
     { id: 'a2', role: 'assistant', content: 'Another answer', createdAt: '2026-09-17T00:00:03Z' },
   ]
@@ -18,6 +18,7 @@ test('groups persisted user and assistant messages into conversation turns', () 
   assert.equal(turns[0]?.process.length, 2)
   assert.equal(turns[0]?.process[1]?.kind, 'tool')
   assert.equal(turns[0]?.process[1]?.status, 'complete')
+  assert.equal(turns[0]?.process[0]?.message, 'I checked the available evidence.')
   assert.equal(turns[0]?.finishReason, 'stop')
   assert.equal(turns[0]?.usage?.totalTokens, 6)
 })
@@ -39,7 +40,7 @@ test('reduces reasoning, tool, content, and finish events into one turn', () => 
   turn = applyAgentEvent(turn, { type: 'reasoning.started', runId: 'run_1' })
   turn = applyAgentEvent(turn, { type: 'tool.started', callId: 'call_1', name: 'calculator', input: { expression: '2+2' } })
   turn = applyAgentEvent(turn, { type: 'tool.completed', callId: 'call_1', name: 'calculator', output: { result: 4 }, isError: false })
-  turn = applyAgentEvent(turn, { type: 'reasoning.completed', runId: 'run_1' })
+  turn = applyAgentEvent(turn, { type: 'reasoning.completed', runId: 'run_1', message: 'I checked the available evidence.' })
   turn = applyAgentEvent(turn, { type: 'content.delta', delta: '4' })
   turn = applyAgentEvent(turn, { type: 'run.completed', runId: 'run_1', finishReason: 'max_tokens', usage: { inputTokens: 3, outputTokens: 1, totalTokens: 4 } })
   assert.equal(turn.status, 'complete')
@@ -47,6 +48,7 @@ test('reduces reasoning, tool, content, and finish events into one turn', () => 
   assert.equal(turn.finishReason, 'max_tokens')
   assert.equal(turn.assistant.content, '4')
   assert.equal(turn.process[0].status, 'complete')
+  assert.equal(turn.process[0].message, 'I checked the available evidence.')
   assert.equal(turn.process[1].status, 'complete')
   assert.deepEqual(turn.process[1].output, { result: 4 })
   assert.equal(turn.usage.totalTokens, 4)

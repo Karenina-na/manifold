@@ -44,8 +44,10 @@ type Message struct {
 }
 
 type Summary struct {
-	Content         string
-	ThroughSequence uint64
+	Content           string
+	ThroughSequence   uint64
+	CompactedMessages int
+	RecentTurns       int
 }
 
 type Snapshot struct {
