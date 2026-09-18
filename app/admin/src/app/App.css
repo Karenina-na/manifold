@@ -128,11 +128,7 @@ button { cursor: pointer; }
 .agent-empty { display: grid; align-content: center; justify-items: center; gap: 10px; min-height: 330px; padding: 30px 20px; color: var(--muted); text-align: center; font-size: 13px; }
 .agent-empty-orb { width: 52px; height: 52px; margin-bottom: 4px; border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--line)); border-radius: 17px; box-shadow: 0 10px 26px rgba(181, 80, 58, .11); }
 .agent-empty strong { max-width: 400px; color: var(--ink); font: 400 25px/1.12 Georgia, serif; letter-spacing: -.02em; }
-.agent-empty > span:not(.agent-empty-orb) { max-width: 470px; line-height: 1.6; }
 .agent-error-state svg { color: var(--danger); }
-.agent-suggestions { display: flex; flex-wrap: wrap; justify-content: center; gap: 7px; margin-top: 11px; }
-.agent-suggestions button { padding: 8px 11px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); background: color-mix(in srgb, var(--surface) 76%, transparent); font-size: 11px; cursor: pointer; transition: border-color 160ms ease, color 160ms ease, background 160ms ease, transform 160ms ease; }
-.agent-suggestions button:hover, .agent-suggestions button:focus-visible { border-color: var(--accent); color: var(--ink); background: var(--accent-soft); transform: translateY(-1px); }
 .agent-turn { display: grid; gap: 20px; padding: 0 0 27px; }
 .agent-turn + .agent-turn { padding-top: 27px; border-top: 1px solid color-mix(in srgb, var(--line) 75%, transparent); }
 .agent-user-row, .agent-answer-row { display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 11px; align-items: start; }

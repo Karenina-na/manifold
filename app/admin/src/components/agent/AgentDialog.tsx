@@ -7,12 +7,6 @@ import { useTranslation } from 'react-i18next'
 import { createAdminClient } from '../../lib/api'
 import { applyAgentEvent, formatAgentPayload, groupAgentMessages, type AgentProcessItem, type AgentTurn } from './agent-transcript'
 
-const suggestions = [
-  { key: 'profile', value: 'What should I focus on today?' },
-  { key: 'writings', value: 'Which writings are worth revisiting?' },
-  { key: 'thoughts', value: 'What themes recur in my thoughts?' },
-] as const
-
 const agentDialogTitle = 'Talking'
 
 function ToolPayload({ value }: { value: unknown }) {
@@ -140,11 +134,6 @@ export function AgentDialog({ token, opened, onClose }: { token: string; opened:
     }
   }
 
-  const chooseSuggestion = (value: string) => {
-    setInput(value)
-    requestAnimationFrame(() => inputRef.current?.focus())
-  }
-
   const close = () => {
     abortRef.current?.abort()
     setLoading(true)
@@ -198,9 +187,7 @@ export function AgentDialog({ token, opened, onClose }: { token: string; opened:
         {actionError && <div className="agent-action-error" role="alert"><CircleAlert size={14} aria-hidden="true" />{actionError}</div>}
         {loading && <div className="agent-loading"><span className="agent-loading-orb"><Sparkles size={18} aria-hidden="true" /></span><span>{t('common.loading')}</span></div>}
         {!loading && loadError && <div className="agent-empty agent-error-state"><CircleAlert size={22} aria-hidden="true" /><strong>{t('agent.loadError')}</strong><span>{t('agent.tryAgain')}</span></div>}
-        {!loading && !loadError && !hasConversation && <div className="agent-empty"><span className="agent-empty-orb"><Sparkles size={22} aria-hidden="true" /></span><strong>{t('agent.emptyTitle')}</strong><span>{t('agent.emptyCopy')}</span><div className="agent-suggestions" aria-label={t('agent.suggestions')}>
-          {suggestions.map((suggestion) => <button key={suggestion.key} type="button" onClick={() => chooseSuggestion(suggestion.value)}>{t(`agent.suggestion.${suggestion.key}`)}</button>)}
-        </div></div>}
+        {!loading && !loadError && !hasConversation && <div className="agent-empty"><span className="agent-empty-orb"><Sparkles size={22} aria-hidden="true" /></span><strong>{t('agent.emptyTitle')}</strong></div>}
         {!loading && !loadError && turns.map((turn) => <Turn key={turn.id} turn={turn} running={running} copiedMessageID={copiedMessageID} undoingMessageID={undoingMessageID} onCopy={(message) => void copyMessage(message)} onUndo={(message) => void undoMessage(message)} />)}
         <div ref={endRef} />
       </div>

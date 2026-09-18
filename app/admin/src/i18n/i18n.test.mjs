@@ -164,6 +164,18 @@ test('Profile does not expose redundant resume or legacy-period hints', () => {
   assert.equal(leafKeys(zhCN).includes('profile.legacyPeriod'), false)
 })
 
+test('Agent empty state keeps only the conversation entry point', () => {
+  const source = fs.readFileSync(path.join(sourceRoot, 'components', 'agent', 'AgentDialog.tsx'), 'utf8')
+  const styles = fs.readFileSync(path.join(sourceRoot, 'app', 'App.css'), 'utf8')
+
+  assert.doesNotMatch(source, /agent\.emptyCopy|agent\.suggestions|agent\.suggestion|agent-suggestions/)
+  assert.doesNotMatch(styles, /agent-suggestions|agent-empty > span/)
+  assert.equal(leafKeys(en).includes('agent.emptyCopy'), false)
+  assert.equal(leafKeys(en).some((key) => key.startsWith('agent.suggestion')), false)
+  assert.equal(leafKeys(zhCN).includes('agent.emptyCopy'), false)
+  assert.equal(leafKeys(zhCN).some((key) => key.startsWith('agent.suggestion')), false)
+})
+
 test('every Admin page keeps user-facing copy behind the translation boundary', () => {
   const violations = uiSourceFiles().flatMap((filename) => visibleCopyViolations(sourceFile(filename)))
 
