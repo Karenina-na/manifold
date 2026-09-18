@@ -1,24 +1,8 @@
-package scenarios
+package manifold
 
-import (
-	"errors"
+import "github.com/manifold-space/manifold/app/core/internal/agent"
 
-	"github.com/manifold-space/manifold/app/core/internal/agent"
-	agenttools "github.com/manifold-space/manifold/app/core/internal/agent/tools"
-	"github.com/manifold-space/manifold/app/core/internal/model"
-)
-
-const Manifold = "manifold"
-
-type ManifoldDependencies struct {
-	Profile       agenttools.ProfileReader
-	Content       agenttools.ContentReader
-	ContentDetail agenttools.ContentDetailReader
-	Chain         agenttools.ChainReader
-	ChainAnchors  agenttools.ContentAnchorReader
-}
-
-func ManifoldPrompt() agent.PromptSpec {
+func Prompt() agent.PromptSpec {
 	return agent.PromptSpec{
 		Intro: "You are the private Manifold assistant.",
 		Role: []string{
@@ -78,40 +62,4 @@ func ManifoldPrompt() agent.PromptSpec {
 			"End with a next step only when it is genuinely useful.",
 		},
 	}
-}
-
-func RegisterManifold(registry *agent.ScenarioRegistry, dependencies ManifoldDependencies) error {
-	if registry == nil {
-		return errors.New("scenario registry is required")
-	}
-	if dependencies.Profile == nil || dependencies.Content == nil || dependencies.ContentDetail == nil {
-		return errors.New("Manifold profile, content, and content detail readers are required")
-	}
-	return registry.Register(Manifold, func() (agent.Scenario, error) {
-		tools := agent.NewToolRegistry()
-		for _, tool := range []agent.Tool{
-			agenttools.CurrentTime{},
-			agenttools.Calculator{},
-			agenttools.UserProfile{Store: dependencies.Profile},
-			agenttools.ContentList{Store: dependencies.Content, Kind: model.ContentKindArticle},
-			agenttools.ContentList{Store: dependencies.Content, Kind: model.ContentKindThought},
-			agenttools.ContentDetail{Store: dependencies.ContentDetail, Kind: model.ContentKindArticle},
-			agenttools.ContentDetail{Store: dependencies.ContentDetail, Kind: model.ContentKindThought},
-		} {
-			if err := tools.Register(tool); err != nil {
-				return agent.Scenario{}, err
-			}
-		}
-		if dependencies.Chain != nil {
-			if err := tools.Register(agenttools.ChainStatus{Ledger: dependencies.Chain}); err != nil {
-				return agent.Scenario{}, err
-			}
-		}
-		if dependencies.ChainAnchors != nil {
-			if err := tools.Register(agenttools.ContentAnchor{Ledger: dependencies.ChainAnchors}); err != nil {
-				return agent.Scenario{}, err
-			}
-		}
-		return agent.Scenario{Prompt: ManifoldPrompt(), Tools: tools}, nil
-	})
 }

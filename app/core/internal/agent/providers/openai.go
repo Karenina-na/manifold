@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/manifold-space/manifold/app/core/internal/agent"
+	agenttool "github.com/manifold-space/manifold/app/core/internal/agent/tool"
 )
 
 // UpstreamError carries only the structured metadata needed by the handler to
@@ -114,7 +115,7 @@ func (p *OpenAI) Chat(ctx context.Context, request agent.ChatRequest) (*agent.Ch
 	if p.apiKey == "" {
 		return nil, fmt.Errorf("OpenAI API key is not configured")
 	}
-	wire := responseRequest{Model: request.Model, Input: []json.RawMessage{}, Tools: []functionTool{}, Store: false, ParallelToolCalls: false, MaxOutputTokens: request.Options.MaxOutputTokens}
+	wire := responseRequest{Model: request.Model, Input: []json.RawMessage{}, Tools: []functionTool{}, Store: false, ParallelToolCalls: true, MaxOutputTokens: request.Options.MaxOutputTokens}
 	appendInput := func(value responseInput) error {
 		raw, err := json.Marshal(value)
 		if err == nil {
@@ -132,10 +133,8 @@ func (p *OpenAI) Chat(ctx context.Context, request agent.ChatRequest) (*agent.Ch
 					return nil, err
 				}
 			}
-			for index, call := range message.ToolCalls {
-				if index == 0 {
-					wire.Input = append(wire.Input, call.ProviderContext...)
-				}
+			wire.Input = append(wire.Input, message.ProviderContext...)
+			for _, call := range message.ToolCalls {
 				if err := appendInput(responseInput{Type: "function_call", CallID: call.ID, Name: call.Name, Arguments: string(call.Arguments)}); err != nil {
 					return nil, err
 				}
@@ -204,12 +203,10 @@ func (p *OpenAI) Chat(ctx context.Context, request agent.ChatRequest) (*agent.Ch
 				}
 			}
 		case "function_call":
-			result.ToolCalls = append(result.ToolCalls, agent.ToolCall{ID: item.CallID, Name: item.Name, Arguments: json.RawMessage(item.Arguments)})
+			result.ToolCalls = append(result.ToolCalls, agenttool.ToolCall{ID: item.CallID, Name: item.Name, Arguments: json.RawMessage(item.Arguments)})
 		}
 	}
-	if len(result.ToolCalls) > 0 {
-		result.ToolCalls[0].ProviderContext = providerContext
-	}
+	result.ProviderContext = providerContext
 	if len(result.ToolCalls) > 0 {
 		result.FinishReason = agent.FinishToolCalls
 	}

@@ -5,11 +5,11 @@ import (
 	"math"
 	"testing"
 
-	"github.com/manifold-space/manifold/app/core/internal/agent/tools"
+	manifoldtools "github.com/manifold-space/manifold/app/core/internal/agent/scenarios/manifold/tools"
 )
 
 func TestCalculatorEvaluatesArithmeticWithPrecedence(t *testing.T) {
-	result, err := (tools.Calculator{}).Execute(t.Context(), json.RawMessage(`{"expression":"(2 + 3) * 4 / 2"}`))
+	result, err := (manifoldtools.Calculator{}).Execute(t.Context(), json.RawMessage(`{"expression":"(2 + 3) * 4 / 2"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -21,7 +21,7 @@ func TestCalculatorEvaluatesArithmeticWithPrecedence(t *testing.T) {
 
 func TestCalculatorRejectsInvalidAndNonFiniteExpressions(t *testing.T) {
 	for _, arguments := range []string{`{"expression":"2 + nope"}`, `{"expression":"1 / 0"}`, `{"expression":""}`} {
-		if _, err := (tools.Calculator{}).Execute(t.Context(), json.RawMessage(arguments)); err == nil {
+		if _, err := (manifoldtools.Calculator{}).Execute(t.Context(), json.RawMessage(arguments)); err == nil {
 			t.Fatalf("expected %s to fail", arguments)
 		}
 	}

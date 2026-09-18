@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/manifold-space/manifold/app/core/internal/agent/tools"
+	manifoldtools "github.com/manifold-space/manifold/app/core/internal/agent/scenarios/manifold/tools"
 	"github.com/manifold-space/manifold/app/core/internal/chain"
 )
 
@@ -29,7 +29,7 @@ func TestContentAnchorReturnsCertificateStatus(t *testing.T) {
 		ID: "cert_1", SubjectHash: "hash", Source: chain.SourceContent, SubjectRef: "content_1",
 		Label: "Writing", CreatedAt: "2026-09-18T00:00:00Z", BlockID: "block_1", SitePublicKey: "public",
 	}}
-	result, err := (tools.ContentAnchor{Ledger: reader}).Execute(t.Context(), json.RawMessage(`{"contentId":"content_1"}`))
+	result, err := (manifoldtools.ContentAnchor{Ledger: reader}).Execute(t.Context(), json.RawMessage(`{"contentId":"content_1"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,7 +51,7 @@ func TestContentAnchorReturnsCertificateStatus(t *testing.T) {
 
 func TestContentAnchorDoesNotTreatPendingCertificateAsAnchored(t *testing.T) {
 	reader := &contentAnchorReader{anchor: chain.Anchor{ID: "cert_1"}}
-	result, err := (tools.ContentAnchor{Ledger: reader}).Execute(t.Context(), json.RawMessage(`{"contentId":"content_1"}`))
+	result, err := (manifoldtools.ContentAnchor{Ledger: reader}).Execute(t.Context(), json.RawMessage(`{"contentId":"content_1"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +70,7 @@ func TestContentAnchorDoesNotTreatPendingCertificateAsAnchored(t *testing.T) {
 
 func TestContentAnchorTreatsMissingCertificateAsKnownUnanchoredState(t *testing.T) {
 	reader := &contentAnchorReader{err: sql.ErrNoRows}
-	result, err := (tools.ContentAnchor{Ledger: reader}).Execute(t.Context(), json.RawMessage(`{"contentId":"content_1"}`))
+	result, err := (manifoldtools.ContentAnchor{Ledger: reader}).Execute(t.Context(), json.RawMessage(`{"contentId":"content_1"}`))
 	if err != nil {
 		t.Fatal(err)
 	}

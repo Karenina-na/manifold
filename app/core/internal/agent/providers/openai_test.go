@@ -11,6 +11,7 @@ import (
 
 	"github.com/manifold-space/manifold/app/core/internal/agent"
 	"github.com/manifold-space/manifold/app/core/internal/agent/providers"
+	agenttool "github.com/manifold-space/manifold/app/core/internal/agent/tool"
 )
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
@@ -28,7 +29,7 @@ func TestOpenAIProviderMapsResponsesToolCalls(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			t.Fatal(err)
 		}
-		if body["store"] != false || body["parallel_tool_calls"] != false {
+		if body["store"] != false || body["parallel_tool_calls"] != true {
 			t.Fatalf("unexpected request body: %+v", body)
 		}
 		if tools, ok := body["tools"].([]any); ok && len(tools) > 0 {
@@ -60,7 +61,7 @@ func TestOpenAIProviderMapsResponsesToolCalls(t *testing.T) {
 	response, err := provider.Chat(context.Background(), agent.ChatRequest{
 		Model:    "test-model",
 		Messages: []agent.Message{{Role: agent.RoleSystem, Content: "Be concise."}, {Role: agent.RoleUser, Content: "What time is it?"}},
-		Tools:    []agent.ToolDefinition{{Name: "get_current_time", Description: "Current time", Usage: "Use for the current date.", Effect: agent.ToolEffectReadOnly, Parameters: json.RawMessage(`{"type":"object","properties":{},"additionalProperties":false}`)}},
+		Tools:    []agenttool.ToolDefinition{{Name: "get_current_time", Description: "Current time", Usage: "Use for the current date.", Effect: agenttool.ToolEffectReadOnly, Parameters: json.RawMessage(`{"type":"object","properties":{},"additionalProperties":false}`)}},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -68,13 +69,13 @@ func TestOpenAIProviderMapsResponsesToolCalls(t *testing.T) {
 	if response.Content != "Checking." || len(response.ToolCalls) != 1 || response.ToolCalls[0].ID != "call_1" || response.FinishReason != agent.FinishToolCalls {
 		t.Fatalf("unexpected response: %+v", response)
 	}
-	if len(response.ToolCalls[0].ProviderContext) != 1 {
-		t.Fatalf("expected reasoning context to be preserved for the next tool round: %+v", response.ToolCalls[0])
+	if len(response.ProviderContext) != 1 {
+		t.Fatalf("expected reasoning context to be preserved for the next tool round: %+v", response)
 	}
 	if response.Usage.TotalTokens != 16 {
 		t.Fatalf("unexpected usage: %+v", response.Usage)
 	}
-	if _, err := provider.Chat(context.Background(), agent.ChatRequest{Model: "test-model", Messages: []agent.Message{{Role: agent.RoleAssistant, Content: response.Content, ToolCalls: response.ToolCalls}, {Role: agent.RoleTool, ToolCallID: "call_1", Content: `{"date":"2026-09-17"}`}}}); err != nil {
+	if _, err := provider.Chat(context.Background(), agent.ChatRequest{Model: "test-model", Messages: []agent.Message{{Role: agent.RoleAssistant, Content: response.Content, ToolCalls: response.ToolCalls, ProviderContext: response.ProviderContext}, {Role: agent.RoleTool, ToolCallID: "call_1", Content: `{"date":"2026-09-17"}`}}}); err != nil {
 		t.Fatal(err)
 	}
 }

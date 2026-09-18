@@ -10,13 +10,13 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/manifold-space/manifold/app/core/internal/agent"
+	agenttool "github.com/manifold-space/manifold/app/core/internal/agent/tool"
 )
 
 type Calculator struct{}
 
-func (Calculator) Definition() agent.ToolDefinition {
-	return agent.ToolDefinition{Name: "calculator", Description: "Evaluate a finite arithmetic expression using +, -, *, / and parentheses.", Usage: "Use for arithmetic, numeric comparison, or unit conversion that can be expressed as arithmetic; do not estimate a result manually.", Effect: agent.ToolEffectReadOnly, Parameters: json.RawMessage(`{"type":"object","properties":{"expression":{"type":"string","description":"Arithmetic expression"}},"required":["expression"],"additionalProperties":false}`)}
+func (Calculator) Definition() agenttool.ToolDefinition {
+	return agenttool.ToolDefinition{Name: "calculator", Description: "Evaluate a finite arithmetic expression using +, -, *, / and parentheses.", Usage: "Use for arithmetic, numeric comparison, or unit conversion that can be expressed as arithmetic; do not estimate a result manually.", Effect: agenttool.ToolEffectReadOnly, Parameters: json.RawMessage(`{"type":"object","properties":{"expression":{"type":"string","description":"Arithmetic expression"}},"required":["expression"],"additionalProperties":false}`)}
 }
 
 func (Calculator) Execute(_ context.Context, arguments json.RawMessage) (any, error) {
@@ -140,6 +140,7 @@ func (p *expressionParser) skipSpace() {
 		p.position++
 	}
 }
+
 func (p *expressionParser) consume(expected byte) bool {
 	if p.position < len(p.input) && p.input[p.position] == expected {
 		p.position++

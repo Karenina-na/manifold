@@ -3,11 +3,13 @@ package agent
 import (
 	"errors"
 	"fmt"
+
+	agenttool "github.com/manifold-space/manifold/app/core/internal/agent/tool"
 )
 
 type Scenario struct {
 	Prompt PromptSpec
-	Tools  *ToolRegistry
+	Tools  *agenttool.Registry
 }
 
 type ScenarioFactory func() (Scenario, error)

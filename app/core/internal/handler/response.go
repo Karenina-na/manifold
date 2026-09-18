@@ -9,7 +9,7 @@ import (
 	"github.com/go-playground/validator/v10"
 
 	"github.com/manifold-space/manifold/app/core/internal/agent"
-	agentscenarios "github.com/manifold-space/manifold/app/core/internal/agent/scenarios"
+	agentscenario "github.com/manifold-space/manifold/app/core/internal/agent/scenarios/manifold"
 	"github.com/manifold-space/manifold/app/core/internal/application"
 	"github.com/manifold-space/manifold/app/core/internal/auth"
 	"github.com/manifold-space/manifold/app/core/internal/cache"
@@ -104,15 +104,15 @@ func newRouterWithMiner(cfg config.Config, database *store.Store, ledger *chain.
 
 func newAgentRuntime(database *store.Store, ledger *chain.Ledger) agentRunner {
 	scenarios := agent.NewScenarioRegistry()
-	dependencies := agentscenarios.ManifoldDependencies{Profile: database, Content: database, ContentDetail: database}
+	dependencies := agentscenario.Dependencies{Profile: database, Content: database}
 	if ledger != nil {
 		dependencies.Chain = ledger
 		dependencies.ChainAnchors = ledger
 	}
-	if err := agentscenarios.RegisterManifold(scenarios, dependencies); err != nil {
+	if err := agentscenario.Register(scenarios, dependencies); err != nil {
 		panic(err)
 	}
-	scenario, err := scenarios.Build(agentscenarios.Manifold)
+	scenario, err := scenarios.Build(agentscenario.Name)
 	if err != nil {
 		panic(err)
 	}

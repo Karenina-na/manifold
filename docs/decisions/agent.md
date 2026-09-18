@@ -10,11 +10,13 @@ Admin 需要一个能读取作者画像、公开内容摘要与锚定链状态�
 
 ## 决策
 
-Agent 运行时位于 `app/core/internal/agent`。Core 内部类型隔离上游协议：Provider 只实现 `Chat(context.Context, ChatRequest) (*ChatResponse, error)`，Registry 按名称解析 Provider、Scenario 和 Tool；Runtime 执行有限回合的 `LLM → tool → result → LLM` 循环；Context Builder 统一组装 system prompt、session 历史与本次输入。
+Agent 运行时位于 `app/core/internal/agent`。Core 内部类型隔离上游协议：Provider 只实现 `Chat(context.Context, ChatRequest) (*ChatResponse, error)`；Provider 与 Scenario 继续各自按名称注册，工具协议和执行基础设施独立位于 `internal/agent/tool`；Runtime 执行有限回合的 `LLM → tool → result → LLM` 循环；Context Builder 统一组装 system prompt、session 历史与本次输入。
 
-场景是行为型 Prompt 与 Runtime 能力集合的唯一业务定制边界。`ScenarioRegistry` 注册按需构建场景的工厂，`internal/agent/scenarios` 保存具体场景；当前 `manifold` 工厂通过独立的 `ManifoldPrompt` 提供角色、指令范围、证据优先级和安全规则，并按 Store/Ledger 能力组装画像、内容、时间、计算器与只读链工具。`ToolRegistry` 是当前能力真相源，工具注册必须同时声明 Provider `Description`、Prompt `Usage` 和 `Effect`；`Effect` 声明工具是只读、写入还是破坏性操作。`PromptSpec.Build` 只把注册表中的名称、`Usage` 和 `Effect` 投影到 `TOOL USE`/`CAPABILITY BOUNDARIES`，不会由场景 Prompt 自己声称权限，`Effect` 同时作为 Runtime 执行保护。工具的 Provider schema 描述仍由 `Description` 与 `Parameters` 负责，两者保持边界。当前 Runtime 只执行 `read_only` 工具，其他效果在授权机制落地前默认拒绝。Runtime 只消费构建完成的 `Scenario`，不识别场景名称或具体工具。新增只读场景无需修改 Provider、运行循环、记忆或 HTTP/SSE 契约；新增写入场景必须同时提供运行时授权边界。
+`tool` 模块按职责拆分 `Tool`、`ToolDefinition`、`ToolCall`、`ToolResult`、`Registry` 与 `Executor`。Registry 是能力真相源，只负责注册、定义校验和定义快照；Executor 从 Registry 解析调用、执行 Effect 门禁，并发执行同一轮全部调用，并按输入顺序返回每个调用独立的结果或错误。工具实现必须允许 Executor 并发调用。当前 Executor 只允许 `read_only`，写入和破坏性工具在授权机制落地前默认拒绝。
 
-OpenAI 实现使用 Responses API，`store=false`、`parallel_tool_calls=false`。Runtime 自己执行 function tools，并把 `function_call` 与 `function_call_output` 转成内部 Message；reasoning output item 仅作为 Provider 私有上下文原样带入下一工具回合，不进入 SSE 或共享 contracts。首版 Provider 调用本身是完整响应，Core SSE 用于统一传输运行阶段、工具结果和内容；以后 Provider 支持 token stream 时不需要改变 Admin 的事件联合。
+场景是行为型 Prompt 与 Runtime 能力集合的唯一业务定制边界。`ScenarioRegistry` 注册按需构建场景的工厂，每个 `internal/agent/scenarios/<scenario>` 目录同时拥有 Prompt、依赖接口和具体工具注册；当前 `scenarios/manifold` 按 Store/Ledger 能力组装画像、内容、时间、计算器与只读链工具，工具实现位于其 `tools` 子包。`PromptSpec.Build` 只把 Registry 中的名称、`Usage` 和 `Effect` 投影到 `TOOL USE`/`CAPABILITY BOUNDARIES`，不会由场景 Prompt 自己声称权限；`Description` 与有效 JSON `Parameters` 只负责 Provider schema。Runtime 只消费构建完成的 `Scenario`，不识别场景名称或具体工具。新增只读场景无需修改 Provider、运行循环、记忆或 HTTP/SSE 契约；新增写入场景必须同时提供运行时授权边界。
+
+OpenAI 实现使用 Responses API，`store=false`、`parallel_tool_calls=true`。Runtime 把同一响应中的 function calls 一次性交给 Executor 并行执行，再把有序 `function_call_output` 转成内部 Message；reasoning output item 仅作为 Provider 私有上下文原样带入下一工具回合，不进入 SSE 或共享 contracts。首版 Provider 调用本身是完整响应，Core SSE 用于统一传输运行阶段、工具结果和内容；以后 Provider 支持 token stream 时不需要改变 Admin 的事件联合。
 
 记忆能力直接归属 `internal/agent`：`SessionMessageRepository` 与 `SessionMemory` 定义 session 消息边界，`Memory` 提供按 Admin JWT `jti` 分区的进程内实现；不为尚未使用的会话元数据建立实体。持久消息使用 `SessionMessage` 命名，以区别于 Provider 对话使用的 `Message`。配置运行服务统一串行化同一 session 的 Run、List、Clear 与 Undo；Undo 原子截断目标用户消息及其后的整个对话尾部，并返回原文作为新草稿。注销、会话吊销或显式清空不会与正在生成的同 session 回复交错，Core 重启后全部记忆丢失。
 
@@ -25,8 +27,9 @@ Admin 使用顶部栏打开居中的全页模态对话框，不新增工作区�
 ## 结果
 
 - 新 Provider 只需实现内部接口并注册，不改变 HTTP 或 Admin 组件。
-- 新场景通过工厂同时注册 Prompt 和工具集合，不需要在 Handler 或 Runtime 中增加业务分支。
-- 工具由 Core 注入真实 Store/Ledger 读取能力；内容列表工具返回摘要，`get_writing`/`get_thought` 按 slug 返回已发布正文，链工具只读；`get_content_anchor` 将内容 ID 与最新锚定证书关联，并用 `unanchored`、`pending`、`anchored` 区分无证书、待入块和已入块状态。
+- 新场景通过独立目录同时注册 Prompt 和工具集合，不需要在 Handler 或 Runtime 中增加业务分支。
+- 同轮工具调用由 Executor 并行执行；逐调用错误不会阻止其他调用完成，回填顺序保持稳定。
+- 工具由 Core 注入真实 Store/Ledger 读取能力；内容能力按行为统一为 `content_list` 与 `content_get`，前者返回混合内容基本信息与摘要并支持类型过滤，后者按 slug 返回已发布正文；链工具只读，`get_content_anchor` 将 `content_get` 返回的内容 ID 与最新锚定证书关联，并用 `unanchored`、`pending`、`anchored` 区分无证书、待入块和已入块状态。
 - 当前对话不具备跨 session、跨进程或长期记忆语义。
 - Agent 设置跨进程持久化；API key 的静态保护边界是 Core 数据库文件权限，HTTP、审计与日志均不包含其明文。
 - 上游模型错误在流建立前映射为结构化 API 错误，在流建立后映射为 `run.error`，不把上游响应正文暴露给浏览器。

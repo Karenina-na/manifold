@@ -1,4 +1,4 @@
-package scenarios_test
+package manifold_test
 
 import (
 	"context"
@@ -8,7 +8,8 @@ import (
 	"testing"
 
 	"github.com/manifold-space/manifold/app/core/internal/agent"
-	"github.com/manifold-space/manifold/app/core/internal/agent/scenarios"
+	"github.com/manifold-space/manifold/app/core/internal/agent/scenarios/manifold"
+	agenttool "github.com/manifold-space/manifold/app/core/internal/agent/tool"
 	"github.com/manifold-space/manifold/app/core/internal/chain"
 	"github.com/manifold-space/manifold/app/core/internal/model"
 	"github.com/manifold-space/manifold/app/core/internal/store"
@@ -39,13 +40,13 @@ func (chainSource) LatestContentAnchor(context.Context, string) (chain.Anchor, e
 	return chain.Anchor{}, sql.ErrNoRows
 }
 
-func TestManifoldFactoryRegistersPromptAndScenarioTools(t *testing.T) {
+func TestFactoryRegistersPromptAndScenarioTools(t *testing.T) {
 	registry := agent.NewScenarioRegistry()
-	if err := scenarios.RegisterManifold(registry, scenarios.ManifoldDependencies{Profile: manifoldSource{}, Content: manifoldSource{}, ContentDetail: manifoldSource{}}); err != nil {
+	if err := manifold.Register(registry, manifold.Dependencies{Profile: manifoldSource{}, Content: manifoldSource{}}); err != nil {
 		t.Fatal(err)
 	}
 
-	scenario, err := registry.Build(scenarios.Manifold)
+	scenario, err := registry.Build(manifold.Name)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,14 +69,14 @@ func TestManifoldFactoryRegistersPromptAndScenarioTools(t *testing.T) {
 			t.Fatalf("Manifold prompt is missing %q:\n%s", heading, prompt)
 		}
 	}
-	if !strings.Contains(prompt, "get_writings is read-only.") {
+	if !strings.Contains(prompt, "content_list is read-only.") {
 		t.Fatalf("Manifold prompt is missing the runtime-generated capability boundary:\n%s", prompt)
 	}
 	for _, definition := range scenario.Tools.Definitions() {
 		if definition.Usage == "" {
 			t.Fatalf("tool %q must provide prompt usage guidance", definition.Name)
 		}
-		if definition.Effect != agent.ToolEffectReadOnly {
+		if definition.Effect != agenttool.ToolEffectReadOnly {
 			t.Fatalf("tool %q must be read-only in the current scenario, got %q", definition.Name, definition.Effect)
 		}
 		if !strings.Contains(prompt, definition.Name) || !strings.Contains(prompt, definition.Usage) {
@@ -83,19 +84,19 @@ func TestManifoldFactoryRegistersPromptAndScenarioTools(t *testing.T) {
 		}
 	}
 	names := toolNames(scenario)
-	want := []string{"calculator", "get_current_time", "get_thought", "get_thoughts", "get_user_profile", "get_writing", "get_writings"}
+	want := []string{"calculator", "content_get", "content_list", "get_current_time", "get_user_profile"}
 	if !slices.Equal(names, want) {
 		t.Fatalf("unexpected Manifold tools: %v", names)
 	}
 }
 
-func TestManifoldFactoryAddsChainToolOnlyWhenAvailable(t *testing.T) {
+func TestFactoryAddsChainToolsOnlyWhenAvailable(t *testing.T) {
 	registry := agent.NewScenarioRegistry()
-	if err := scenarios.RegisterManifold(registry, scenarios.ManifoldDependencies{Profile: manifoldSource{}, Content: manifoldSource{}, ContentDetail: manifoldSource{}, Chain: chainSource{}, ChainAnchors: chainSource{}}); err != nil {
+	if err := manifold.Register(registry, manifold.Dependencies{Profile: manifoldSource{}, Content: manifoldSource{}, Chain: chainSource{}, ChainAnchors: chainSource{}}); err != nil {
 		t.Fatal(err)
 	}
 
-	scenario, err := registry.Build(scenarios.Manifold)
+	scenario, err := registry.Build(manifold.Name)
 	if err != nil {
 		t.Fatal(err)
 	}

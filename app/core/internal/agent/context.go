@@ -2,16 +2,18 @@ package agent
 
 import (
 	"context"
+
+	agenttool "github.com/manifold-space/manifold/app/core/internal/agent/tool"
 )
 
 type ContextBuilder struct {
 	messages     SessionMessageRepository
 	prompt       PromptSpec
-	tools        *ToolRegistry
+	tools        *agenttool.Registry
 	historyLimit int
 }
 
-func NewContextBuilder(messages SessionMessageRepository, prompt PromptSpec, tools *ToolRegistry, historyLimit int) *ContextBuilder {
+func NewContextBuilder(messages SessionMessageRepository, prompt PromptSpec, tools *agenttool.Registry, historyLimit int) *ContextBuilder {
 	return &ContextBuilder{messages: messages, prompt: prompt, tools: tools, historyLimit: historyLimit}
 }
 
@@ -21,7 +23,7 @@ func (b *ContextBuilder) Build(ctx context.Context, sessionID, userMessage strin
 		return nil, err
 	}
 	result := make([]Message, 0, len(history)+2)
-	var registeredTools []ToolDefinition
+	var registeredTools []agenttool.ToolDefinition
 	if b.tools != nil {
 		registeredTools = b.tools.Definitions()
 	}

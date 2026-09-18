@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/manifold-space/manifold/app/core/internal/agent"
+	agenttool "github.com/manifold-space/manifold/app/core/internal/agent/tool"
 	"github.com/manifold-space/manifold/app/core/internal/chain"
 )
 
@@ -18,12 +18,12 @@ type ContentAnchorReader interface {
 
 type ContentAnchor struct{ Ledger ContentAnchorReader }
 
-func (ContentAnchor) Definition() agent.ToolDefinition {
-	return agent.ToolDefinition{
+func (ContentAnchor) Definition() agenttool.ToolDefinition {
+	return agenttool.ToolDefinition{
 		Name:        "get_content_anchor",
 		Description: "Get the latest read-only anchoring certificate and block reference for a content item.",
-		Usage:       "Use after get_writing or get_thought when the user asks whether a specific content item is anchored; pass the returned content id. A missing anchor is a known unanchored state, and a pending certificate is not yet in a block.",
-		Effect:      agent.ToolEffectReadOnly,
+		Usage:       "Use after content_get when the user asks whether a specific content item is anchored; pass the returned content id. A missing anchor is a known unanchored state, and a pending certificate is not yet in a block.",
+		Effect:      agenttool.ToolEffectReadOnly,
 		Parameters:  json.RawMessage(`{"type":"object","properties":{"contentId":{"type":"string","minLength":1,"maxLength":200,"description":"Content id returned by a content tool"}},"required":["contentId"],"additionalProperties":false}`),
 	}
 }

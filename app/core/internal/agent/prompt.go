@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	agenttool "github.com/manifold-space/manifold/app/core/internal/agent/tool"
 )
 
 // PromptSpec contains scenario-owned prompt sections. Tool guidance is added
@@ -25,7 +27,7 @@ type PromptSpec struct {
 
 // Build renders the prompt in a stable section order and appends guidance for
 // the tools that are registered for the current scenario.
-func (spec PromptSpec) Build(tools []ToolDefinition) string {
+func (spec PromptSpec) Build(tools []agenttool.ToolDefinition) string {
 	sections := make([]string, 0, 10)
 	if intro := strings.TrimSpace(spec.Intro); intro != "" {
 		sections = append(sections, intro)
@@ -58,7 +60,7 @@ func (spec PromptSpec) Build(tools []ToolDefinition) string {
 	return strings.Join(sections, "\n\n")
 }
 
-func appendCapabilitySection(sections []string, tools []ToolDefinition) []string {
+func appendCapabilitySection(sections []string, tools []agenttool.ToolDefinition) []string {
 	if len(sections) == 0 && len(tools) == 0 {
 		return sections
 	}
@@ -81,13 +83,13 @@ func appendCapabilitySection(sections []string, tools []ToolDefinition) []string
 	return append(sections, strings.Join(lines, "\n"))
 }
 
-func capabilityStatement(name string, effect ToolEffect) string {
+func capabilityStatement(name string, effect agenttool.ToolEffect) string {
 	switch effect {
-	case ToolEffectReadOnly:
+	case agenttool.ToolEffectReadOnly:
 		return fmt.Sprintf("%s is read-only.", name)
-	case ToolEffectWrite:
+	case agenttool.ToolEffectWrite:
 		return fmt.Sprintf("%s changes persistent state and is unavailable without an explicit runtime grant.", name)
-	case ToolEffectDestructive:
+	case agenttool.ToolEffectDestructive:
 		return fmt.Sprintf("%s can delete or irreversibly change state and is unavailable without an explicit runtime grant and confirmation.", name)
 	default:
 		return fmt.Sprintf("%s has an unspecified effect and must not be used.", name)

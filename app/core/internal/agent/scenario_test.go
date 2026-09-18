@@ -5,11 +5,12 @@ import (
 	"testing"
 
 	"github.com/manifold-space/manifold/app/core/internal/agent"
+	agenttool "github.com/manifold-space/manifold/app/core/internal/agent/tool"
 )
 
 func TestScenarioRegistryBuildsRegisteredScenarios(t *testing.T) {
 	registry := agent.NewScenarioRegistry()
-	want := agent.Scenario{Prompt: agent.PromptSpec{Intro: "prompt"}, Tools: agent.NewToolRegistry()}
+	want := agent.Scenario{Prompt: agent.PromptSpec{Intro: "prompt"}, Tools: agenttool.NewRegistry()}
 	if err := registry.Register("manifold", func() (agent.Scenario, error) { return want, nil }); err != nil {
 		t.Fatal(err)
 	}

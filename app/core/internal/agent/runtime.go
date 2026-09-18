@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"sync/atomic"
+
+	agenttool "github.com/manifold-space/manifold/app/core/internal/agent/tool"
 )
 
 type RuntimeConfig struct {
@@ -19,7 +21,8 @@ type RuntimeConfig struct {
 type Runtime struct {
 	config    RuntimeConfig
 	providers *ProviderRegistry
-	tools     *ToolRegistry
+	tools     *agenttool.Registry
+	executor  *agenttool.Executor
 	messages  SessionMessageRepository
 	context   *ContextBuilder
 	sequence  atomic.Uint64
@@ -33,9 +36,9 @@ func NewRuntime(config RuntimeConfig, providers *ProviderRegistry, scenario Scen
 		config.HistoryLimit = 40
 	}
 	if scenario.Tools == nil {
-		scenario.Tools = NewToolRegistry()
+		scenario.Tools = agenttool.NewRegistry()
 	}
-	return &Runtime{config: config, providers: providers, tools: scenario.Tools, messages: messages, context: NewContextBuilder(messages, scenario.Prompt, scenario.Tools, config.HistoryLimit)}
+	return &Runtime{config: config, providers: providers, tools: scenario.Tools, executor: agenttool.NewExecutor(scenario.Tools), messages: messages, context: NewContextBuilder(messages, scenario.Prompt, scenario.Tools, config.HistoryLimit)}
 }
 
 func (r *Runtime) Run(ctx context.Context, sessionID, userMessage string, emit func(StreamEvent) error) error {
@@ -108,35 +111,40 @@ func (r *Runtime) Run(ctx context.Context, sessionID, userMessage string, emit f
 			return fmt.Errorf("tool round limit reached")
 		}
 
-		messages = append(messages, Message{Role: RoleAssistant, Content: response.Content, ToolCalls: response.ToolCalls})
-		for _, call := range response.ToolCalls {
+		messages = append(messages, Message{Role: RoleAssistant, Content: response.Content, ToolCalls: response.ToolCalls, ProviderContext: response.ProviderContext})
+		toolIndexes := make([]int, len(response.ToolCalls))
+		for index, call := range response.ToolCalls {
 			var input any
 			if err := json.Unmarshal(call.Arguments, &input); err != nil {
 				input = string(call.Arguments)
 			}
 			toolIndex := len(traceSteps)
+			toolIndexes[index] = toolIndex
 			traceSteps = append(traceSteps, TraceStep{ID: call.ID, Kind: "tool", Name: call.Name, Input: input, Status: "running"})
 			if err := emit(StreamEvent{Type: EventToolStarted, CallID: call.ID, Name: call.Name, Input: input}); err != nil {
 				return err
 			}
-			output, toolErr := r.tools.Execute(ctx, call)
-			if toolErr != nil {
-				output = map[string]string{"error": toolErr.Error()}
+		}
+		for index, result := range r.executor.Execute(ctx, response.ToolCalls) {
+			output := result.Output
+			if result.Err != nil {
+				output = map[string]string{"error": result.Err.Error()}
 			}
-			isError := toolErr != nil
+			isError := result.Err != nil
+			toolIndex := toolIndexes[index]
 			traceSteps[toolIndex].Output = output
 			traceSteps[toolIndex].Status = "complete"
 			if isError {
 				traceSteps[toolIndex].Status = "error"
 			}
-			if err := emit(StreamEvent{Type: EventToolCompleted, CallID: call.ID, Name: call.Name, Output: output, IsError: &isError}); err != nil {
+			if err := emit(StreamEvent{Type: EventToolCompleted, CallID: result.CallID, Name: result.Name, Output: output, IsError: &isError}); err != nil {
 				return err
 			}
 			raw, marshalErr := json.Marshal(output)
 			if marshalErr != nil {
 				return marshalErr
 			}
-			messages = append(messages, Message{Role: RoleTool, Content: string(raw), ToolCallID: call.ID})
+			messages = append(messages, Message{Role: RoleTool, Content: string(raw), ToolCallID: result.CallID})
 		}
 	}
 	return errors.New("agent run did not complete")

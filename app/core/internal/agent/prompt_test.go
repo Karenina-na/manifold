@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/manifold-space/manifold/app/core/internal/agent"
+	agenttool "github.com/manifold-space/manifold/app/core/internal/agent/tool"
 )
 
 func TestPromptSpecBuildsSectionsAndRegisteredToolGuidance(t *testing.T) {
@@ -21,11 +22,11 @@ func TestPromptSpecBuildsSectionsAndRegisteredToolGuidance(t *testing.T) {
 		UncertaintyAndErrors:  []string{"State what remains unknown."},
 		OutputContract:        []string{"Answer the question asked."},
 	}
-	prompt := spec.Build([]agent.ToolDefinition{
-		{Name: "z_tool", Usage: "Use it for the latest z facts.", Effect: agent.ToolEffectReadOnly},
-		{Name: "a_tool", Description: "Provider description.", Usage: "Use it for the fallback facts.", Effect: agent.ToolEffectReadOnly},
-		{Name: "publish_tool", Usage: "Use it to publish an approved item.", Effect: agent.ToolEffectWrite},
-		{Name: "delete_tool", Usage: "Use it to remove an item.", Effect: agent.ToolEffectDestructive},
+	prompt := spec.Build([]agenttool.ToolDefinition{
+		{Name: "z_tool", Usage: "Use it for the latest z facts.", Effect: agenttool.ToolEffectReadOnly},
+		{Name: "a_tool", Description: "Provider description.", Usage: "Use it for the fallback facts.", Effect: agenttool.ToolEffectReadOnly},
+		{Name: "publish_tool", Usage: "Use it to publish an approved item.", Effect: agenttool.ToolEffectWrite},
+		{Name: "delete_tool", Usage: "Use it to remove an item.", Effect: agenttool.ToolEffectDestructive},
 	})
 
 	for _, want := range []string{

@@ -1,6 +1,10 @@
 package agent
 
-import "encoding/json"
+import (
+	"encoding/json"
+
+	agenttool "github.com/manifold-space/manifold/app/core/internal/agent/tool"
+)
 
 type Role string
 
@@ -12,41 +16,10 @@ const (
 )
 
 type Message struct {
-	Role       Role
-	Content    string
-	ToolCalls  []ToolCall
-	ToolCallID string
-}
-
-type ToolEffect string
-
-const (
-	ToolEffectReadOnly    ToolEffect = "read_only"
-	ToolEffectWrite       ToolEffect = "write"
-	ToolEffectDestructive ToolEffect = "destructive"
-)
-
-func (effect ToolEffect) valid() bool {
-	switch effect {
-	case ToolEffectReadOnly, ToolEffectWrite, ToolEffectDestructive:
-		return true
-	default:
-		return false
-	}
-}
-
-type ToolDefinition struct {
-	Name        string
-	Description string
-	Usage       string
-	Effect      ToolEffect
-	Parameters  json.RawMessage
-}
-
-type ToolCall struct {
-	ID              string
-	Name            string
-	Arguments       json.RawMessage
+	Role            Role
+	Content         string
+	ToolCalls       []agenttool.ToolCall
+	ToolCallID      string
 	ProviderContext []json.RawMessage
 }
 
@@ -56,7 +29,7 @@ type ChatOptions struct {
 
 type ChatRequest struct {
 	Messages []Message
-	Tools    []ToolDefinition
+	Tools    []agenttool.ToolDefinition
 	Model    string
 	Options  ChatOptions
 }
@@ -77,10 +50,11 @@ const (
 )
 
 type ChatResponse struct {
-	Content      string
-	ToolCalls    []ToolCall
-	Usage        Usage
-	FinishReason FinishReason
+	Content         string
+	ToolCalls       []agenttool.ToolCall
+	ProviderContext []json.RawMessage
+	Usage           Usage
+	FinishReason    FinishReason
 }
 
 type EventType string

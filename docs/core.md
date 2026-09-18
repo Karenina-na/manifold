@@ -53,7 +53,9 @@ app/core/
 │   ├── response.go                 # handler 依赖、生命周期和 Router
 │   └── response_helpers.go         # JSON、错误、集合和健康检查响应
 ├── internal/application/           # 写用例及 audit、anchor、cache 编排
-├── internal/agent/                 # Provider、场景工厂、工具循环、上下文构建、session 内存与 OpenAI 适配
+├── internal/agent/                 # Provider、运行循环、上下文构建与 session 内存
+│   ├── tool/                       # Tool 协议、定义、调用、结果、Registry 与并行 Executor
+│   └── scenarios/manifold/         # Manifold Prompt、依赖装配与场景专属工具
 ├── internal/auth/auth.go           # bcrypt、JWT、Casbin
 ├── internal/github/                # GitHub OAuth 上游客户端及其协议测试
 ├── internal/model/content.go       # Core 领域 JSON model
@@ -296,7 +298,11 @@ Admin 与 visitor token 使用从 `CORE_JWT_SECRET` 按用途派生的不同签�
 
 Agent SSE 事件是判别联合：`run.started` → 每次模型调用的 `reasoning.started` / `reasoning.completed` → 可选的 `tool.started` / `tool.completed` → `content.delta` → `run.completed`；流建立后的失败以 `run.error` 收尾。`run.started.messageId` 是 Core 已写入 session memory 的用户消息 ID，Admin 用它把乐观消息替换为可 Undo 的稳定目标。reasoning 事件只表示运行状态，不包含模型隐藏推理文本。`run.completed.usage` 是本次工具循环内全部 Provider 调用的累计 token 数。
 
-Agent Runtime 以 `Provider.Chat(ctx, ChatRequest) (*ChatResponse, error)` 为唯一模型边界；`ChatRequest` 统一 Messages/Tools/Model/Options，`ChatResponse` 统一 Content/ToolCalls/Usage/FinishReason。场景注册表按名称调用工厂，场景同时提供行为型 `PromptSpec` 与该场景允许的工具注册表；`PromptSpec.Build` 按固定顺序渲染 `ROLE`、`INSTRUCTION SCOPE`、`SOURCE PRIORITY`、`TOOL USE`、运行时生成的 `CAPABILITY BOUNDARIES`、`UNTRUSTED DATA HANDLING`、`KNOWLEDGE BOUNDARIES`、`SCOPE AND SAFETY`、`STYLE`、`UNCERTAINTY AND ERRORS`、`OUTPUT CONTRACT`。`ToolDefinition` 注册时必须显式提供名称、Provider `Description`、Prompt `Usage` 和合法 `Effect`；其中 `Usage` 用于工具用法的自然语言投影，`Effect` 同时用于能力边界投影和 Runtime 执行保护，`Description`/`Parameters` 只用于 Provider function schema；这些元数据不会发送到上游协议。`ToolRegistry` 是当前能力真相源：当前 Runtime 只执行 `read_only` 工具，写入和破坏性工具在授权机制落地前会被拒绝。Runtime 不包含 Manifold 业务工具选择。当前 `manifold` 场景提供 `get_current_time`、`calculator`、`get_user_profile`、`get_writings`、`get_thoughts`、`get_writing`、`get_thought`；锚定链启用时追加只读 `get_chain_status` 和 `get_content_anchor`。列表工具返回已发布内容的基本信息与摘要，详情工具按 slug 返回单篇已发布 writing/thought 的完整 Markdown body 与 metadata；`get_content_anchor` 按内容 ID 返回最新内容证书，`status` 为 `unanchored`、`pending` 或 `anchored`，其中 `anchored` 仅表示证书已写入区块，链工具不提交证书。Context Builder 每次构建时从 PromptSpec 和当前工具注册表生成 system prompt，再拼接当前 session 最近消息和本次 user 消息；若消息数截断落在一轮对话中间，会丢弃开头孤立的 assistant 消息。
+Agent Runtime 以 `Provider.Chat(ctx, ChatRequest) (*ChatResponse, error)` 为唯一模型边界；`ChatRequest` 统一 Messages/Tools/Model/Options，`ChatResponse` 统一 Content/ToolCalls/Usage/FinishReason。`internal/agent/tool` 是独立工具模块：`Tool` 定义实现契约，`ToolDefinition` 描述 Provider schema、Prompt 用法与 Effect，`ToolCall`/`ToolResult` 统一调用和逐调用结果，`Registry` 负责注册、定义校验和能力快照，`Executor` 负责只读权限门禁与并行调度。Executor 并发执行同一轮全部调用，但按输入调用顺序返回结果；Runtime 因而可以按稳定顺序写入 trace、SSE 和下一轮 Provider message。OpenAI Responses 请求启用 `parallel_tool_calls=true`。
+
+场景注册表按名称调用工厂，场景同时提供行为型 `PromptSpec` 与该场景允许的工具注册表；具体 Prompt、依赖接口与工具实现归属于 `internal/agent/scenarios/<scenario>`，当前 Manifold 位于 `scenarios/manifold`，其工具位于同目录的 `tools` 子包。Runtime 只消费构建完成的 `Scenario`，不识别场景名称或具体工具。`PromptSpec.Build` 按固定顺序渲染 `ROLE`、`INSTRUCTION SCOPE`、`SOURCE PRIORITY`、`TOOL USE`、运行时生成的 `CAPABILITY BOUNDARIES`、`UNTRUSTED DATA HANDLING`、`KNOWLEDGE BOUNDARIES`、`SCOPE AND SAFETY`、`STYLE`、`UNCERTAINTY AND ERRORS`、`OUTPUT CONTRACT`。`ToolDefinition` 注册时必须显式提供名称、Provider `Description`、Prompt `Usage`、合法 `Effect` 与有效 JSON `Parameters`；`Usage` 和 `Effect` 投影为 Prompt 能力说明，`Description`/`Parameters` 只用于 Provider function schema。`Registry` 是能力真相源；当前 Executor 只执行 `read_only` 工具，写入和破坏性工具在授权机制落地前会被拒绝。
+
+当前 `manifold` 场景提供 `get_current_time`、`calculator`、`get_user_profile`、`content_list`、`content_get`；`content_list` 返回混合的已发布 content 基本信息与摘要，并可按 `ARTICLE`/`THOUGHT` 过滤，`content_get` 按 slug 返回单篇已发布 content 的完整 Markdown body 与 metadata。锚定链启用时追加只读 `get_chain_status` 和 `get_content_anchor`；后者按 `content_get` 返回的内容 ID 查询最新内容证书，`status` 为 `unanchored`、`pending` 或 `anchored`，其中 `anchored` 仅表示证书已写入区块，链工具不提交证书。Context Builder 每次构建时从 PromptSpec 和当前工具注册表生成 system prompt，再拼接当前 session 最近消息和本次 user 消息；若消息数截断落在一轮对话中间，会丢弃开头孤立的 assistant 消息。
 
 Agent 设置由迁移 `0007` 的 `agent_settings` 单例保存，默认值为 OpenAI / `gpt-5-mini` / 6 个工具回合 / 40 条历史 / 2048 输出 token / `https://api.openai.com/v1`，API key 默认为空。Core 不读取对应的 `CORE_AGENT_*` 或 `CORE_OPENAI_*` 环境变量。`openAIBaseURL` 在保存和运行时都会清理首尾空白、去掉尾部斜杠，并在路径中缺少 `v1` 时自动补齐 `/v1`。每次运行前读取当前行；API key 为空时历史读取与清空仍可用，运行在建立 SSE 前返回 503 `AGENT_UNAVAILABLE`。API key 在 SQLite 中保存，但响应、审计元数据和日志仅暴露是否已配置。
 

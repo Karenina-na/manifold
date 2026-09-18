@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/manifold-space/manifold/app/core/internal/agent"
+	agenttool "github.com/manifold-space/manifold/app/core/internal/agent/tool"
 )
 
 type scriptedProvider struct {
@@ -23,8 +24,8 @@ func (p *scriptedProvider) Chat(_ context.Context, request agent.ChatRequest) (*
 
 type echoTool struct{}
 
-func (echoTool) Definition() agent.ToolDefinition {
-	return agent.ToolDefinition{Name: "echo", Description: "Echo text", Usage: "Use for echoing text.", Effect: agent.ToolEffectReadOnly, Parameters: json.RawMessage(`{"type":"object","properties":{"text":{"type":"string"}},"required":["text"],"additionalProperties":false}`)}
+func (echoTool) Definition() agenttool.ToolDefinition {
+	return agenttool.ToolDefinition{Name: "echo", Description: "Echo text", Usage: "Use for echoing text.", Effect: agenttool.ToolEffectReadOnly, Parameters: json.RawMessage(`{"type":"object","properties":{"text":{"type":"string"}},"required":["text"],"additionalProperties":false}`)}
 }
 
 func (echoTool) Execute(_ context.Context, arguments json.RawMessage) (any, error) {
@@ -37,14 +38,17 @@ func (echoTool) Execute(_ context.Context, arguments json.RawMessage) (any, erro
 
 func TestRuntimeCompletesAToolLoopAndStoresConversation(t *testing.T) {
 	provider := &scriptedProvider{answers: []agent.ChatResponse{
-		{ToolCalls: []agent.ToolCall{{ID: "call_1", Name: "echo", Arguments: json.RawMessage(`{"text":"hello"}`)}}, FinishReason: agent.FinishToolCalls},
-		{Content: "Echoed hello.", FinishReason: agent.FinishStop, Usage: agent.Usage{InputTokens: 8, OutputTokens: 3, TotalTokens: 11}},
+		{ToolCalls: []agenttool.ToolCall{
+			{ID: "call_1", Name: "echo", Arguments: json.RawMessage(`{"text":"hello"}`)},
+			{ID: "call_2", Name: "echo", Arguments: json.RawMessage(`{"text":"world"}`)},
+		}, FinishReason: agent.FinishToolCalls},
+		{Content: "Echoed hello and world.", FinishReason: agent.FinishStop, Usage: agent.Usage{InputTokens: 8, OutputTokens: 3, TotalTokens: 11}},
 	}}
 	providers := agent.NewProviderRegistry()
 	if err := providers.Register("test", provider); err != nil {
 		t.Fatal(err)
 	}
-	toolRegistry := agent.NewToolRegistry()
+	toolRegistry := agenttool.NewRegistry()
 	if err := toolRegistry.Register(echoTool{}); err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +70,7 @@ func TestRuntimeCompletesAToolLoopAndStoresConversation(t *testing.T) {
 		t.Fatalf("registered tool guidance was not built into the system prompt: %+v", provider.requests[0].Messages)
 	}
 	second := provider.requests[1].Messages
-	if second[len(second)-1].Role != agent.RoleTool || second[len(second)-1].ToolCallID != "call_1" {
+	if second[len(second)-2].Role != agent.RoleTool || second[len(second)-2].ToolCallID != "call_1" || second[len(second)-1].Role != agent.RoleTool || second[len(second)-1].ToolCallID != "call_2" {
 		t.Fatalf("expected tool output in the second model call, got %+v", second)
 	}
 	if events[0].Type != agent.EventRunStarted || events[len(events)-1].Type != agent.EventRunCompleted {
@@ -79,16 +83,16 @@ func TestRuntimeCompletesAToolLoopAndStoresConversation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(messages) != 2 || messages[0].Role != "user" || messages[1].Content != "Echoed hello." {
+	if len(messages) != 2 || messages[0].Role != "user" || messages[1].Content != "Echoed hello and world." {
 		t.Fatalf("unexpected stored conversation: %+v", messages)
 	}
 	if messages[1].Trace == nil {
 		t.Fatal("expected the assistant message to retain its run trace")
 	}
-	if len(messages[1].Trace.Steps) != 3 || messages[1].Trace.Steps[0].Kind != "reasoning" || messages[1].Trace.Steps[0].Status != "complete" {
+	if len(messages[1].Trace.Steps) != 4 || messages[1].Trace.Steps[0].Kind != "reasoning" || messages[1].Trace.Steps[0].Status != "complete" {
 		t.Fatalf("unexpected persisted trace steps: %+v", messages[1].Trace.Steps)
 	}
-	if messages[1].Trace.Steps[1].Kind != "tool" || messages[1].Trace.Steps[1].Name != "echo" || messages[1].Trace.Steps[1].Status != "complete" || messages[1].Trace.Steps[2].Kind != "reasoning" {
+	if messages[1].Trace.Steps[1].Kind != "tool" || messages[1].Trace.Steps[1].Name != "echo" || messages[1].Trace.Steps[1].Status != "complete" || messages[1].Trace.Steps[2].Kind != "tool" || messages[1].Trace.Steps[2].Status != "complete" || messages[1].Trace.Steps[3].Kind != "reasoning" {
 		t.Fatalf("unexpected persisted tool trace: %+v", messages[1].Trace.Steps[1])
 	}
 	if messages[1].Trace.FinishReason != "stop" || messages[1].Trace.Usage.TotalTokens != 11 {
@@ -108,7 +112,7 @@ func TestContextBuilderLimitsHistoryAndKeepsSystemFirst(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	builder := agent.NewContextBuilder(memory, agent.PromptSpec{Intro: "System prompt"}, agent.NewToolRegistry(), 2)
+	builder := agent.NewContextBuilder(memory, agent.PromptSpec{Intro: "System prompt"}, agenttool.NewRegistry(), 2)
 	messages, err := builder.Build(t.Context(), "session_1", "next")
 	if err != nil {
 		t.Fatal(err)
@@ -129,7 +133,7 @@ func TestContextBuilderDropsAnOrphanAssistantAtTheHistoryBoundary(t *testing.T) 
 		}
 	}
 
-	messages, err := agent.NewContextBuilder(memory, agent.PromptSpec{Intro: "System prompt"}, agent.NewToolRegistry(), 1).Build(t.Context(), "session_1", "next")
+	messages, err := agent.NewContextBuilder(memory, agent.PromptSpec{Intro: "System prompt"}, agenttool.NewRegistry(), 1).Build(t.Context(), "session_1", "next")
 	if err != nil {
 		t.Fatal(err)
 	}
