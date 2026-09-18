@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	agentconversation "github.com/manifold-space/manifold/app/core/internal/agent/conversation"
+	agentmemory "github.com/manifold-space/manifold/app/core/internal/agent/memory"
 	agentprompt "github.com/manifold-space/manifold/app/core/internal/agent/prompt"
 	agentruntime "github.com/manifold-space/manifold/app/core/internal/agent/runtime"
 	agentscenario "github.com/manifold-space/manifold/app/core/internal/agent/scenario"
@@ -50,7 +51,8 @@ func TestConfiguredAgentRuntimeUsesSavedSettingsOnTheNextRun(t *testing.T) {
 	}
 
 	history := agentconversation.NewVolatileHistory()
-	runtime := newConfiguredAgentRuntime(database, agentscenario.Scenario{Prompt: agentprompt.Spec{Intro: "test"}, Tools: agenttool.NewRegistry()}, history)
+	memories := agentmemory.NewInMemory()
+	runtime := newConfiguredAgentRuntime(database, agentscenario.Scenario{Prompt: agentprompt.Spec{Intro: "test"}, Tools: agenttool.NewRegistry()}, history, memories)
 	if err := runtime.Run(t.Context(), "session-1", "first", func(agentruntime.StreamEvent) error { return nil }); err != nil {
 		t.Fatal(err)
 	}
@@ -77,5 +79,40 @@ func TestConfiguredAgentRuntimeUsesSavedSettingsOnTheNextRun(t *testing.T) {
 	defer mu.Unlock()
 	if len(models) != 2 || models[0] != "model-one" || models[1] != "model-two" {
 		t.Fatalf("saved settings were not applied immediately: %v", models)
+	}
+}
+
+func TestConfiguredAgentRuntimeKeepsMemoryAcrossConversationClearAndDropsItWithTheSession(t *testing.T) {
+	database, err := store.Open(t.Context(), ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	history := agentconversation.NewVolatileHistory()
+	memories := agentmemory.NewInMemory()
+	runtime := newConfiguredAgentRuntime(database, agentscenario.Scenario{Prompt: agentprompt.Spec{Intro: "test"}, Tools: agenttool.NewRegistry()}, history, memories)
+	if _, err := memories.Add(t.Context(), "session-1", "Remember this across conversations"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := runtime.Clear(t.Context(), "session-1"); err != nil {
+		t.Fatal(err)
+	}
+	items, err := memories.Search(t.Context(), "session-1", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("conversation clear removed session memory: %+v", items)
+	}
+	if err := runtime.CloseSession(t.Context(), "session-1"); err != nil {
+		t.Fatal(err)
+	}
+	items, err = memories.Search(t.Context(), "session-1", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 0 {
+		t.Fatalf("session close retained memory: %+v", items)
 	}
 }

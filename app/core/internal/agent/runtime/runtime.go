@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 
 	agentconversation "github.com/manifold-space/manifold/app/core/internal/agent/conversation"
+	agentmemory "github.com/manifold-space/manifold/app/core/internal/agent/memory"
 	agentprovider "github.com/manifold-space/manifold/app/core/internal/agent/provider"
 	agentscenario "github.com/manifold-space/manifold/app/core/internal/agent/scenario"
 	agenttool "github.com/manifold-space/manifold/app/core/internal/agent/tool"
@@ -44,12 +45,17 @@ func NewRuntime(config RuntimeConfig, providers *agentprovider.Registry, scenari
 	return &Runtime{config: config, providers: providers, tools: scenario.Tools, executor: agenttool.NewExecutor(scenario.Tools), history: history, context: NewContextBuilder(history, scenario.Prompt, scenario.Tools, config.HistoryLimit)}
 }
 
+// BuildContext assembles the exact provider context used at the start of a run.
+func (r *Runtime) BuildContext(ctx context.Context, sessionID, userMessage string) ([]agentprovider.Message, error) {
+	return r.context.Build(ctx, sessionID, userMessage)
+}
+
 func (r *Runtime) Run(ctx context.Context, sessionID, userMessage string, emit func(StreamEvent) error) error {
 	provider, err := r.providers.Get(r.config.Provider)
 	if err != nil {
 		return err
 	}
-	messages, err := r.context.Build(ctx, sessionID, userMessage)
+	messages, err := r.BuildContext(ctx, sessionID, userMessage)
 	if err != nil {
 		return err
 	}
@@ -128,7 +134,8 @@ func (r *Runtime) Run(ctx context.Context, sessionID, userMessage string, emit f
 				return err
 			}
 		}
-		for index, result := range r.executor.Execute(ctx, response.ToolCalls) {
+		toolContext := agentmemory.BindSession(ctx, sessionID)
+		for index, result := range r.executor.Execute(toolContext, response.ToolCalls) {
 			output := result.Output
 			if result.Err != nil {
 				output = map[string]string{"error": result.Err.Error()}

@@ -92,3 +92,20 @@ func TestExecutorRejectsNonReadOnlyTools(t *testing.T) {
 		t.Fatal("write tool executed without authorization")
 	}
 }
+
+func TestExecutorAllowsSessionWriteTools(t *testing.T) {
+	registry := agenttool.NewRegistry()
+	if err := registry.Register(testTool{
+		definition: definition("session_write_tool", agenttool.ToolEffectSessionWrite),
+		execute: func(context.Context, json.RawMessage) (any, error) {
+			return "ok", nil
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	results := agenttool.NewExecutor(registry).Execute(t.Context(), []agenttool.ToolCall{{ID: "call_1", Name: "session_write_tool"}})
+	if len(results) != 1 || results[0].Err != nil || results[0].Output != "ok" {
+		t.Fatalf("session-scoped write was not executed: %+v", results)
+	}
+}

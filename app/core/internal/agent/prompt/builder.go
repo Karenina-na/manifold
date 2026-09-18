@@ -1,46 +1,61 @@
 package prompt
 
 import (
-	"fmt"
 	"strconv"
 	"strings"
 
 	agenttool "github.com/manifold-space/manifold/app/core/internal/agent/tool"
 )
 
-// Build renders the prompt in a stable section order and appends guidance for
-// the tools that are registered for the current scenario.
+// Build renders scenario-owned prompt sections and then projects the
+// registered tool metadata into separate runtime-owned sections.
 func Build(spec Spec, tools []agenttool.ToolDefinition) string {
-	sections := make([]string, 0, 10)
+	sections := make([]string, 0, 14)
 	if intro := strings.TrimSpace(spec.Intro); intro != "" {
 		sections = append(sections, intro)
 	}
 	sections = appendSection(sections, "ROLE", spec.Role, false)
 	sections = appendSection(sections, "INSTRUCTION SCOPE", spec.InstructionScope, false)
+	sections = appendSection(sections, "SCOPE AND SAFETY", spec.ScopeAndSafety, false)
+	sections = appendSection(sections, "UNTRUSTED DATA HANDLING", spec.UntrustedDataHandling, false)
 	sections = appendSection(sections, "SOURCE PRIORITY", spec.SourcePriority, true)
+	sections = appendSection(sections, "KNOWLEDGE BOUNDARIES", spec.KnowledgeBoundaries, false)
+	sections = appendSection(sections, "TOOL USE", spec.ToolUse, false)
+	sections = appendSection(sections, "MEMORY USE", spec.MemoryUse, false)
+	sections = appendToolSection(sections, tools)
+	sections = appendCapabilitySection(sections, tools)
+	sections = appendSection(sections, "STYLE", spec.Style, false)
+	sections = appendSection(sections, "UNCERTAINTY AND ERRORS", spec.UncertaintyAndErrors, false)
+	sections = appendSection(sections, "OUTPUT CONTRACT", spec.OutputContract, false)
+	return strings.Join(sections, "\n\n")
+}
 
-	toolUse := cleanPromptItems(spec.ToolUse)
+func appendToolSection(sections []string, tools []agenttool.ToolDefinition) []string {
+	lines := []string{
+		"AVAILABLE TOOLS",
+		"- The following registered tools are available for this run.",
+	}
+	registered := 0
 	for _, definition := range tools {
 		name := strings.TrimSpace(definition.Name)
 		if name == "" {
 			continue
 		}
-		usage := strings.TrimSpace(definition.Usage)
-		if usage == "" {
-			toolUse = append(toolUse, name)
-			continue
+		registered++
+		description := strings.TrimSpace(definition.Description)
+		entry := "- " + name + " [" + effectLabel(definition.Effect) + "]"
+		if description != "" {
+			entry += ": " + description
 		}
-		toolUse = append(toolUse, name+": "+usage)
+		if usage := strings.TrimSpace(definition.Usage); usage != "" {
+			entry += "\n  Guidance: " + usage
+		}
+		lines = append(lines, entry)
 	}
-	sections = appendSection(sections, "TOOL USE", toolUse, false)
-	sections = appendCapabilitySection(sections, tools)
-	sections = appendSection(sections, "UNTRUSTED DATA HANDLING", spec.UntrustedDataHandling, false)
-	sections = appendSection(sections, "KNOWLEDGE BOUNDARIES", spec.KnowledgeBoundaries, false)
-	sections = appendSection(sections, "SCOPE AND SAFETY", spec.ScopeAndSafety, false)
-	sections = appendSection(sections, "STYLE", spec.Style, false)
-	sections = appendSection(sections, "UNCERTAINTY AND ERRORS", spec.UncertaintyAndErrors, false)
-	sections = appendSection(sections, "OUTPUT CONTRACT", spec.OutputContract, false)
-	return strings.Join(sections, "\n\n")
+	if registered == 0 {
+		return sections
+	}
+	return append(sections, strings.Join(lines, "\n"))
 }
 
 func appendCapabilitySection(sections []string, tools []agenttool.ToolDefinition) []string {
@@ -52,30 +67,44 @@ func appendCapabilitySection(sections []string, tools []agenttool.ToolDefinition
 		"- Only registered tools are available for this run.",
 	}
 	registered := 0
+	requiresGrant := false
 	for _, definition := range tools {
 		name := strings.TrimSpace(definition.Name)
 		if name == "" {
 			continue
 		}
 		registered++
-		lines = append(lines, "- "+capabilityStatement(name, definition.Effect))
+		if definition.Effect == agenttool.ToolEffectWrite || definition.Effect == agenttool.ToolEffectDestructive {
+			requiresGrant = true
+		}
 	}
 	if registered == 0 {
 		lines = append(lines, "- No tools are registered for this run.")
+		return append(sections, strings.Join(lines, "\n"))
+	}
+	lines = append(lines,
+		"- Each tool may act only within its declared effect and scope.",
+		"- A tool's existence does not grant capabilities beyond its declared effect.",
+		"- Read-only tools do not change state; session-write tools may change only temporary state bound to the current session.",
+	)
+	if requiresGrant {
+		lines = append(lines, "- Persistent-write and destructive tools are unavailable without an explicit runtime grant; destructive operations also require confirmation.")
 	}
 	return append(sections, strings.Join(lines, "\n"))
 }
 
-func capabilityStatement(name string, effect agenttool.ToolEffect) string {
+func effectLabel(effect agenttool.ToolEffect) string {
 	switch effect {
 	case agenttool.ToolEffectReadOnly:
-		return fmt.Sprintf("%s is read-only.", name)
+		return "read-only"
+	case agenttool.ToolEffectSessionWrite:
+		return "session-write"
 	case agenttool.ToolEffectWrite:
-		return fmt.Sprintf("%s changes persistent state and is unavailable without an explicit runtime grant.", name)
+		return "write"
 	case agenttool.ToolEffectDestructive:
-		return fmt.Sprintf("%s can delete or irreversibly change state and is unavailable without an explicit runtime grant and confirmation.", name)
+		return "destructive"
 	default:
-		return fmt.Sprintf("%s has an unspecified effect and must not be used.", name)
+		return "unspecified"
 	}
 }
 

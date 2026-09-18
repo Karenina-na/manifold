@@ -9,6 +9,7 @@ import (
 	"time"
 
 	agentconversation "github.com/manifold-space/manifold/app/core/internal/agent/conversation"
+	agentmemory "github.com/manifold-space/manifold/app/core/internal/agent/memory"
 	agentprovider "github.com/manifold-space/manifold/app/core/internal/agent/provider"
 	"github.com/manifold-space/manifold/app/core/internal/agent/provider/openai"
 	agentruntime "github.com/manifold-space/manifold/app/core/internal/agent/runtime"
@@ -21,6 +22,7 @@ type configuredAgentRuntime struct {
 	store    *store.Store
 	scenario agentscenario.Scenario
 	history  agentconversation.History
+	memory   agentmemory.Store
 
 	mu           sync.Mutex
 	cached       *agentruntime.Runtime
@@ -28,8 +30,8 @@ type configuredAgentRuntime struct {
 	sessionLocks sync.Map
 }
 
-func newConfiguredAgentRuntime(database *store.Store, scenario agentscenario.Scenario, history agentconversation.History) *configuredAgentRuntime {
-	return &configuredAgentRuntime{store: database, scenario: scenario, history: history}
+func newConfiguredAgentRuntime(database *store.Store, scenario agentscenario.Scenario, history agentconversation.History, memory agentmemory.Store) *configuredAgentRuntime {
+	return &configuredAgentRuntime{store: database, scenario: scenario, history: history, memory: memory}
 }
 
 func (r *configuredAgentRuntime) Ready(ctx context.Context) error {
@@ -70,6 +72,17 @@ func (r *configuredAgentRuntime) Clear(ctx context.Context, sessionID string) er
 	lock.Lock()
 	defer lock.Unlock()
 	return r.history.Clear(ctx, sessionID)
+}
+
+func (r *configuredAgentRuntime) CloseSession(ctx context.Context, sessionID string) error {
+	lock := r.sessionLock(sessionID)
+	lock.Lock()
+	defer lock.Unlock()
+	var memoryErr error
+	if r.memory != nil {
+		memoryErr = r.memory.Clear(ctx, sessionID)
+	}
+	return errors.Join(r.history.Clear(ctx, sessionID), memoryErr)
 }
 
 func (r *configuredAgentRuntime) Undo(ctx context.Context, sessionID, messageID string) (agentconversation.Message, []agentconversation.Message, error) {

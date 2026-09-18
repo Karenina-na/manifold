@@ -191,6 +191,6 @@ func (h *apiHandler) adminChangePassword(w http.ResponseWriter, r *http.Request)
 
 func (h *apiHandler) clearAgentSession(r *http.Request, sessionID string) {
 	if h.agentRuntime != nil {
-		_ = h.agentRuntime.Clear(r.Context(), sessionID)
+		_ = h.agentRuntime.CloseSession(r.Context(), sessionID)
 	}
 }

@@ -45,7 +45,7 @@ func (executor *Executor) execute(ctx context.Context, call ToolCall) ToolResult
 		result.Err = err
 		return result
 	}
-	if registered.definition.Effect != ToolEffectReadOnly {
+	if registered.definition.Effect != ToolEffectReadOnly && registered.definition.Effect != ToolEffectSessionWrite {
 		result.Err = fmt.Errorf("%w: tool %q has effect %q", ErrEffectNotAllowed, call.Name, registered.definition.Effect)
 		return result
 	}

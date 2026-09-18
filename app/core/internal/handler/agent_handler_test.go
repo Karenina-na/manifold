@@ -34,6 +34,9 @@ func (runner fakeAgentRunner) List(ctx context.Context, sessionID string, limit 
 func (runner fakeAgentRunner) Clear(ctx context.Context, sessionID string) error {
 	return runner.history.Clear(ctx, sessionID)
 }
+func (runner fakeAgentRunner) CloseSession(ctx context.Context, sessionID string) error {
+	return runner.history.Clear(ctx, sessionID)
+}
 func (runner fakeAgentRunner) Run(_ context.Context, _ string, _ string, emit func(agentruntime.StreamEvent) error) error {
 	if runner.beforeRun != nil {
 		runner.beforeRun()

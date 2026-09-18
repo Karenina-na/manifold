@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	agentconversation "github.com/manifold-space/manifold/app/core/internal/agent/conversation"
+	agentmemory "github.com/manifold-space/manifold/app/core/internal/agent/memory"
+	memorytools "github.com/manifold-space/manifold/app/core/internal/agent/memory/tools"
 	agentprompt "github.com/manifold-space/manifold/app/core/internal/agent/prompt"
 	agentprovider "github.com/manifold-space/manifold/app/core/internal/agent/provider"
 	agentruntime "github.com/manifold-space/manifold/app/core/internal/agent/runtime"
@@ -70,7 +72,7 @@ func TestRuntimeCompletesAToolLoopAndStoresConversation(t *testing.T) {
 	if len(provider.requests) != 2 {
 		t.Fatalf("expected two model calls, got %d", len(provider.requests))
 	}
-	if len(provider.requests[0].Messages) == 0 || !strings.Contains(provider.requests[0].Messages[0].Content, "echo: Use for echoing text.") {
+	if len(provider.requests[0].Messages) == 0 || !strings.Contains(provider.requests[0].Messages[0].Content, "echo [read-only]: Echo text") || !strings.Contains(provider.requests[0].Messages[0].Content, "Guidance: Use for echoing text.") {
 		t.Fatalf("registered tool guidance was not built into the system prompt: %+v", provider.requests[0].Messages)
 	}
 	second := provider.requests[1].Messages
@@ -101,6 +103,74 @@ func TestRuntimeCompletesAToolLoopAndStoresConversation(t *testing.T) {
 	}
 	if messages[1].Trace.FinishReason != "stop" || messages[1].Trace.Usage.TotalTokens != 11 {
 		t.Fatalf("unexpected persisted trace summary: %+v", messages[1].Trace)
+	}
+}
+
+func TestRuntimeBuildContextExposesTheCurrentPromptAndConversationAssembly(t *testing.T) {
+	history := agentconversation.NewVolatileHistory()
+	if _, err := history.Append(t.Context(), "session-a", agentconversation.Message{Role: "user", Content: "Earlier question"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := history.Append(t.Context(), "session-a", agentconversation.Message{Role: "assistant", Content: "Earlier answer"}); err != nil {
+		t.Fatal(err)
+	}
+	tools := agenttool.NewRegistry()
+	if err := tools.Register(echoTool{}); err != nil {
+		t.Fatal(err)
+	}
+	runtime := agentruntime.NewRuntime(
+		agentruntime.RuntimeConfig{HistoryLimit: 20},
+		agentprovider.NewRegistry(),
+		agentscenario.Scenario{Prompt: agentprompt.Spec{Intro: "System prompt"}, Tools: tools},
+		history,
+	)
+
+	messages, err := runtime.BuildContext(t.Context(), "session-a", "Current question")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(messages) != 4 || messages[0].Role != agentprovider.RoleSystem || messages[0].Content != "System prompt\n\nAVAILABLE TOOLS\n- The following registered tools are available for this run.\n- echo [read-only]: Echo text\n  Guidance: Use for echoing text.\n\nCAPABILITY BOUNDARIES\n- Only registered tools are available for this run.\n- Each tool may act only within its declared effect and scope.\n- A tool's existence does not grant capabilities beyond its declared effect.\n- Read-only tools do not change state; session-write tools may change only temporary state bound to the current session." || messages[1].Content != "Earlier question" || messages[2].Content != "Earlier answer" || messages[3].Content != "Current question" {
+		t.Fatalf("unexpected runtime context: %+v", messages)
+	}
+}
+
+func TestRuntimeBindsTheCurrentSessionForMemoryTools(t *testing.T) {
+	provider := &scriptedProvider{answers: []agentprovider.ChatResponse{
+		{ToolCalls: []agenttool.ToolCall{{ID: "call_1", Name: "manage_memory", Arguments: json.RawMessage(`{"action":"add","content":"Use SQLite"}`)}}, FinishReason: agentprovider.FinishToolCalls},
+		{Content: "Remembered.", FinishReason: agentprovider.FinishStop},
+	}}
+	providers := agentprovider.NewRegistry()
+	if err := providers.Register("test", provider); err != nil {
+		t.Fatal(err)
+	}
+	memories := agentmemory.NewInMemory()
+	tools := agenttool.NewRegistry()
+	if err := tools.Register(memorytools.Manage{Store: memories}); err != nil {
+		t.Fatal(err)
+	}
+	runtime := agentruntime.NewRuntime(
+		agentruntime.RuntimeConfig{Provider: "test", Model: "test-model", MaxToolRounds: 2},
+		providers,
+		agentscenario.Scenario{Prompt: agentprompt.Spec{Intro: "System prompt"}, Tools: tools},
+		agentconversation.NewVolatileHistory(),
+	)
+
+	if err := runtime.Run(t.Context(), "session-a", "Remember the database choice", func(agentruntime.StreamEvent) error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	items, err := memories.Search(t.Context(), "session-a", "SQLite")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 || items[0].Content != "Use SQLite" {
+		t.Fatalf("memory tool did not use the runtime session: %+v", items)
+	}
+	items, err = memories.Search(t.Context(), "session-b", "SQLite")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 0 {
+		t.Fatalf("memory leaked into another session: %+v", items)
 	}
 }
 

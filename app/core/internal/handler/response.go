@@ -9,6 +9,7 @@ import (
 	"github.com/go-playground/validator/v10"
 
 	agentconversation "github.com/manifold-space/manifold/app/core/internal/agent/conversation"
+	agentmemory "github.com/manifold-space/manifold/app/core/internal/agent/memory"
 	agentruntime "github.com/manifold-space/manifold/app/core/internal/agent/runtime"
 	agentscenario "github.com/manifold-space/manifold/app/core/internal/agent/scenario"
 	"github.com/manifold-space/manifold/app/core/internal/agent/scenario/manifold"
@@ -41,6 +42,7 @@ type agentRunner interface {
 	Run(ctx context.Context, sessionID, userMessage string, emit func(agentruntime.StreamEvent) error) error
 	List(ctx context.Context, sessionID string, limit int) ([]agentconversation.Message, error)
 	Clear(ctx context.Context, sessionID string) error
+	CloseSession(ctx context.Context, sessionID string) error
 	Undo(ctx context.Context, sessionID, messageID string) (agentconversation.Message, []agentconversation.Message, error)
 }
 
@@ -106,7 +108,8 @@ func newRouterWithMiner(cfg config.Config, database *store.Store, ledger *chain.
 
 func newAgentRuntime(database *store.Store, ledger *chain.Ledger) agentRunner {
 	scenarios := agentscenario.NewRegistry()
-	dependencies := manifold.Dependencies{Profile: database, Content: database}
+	memory := agentmemory.NewInMemory()
+	dependencies := manifold.Dependencies{Profile: database, Content: database, Memory: memory}
 	if ledger != nil {
 		dependencies.Chain = ledger
 		dependencies.ChainAnchors = ledger
@@ -119,5 +122,5 @@ func newAgentRuntime(database *store.Store, ledger *chain.Ledger) agentRunner {
 		panic(err)
 	}
 	history := agentconversation.NewVolatileHistory()
-	return newConfiguredAgentRuntime(database, scenario, history)
+	return newConfiguredAgentRuntime(database, scenario, history, memory)
 }

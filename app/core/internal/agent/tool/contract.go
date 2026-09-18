@@ -14,14 +14,15 @@ type Tool interface {
 type ToolEffect string
 
 const (
-	ToolEffectReadOnly    ToolEffect = "read_only"
-	ToolEffectWrite       ToolEffect = "write"
-	ToolEffectDestructive ToolEffect = "destructive"
+	ToolEffectReadOnly     ToolEffect = "read_only"
+	ToolEffectSessionWrite ToolEffect = "session_write"
+	ToolEffectWrite        ToolEffect = "write"
+	ToolEffectDestructive  ToolEffect = "destructive"
 )
 
 func (effect ToolEffect) valid() bool {
 	switch effect {
-	case ToolEffectReadOnly, ToolEffectWrite, ToolEffectDestructive:
+	case ToolEffectReadOnly, ToolEffectSessionWrite, ToolEffectWrite, ToolEffectDestructive:
 		return true
 	default:
 		return false
