@@ -43,8 +43,10 @@ func TestManifoldFactoryRegistersPromptAndScenarioTools(t *testing.T) {
 	for _, heading := range []string{
 		"You are the private Manifold assistant.",
 		"ROLE",
+		"INSTRUCTION SCOPE",
 		"SOURCE PRIORITY",
 		"TOOL USE",
+		"CAPABILITY BOUNDARIES",
 		"UNTRUSTED DATA HANDLING",
 		"KNOWLEDGE BOUNDARIES",
 		"SCOPE AND SAFETY",
@@ -56,9 +58,15 @@ func TestManifoldFactoryRegistersPromptAndScenarioTools(t *testing.T) {
 			t.Fatalf("Manifold prompt is missing %q:\n%s", heading, prompt)
 		}
 	}
+	if !strings.Contains(prompt, "get_writings is read-only.") {
+		t.Fatalf("Manifold prompt is missing the runtime-generated capability boundary:\n%s", prompt)
+	}
 	for _, definition := range scenario.Tools.Definitions() {
 		if definition.Usage == "" {
 			t.Fatalf("tool %q must provide prompt usage guidance", definition.Name)
+		}
+		if definition.Effect != agent.ToolEffectReadOnly {
+			t.Fatalf("tool %q must be read-only in the current scenario, got %q", definition.Name, definition.Effect)
 		}
 		if !strings.Contains(prompt, definition.Name) || !strings.Contains(prompt, definition.Usage) {
 			t.Fatalf("Manifold prompt is missing guidance for %q:\n%s", definition.Name, prompt)

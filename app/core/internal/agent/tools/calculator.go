@@ -16,7 +16,7 @@ import (
 type Calculator struct{}
 
 func (Calculator) Definition() agent.ToolDefinition {
-	return agent.ToolDefinition{Name: "calculator", Description: "Evaluate a finite arithmetic expression using +, -, *, / and parentheses.", Usage: "Use for arithmetic, numeric comparison, or unit conversion that can be expressed as arithmetic; do not estimate a result manually.", Parameters: json.RawMessage(`{"type":"object","properties":{"expression":{"type":"string","description":"Arithmetic expression"}},"required":["expression"],"additionalProperties":false}`)}
+	return agent.ToolDefinition{Name: "calculator", Description: "Evaluate a finite arithmetic expression using +, -, *, / and parentheses.", Usage: "Use for arithmetic, numeric comparison, or unit conversion that can be expressed as arithmetic; do not estimate a result manually.", Effect: agent.ToolEffectReadOnly, Parameters: json.RawMessage(`{"type":"object","properties":{"expression":{"type":"string","description":"Arithmetic expression"}},"required":["expression"],"additionalProperties":false}`)}
 }
 
 func (Calculator) Execute(_ context.Context, arguments json.RawMessage) (any, error) {

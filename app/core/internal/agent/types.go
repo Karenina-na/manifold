@@ -18,10 +18,28 @@ type Message struct {
 	ToolCallID string
 }
 
+type ToolEffect string
+
+const (
+	ToolEffectReadOnly    ToolEffect = "read_only"
+	ToolEffectWrite       ToolEffect = "write"
+	ToolEffectDestructive ToolEffect = "destructive"
+)
+
+func (effect ToolEffect) valid() bool {
+	switch effect {
+	case ToolEffectReadOnly, ToolEffectWrite, ToolEffectDestructive:
+		return true
+	default:
+		return false
+	}
+}
+
 type ToolDefinition struct {
 	Name        string
 	Description string
 	Usage       string
+	Effect      ToolEffect
 	Parameters  json.RawMessage
 }
 

@@ -24,7 +24,7 @@ func (tool ContentList) Definition() agent.ToolDefinition {
 	if tool.Kind == model.ContentKindArticle {
 		name, noun = "get_writings", "writings"
 	}
-	return agent.ToolDefinition{Name: name, Description: "Get published " + noun + " with basic metadata and no full body. Choose a limit from 1 to 20.", Usage: "Use when the user asks about current or stored " + noun + ", themes, or metadata; the result contains summaries and metadata, not full bodies.", Parameters: json.RawMessage(`{"type":"object","properties":{"limit":{"type":"integer","minimum":1,"maximum":20}},"required":["limit"],"additionalProperties":false}`)}
+	return agent.ToolDefinition{Name: name, Description: "Get published " + noun + " with basic metadata and no full body. Choose a limit from 1 to 20.", Usage: "Use when the user asks about current or stored " + noun + ", themes, or metadata; the result contains summaries and metadata, not full bodies.", Effect: agent.ToolEffectReadOnly, Parameters: json.RawMessage(`{"type":"object","properties":{"limit":{"type":"integer","minimum":1,"maximum":20}},"required":["limit"],"additionalProperties":false}`)}
 }
 
 func (tool ContentList) Execute(ctx context.Context, arguments json.RawMessage) (any, error) {

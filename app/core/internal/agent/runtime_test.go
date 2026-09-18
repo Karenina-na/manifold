@@ -24,7 +24,7 @@ func (p *scriptedProvider) Chat(_ context.Context, request agent.ChatRequest) (*
 type echoTool struct{}
 
 func (echoTool) Definition() agent.ToolDefinition {
-	return agent.ToolDefinition{Name: "echo", Description: "Echo text", Usage: "Use for echoing text.", Parameters: json.RawMessage(`{"type":"object","properties":{"text":{"type":"string"}},"required":["text"],"additionalProperties":false}`)}
+	return agent.ToolDefinition{Name: "echo", Description: "Echo text", Usage: "Use for echoing text.", Effect: agent.ToolEffectReadOnly, Parameters: json.RawMessage(`{"type":"object","properties":{"text":{"type":"string"}},"required":["text"],"additionalProperties":false}`)}
 }
 
 func (echoTool) Execute(_ context.Context, arguments json.RawMessage) (any, error) {

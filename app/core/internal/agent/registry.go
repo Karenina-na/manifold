@@ -6,10 +6,14 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 )
 
-var ErrNotRegistered = errors.New("agent dependency is not registered")
+var (
+	ErrNotRegistered        = errors.New("agent dependency is not registered")
+	ErrToolEffectNotAllowed = errors.New("tool effect is not allowed")
+)
 
 type ProviderRegistry struct {
 	mu        sync.RWMutex
@@ -50,25 +54,40 @@ type Tool interface {
 
 type ToolRegistry struct {
 	mu    sync.RWMutex
-	tools map[string]Tool
+	tools map[string]registeredTool
 }
 
-func NewToolRegistry() *ToolRegistry { return &ToolRegistry{tools: map[string]Tool{}} }
+type registeredTool struct {
+	tool       Tool
+	definition ToolDefinition
+}
+
+func NewToolRegistry() *ToolRegistry { return &ToolRegistry{tools: map[string]registeredTool{}} }
 
 func (r *ToolRegistry) Register(tool Tool) error {
 	if tool == nil {
 		return errors.New("tool is required")
 	}
-	name := tool.Definition().Name
+	definition := tool.Definition()
+	name := definition.Name
 	if name == "" {
 		return errors.New("tool name is required")
+	}
+	if strings.TrimSpace(definition.Description) == "" {
+		return fmt.Errorf("tool %q description is required", name)
+	}
+	if strings.TrimSpace(definition.Usage) == "" {
+		return fmt.Errorf("tool %q usage is required", name)
+	}
+	if !definition.Effect.valid() {
+		return fmt.Errorf("tool %q has invalid effect %q", name, definition.Effect)
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if _, exists := r.tools[name]; exists {
 		return fmt.Errorf("tool %q is already registered", name)
 	}
-	r.tools[name] = tool
+	r.tools[name] = registeredTool{tool: tool, definition: definition}
 	return nil
 }
 
@@ -82,17 +101,20 @@ func (r *ToolRegistry) Definitions() []ToolDefinition {
 	sort.Strings(names)
 	definitions := make([]ToolDefinition, 0, len(names))
 	for _, name := range names {
-		definitions = append(definitions, r.tools[name].Definition())
+		definitions = append(definitions, r.tools[name].definition)
 	}
 	return definitions
 }
 
 func (r *ToolRegistry) Execute(ctx context.Context, call ToolCall) (any, error) {
 	r.mu.RLock()
-	tool, ok := r.tools[call.Name]
+	entry, ok := r.tools[call.Name]
 	r.mu.RUnlock()
 	if !ok {
 		return nil, fmt.Errorf("%w: tool %q", ErrNotRegistered, call.Name)
 	}
-	return tool.Execute(ctx, call.Arguments)
+	if entry.definition.Effect != ToolEffectReadOnly {
+		return nil, fmt.Errorf("%w: tool %q has effect %q", ErrToolEffectNotAllowed, call.Name, entry.definition.Effect)
+	}
+	return entry.tool.Execute(ctx, call.Arguments)
 }
