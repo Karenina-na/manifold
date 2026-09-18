@@ -7,8 +7,9 @@ import (
 )
 
 var (
-	ErrMessageNotFound = errors.New("message not found")
-	ErrMessageNotUser  = errors.New("message is not a user message")
+	ErrMessageNotFound       = errors.New("message not found")
+	ErrMessageNotUser        = errors.New("message is not a user message")
+	ErrSummaryBoundaryAbsent = errors.New("summary boundary message not found")
 )
 
 type MessageTrace struct {
@@ -39,11 +40,24 @@ type Message struct {
 	Content   string        `json:"content"`
 	CreatedAt time.Time     `json:"-"`
 	Trace     *MessageTrace `json:"trace,omitempty"`
+	Sequence  uint64        `json:"-"`
+}
+
+type Summary struct {
+	Content         string
+	ThroughSequence uint64
+}
+
+type Snapshot struct {
+	Messages []Message
+	Summary  Summary
 }
 
 type History interface {
 	List(ctx context.Context, sessionID string, limit int) ([]Message, error)
+	Snapshot(ctx context.Context, sessionID string) (Snapshot, error)
 	Append(ctx context.Context, sessionID string, message Message) (Message, error)
+	SaveSummary(ctx context.Context, sessionID string, summary Summary) error
 	Clear(ctx context.Context, sessionID string) error
 	Undo(ctx context.Context, sessionID, messageID string) (Message, []Message, error)
 }

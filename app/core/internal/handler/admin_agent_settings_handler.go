@@ -25,18 +25,20 @@ func (h *apiHandler) adminAgentSettings(w http.ResponseWriter, r *http.Request) 
 
 func (h *apiHandler) adminUpdateAgentSettings(w http.ResponseWriter, r *http.Request) {
 	var input struct {
-		Provider        *string         `json:"provider"`
-		Model           *string         `json:"model"`
-		MaxToolRounds   *int            `json:"maxToolRounds"`
-		HistoryLimit    *int            `json:"historyLimit"`
-		MaxOutputTokens *int            `json:"maxOutputTokens"`
-		OpenAIBaseURL   *string         `json:"openAIBaseURL"`
-		APIKey          json.RawMessage `json:"apiKey"`
+		Provider                  *string         `json:"provider"`
+		Model                     *string         `json:"model"`
+		MaxToolRounds             *int            `json:"maxToolRounds"`
+		HistoryLimit              *int            `json:"historyLimit"`
+		CompactionRecentTurns     *int            `json:"compactionRecentTurns"`
+		CompactionMaxOutputTokens *int            `json:"compactionMaxOutputTokens"`
+		MaxOutputTokens           *int            `json:"maxOutputTokens"`
+		OpenAIBaseURL             *string         `json:"openAIBaseURL"`
+		APIKey                    json.RawMessage `json:"apiKey"`
 	}
 	if err := decodeJSON(w, r, &input); err != nil {
 		return
 	}
-	if input.Provider == nil || input.Model == nil || input.MaxToolRounds == nil || input.HistoryLimit == nil || input.MaxOutputTokens == nil || input.OpenAIBaseURL == nil {
+	if input.Provider == nil || input.Model == nil || input.MaxToolRounds == nil || input.HistoryLimit == nil || input.CompactionRecentTurns == nil || input.CompactionMaxOutputTokens == nil || input.MaxOutputTokens == nil || input.OpenAIBaseURL == nil {
 		WriteError(w, http.StatusUnprocessableEntity, apierror.ValidationError, "All non-secret Agent settings are required.")
 		return
 	}
@@ -49,6 +51,8 @@ func (h *apiHandler) adminUpdateAgentSettings(w http.ResponseWriter, r *http.Req
 	settings.Model = strings.TrimSpace(*input.Model)
 	settings.MaxToolRounds = *input.MaxToolRounds
 	settings.HistoryLimit = *input.HistoryLimit
+	settings.CompactionRecentTurns = *input.CompactionRecentTurns
+	settings.CompactionMaxOutputTokens = *input.CompactionMaxOutputTokens
 	settings.MaxOutputTokens = *input.MaxOutputTokens
 	settings.OpenAIBaseURL = openai.NormalizeBaseURL(*input.OpenAIBaseURL)
 	if input.APIKey != nil {
@@ -74,6 +78,7 @@ func (h *apiHandler) adminUpdateAgentSettings(w http.ResponseWriter, r *http.Req
 	h.audit(r, "agent.settings.updated", "agent_settings", "agent_1", map[string]string{
 		"provider": settings.Provider, "model": settings.Model,
 		"maxToolRounds": strconv.Itoa(settings.MaxToolRounds), "historyLimit": strconv.Itoa(settings.HistoryLimit),
+		"compactionRecentTurns": strconv.Itoa(settings.CompactionRecentTurns), "compactionMaxOutputTokens": strconv.Itoa(settings.CompactionMaxOutputTokens),
 		"maxOutputTokens": strconv.Itoa(settings.MaxOutputTokens), "apiKeyConfigured": strconv.FormatBool(settings.OpenAIAPIKey != ""),
 	})
 	h.adminAgentSettings(w, r)
@@ -92,6 +97,15 @@ func validateAgentSettings(settings model.AgentSettings) error {
 	if settings.HistoryLimit < 1 || settings.HistoryLimit > 200 {
 		return errors.New("historyLimit must be between 1 and 200")
 	}
+	if settings.CompactionRecentTurns < 1 || settings.CompactionRecentTurns > 99 {
+		return errors.New("compactionRecentTurns must be between 1 and 99")
+	}
+	if settings.CompactionRecentTurns > maxCompactionRecentTurns(settings.HistoryLimit) {
+		return errors.New("compactionRecentTurns is too large for historyLimit")
+	}
+	if settings.CompactionMaxOutputTokens < 128 || settings.CompactionMaxOutputTokens > 8192 {
+		return errors.New("compactionMaxOutputTokens must be between 128 and 8192")
+	}
 	if settings.MaxOutputTokens < 1 || settings.MaxOutputTokens > 128000 {
 		return errors.New("maxOutputTokens must be between 1 and 128000")
 	}
@@ -106,4 +120,12 @@ func validateAgentSettings(settings model.AgentSettings) error {
 		return errors.New("apiKey must not exceed 8192 characters")
 	}
 	return nil
+}
+
+func maxCompactionRecentTurns(historyLimit int) int {
+	limit := (historyLimit - 2) / 2
+	if limit < 1 {
+		return 1
+	}
+	return limit
 }

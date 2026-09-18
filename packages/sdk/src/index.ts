@@ -122,6 +122,7 @@ export class ManifoldClient {
 	adminAgentSettings() { return this.request<AgentSettings>("/api/v1/admin/agent/settings"); }
 	updateAgentSettings(input: AgentSettingsInput) { return this.request<AgentSettings>("/api/v1/admin/agent/settings", { method: "PUT", body: input }); }
 	agentMessages() { return this.request<AgentMessageList>("/api/v1/admin/agent/messages"); }
+	compactAgentMessages() { return this.request<void>("/api/v1/admin/agent/messages/compact", { method: "POST" }); }
 	clearAgentMessages() { return this.request<void>("/api/v1/admin/agent/messages", { method: "DELETE" }); }
 	undoAgentMessage(id: string) { return this.request<AgentUndoResult>(`/api/v1/admin/agent/messages/${this.path(id)}`, { method: "DELETE" }); }
 	async *runAgent(input: AgentRunInput, options: AgentRunOptions = {}): AsyncGenerator<AgentStreamEvent> {

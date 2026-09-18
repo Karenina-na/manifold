@@ -1,6 +1,6 @@
 # `app/admin`
 
-Manifold 私有管理端，负责登录、Dashboard、Thought/Article 内容编辑、评论管理、Profile、公开 composition 与 Agent 运行设置；Agent API key 在 Settings 中只写管理，不回显明文。
+Manifold 私有管理端，负责登录、Dashboard、Thought/Article 内容编辑、评论管理、Profile、公开 composition 与 Agent 交互及运行设置；Agent composer 为 `/compact`、`/quit`、`/clear` 提供键盘补全，Agent Settings 可调整模型、工具/回答上限、压缩阈值、最近 raw turns 和 Summary 输出预算，API key 只写管理且不回显明文。
 
 当前详细契约见 [`docs/admin.md`](../../docs/admin.md)，其中记录 Vite + React 19、Mantine、TanStack Query、React Hook Form/Zod、Recharts、Lucide、vditor（Context tab 的 IR 编辑器，运行时资源由 `scripts/sync-vditor.mjs` 本地化到 `public/vditor/`，不依赖第三方 CDN）、PWA 架构与 `@manifold/render` 共享渲染包，以及 SDK 调用、会话、query key、表单字段和状态流。
 

@@ -194,6 +194,11 @@ button { cursor: pointer; }
 .agent-trace-usage span:first-child { color: var(--ink); font-weight: 700; }
 .agent-composer { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 12px; padding: 14px 26px 18px; border-top: 1px solid var(--line); background: color-mix(in srgb, var(--surface) 90%, transparent); }
 .agent-composer-input { position: relative; min-width: 0; }
+.agent-command-menu { position: absolute; right: 0; bottom: calc(100% + 8px); left: 0; z-index: 5; display: grid; gap: 2px; padding: 5px; border: 1px solid color-mix(in srgb, var(--line) 82%, var(--accent)); border-radius: 9px; background: var(--paper); box-shadow: 0 14px 36px rgba(37, 42, 40, .16); }
+.agent-command-menu button { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 10px; align-items: center; min-height: 38px; padding: 6px 9px; border: 0; border-radius: 6px; color: var(--muted); background: transparent; text-align: left; cursor: pointer; }
+.agent-command-menu button:hover, .agent-command-menu button.active { color: var(--ink); background: var(--accent-soft); }
+.agent-command-menu code { color: var(--accent); font: 800 11px ui-monospace, monospace; }
+.agent-command-menu span { overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .agent-composer textarea { min-height: 48px; padding-right: 72px; border-color: color-mix(in srgb, var(--line) 85%, var(--accent)); line-height: 1.5; }
 .agent-composer textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .agent-composer-hint { position: absolute; right: 10px; bottom: 8px; color: var(--muted); font-size: 9px; pointer-events: none; }

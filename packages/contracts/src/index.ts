@@ -277,6 +277,8 @@ export interface AgentSettings {
   model: string;
   maxToolRounds: number;
   historyLimit: number;
+  compactionRecentTurns: number;
+  compactionMaxOutputTokens: number;
   maxOutputTokens: number;
   openAIBaseURL: string;
   apiKeyConfigured: boolean;
@@ -287,6 +289,8 @@ export interface AgentSettingsInput {
   model: string;
   maxToolRounds: number;
   historyLimit: number;
+  compactionRecentTurns: number;
+  compactionMaxOutputTokens: number;
   maxOutputTokens: number;
   openAIBaseURL: string;
   /** Omit to keep the stored key, set a string to replace it, or null to clear it. */

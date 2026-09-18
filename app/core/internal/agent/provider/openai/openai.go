@@ -125,7 +125,7 @@ func (p *Provider) Chat(ctx context.Context, request agentprovider.ChatRequest) 
 	}
 	for _, message := range request.Messages {
 		switch message.Role {
-		case agentprovider.RoleSystem:
+		case agentprovider.RoleSystem, agentprovider.RoleContext:
 			wire.Instructions = strings.TrimSpace(strings.Join([]string{wire.Instructions, message.Content}, "\n\n"))
 		case agentprovider.RoleUser, agentprovider.RoleAssistant:
 			if message.Content != "" {

@@ -11,6 +11,7 @@ import { createAgentSettingsSchema, type AgentSettingsForm } from './agentSettin
 
 const defaults: AgentSettingsForm = {
   provider: 'openai', model: 'gpt-5-mini', maxToolRounds: 6, historyLimit: 40,
+  compactionRecentTurns: 8, compactionMaxOutputTokens: 1024,
   maxOutputTokens: 2048, openAIBaseURL: 'https://api.openai.com/v1', apiKey: '', clearAPIKey: false,
 }
 
@@ -35,7 +36,8 @@ export function AgentSettingsSection({ token, onDirtyChange }: { token: string; 
     mutationFn: (input: AgentSettingsForm) => {
       const payload: AgentSettingsInput = {
         provider: input.provider, model: input.model.trim(), maxToolRounds: input.maxToolRounds,
-        historyLimit: input.historyLimit, maxOutputTokens: input.maxOutputTokens,
+        historyLimit: input.historyLimit, compactionRecentTurns: input.compactionRecentTurns,
+        compactionMaxOutputTokens: input.compactionMaxOutputTokens, maxOutputTokens: input.maxOutputTokens,
         openAIBaseURL: input.openAIBaseURL.trim(),
       }
       if (input.clearAPIKey) payload.apiKey = null
@@ -59,7 +61,9 @@ export function AgentSettingsSection({ token, onDirtyChange }: { token: string; 
       <TextInput label={t('agentSettings.model')} description={t('agentSettings.modelHelp')} {...form.register('model')} error={errors.model?.message} />
       <div className="agent-settings-grid">
         <Controller control={form.control} name="maxToolRounds" render={({ field }) => <NumberInput label={t('agentSettings.maxToolRounds')} min={1} max={12} value={field.value} onChange={(value) => field.onChange(Number(value))} error={errors.maxToolRounds?.message} />} />
-        <Controller control={form.control} name="historyLimit" render={({ field }) => <NumberInput label={t('agentSettings.historyLimit')} min={1} max={200} value={field.value} onChange={(value) => field.onChange(Number(value))} error={errors.historyLimit?.message} />} />
+        <Controller control={form.control} name="historyLimit" render={({ field }) => <NumberInput label={t('agentSettings.historyLimit')} description={t('agentSettings.historyLimitHelp')} min={1} max={200} value={field.value} onChange={(value) => field.onChange(Number(value))} error={errors.historyLimit?.message} />} />
+        <Controller control={form.control} name="compactionRecentTurns" render={({ field }) => <NumberInput label={t('agentSettings.compactionRecentTurns')} description={t('agentSettings.compactionRecentTurnsHelp')} min={1} max={99} value={field.value} onChange={(value) => field.onChange(Number(value))} error={errors.compactionRecentTurns?.message} />} />
+        <Controller control={form.control} name="compactionMaxOutputTokens" render={({ field }) => <NumberInput label={t('agentSettings.compactionMaxOutputTokens')} description={t('agentSettings.compactionMaxOutputTokensHelp')} min={128} max={8192} value={field.value} onChange={(value) => field.onChange(Number(value))} error={errors.compactionMaxOutputTokens?.message} />} />
         <Controller control={form.control} name="maxOutputTokens" render={({ field }) => <NumberInput label={t('agentSettings.maxOutputTokens')} min={1} max={128000} value={field.value} onChange={(value) => field.onChange(Number(value))} error={errors.maxOutputTokens?.message} />} />
       </div>
       <TextInput label={t('agentSettings.baseURL')} description={t('agentSettings.baseURLHelp')} {...form.register('openAIBaseURL')} error={errors.openAIBaseURL?.message} />

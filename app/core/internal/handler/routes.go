@@ -100,6 +100,7 @@ func buildRouter(h *apiHandler, cfg config.Config) chi.Router {
 			admin.Put("/agent/settings", h.adminUpdateAgentSettings)
 			admin.Get("/agent/messages", h.adminAgentMessages)
 			admin.Post("/agent/messages", h.adminRunAgent)
+			admin.Post("/agent/messages/compact", h.adminCompactAgentMessages)
 			admin.Delete("/agent/messages", h.adminClearAgentMessages)
 			admin.Delete("/agent/messages/{id}", h.adminUndoAgentMessage)
 		})

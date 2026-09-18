@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 
 	agentconversation "github.com/manifold-space/manifold/app/core/internal/agent/conversation"
+	agentcompact "github.com/manifold-space/manifold/app/core/internal/agent/conversation/compact"
 	agentmemory "github.com/manifold-space/manifold/app/core/internal/agent/memory"
 	agentprovider "github.com/manifold-space/manifold/app/core/internal/agent/provider"
 	agentscenario "github.com/manifold-space/manifold/app/core/internal/agent/scenario"
@@ -15,11 +16,13 @@ import (
 )
 
 type RuntimeConfig struct {
-	Provider        string
-	Model           string
-	MaxToolRounds   int
-	HistoryLimit    int
-	MaxOutputTokens int
+	Provider                  string
+	Model                     string
+	MaxToolRounds             int
+	HistoryLimit              int
+	CompactionRecentTurns     int
+	CompactionMaxOutputTokens int
+	MaxOutputTokens           int
 }
 
 type Runtime struct {
@@ -39,15 +42,40 @@ func NewRuntime(config RuntimeConfig, providers *agentprovider.Registry, scenari
 	if config.HistoryLimit < 1 {
 		config.HistoryLimit = 40
 	}
+	if config.CompactionRecentTurns < 1 {
+		config.CompactionRecentTurns = config.HistoryLimit / 4
+		if config.CompactionRecentTurns < 1 {
+			config.CompactionRecentTurns = 1
+		}
+		if config.CompactionRecentTurns > 8 {
+			config.CompactionRecentTurns = 8
+		}
+	}
+	if config.CompactionMaxOutputTokens < 1 {
+		config.CompactionMaxOutputTokens = 1024
+	}
 	if scenario.Tools == nil {
 		scenario.Tools = agenttool.NewRegistry()
 	}
-	return &Runtime{config: config, providers: providers, tools: scenario.Tools, executor: agenttool.NewExecutor(scenario.Tools), history: history, context: NewContextBuilder(history, scenario.Prompt, scenario.Tools, config.HistoryLimit)}
+	var compactor agentcompact.Compactor
+	if provider, err := providers.Get(config.Provider); err == nil {
+		compactor = agentcompact.NewLLMCompactor(provider, config.Model, config.CompactionMaxOutputTokens)
+	}
+	return &Runtime{
+		config: config, providers: providers, tools: scenario.Tools, executor: agenttool.NewExecutor(scenario.Tools), history: history,
+		context: NewContextBuilder(history, scenario.Prompt, scenario.Tools, config.HistoryLimit, config.CompactionRecentTurns, compactor),
+	}
 }
 
 // BuildContext assembles the exact provider context used at the start of a run.
 func (r *Runtime) BuildContext(ctx context.Context, sessionID, userMessage string) ([]agentprovider.Message, error) {
 	return r.context.Build(ctx, sessionID, userMessage)
+}
+
+// Compact immediately summarizes eligible old turns for a session.
+func (r *Runtime) Compact(ctx context.Context, sessionID string) error {
+	_, err := r.context.Compact(ctx, sessionID)
+	return err
 }
 
 func (r *Runtime) Run(ctx context.Context, sessionID, userMessage string, emit func(StreamEvent) error) error {

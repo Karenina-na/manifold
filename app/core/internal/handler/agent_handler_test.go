@@ -22,9 +22,11 @@ import (
 )
 
 type fakeAgentRunner struct {
-	history   *agentconversation.VolatileHistory
-	beforeRun func()
-	runError  error
+	history      *agentconversation.VolatileHistory
+	beforeRun    func()
+	runError     error
+	compact      func()
+	compactError error
 }
 
 func (fakeAgentRunner) Ready(context.Context) error { return nil }
@@ -33,6 +35,12 @@ func (runner fakeAgentRunner) List(ctx context.Context, sessionID string, limit 
 }
 func (runner fakeAgentRunner) Clear(ctx context.Context, sessionID string) error {
 	return runner.history.Clear(ctx, sessionID)
+}
+func (runner fakeAgentRunner) Compact(context.Context, string) error {
+	if runner.compact != nil {
+		runner.compact()
+	}
+	return runner.compactError
 }
 func (runner fakeAgentRunner) CloseSession(ctx context.Context, sessionID string) error {
 	return runner.history.Clear(ctx, sessionID)
@@ -93,12 +101,12 @@ func TestAdminAgentSettingsArePersistentAndAPIKeyIsWriteOnly(t *testing.T) {
 	getRequest := httptest.NewRequest(http.MethodGet, "/api/v1/admin/agent/settings", nil)
 	getRequest.Header.Set("Authorization", "Bearer "+token)
 	router.ServeHTTP(get, getRequest)
-	if get.Code != http.StatusOK || !strings.Contains(get.Body.String(), `"model":"gpt-5-mini"`) || !strings.Contains(get.Body.String(), `"apiKeyConfigured":false`) {
+	if get.Code != http.StatusOK || !strings.Contains(get.Body.String(), `"model":"gpt-5-mini"`) || !strings.Contains(get.Body.String(), `"compactionRecentTurns":8`) || !strings.Contains(get.Body.String(), `"compactionMaxOutputTokens":1024`) || !strings.Contains(get.Body.String(), `"apiKeyConfigured":false`) {
 		t.Fatalf("unexpected default settings: %d %s", get.Code, get.Body.String())
 	}
 
 	update := httptest.NewRecorder()
-	updateRequest := httptest.NewRequest(http.MethodPut, "/api/v1/admin/agent/settings", strings.NewReader(`{"provider":"openai","model":"gpt-5","maxToolRounds":4,"historyLimit":24,"maxOutputTokens":4096,"openAIBaseURL":"https://example.test/v1/","apiKey":"secret-value"}`))
+	updateRequest := httptest.NewRequest(http.MethodPut, "/api/v1/admin/agent/settings", strings.NewReader(`{"provider":"openai","model":"gpt-5","maxToolRounds":4,"historyLimit":24,"compactionRecentTurns":4,"compactionMaxOutputTokens":1536,"maxOutputTokens":4096,"openAIBaseURL":"https://example.test/v1/","apiKey":"secret-value"}`))
 	updateRequest.Header.Set("Authorization", "Bearer "+token)
 	router.ServeHTTP(update, updateRequest)
 	if update.Code != http.StatusOK || !strings.Contains(update.Body.String(), `"apiKeyConfigured":true`) || strings.Contains(update.Body.String(), "secret-value") {
@@ -111,7 +119,7 @@ func TestAdminAgentSettingsArePersistentAndAPIKeyIsWriteOnly(t *testing.T) {
 	auditRequest := httptest.NewRequest(http.MethodGet, "/api/v1/admin/audit?q=agent.settings.updated", nil)
 	auditRequest.Header.Set("Authorization", "Bearer "+token)
 	router.ServeHTTP(audit, auditRequest)
-	if audit.Code != http.StatusOK || !strings.Contains(audit.Body.String(), `agent.settings.updated`) || !strings.Contains(audit.Body.String(), `apiKeyConfigured`) || strings.Contains(audit.Body.String(), "secret-value") {
+	if audit.Code != http.StatusOK || !strings.Contains(audit.Body.String(), `agent.settings.updated`) || !strings.Contains(audit.Body.String(), `compactionRecentTurns`) || !strings.Contains(audit.Body.String(), `compactionMaxOutputTokens`) || !strings.Contains(audit.Body.String(), `apiKeyConfigured`) || strings.Contains(audit.Body.String(), "secret-value") {
 		t.Fatalf("agent settings audit leaked or omitted security metadata: %d %s", audit.Code, audit.Body.String())
 	}
 }
@@ -125,7 +133,7 @@ func TestAdminAgentSettingsCanKeepOrClearAPIKey(t *testing.T) {
 		router.ServeHTTP(recorder, request)
 		return recorder
 	}
-	base := `{"provider":"openai","model":"gpt-5-mini","maxToolRounds":6,"historyLimit":40,"maxOutputTokens":2048,"openAIBaseURL":"https://api.openai.com/v1"`
+	base := `{"provider":"openai","model":"gpt-5-mini","maxToolRounds":6,"historyLimit":40,"compactionRecentTurns":8,"compactionMaxOutputTokens":1024,"maxOutputTokens":2048,"openAIBaseURL":"https://api.openai.com/v1"`
 	if response := put(base + `,"apiKey":"secret-value"}`); response.Code != http.StatusOK {
 		t.Fatalf("configure key: %d %s", response.Code, response.Body.String())
 	}
@@ -144,11 +152,11 @@ func TestAdminAgentSettingsNormalizesOpenAIBaseURL(t *testing.T) {
 		want string
 	}{
 		{
-			body: `{"provider":"openai","model":"gpt-5-mini","maxToolRounds":6,"historyLimit":40,"maxOutputTokens":2048,"openAIBaseURL":" https://example.test "}`,
+			body: `{"provider":"openai","model":"gpt-5-mini","maxToolRounds":6,"historyLimit":40,"compactionRecentTurns":8,"compactionMaxOutputTokens":1024,"maxOutputTokens":2048,"openAIBaseURL":" https://example.test "}`,
 			want: `"openAIBaseURL":"https://example.test/v1"`,
 		},
 		{
-			body: `{"provider":"openai","model":"gpt-5-mini","maxToolRounds":6,"historyLimit":40,"maxOutputTokens":2048,"openAIBaseURL":"https://example.test/v1/"}`,
+			body: `{"provider":"openai","model":"gpt-5-mini","maxToolRounds":6,"historyLimit":40,"compactionRecentTurns":8,"compactionMaxOutputTokens":1024,"maxOutputTokens":2048,"openAIBaseURL":"https://example.test/v1/"}`,
 			want: `"openAIBaseURL":"https://example.test/v1"`,
 		},
 	} {
@@ -165,8 +173,10 @@ func TestAdminAgentSettingsNormalizesOpenAIBaseURL(t *testing.T) {
 func TestAdminAgentSettingsRejectInvalidLimitsAndURLs(t *testing.T) {
 	router, token, _ := newAgentHTTPTest(t)
 	for _, body := range []string{
-		`{"provider":"openai","model":"gpt-5-mini","maxToolRounds":13,"historyLimit":40,"maxOutputTokens":2048,"openAIBaseURL":"https://api.openai.com/v1"}`,
-		`{"provider":"openai","model":"gpt-5-mini","maxToolRounds":6,"historyLimit":40,"maxOutputTokens":2048,"openAIBaseURL":"https://user@example.test/v1"}`,
+		`{"provider":"openai","model":"gpt-5-mini","maxToolRounds":13,"historyLimit":40,"compactionRecentTurns":8,"compactionMaxOutputTokens":1024,"maxOutputTokens":2048,"openAIBaseURL":"https://api.openai.com/v1"}`,
+		`{"provider":"openai","model":"gpt-5-mini","maxToolRounds":6,"historyLimit":12,"compactionRecentTurns":6,"compactionMaxOutputTokens":1024,"maxOutputTokens":2048,"openAIBaseURL":"https://api.openai.com/v1"}`,
+		`{"provider":"openai","model":"gpt-5-mini","maxToolRounds":6,"historyLimit":40,"compactionRecentTurns":8,"compactionMaxOutputTokens":64,"maxOutputTokens":2048,"openAIBaseURL":"https://api.openai.com/v1"}`,
+		`{"provider":"openai","model":"gpt-5-mini","maxToolRounds":6,"historyLimit":40,"compactionRecentTurns":8,"compactionMaxOutputTokens":1024,"maxOutputTokens":2048,"openAIBaseURL":"https://user@example.test/v1"}`,
 	} {
 		recorder := httptest.NewRecorder()
 		request := httptest.NewRequest(http.MethodPut, "/api/v1/admin/agent/settings", strings.NewReader(body))
@@ -175,6 +185,17 @@ func TestAdminAgentSettingsRejectInvalidLimitsAndURLs(t *testing.T) {
 		if recorder.Code != http.StatusUnprocessableEntity {
 			t.Fatalf("expected validation failure, got %d %s", recorder.Code, recorder.Body.String())
 		}
+	}
+}
+
+func TestAdminAgentSettingsAllowsAnAtomicLowCompactionThreshold(t *testing.T) {
+	router, token, _ := newAgentHTTPTest(t)
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPut, "/api/v1/admin/agent/settings", strings.NewReader(`{"provider":"openai","model":"gpt-5-mini","maxToolRounds":6,"historyLimit":1,"compactionRecentTurns":1,"compactionMaxOutputTokens":128,"maxOutputTokens":2048,"openAIBaseURL":"https://api.openai.com/v1"}`))
+	request.Header.Set("Authorization", "Bearer "+token)
+	router.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected low atomic threshold to be accepted, got %d %s", recorder.Code, recorder.Body.String())
 	}
 }
 
@@ -259,6 +280,35 @@ func TestAdminAgentMessageHistoryIsSessionScopedAndClearable(t *testing.T) {
 	messages, _ := history.List(t.Context(), payload.ID, 20)
 	if len(messages) != 0 {
 		t.Fatalf("conversation history was not cleared: %+v", messages)
+	}
+}
+
+func TestAdminAgentCanCompactTheCurrentSession(t *testing.T) {
+	compactCalls := 0
+	router, token, _ := newAgentHTTPTestWithRunner(t, func(runner *fakeAgentRunner) {
+		runner.compact = func() { compactCalls++ }
+	})
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/admin/agent/messages/compact", nil)
+	request.Header.Set("Authorization", "Bearer "+token)
+	router.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusNoContent || compactCalls != 1 {
+		t.Fatalf("unexpected compact response: status=%d calls=%d body=%s", recorder.Code, compactCalls, recorder.Body.String())
+	}
+}
+
+func TestAdminAgentCompactReportsAnUnavailableProvider(t *testing.T) {
+	router, token, _ := newAgentHTTPTestWithRunner(t, func(runner *fakeAgentRunner) {
+		runner.compactError = errAgentUnavailable
+	})
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/admin/agent/messages/compact", nil)
+	request.Header.Set("Authorization", "Bearer "+token)
+	router.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusServiceUnavailable || !strings.Contains(recorder.Body.String(), `"code":"AGENT_UNAVAILABLE"`) {
+		t.Fatalf("unexpected unavailable response: status=%d body=%s", recorder.Code, recorder.Body.String())
 	}
 }
 

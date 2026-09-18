@@ -10,6 +10,7 @@ type Role string
 
 const (
 	RoleSystem    Role = "system"
+	RoleContext   Role = "context"
 	RoleUser      Role = "user"
 	RoleAssistant Role = "assistant"
 	RoleTool      Role = "tool"

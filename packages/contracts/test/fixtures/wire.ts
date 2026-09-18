@@ -15,6 +15,7 @@ import type {
   AdminSessionList,
   AnalyticsViews,
   AgentMessageList,
+  AgentSettings,
   AgentStreamEvent,
   AgentUndoResult,
   ApiErrorBody,
@@ -36,6 +37,19 @@ import type {
   SystemStatus,
   VerifyResponse,
 } from "../../src/index.ts";
+
+export const agentSettings = {
+  provider: "openai",
+  model: "gpt-5-mini",
+  maxToolRounds: 6,
+  historyLimit: 40,
+  compactionRecentTurns: 8,
+  compactionMaxOutputTokens: 1024,
+  maxOutputTokens: 2048,
+  openAIBaseURL: "https://api.openai.com/v1",
+  apiKeyConfigured: true,
+  updatedAt: "2026-09-19T00:00:00Z",
+} satisfies AgentSettings;
 
 export const collection = {
   data: [
@@ -431,6 +445,7 @@ export const chainVerify = {
 } satisfies VerifyResponse;
 
 export const wire = {
+  agentSettings,
   collection,
   contentDetail,
   contentDetailUnanchored,

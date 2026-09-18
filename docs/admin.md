@@ -31,7 +31,7 @@ Vite + React 19
 
 Dashboard、Profile、Writings、Thoughts、Media、Comments、Settings 通过 lazy chunk 加载，登录壳同步加载。
 
-顶部栏 Agent 按钮打开居中的模态对话框，不新增 hash 路由。对话框从顶部渐入，背景使用半透明遮罩与 blur；通过 `agentMessages()` 恢复当前 session 的 user/assistant 历史和 assistant `trace`，通过 `runAgent()` 消费 SSE。每轮对话绑定自己的回答、运行轨迹和 token 用量；`reasoning.started/completed` 显示为紧凑状态步骤，不展示隐藏推理文本，运行完成后轨迹仍保留并显示 **Thought through/已思考**，默认收起但可再次展开；`tool.started/completed` 显示可折叠的工具名、输入与输出，`content.delta` 累加到对应 assistant 消息，`max_tokens` 会标记输出已截断。每个 user/assistant 气泡右下角提供 Copy；仅 user 气泡提供 Undo。Undo 调 `undoAgentMessage(userMessageId)`，由 Core 删除该用户消息及后续轮次，并把返回的 `draft` 放回 composer 供修改。运行中禁用 Undo。对话不进入 TanStack Query：流式状态由对话框局部 state 管理，Core conversation history 才是跨开关对话框的权威；关闭模态或登出会通过 `AbortSignal` 取消未完成的流，异常 EOF 会显示为未完成运行。清空按钮调用 `clearAgentMessages()`。
+顶部栏 Agent 按钮打开居中的模态对话框，不新增 hash 路由。对话框从顶部渐入，背景使用半透明遮罩与 blur；通过 `agentMessages()` 恢复当前 session 的 user/assistant 历史和 assistant `trace`，通过 `runAgent()` 消费 SSE。每轮对话绑定自己的回答、运行轨迹和 token 用量；`reasoning.started/completed` 显示为紧凑状态步骤，不展示隐藏推理文本，运行完成后轨迹仍保留并显示 **Thought through/已思考**，默认收起但可再次展开；`tool.started/completed` 显示可折叠的工具名、输入与输出，`content.delta` 累加到对应 assistant 消息，`max_tokens` 会标记输出已截断。每个 user/assistant 气泡右下角提供 Copy；仅 user 气泡提供 Undo。Undo 调 `undoAgentMessage(userMessageId)`，由 Core 删除该用户消息及后续轮次，并把返回的 `draft` 放回 composer 供修改。运行中禁用 Undo。Composer 输入 `/` 时显示 `/compact`、`/quit`、`/clear` 补全，支持方向键、Tab、Enter 与鼠标选择；精确提交后分别调用 `compactAgentMessages()`、关闭对话框或调用 `clearAgentMessages()`，指令不会写入 conversation history。对话不进入 TanStack Query：流式状态由对话框局部 state 管理，Core conversation history 才是跨开关对话框的权威；关闭模态或登出会通过 `AbortSignal` 取消未完成的流，异常 EOF 会显示为未完成运行。工具栏清空按钮同样调用 `clearAgentMessages()`。
 
 Admin UI 支持英语与简体中文。`src/i18n/` 维护 `en`/`zh-CN` 资源，`react-i18next` 提供组件翻译；初始语言优先读取 `localStorage` 的 `manifold.locale`，其次读取浏览器语言，最后回退英语。语言切换器位于登录页工具栏和登录后的顶部栏，会即时更新 `document.documentElement.lang` 并持久化偏好；存储不可用时仍保持当前会话内语言。Mantine 日期组件、Vditor 工具栏、日期/数字格式和 `@manifold/render` 预览随同一 locale 切换，不复制渲染包文案。
 
@@ -135,7 +135,7 @@ Site 调用 `GET/PUT /api/v1/admin/site`，对整个站点设置做结构化表�
 
 站点设置是单个全量 PUT（一个保存条、`['admin-site']` 失效）。内容置顶（pin）在各自工作区设置：Writings 用 `['admin-writings-config']` + `updateWritingConfig`，Thoughts 用 `['admin-thought-config']` + `updateThoughtConfig`；Core 校验非空引用必须是已发布的对应类型内容。
 
-同一 Settings 页面包含独立的 **Agent** panel，使用 `GET/PUT /api/v1/admin/agent/settings` 与 query key `['admin-agent-settings']`。表单管理 OpenAI Provider、模型、最大工具回合、上下文历史条数、最大输出 token 与 Base URL；Base URL 保存时会清理首尾空白、去掉尾部斜杠，并在路径中缺少 `v1` 时自动补齐 `/v1`；这些值保存后从下一次 Agent 运行起生效。API key 是只写字段：留空保留已有值，输入新值替换，勾选清除则提交 `null`；GET 和 PUT 响应只返回 `apiKeyConfigured`。Agent 表单有独立保存按钮，同时向 Settings 的 dirty guard 报告未保存状态。
+同一 Settings 页面包含独立的 **Agent** panel，使用 `GET/PUT /api/v1/admin/agent/settings` 与 query key `['admin-agent-settings']`。表单管理 OpenAI Provider、模型、最大工具回合、回答最大 token、压缩触发阈值、原样保留的最近 turns、Summary 最大输出 token 与 Base URL；`historyLimit` 达到时 Core 会把旧完整 turns 增量压缩为 Summary，按 `compactionRecentTurns` 保留最近 turns 原文，并以 `compactionMaxOutputTokens` 限制 Summary 输出，Admin 恢复的原始消息列表不受压缩影响。表单即时校验 `compactionRecentTurns <= max(1, floor((historyLimit - 2) / 2))`，Core 使用同一规则作为权威校验；阈值为 1..3 时只允许保留 1 个最近 turn。Base URL 保存时会清理首尾空白、去掉尾部斜杠，并在路径中缺少 `v1` 时自动补齐 `/v1`；这些值保存后从下一次 Agent 运行起生效。API key 是只写字段：留空保留已有值，输入新值替换，勾选清除则提交 `null`；GET 和 PUT 响应只返回 `apiKeyConfigured`。Agent 表单有独立保存按钮，同时向 Settings 的 dirty guard 报告未保存状态。
 
 ### Security
 
@@ -160,7 +160,7 @@ Settings 底部的独立 panel（`features/settings/SecuritySection.tsx`），�
 | `admin-content-item` + kind + id | 详情页 `adminContentItem(id)` | 单条保存、发布/撤回后直接 setDraft 更新；重载时失效该 key |
 | `admin-profile` | `adminProfile()` | 保存 Profile |
 | `admin-site` | `adminSite()` | 保存 Site（全量 PUT，含身份/social/评论开关/首页组合） |
-| `admin-agent-settings` | `adminAgentSettings()` | `updateAgentSettings()` 保存 Agent 模型、运行上限、Base URL 与只写 API key |
+| `admin-agent-settings` | `adminAgentSettings()` | `updateAgentSettings()` 保存 Agent 模型、工具/回答上限、压缩阈值、最近 raw turns、Summary 输出预算、Base URL 与只写 API key |
 | `admin-thought-config` | `adminThoughtConfig()` | 保存 Thoughts 置顶配置 |
 | `admin-media` + `{ q, page }` | Media 库 `listMedia({ q?, page? })` | 上传、删除（统一失效 `['admin-media']` 前缀） |
 | `admin-media-item` + mediaId | 详情页基本信息 `listMedia({ q: mediaId, pageSize: 50 })` 精确 id 取项 | 不失效（媒体不可变） |

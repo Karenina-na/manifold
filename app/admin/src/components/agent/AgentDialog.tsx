@@ -5,6 +5,7 @@ import { Brain, Check, CircleAlert, Copy, Eraser, RotateCcw, Send, Sparkles, Wre
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { createAdminClient } from '../../lib/api'
+import { completeAgentCommands, parseAgentCommand, type AgentCommandID } from './agent-commands'
 import { applyAgentEvent, formatAgentPayload, groupAgentMessages, type AgentProcessItem, type AgentTurn } from './agent-transcript'
 
 const agentDialogTitle = 'Talking'
@@ -73,6 +74,9 @@ export function AgentDialog({ token, opened, onClose }: { token: string; opened:
   const [copiedMessageID, setCopiedMessageID] = useState('')
   const [undoingMessageID, setUndoingMessageID] = useState('')
   const [actionError, setActionError] = useState('')
+  const [actionRunning, setActionRunning] = useState<AgentCommandID | ''>('')
+  const [commandMenuFocused, setCommandMenuFocused] = useState(false)
+  const [activeCommandIndex, setActiveCommandIndex] = useState(0)
 
   useEffect(() => { client.current = createAdminClient(token) }, [token])
   useEffect(() => () => { abortRef.current?.abort() }, [])
@@ -93,10 +97,64 @@ export function AgentDialog({ token, opened, onClose }: { token: string; opened:
     setTurns((items) => items.map((turn) => turn.id === turnID ? applyAgentEvent(turn, event) : turn))
   }
 
+  async function clear() {
+    if (running || actionRunning || undoingMessageID) return
+    setActionRunning('clear')
+    try {
+      await client.current.clearAgentMessages()
+      setTurns([])
+      setCopiedMessageID('')
+      setActionError('')
+    } catch {
+      setActionError(t('agent.clearError'))
+    } finally {
+      setActionRunning('')
+    }
+  }
+
+  async function compact() {
+    if (running || actionRunning || undoingMessageID) return
+    setActionRunning('compact')
+    setActionError('')
+    try {
+      await client.current.compactAgentMessages()
+    } catch {
+      setActionError(t('agent.compactError'))
+    } finally {
+      setActionRunning('')
+    }
+  }
+
+  function close() {
+    abortRef.current?.abort()
+    setLoading(true)
+    setLoadError(false)
+    onClose()
+  }
+
+  async function executeCommand(command: AgentCommandID) {
+    setInput('')
+    setCommandMenuFocused(false)
+    if (command === 'quit') {
+      close()
+      return
+    }
+    if (command === 'clear') {
+      await clear()
+      return
+    }
+    await compact()
+  }
+
   const submit = async (event: FormEvent) => {
     event.preventDefault()
     const message = input.trim()
-    if (!message || running) return
+    if (!message || running || actionRunning || undoingMessageID) return
+    const command = parseAgentCommand(message)
+    if (command) {
+      await executeCommand(command)
+      return
+    }
     const stamp = new Date().toISOString()
     const turnID = `turn-${Date.now()}`
     const userID = `${turnID}-user`
@@ -122,25 +180,6 @@ export function AgentDialog({ token, opened, onClose }: { token: string; opened:
     }
   }
 
-  const clear = async () => {
-    if (running || undoingMessageID) return
-    try {
-      await client.current.clearAgentMessages()
-      setTurns([])
-      setCopiedMessageID('')
-      setActionError('')
-    } catch {
-      setTurns((items) => items.map((turn, index) => index === items.length - 1 ? { ...turn, status: 'error', process: [...turn.process, { id: `clear-${Date.now()}`, kind: 'error', message: t('agent.clearError') }] } : turn))
-    }
-  }
-
-  const close = () => {
-    abortRef.current?.abort()
-    setLoading(true)
-    setLoadError(false)
-    onClose()
-  }
-
   const copyMessage = async (message: AgentMessage) => {
     try {
       if (!navigator.clipboard) throw new Error('clipboard unavailable')
@@ -154,7 +193,7 @@ export function AgentDialog({ token, opened, onClose }: { token: string; opened:
 
   const undoMessage = async (message: AgentMessage) => {
     const turnIndex = turns.findIndex((turn) => turn.user?.id === message.id)
-    if (turnIndex < 0 || running || undoingMessageID) return
+    if (turnIndex < 0 || running || actionRunning || undoingMessageID) return
     const turn = turns[turnIndex]
     setUndoingMessageID(message.id)
     setActionError('')
@@ -178,22 +217,44 @@ export function AgentDialog({ token, opened, onClose }: { token: string; opened:
 
   const title = <div className="agent-modal-title"><span className="agent-title-orb"><Sparkles size={17} aria-hidden="true" /></span><span className="agent-title-copy"><span className="agent-title-kicker">{t('agent.title')}</span><strong id="agent-dialog-title">{agentDialogTitle}</strong><small>{t('agent.description')}</small></span></div>
   const hasConversation = turns.length > 0
+  const commandSuggestions = commandMenuFocused ? completeAgentCommands(input) : []
+  const selectedCommand = commandSuggestions[activeCommandIndex] ?? commandSuggestions[0]
+  const busy = running || Boolean(actionRunning) || Boolean(undoingMessageID)
+
+  const selectCommand = (command: (typeof commandSuggestions)[number]) => {
+    setInput(command.name)
+    setActiveCommandIndex(0)
+    requestAnimationFrame(() => inputRef.current?.focus())
+  }
 
   return <Modal opened={opened} onClose={close} centered size="auto" title={title} transitionProps={{ transition: 'slide-down', duration: 460, timingFunction: 'cubic-bezier(.16,1,.3,1)' }} overlayProps={{ backgroundOpacity: 0.22, blur: 14 }} closeOnClickOutside classNames={{ root: 'agent-modal-root', content: 'agent-modal-content', header: 'agent-modal-header', title: 'agent-modal-heading', body: 'agent-modal-body', overlay: 'agent-modal-overlay' }} closeButtonProps={{ 'aria-label': t('agent.close') }}>
     <div className="agent-shell">
-      <div className="agent-toolbar"><div className="agent-toolbar-copy"><span className="agent-session-mark" /><span>{t('agent.sessionLabel')}</span><small>{t('agent.sessionMemory')}</small></div><div className="agent-toolbar-actions"><span className={`agent-run-status ${running ? 'running' : ''}`}>{running ? t('agent.statusRunning') : t('agent.statusReady')}</span><ActionIcon variant="subtle" color="gray" aria-label={t('agent.clear')} title={t('agent.clear')} disabled={running || Boolean(undoingMessageID) || !hasConversation} onClick={() => void clear()}><Eraser size={16} /></ActionIcon></div></div>
-      <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">{running ? t('agent.statusRunning') : t('agent.statusReady')}</span>
+      <div className="agent-toolbar"><div className="agent-toolbar-copy"><span className="agent-session-mark" /><span>{t('agent.sessionLabel')}</span><small>{t('agent.sessionMemory')}</small></div><div className="agent-toolbar-actions"><span className={`agent-run-status ${busy ? 'running' : ''}`}>{busy ? t('agent.statusRunning') : t('agent.statusReady')}</span><ActionIcon variant="subtle" color="gray" aria-label={t('agent.clear')} title={t('agent.clear')} disabled={busy || Boolean(undoingMessageID) || !hasConversation} onClick={() => void clear()}><Eraser size={16} /></ActionIcon></div></div>
+      <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">{busy ? t('agent.statusRunning') : t('agent.statusReady')}</span>
       <div className="agent-transcript" role="log" aria-busy={running}>
         {actionError && <div className="agent-action-error" role="alert"><CircleAlert size={14} aria-hidden="true" />{actionError}</div>}
         {loading && <div className="agent-loading"><span className="agent-loading-orb"><Sparkles size={18} aria-hidden="true" /></span><span>{t('common.loading')}</span></div>}
         {!loading && loadError && <div className="agent-empty agent-error-state"><CircleAlert size={22} aria-hidden="true" /><strong>{t('agent.loadError')}</strong><span>{t('agent.tryAgain')}</span></div>}
         {!loading && !loadError && !hasConversation && <div className="agent-empty"><span className="agent-empty-orb"><Sparkles size={22} aria-hidden="true" /></span><strong>{t('agent.emptyTitle')}</strong></div>}
-        {!loading && !loadError && turns.map((turn) => <Turn key={turn.id} turn={turn} running={running} copiedMessageID={copiedMessageID} undoingMessageID={undoingMessageID} onCopy={(message) => void copyMessage(message)} onUndo={(message) => void undoMessage(message)} />)}
+        {!loading && !loadError && turns.map((turn) => <Turn key={turn.id} turn={turn} running={busy} copiedMessageID={copiedMessageID} undoingMessageID={undoingMessageID} onCopy={(message) => void copyMessage(message)} onUndo={(message) => void undoMessage(message)} />)}
         <div ref={endRef} />
       </div>
       <form className="agent-composer" onSubmit={submit}>
-        <div className="agent-composer-input"><Textarea ref={inputRef} value={input} onChange={(event) => setInput(event.currentTarget.value)} placeholder={t('agent.placeholder')} aria-label={t('agent.placeholder')} autosize minRows={2} maxRows={5} maxLength={4000} disabled={running} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit() } }} /><span className="agent-composer-hint">{input.length > 0 ? `${input.length}/4000` : t('agent.composerHint')}</span></div>
-        <Button type="submit" className="button button-primary agent-send" loading={running} disabled={!input.trim()} leftSection={<Send size={15} />}>{running ? t('agent.running') : t('agent.send')}</Button>
+        <div className="agent-composer-input">
+          {commandSuggestions.length > 0 && <div id="agent-command-menu" className="agent-command-menu" role="listbox" aria-label={t('agentCommands.menu')}>
+            {commandSuggestions.map((command) => <button key={command.id} id={`agent-command-${command.id}`} type="button" role="option" tabIndex={-1} aria-selected={selectedCommand?.id === command.id} className={selectedCommand?.id === command.id ? 'active' : ''} onMouseDown={(event) => event.preventDefault()} onClick={() => selectCommand(command)}><code>{command.name}</code><span>{command.id === 'compact' ? t('agentCommands.compact') : command.id === 'quit' ? t('agentCommands.quit') : t('agentCommands.clear')}</span></button>)}
+          </div>}
+          <Textarea ref={inputRef} role="combobox" value={input} onChange={(event) => { setInput(event.currentTarget.value); setActiveCommandIndex(0) }} onFocus={() => setCommandMenuFocused(true)} onBlur={() => setCommandMenuFocused(false)} placeholder={t('agent.placeholder')} aria-label={t('agent.placeholder')} aria-autocomplete="list" aria-haspopup="listbox" aria-expanded={commandSuggestions.length > 0} aria-controls={commandSuggestions.length > 0 ? 'agent-command-menu' : undefined} aria-activedescendant={selectedCommand ? `agent-command-${selectedCommand.id}` : undefined} autosize minRows={2} maxRows={5} maxLength={4000} disabled={busy} onKeyDown={(event) => {
+            if (event.nativeEvent.isComposing) return
+            if (commandSuggestions.length > 0 && event.key === 'ArrowDown') { event.preventDefault(); setActiveCommandIndex((index) => (index + 1) % commandSuggestions.length); return }
+            if (commandSuggestions.length > 0 && event.key === 'ArrowUp') { event.preventDefault(); setActiveCommandIndex((index) => (index - 1 + commandSuggestions.length) % commandSuggestions.length); return }
+            if (commandSuggestions.length > 0 && event.key === 'Escape') { event.preventDefault(); setCommandMenuFocused(false); return }
+            if (selectedCommand && (event.key === 'Tab' || (event.key === 'Enter' && !event.shiftKey && !parseAgentCommand(input)))) { event.preventDefault(); selectCommand(selectedCommand); return }
+            if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit() }
+          }} />
+          <span className="agent-composer-hint">{input.length > 0 ? `${input.length}/4000` : t('agent.composerHint')}</span>
+        </div>
+        <Button type="submit" className="button button-primary agent-send" loading={busy} disabled={!input.trim()} leftSection={<Send size={15} />}>{busy ? t('agent.running') : t('agent.send')}</Button>
       </form>
     </div>
   </Modal>

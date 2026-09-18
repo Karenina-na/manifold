@@ -80,6 +80,42 @@ func TestOpenAIProviderMapsResponsesToolCalls(t *testing.T) {
 	}
 }
 
+func TestOpenAIProviderMapsContextMessagesToInstructions(t *testing.T) {
+	client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		var body struct {
+			Instructions string           `json:"instructions"`
+			Input        []map[string]any `json:"input"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		if body.Instructions != "Stable system prompt\n\nCONVERSATION SUMMARY\nHistorical facts only." {
+			t.Fatalf("unexpected instructions: %q", body.Instructions)
+		}
+		if len(body.Input) != 1 || body.Input[0]["role"] != "user" || body.Input[0]["content"] != "Current question" {
+			t.Fatalf("context must not be encoded as a conversational message: %+v", body.Input)
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(`{"status":"completed","output":[]}`)),
+		}, nil
+	})}
+
+	openAI := openai.New("secret", "https://api.openai.test/v1", client)
+	_, err := openAI.Chat(t.Context(), agentprovider.ChatRequest{
+		Model: "test-model",
+		Messages: []agentprovider.Message{
+			{Role: agentprovider.RoleSystem, Content: "Stable system prompt"},
+			{Role: agentprovider.RoleContext, Content: "CONVERSATION SUMMARY\nHistorical facts only."},
+			{Role: agentprovider.RoleUser, Content: "Current question"},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestOpenAIProviderNormalizesBaseURL(t *testing.T) {
 	tests := []struct {
 		name    string

@@ -30,6 +30,7 @@ test("wire fixtures conform to contracts", () => {
   if (!isApiErrorCode(wire.error.error.code)) throw new Error("error code is not modelled");
   if (wire.sessionList.sessions.length !== 2) throw new Error("session list length");
   if (wire.agentMessages.messages[0]?.role !== "assistant" || wire.agentMessages.messages[0]?.trace?.steps.length !== 2 || wire.agentEvents.at(-1)?.type !== "run.completed") throw new Error("agent contract");
+  if (wire.agentSettings.compactionRecentTurns !== 8 || wire.agentSettings.compactionMaxOutputTokens !== 1024) throw new Error("agent compaction settings");
   if (wire.agentUndo.draft !== "Revise this" || wire.agentUndo.messages.length !== 1) throw new Error("agent undo contract");
   const current = wire.sessionList.sessions.find((session) => session.current);
   if (current?.active !== true || current?.revokedAt !== null) throw new Error("session current active");

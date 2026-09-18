@@ -64,6 +64,22 @@ test("loads and clears session-scoped agent messages", async () => {
 	assert.equal(requests[1]?.method, "DELETE");
 });
 
+test("compacts session-scoped agent messages", async () => {
+	let captured: Request | undefined;
+	const client = new ManifoldClient({
+		baseUrl: "http://core.test",
+		token: "token-1",
+		fetch: async (input, init) => {
+			captured = new Request(input, init);
+			return new Response(null, { status: 204 });
+		},
+	});
+
+	await client.compactAgentMessages();
+	assert.equal(captured?.url, "http://core.test/api/v1/admin/agent/messages/compact");
+	assert.equal(captured?.method, "POST");
+});
+
 test("undoes an agent turn from a user message and returns the editable draft", async () => {
 	let captured: Request | undefined;
 	const payload = { draft: "Revise this", messages: [{ id: "msg_1", role: "user", content: "Earlier", createdAt: "2026-09-17T00:00:00Z" }] };
@@ -83,7 +99,7 @@ test("undoes an agent turn from a user message and returns the editable draft", 
 
 test("reads and updates write-only agent settings", async () => {
 	const requests: Request[] = [];
-	const settings = { provider: "openai", model: "gpt-5-mini", maxToolRounds: 6, historyLimit: 40, maxOutputTokens: 2048, openAIBaseURL: "https://api.openai.com/v1", apiKeyConfigured: true, updatedAt: "2026-09-17T00:00:00Z" } as const;
+	const settings = { provider: "openai", model: "gpt-5-mini", maxToolRounds: 6, historyLimit: 40, compactionRecentTurns: 8, compactionMaxOutputTokens: 1024, maxOutputTokens: 2048, openAIBaseURL: "https://api.openai.com/v1", apiKeyConfigured: true, updatedAt: "2026-09-17T00:00:00Z" } as const;
 	const client = new ManifoldClient({
 		baseUrl: "http://core.test",
 		token: "token-1",
@@ -99,13 +115,15 @@ test("reads and updates write-only agent settings", async () => {
 		model: "gpt-5-mini",
 		maxToolRounds: 6,
 		historyLimit: 40,
+		compactionRecentTurns: 8,
+		compactionMaxOutputTokens: 1024,
 		maxOutputTokens: 2048,
 		openAIBaseURL: "https://api.openai.com/v1",
 		apiKey: "replacement",
 	});
 	assert.equal(requests[0]?.url, "http://core.test/api/v1/admin/agent/settings");
 	assert.equal(requests[1]?.method, "PUT");
-	assert.deepEqual(await requests[1]?.json(), { provider: "openai", model: "gpt-5-mini", maxToolRounds: 6, historyLimit: 40, maxOutputTokens: 2048, openAIBaseURL: "https://api.openai.com/v1", apiKey: "replacement" });
+	assert.deepEqual(await requests[1]?.json(), { provider: "openai", model: "gpt-5-mini", maxToolRounds: 6, historyLimit: 40, compactionRecentTurns: 8, compactionMaxOutputTokens: 1024, maxOutputTokens: 2048, openAIBaseURL: "https://api.openai.com/v1", apiKey: "replacement" });
 });
 test("throws ApiError for structured failures", async () => {
 	const client = new ManifoldClient({ baseUrl: "http://core.test", fetch: async () => new Response(JSON.stringify({ error: { code: "UNAUTHORIZED", message: "Token required", details: { reason: "expired" }, requestId: "req_1", traceId: "trace_1" } }), { status: 401 }) });
