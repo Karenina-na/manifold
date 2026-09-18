@@ -10,7 +10,6 @@ import (
 
 	"github.com/manifold-space/manifold/app/core/internal/agent"
 	"github.com/manifold-space/manifold/app/core/internal/agent/providers"
-	"github.com/manifold-space/manifold/app/core/internal/agent/repository"
 	"github.com/manifold-space/manifold/app/core/internal/model"
 	"github.com/manifold-space/manifold/app/core/internal/store"
 )
@@ -18,7 +17,7 @@ import (
 type configuredAgentRuntime struct {
 	store    *store.Store
 	scenario agent.Scenario
-	memory   repository.SessionMemory
+	memory   agent.SessionMemory
 
 	mu           sync.Mutex
 	cached       *agent.Runtime
@@ -26,7 +25,7 @@ type configuredAgentRuntime struct {
 	sessionLocks sync.Map
 }
 
-func newConfiguredAgentRuntime(database *store.Store, scenario agent.Scenario, memory repository.SessionMemory) *configuredAgentRuntime {
+func newConfiguredAgentRuntime(database *store.Store, scenario agent.Scenario, memory agent.SessionMemory) *configuredAgentRuntime {
 	return &configuredAgentRuntime{store: database, scenario: scenario, memory: memory}
 }
 
@@ -56,7 +55,7 @@ func (r *configuredAgentRuntime) Run(ctx context.Context, sessionID, userMessage
 	return runtime.Run(ctx, sessionID, userMessage, emit)
 }
 
-func (r *configuredAgentRuntime) List(ctx context.Context, sessionID string, limit int) ([]repository.Message, error) {
+func (r *configuredAgentRuntime) List(ctx context.Context, sessionID string, limit int) ([]agent.SessionMessage, error) {
 	lock := r.sessionLock(sessionID)
 	lock.Lock()
 	defer lock.Unlock()
@@ -70,7 +69,7 @@ func (r *configuredAgentRuntime) Clear(ctx context.Context, sessionID string) er
 	return r.memory.Delete(ctx, sessionID)
 }
 
-func (r *configuredAgentRuntime) Undo(ctx context.Context, sessionID, messageID string) (repository.Message, []repository.Message, error) {
+func (r *configuredAgentRuntime) Undo(ctx context.Context, sessionID, messageID string) (agent.SessionMessage, []agent.SessionMessage, error) {
 	lock := r.sessionLock(sessionID)
 	lock.Lock()
 	defer lock.Unlock()

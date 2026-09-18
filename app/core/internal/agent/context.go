@@ -2,18 +2,16 @@ package agent
 
 import (
 	"context"
-
-	"github.com/manifold-space/manifold/app/core/internal/agent/repository"
 )
 
 type ContextBuilder struct {
-	messages     repository.MessageRepository
+	messages     SessionMessageRepository
 	prompt       PromptSpec
 	tools        *ToolRegistry
 	historyLimit int
 }
 
-func NewContextBuilder(messages repository.MessageRepository, prompt PromptSpec, tools *ToolRegistry, historyLimit int) *ContextBuilder {
+func NewContextBuilder(messages SessionMessageRepository, prompt PromptSpec, tools *ToolRegistry, historyLimit int) *ContextBuilder {
 	return &ContextBuilder{messages: messages, prompt: prompt, tools: tools, historyLimit: historyLimit}
 }
 

@@ -9,7 +9,6 @@ import (
 	"github.com/go-playground/validator/v10"
 
 	"github.com/manifold-space/manifold/app/core/internal/agent"
-	"github.com/manifold-space/manifold/app/core/internal/agent/repository"
 	agentscenarios "github.com/manifold-space/manifold/app/core/internal/agent/scenarios"
 	"github.com/manifold-space/manifold/app/core/internal/application"
 	"github.com/manifold-space/manifold/app/core/internal/auth"
@@ -38,9 +37,9 @@ type apiHandler struct {
 type agentRunner interface {
 	Ready(ctx context.Context) error
 	Run(ctx context.Context, sessionID, userMessage string, emit func(agent.StreamEvent) error) error
-	List(ctx context.Context, sessionID string, limit int) ([]repository.Message, error)
+	List(ctx context.Context, sessionID string, limit int) ([]agent.SessionMessage, error)
 	Clear(ctx context.Context, sessionID string) error
-	Undo(ctx context.Context, sessionID, messageID string) (repository.Message, []repository.Message, error)
+	Undo(ctx context.Context, sessionID, messageID string) (agent.SessionMessage, []agent.SessionMessage, error)
 }
 
 // coreVersion is the build version reported by /healthz and the admin system endpoint.
@@ -116,6 +115,6 @@ func newAgentRuntime(database *store.Store, ledger *chain.Ledger) agentRunner {
 	if err != nil {
 		panic(err)
 	}
-	memory := repository.NewMemory()
+	memory := agent.NewMemory()
 	return newConfiguredAgentRuntime(database, scenario, memory)
 }

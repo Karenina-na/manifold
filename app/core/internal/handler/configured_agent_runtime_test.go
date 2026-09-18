@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/manifold-space/manifold/app/core/internal/agent"
-	"github.com/manifold-space/manifold/app/core/internal/agent/repository"
 	"github.com/manifold-space/manifold/app/core/internal/store"
 )
 
@@ -46,7 +45,7 @@ func TestConfiguredAgentRuntimeUsesSavedSettingsOnTheNextRun(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	memory := repository.NewMemory()
+	memory := agent.NewMemory()
 	runtime := newConfiguredAgentRuntime(database, agent.Scenario{Prompt: agent.PromptSpec{Intro: "test"}, Tools: agent.NewToolRegistry()}, memory)
 	if err := runtime.Run(t.Context(), "session-1", "first", func(agent.StreamEvent) error { return nil }); err != nil {
 		t.Fatal(err)

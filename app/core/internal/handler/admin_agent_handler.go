@@ -12,7 +12,6 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/manifold-space/manifold/app/core/internal/agent"
 	"github.com/manifold-space/manifold/app/core/internal/agent/providers"
-	"github.com/manifold-space/manifold/app/core/internal/agent/repository"
 	"github.com/manifold-space/manifold/app/core/internal/apierror"
 	"github.com/manifold-space/manifold/app/core/internal/auth"
 )
@@ -22,14 +21,14 @@ type agentRunInput struct {
 }
 
 type agentMessageView struct {
-	ID        string                   `json:"id"`
-	Role      string                   `json:"role"`
-	Content   string                   `json:"content"`
-	CreatedAt string                   `json:"createdAt"`
-	Trace     *repository.MessageTrace `json:"trace,omitempty"`
+	ID        string              `json:"id"`
+	Role      string              `json:"role"`
+	Content   string              `json:"content"`
+	CreatedAt string              `json:"createdAt"`
+	Trace     *agent.MessageTrace `json:"trace,omitempty"`
 }
 
-func agentMessageViews(messages []repository.Message) []agentMessageView {
+func agentMessageViews(messages []agent.SessionMessage) []agentMessageView {
 	views := make([]agentMessageView, 0, len(messages))
 	for _, message := range messages {
 		views = append(views, agentMessageView{ID: message.ID, Role: message.Role, Content: message.Content, CreatedAt: message.CreatedAt.UTC().Format(time.RFC3339), Trace: message.Trace})
@@ -71,7 +70,7 @@ func (h *apiHandler) adminUndoAgentMessage(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	restored, messages, err := h.agentRuntime.Undo(r.Context(), claims.ID, chi.URLParam(r, "id"))
-	if errors.Is(err, repository.ErrMessageNotFound) || errors.Is(err, repository.ErrMessageNotUser) {
+	if errors.Is(err, agent.ErrMessageNotFound) || errors.Is(err, agent.ErrMessageNotUser) {
 		WriteError(w, http.StatusNotFound, apierror.AgentMessageNotFound, "The user message is no longer available to undo.")
 		return
 	}

@@ -6,8 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"sync/atomic"
-
-	"github.com/manifold-space/manifold/app/core/internal/agent/repository"
 )
 
 type RuntimeConfig struct {
@@ -22,12 +20,12 @@ type Runtime struct {
 	config    RuntimeConfig
 	providers *ProviderRegistry
 	tools     *ToolRegistry
-	messages  repository.MessageRepository
+	messages  SessionMessageRepository
 	context   *ContextBuilder
 	sequence  atomic.Uint64
 }
 
-func NewRuntime(config RuntimeConfig, providers *ProviderRegistry, scenario Scenario, messages repository.MessageRepository) *Runtime {
+func NewRuntime(config RuntimeConfig, providers *ProviderRegistry, scenario Scenario, messages SessionMessageRepository) *Runtime {
 	if config.MaxToolRounds < 1 {
 		config.MaxToolRounds = 6
 	}
@@ -49,7 +47,7 @@ func (r *Runtime) Run(ctx context.Context, sessionID, userMessage string, emit f
 	if err != nil {
 		return err
 	}
-	persistedUser, err := r.messages.Append(ctx, sessionID, repository.Message{Role: string(RoleUser), Content: userMessage})
+	persistedUser, err := r.messages.Append(ctx, sessionID, SessionMessage{Role: string(RoleUser), Content: userMessage})
 	if err != nil {
 		return err
 	}
@@ -59,11 +57,11 @@ func (r *Runtime) Run(ctx context.Context, sessionID, userMessage string, emit f
 		return err
 	}
 	totalUsage := Usage{}
-	traceSteps := make([]repository.TraceStep, 0)
+	traceSteps := make([]TraceStep, 0)
 	for round := 0; round <= r.config.MaxToolRounds; round++ {
 		reasoningID := fmt.Sprintf("%s-reasoning-%d", runID, round)
 		reasoningIndex := len(traceSteps)
-		traceSteps = append(traceSteps, repository.TraceStep{ID: reasoningID, Kind: "reasoning", Status: "running"})
+		traceSteps = append(traceSteps, TraceStep{ID: reasoningID, Kind: "reasoning", Status: "running"})
 		if err := emit(StreamEvent{Type: EventReasoningStarted, RunID: runID}); err != nil {
 			return err
 		}
@@ -87,13 +85,13 @@ func (r *Runtime) Run(ctx context.Context, sessionID, userMessage string, emit f
 				if err := emit(StreamEvent{Type: EventContentDelta, Delta: response.Content}); err != nil {
 					return err
 				}
-				if _, err := r.messages.Append(ctx, sessionID, repository.Message{
+				if _, err := r.messages.Append(ctx, sessionID, SessionMessage{
 					Role:    string(RoleAssistant),
 					Content: response.Content,
-					Trace: &repository.MessageTrace{
-						Steps:        append([]repository.TraceStep(nil), traceSteps...),
+					Trace: &MessageTrace{
+						Steps:        append([]TraceStep(nil), traceSteps...),
 						FinishReason: string(response.FinishReason),
-						Usage: repository.TraceUsage{
+						Usage: TraceUsage{
 							InputTokens:  totalUsage.InputTokens,
 							OutputTokens: totalUsage.OutputTokens,
 							TotalTokens:  totalUsage.TotalTokens,
@@ -117,7 +115,7 @@ func (r *Runtime) Run(ctx context.Context, sessionID, userMessage string, emit f
 				input = string(call.Arguments)
 			}
 			toolIndex := len(traceSteps)
-			traceSteps = append(traceSteps, repository.TraceStep{ID: call.ID, Kind: "tool", Name: call.Name, Input: input, Status: "running"})
+			traceSteps = append(traceSteps, TraceStep{ID: call.ID, Kind: "tool", Name: call.Name, Input: input, Status: "running"})
 			if err := emit(StreamEvent{Type: EventToolStarted, CallID: call.ID, Name: call.Name, Input: input}); err != nil {
 				return err
 			}

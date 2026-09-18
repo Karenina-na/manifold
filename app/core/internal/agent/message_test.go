@@ -1,13 +1,15 @@
-package repository
+package agent_test
 
 import (
 	"errors"
 	"testing"
+
+	"github.com/manifold-space/manifold/app/core/internal/agent"
 )
 
 func TestMemoryUndoTurnTruncatesTheSelectedUserMessageAndEverythingAfterIt(t *testing.T) {
-	memory := NewMemory()
-	for _, message := range []Message{
+	memory := agent.NewMemory()
+	for _, message := range []agent.SessionMessage{
 		{ID: "user-1", Role: "user", Content: "First"},
 		{ID: "assistant-1", Role: "assistant", Content: "First answer"},
 		{ID: "user-2", Role: "user", Content: "Revise this"},
@@ -32,14 +34,14 @@ func TestMemoryUndoTurnTruncatesTheSelectedUserMessageAndEverythingAfterIt(t *te
 }
 
 func TestMemoryUndoTurnRejectsAssistantAndUnknownMessagesWithoutChangingHistory(t *testing.T) {
-	memory := NewMemory()
-	_, _ = memory.Append(t.Context(), "session-1", Message{ID: "user-1", Role: "user", Content: "First"})
-	_, _ = memory.Append(t.Context(), "session-1", Message{ID: "assistant-1", Role: "assistant", Content: "Answer"})
+	memory := agent.NewMemory()
+	_, _ = memory.Append(t.Context(), "session-1", agent.SessionMessage{ID: "user-1", Role: "user", Content: "First"})
+	_, _ = memory.Append(t.Context(), "session-1", agent.SessionMessage{ID: "assistant-1", Role: "assistant", Content: "Answer"})
 
-	if _, _, err := memory.UndoTurn(t.Context(), "session-1", "assistant-1"); !errors.Is(err, ErrMessageNotUser) {
+	if _, _, err := memory.UndoTurn(t.Context(), "session-1", "assistant-1"); !errors.Is(err, agent.ErrMessageNotUser) {
 		t.Fatalf("expected ErrMessageNotUser, got %v", err)
 	}
-	if _, _, err := memory.UndoTurn(t.Context(), "session-1", "missing"); !errors.Is(err, ErrMessageNotFound) {
+	if _, _, err := memory.UndoTurn(t.Context(), "session-1", "missing"); !errors.Is(err, agent.ErrMessageNotFound) {
 		t.Fatalf("expected ErrMessageNotFound, got %v", err)
 	}
 	messages, _ := memory.List(t.Context(), "session-1", 200)

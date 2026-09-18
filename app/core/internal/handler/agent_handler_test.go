@@ -13,7 +13,6 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/manifold-space/manifold/app/core/internal/agent"
-	"github.com/manifold-space/manifold/app/core/internal/agent/repository"
 	"github.com/manifold-space/manifold/app/core/internal/auth"
 	"github.com/manifold-space/manifold/app/core/internal/config"
 	"github.com/manifold-space/manifold/app/core/internal/events"
@@ -21,13 +20,13 @@ import (
 )
 
 type fakeAgentRunner struct {
-	memory    *repository.Memory
+	memory    *agent.Memory
 	beforeRun func()
 	runError  error
 }
 
 func (fakeAgentRunner) Ready(context.Context) error { return nil }
-func (runner fakeAgentRunner) List(ctx context.Context, sessionID string, limit int) ([]repository.Message, error) {
+func (runner fakeAgentRunner) List(ctx context.Context, sessionID string, limit int) ([]agent.SessionMessage, error) {
 	return runner.memory.List(ctx, sessionID, limit)
 }
 func (runner fakeAgentRunner) Clear(ctx context.Context, sessionID string) error {
@@ -48,15 +47,15 @@ func (runner fakeAgentRunner) Run(_ context.Context, _ string, _ string, emit fu
 	}
 	return nil
 }
-func (runner fakeAgentRunner) Undo(ctx context.Context, sessionID, messageID string) (repository.Message, []repository.Message, error) {
+func (runner fakeAgentRunner) Undo(ctx context.Context, sessionID, messageID string) (agent.SessionMessage, []agent.SessionMessage, error) {
 	return runner.memory.UndoTurn(ctx, sessionID, messageID)
 }
 
-func newAgentHTTPTest(t *testing.T) (http.Handler, string, *repository.Memory) {
+func newAgentHTTPTest(t *testing.T) (http.Handler, string, *agent.Memory) {
 	return newAgentHTTPTestWithRunner(t, nil)
 }
 
-func newAgentHTTPTestWithRunner(t *testing.T, configure func(*fakeAgentRunner)) (http.Handler, string, *repository.Memory) {
+func newAgentHTTPTestWithRunner(t *testing.T, configure func(*fakeAgentRunner)) (http.Handler, string, *agent.Memory) {
 	t.Helper()
 	hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.MinCost)
 	database, err := store.Open(t.Context(), ":memory:", store.WithAdminCredential("admin", string(hash)))
@@ -73,7 +72,7 @@ func newAgentHTTPTestWithRunner(t *testing.T, configure func(*fakeAgentRunner)) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	memory := repository.NewMemory()
+	memory := agent.NewMemory()
 	runner := fakeAgentRunner{memory: memory}
 	if configure != nil {
 		configure(&runner)
@@ -227,13 +226,13 @@ func TestAdminAgentMessageHistoryIsSessionScopedAndClearable(t *testing.T) {
 	if err != nil || json.Unmarshal(decoded, &payload) != nil {
 		t.Fatal("decode test token")
 	}
-	_, _ = memory.Append(t.Context(), payload.ID, repository.Message{
+	_, _ = memory.Append(t.Context(), payload.ID, agent.SessionMessage{
 		Role:    "assistant",
 		Content: "Remembered",
-		Trace: &repository.MessageTrace{
-			Steps:        []repository.TraceStep{{ID: "reasoning-1", Kind: "reasoning", Status: "complete"}},
+		Trace: &agent.MessageTrace{
+			Steps:        []agent.TraceStep{{ID: "reasoning-1", Kind: "reasoning", Status: "complete"}},
 			FinishReason: "stop",
-			Usage:        repository.TraceUsage{InputTokens: 2, OutputTokens: 1, TotalTokens: 3},
+			Usage:        agent.TraceUsage{InputTokens: 2, OutputTokens: 1, TotalTokens: 3},
 		},
 	})
 
@@ -268,7 +267,7 @@ func TestAdminAgentUndoReturnsDraftAndReorganizedHistory(t *testing.T) {
 	if err != nil || json.Unmarshal(decoded, &payload) != nil {
 		t.Fatal("decode test token")
 	}
-	for _, message := range []repository.Message{
+	for _, message := range []agent.SessionMessage{
 		{ID: "user-1", Role: "user", Content: "Earlier"},
 		{ID: "assistant-1", Role: "assistant", Content: "Earlier answer"},
 		{ID: "user-2", Role: "user", Content: "Revise this"},

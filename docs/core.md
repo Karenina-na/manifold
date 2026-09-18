@@ -300,7 +300,7 @@ Agent Runtime 以 `Provider.Chat(ctx, ChatRequest) (*ChatResponse, error)` 为�
 
 Agent 设置由迁移 `0007` 的 `agent_settings` 单例保存，默认值为 OpenAI / `gpt-5-mini` / 6 个工具回合 / 40 条历史 / 2048 输出 token / `https://api.openai.com/v1`，API key 默认为空。Core 不读取对应的 `CORE_AGENT_*` 或 `CORE_OPENAI_*` 环境变量。`openAIBaseURL` 在保存和运行时都会清理首尾空白、去掉尾部斜杠，并在路径中缺少 `v1` 时自动补齐 `/v1`。每次运行前读取当前行；API key 为空时历史读取与清空仍可用，运行在建立 SSE 前返回 503 `AGENT_UNAVAILABLE`。API key 在 SQLite 中保存，但响应、审计元数据和日志仅暴露是否已配置。
 
-对话记忆由 `internal/agent/repository.SessionMemory` 能力接口和进程内实现承载，以 Admin JWT `jti` 隔离；运行服务与 HTTP handler 不依赖具体内存类型。Run、List、Clear 与 Undo 统一经过 session 锁，清空或注销不会与正在生成的同 session 回复交错。assistant 消息同时保存不含隐藏推理文本的运行摘要，供 Admin 重新打开 Agent 时恢复思考卡片。Undo 以用户消息 ID 为边界，删除该消息及所有后续 user/assistant 消息，使下一次运行从重组后的历史继续。显式清空、当前/指定 session 注销、logout-all 和改密码吊销其他 session 时删除对应记忆；Core 重启也会全部丢失。该路径不写 SQLite，不属于 `docs/chain.md` 第 4 节的数据库写清单，也不产生锚定证书。
+对话记忆由 `internal/agent` 中的 `SessionMessageRepository`/`SessionMemory` 能力接口和 `Memory` 进程内实现承载，以 Admin JWT `jti` 隔离；运行服务与 HTTP handler 不依赖具体内存类型。持久消息类型为 `SessionMessage`，与 Provider 对话使用的 `Message` 分开。Run、List、Clear 与 Undo 统一经过 session 锁，清空或注销不会与正在生成的同 session 回复交错。assistant 消息同时保存不含隐藏推理文本的运行摘要，供 Admin 重新打开 Agent 时恢复思考卡片。Undo 以用户消息 ID 为边界，删除该消息及所有后续 user/assistant 消息，使下一次运行从重组后的历史继续。显式清空、当前/指定 session 注销、logout-all 和改密码吊销其他 session 时删除对应记忆；Core 重启也会全部丢失。该路径不写 SQLite，不属于 `docs/chain.md` 第 4 节的数据库写清单，也不产生锚定证书。
 
 内容创建和更新的 Article 必须有非空 `title` 和 `slug`；Thought 两者可为空。更新使用 PUT，必须提交完整内容和 `expectedVersion`，版本不匹配返回 `409 VERSION_CONFLICT`。类型转换为 Article 时，最终 title/slug 也必须满足 Article 规则。
 

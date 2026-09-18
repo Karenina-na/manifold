@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/manifold-space/manifold/app/core/internal/agent"
-	"github.com/manifold-space/manifold/app/core/internal/agent/repository"
 )
 
 type scriptedProvider struct {
@@ -49,7 +48,7 @@ func TestRuntimeCompletesAToolLoopAndStoresConversation(t *testing.T) {
 	if err := toolRegistry.Register(echoTool{}); err != nil {
 		t.Fatal(err)
 	}
-	memory := repository.NewMemory()
+	memory := agent.NewMemory()
 	runtime := agent.NewRuntime(agent.RuntimeConfig{Provider: "test", Model: "test-model", MaxToolRounds: 3, HistoryLimit: 20}, providers, agent.Scenario{Prompt: agent.PromptSpec{Intro: "System prompt"}, Tools: toolRegistry}, memory)
 
 	var events []agent.StreamEvent
@@ -98,8 +97,8 @@ func TestRuntimeCompletesAToolLoopAndStoresConversation(t *testing.T) {
 }
 
 func TestContextBuilderLimitsHistoryAndKeepsSystemFirst(t *testing.T) {
-	memory := repository.NewMemory()
-	for _, message := range []repository.Message{
+	memory := agent.NewMemory()
+	for _, message := range []agent.SessionMessage{
 		{Role: "user", Content: "old"},
 		{Role: "assistant", Content: "older answer"},
 		{Role: "user", Content: "recent"},
@@ -120,8 +119,8 @@ func TestContextBuilderLimitsHistoryAndKeepsSystemFirst(t *testing.T) {
 }
 
 func TestContextBuilderDropsAnOrphanAssistantAtTheHistoryBoundary(t *testing.T) {
-	memory := repository.NewMemory()
-	for _, message := range []repository.Message{
+	memory := agent.NewMemory()
+	for _, message := range []agent.SessionMessage{
 		{Role: "user", Content: "previous"},
 		{Role: "assistant", Content: "previous answer"},
 	} {
