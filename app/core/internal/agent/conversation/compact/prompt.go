@@ -14,6 +14,9 @@ Keep:
 - unresolved questions and open tasks
 - important tool-derived facts that remain relevant
 - identifiers and references still needed
+- the exact remembered content and item identifier from each successful memory operation or memory result when present
+- a retrieval cue that exact or current memory details should be retrieved through the session memory capability when needed
+- do not replace a memory-backed fact with a vague paraphrase when the exact value is available in the supplied history
 - explicit corrections made by the user
 - reasons for rejected alternatives only when they establish an active constraint or affect the current approach
 

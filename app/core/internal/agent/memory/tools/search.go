@@ -17,7 +17,7 @@ func (Search) Definition() agenttool.ToolDefinition {
 	return agenttool.ToolDefinition{
 		Name:        "search_memory",
 		Description: "Search memory items bound to the current authenticated session by content. An empty query returns all items in the session.",
-		Usage:       "Use when remembered decisions, stable preferences, or recurring information may help answer the user; use an empty query to inspect the current session's memories.",
+		Usage:       "Use before answering when a prior decision, stable preference, recurring fact, or other remembered item may be relevant, even if the conversation summary contains an approximate answer; use an empty query when the relevant memory topic is unclear.",
 		Effect:      agenttool.ToolEffectReadOnly,
 		Parameters:  json.RawMessage(`{"type":"object","properties":{"query":{"type":"string","maxLength":500,"description":"Case-insensitive content query; empty lists all session memories"}},"required":["query"],"additionalProperties":false}`),
 	}

@@ -22,7 +22,7 @@ OpenAI 实现使用 Responses API，`store=false`、`parallel_tool_calls=true`�
 
 当前对话能力归属 `conversation`：`History` 定义对话消息边界，`VolatileHistory` 提供按 Admin JWT `jti` 分区的进程内实现；不为尚未使用的 conversation 元数据建立实体。对话消息使用 `conversation.Message` 命名，以区别于 `provider.Message`。配置运行服务统一串行化同一 session 的 Run、List、Clear 与 Undo；Undo 原子截断目标用户消息及其后的整个对话尾部，并返回原文作为新草稿。注销、会话吊销或显式清空不会与正在生成的同 session 回复交错，Core 重启后全部 conversation history 丢失。
 
-同一 session 内跨 conversation 的记忆能力归属独立 `memory` 模块。`Store` contract 显式接收 session ID，`InMemory` 提供并发安全的进程内 Search/Add/Update/Delete/Clear；`Item` 记录 ID、内容与创建/更新时间。Runtime 在执行工具前把受信的 JWT `jti` 绑定到 context，`search_memory` 和 `manage_memory` 不接收模型传入的 session ID。清空对话保留记忆；session 注销或被吊销时一并清理记忆；Core 重启后记忆丢失。System prompt 的独立 `MEMORY USE` section 约束只记录用户明确要求、项目决策、长期稳定偏好和明显可复用信息，排除临时情绪、一次性请求、大量工具原始数据、普通聊天细节和模型猜测。
+同一 session 内跨 conversation 的记忆能力归属独立 `memory` 模块。`Store` contract 显式接收 session ID，`InMemory` 提供并发安全的进程内 Search/Add/Update/Delete/Clear；`Item` 记录 ID、内容与创建/更新时间。Runtime 在执行工具前把受信的 JWT `jti` 绑定到 context，`search_memory` 和 `manage_memory` 不接收模型传入的 session ID。清空对话保留记忆；session 注销或被吊销时一并清理记忆；Core 重启后记忆丢失。System prompt 的独立 `MEMORY USE` section 约束只记录用户明确要求、项目决策、长期稳定偏好和明显可复用信息，排除临时情绪、一次性请求、大量工具原始数据、普通聊天细节和模型猜测；conversation summary 是有损信息，涉及既有决策、稳定偏好、重复事实或其他记忆项时，即使摘要已有近似信息，也应先检索 session memory。
 
 Provider、模型、工具回合数、历史上限、输出上限、OpenAI Base URL 与 API key 由 Admin 设置页管理，持久化在 SQLite 的 `agent_settings` 单例，不属于进程环境配置。Base URL 在保存和 Provider 初始化时清理首尾空白、去掉尾部斜杠，并在路径中缺少 `v1` 时补齐 `/v1`。每次运行前读取当前设置并按值复用或重建 Runtime，因此保存后下一次运行立即生效。读取 API 只返回 `apiKeyConfigured`，API key 只支持替换或清除，不回传明文。设置更新产生 `agent.settings.updated` 审计事件；这类运行配置不描述公开内容或业务状态，按 `docs/chain.md` §4.2 不锚定。
 

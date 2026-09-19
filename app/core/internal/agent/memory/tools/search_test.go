@@ -2,6 +2,7 @@ package tools_test
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	agentmemory "github.com/manifold-space/manifold/app/core/internal/agent/memory"
@@ -38,5 +39,14 @@ func TestSearchMemoryDefinitionIsReadOnly(t *testing.T) {
 	definition := (memorytools.Search{}).Definition()
 	if definition.Name != "search_memory" || definition.Effect != agenttool.ToolEffectReadOnly {
 		t.Fatalf("unexpected search_memory definition: %+v", definition)
+	}
+	for _, phrase := range []string{
+		"Use before answering",
+		"prior decision",
+		"conversation summary contains an approximate answer",
+	} {
+		if !strings.Contains(definition.Usage, phrase) {
+			t.Fatalf("search_memory usage is missing %q: %q", phrase, definition.Usage)
+		}
 	}
 }

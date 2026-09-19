@@ -46,8 +46,17 @@ func TestLLMCompactorUsesPreviousSummaryAndNormalizedMessages(t *testing.T) {
 	if len(provider.request.Messages) != 2 || provider.request.Messages[0].Role != agentprovider.RoleSystem || provider.request.Messages[1].Role != agentprovider.RoleUser {
 		t.Fatalf("unexpected compactor message roles: %+v", provider.request.Messages)
 	}
-	if !strings.Contains(provider.request.Messages[0].Content, "user's active goal") || !strings.Contains(provider.request.Messages[0].Content, "newer messages correct") || !strings.Contains(provider.request.Messages[0].Content, "Preserve uncertainty") {
-		t.Fatalf("compactor policy is incomplete: %q", provider.request.Messages[0].Content)
+	for _, phrase := range []string{
+		"user's active goal",
+		"newer messages correct",
+		"Preserve uncertainty",
+		"successful memory operation or memory result",
+		"exact remembered content and item identifier",
+		"retrieved through the session memory capability",
+	} {
+		if !strings.Contains(provider.request.Messages[0].Content, phrase) {
+			t.Fatalf("compactor policy is missing %q: %q", phrase, provider.request.Messages[0].Content)
+		}
 	}
 	var input struct {
 		PreviousSummary string                      `json:"previousSummary"`
