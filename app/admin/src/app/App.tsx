@@ -1,6 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Alert, Button, Modal, PasswordInput, TextInput } from '@mantine/core'
-import { LayoutDashboard, FileText, Image as ImageIcon, LogOut, Menu, MessageCircle, Feather, Send, SlidersHorizontal, Sparkles, User } from 'lucide-react'
+import { Bot, LayoutDashboard, FileText, Image as ImageIcon, LogOut, Menu, MessageCircle, Feather, Send, SlidersHorizontal, Sparkles, User } from 'lucide-react'
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
@@ -11,7 +11,7 @@ import { LanguageSwitcher } from '../components/common/LanguageSwitcher'
 import { navigate, requestNavigate, setNavConfirm, useHashRoute } from '../lib/useHashRoute'
 import './App.css'
 
-type View = 'dashboard' | 'profile' | 'writings' | 'thoughts' | 'media' | 'comments' | 'settings'
+type View = 'dashboard' | 'profile' | 'writings' | 'thoughts' | 'media' | 'comments' | 'settings' | 'agent-settings'
 
 const DashboardWorkspace = lazy(() => import('../workspaces/DashboardWorkspace'))
 const ProfileWorkspace = lazy(() => import('../workspaces/ProfileWorkspace'))
@@ -19,6 +19,7 @@ const WritingsWorkspace = lazy(() => import('../workspaces/WritingsWorkspace'))
 const ThoughtsWorkspace = lazy(() => import('../workspaces/ThoughtsWorkspace'))
 const MediaWorkspace = lazy(() => import('../workspaces/MediaWorkspace'))
 const CommentsWorkspace = lazy(() => import('../workspaces/CommentsWorkspace'))
+const AgentSettingsWorkspace = lazy(() => import('../workspaces/AgentSettingsWorkspace'))
 const SettingsWorkspace = lazy(() => import('../features/settings/SettingsWorkspace').then(({ SettingsWorkspace }) => ({ default: SettingsWorkspace })))
 const AgentDialog = lazy(() => import('../components/agent/AgentDialog').then(({ AgentDialog }) => ({ default: AgentDialog })))
 
@@ -47,7 +48,7 @@ function LoginScreen({ onLogin }: { onLogin: (session: Session) => void }) {
 
 function Sidebar({ view, onNavigate, onLogout, collapsed, setCollapsed }: { view: View; onNavigate: (view: View) => void; onLogout: () => void; collapsed: boolean; setCollapsed: (value: boolean) => void }) {
   const { t } = useTranslation()
-  const items: Array<{ id: View; label: string; icon: typeof LayoutDashboard }> = [{ id: 'dashboard', label: t('common.dashboard'), icon: LayoutDashboard }, { id: 'profile', label: t('common.profile'), icon: User }, { id: 'writings', label: t('common.writings'), icon: FileText }, { id: 'thoughts', label: t('common.thoughts'), icon: Feather }, { id: 'media', label: t('common.media'), icon: ImageIcon }, { id: 'comments', label: t('common.comments'), icon: MessageCircle }, { id: 'settings', label: t('common.settings'), icon: SlidersHorizontal }]
+  const items: Array<{ id: View; label: string; icon: typeof LayoutDashboard }> = [{ id: 'dashboard', label: t('common.dashboard'), icon: LayoutDashboard }, { id: 'profile', label: t('common.profile'), icon: User }, { id: 'writings', label: t('common.writings'), icon: FileText }, { id: 'thoughts', label: t('common.thoughts'), icon: Feather }, { id: 'media', label: t('common.media'), icon: ImageIcon }, { id: 'comments', label: t('common.comments'), icon: MessageCircle }, { id: 'settings', label: t('common.settings'), icon: SlidersHorizontal }, { id: 'agent-settings', label: t('common.agentSettings'), icon: Bot }]
   return <aside className={`sidebar ${collapsed ? 'sidebar-collapsed' : ''}`}>
     <div className="sidebar-top">
       <div className="brand-mark">m<span>.</span></div>
@@ -112,6 +113,7 @@ function App() {
         {view === 'media' && <MediaWorkspace token={session.accessToken} segments={subSegments} />}
         {view === 'comments' && <CommentsWorkspace token={session.accessToken} />}
         {view === 'settings' && <SettingsWorkspace token={session.accessToken} onLoggedOut={logout} />}
+        {view === 'agent-settings' && <AgentSettingsWorkspace token={session.accessToken} />}
       </Suspense>
       {agentOpened && <Suspense fallback={null}><AgentDialog token={session.accessToken} opened onClose={() => setAgentOpened(false)} /></Suspense>}
     </main>

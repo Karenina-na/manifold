@@ -2,11 +2,12 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Alert, Button, Checkbox, NumberInput, PasswordInput, Select, TextInput } from '@mantine/core'
 import { Check, Save } from 'lucide-react'
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import type { AgentSettings, AgentSettingsInput } from '@manifold/contracts'
 import { createAdminClient } from '../../lib/api'
+import { setDirtyGuard } from '../../lib/dirty-guard'
 import { createAgentSettingsSchema, type AgentSettingsForm } from './agentSettingsSchema'
 
 const defaults: AgentSettingsForm = {
@@ -19,7 +20,7 @@ function values(settings: AgentSettings): AgentSettingsForm {
   return { ...settings, apiKey: '', clearAPIKey: false }
 }
 
-export function AgentSettingsSection({ token, onDirtyChange }: { token: string; onDirtyChange: (dirty: boolean) => void }) {
+export function AgentSettingsSection({ token }: { token: string }) {
   const { t } = useTranslation()
   const client = useMemo(() => createAdminClient(token), [token])
   const queryClient = useQueryClient()
@@ -27,10 +28,12 @@ export function AgentSettingsSection({ token, onDirtyChange }: { token: string; 
   const schema = useMemo(() => createAgentSettingsSchema(t), [t])
   const form = useForm<AgentSettingsForm>({ resolver: zodResolver(schema), defaultValues: defaults })
   useEffect(() => { if (settings.data) form.reset(values(settings.data)) }, [settings.data, form])
+  const dirtyRef = useRef(false)
+  dirtyRef.current = form.formState.isDirty
   useEffect(() => {
-    onDirtyChange(form.formState.isDirty)
-    return () => onDirtyChange(false)
-  }, [form.formState.isDirty, onDirtyChange])
+    setDirtyGuard(() => dirtyRef.current)
+    return () => setDirtyGuard(null)
+  }, [])
 
   const save = useMutation({
     mutationFn: (input: AgentSettingsForm) => {
@@ -58,12 +61,12 @@ export function AgentSettingsSection({ token, onDirtyChange }: { token: string; 
     {save.isError && <Alert color="red" variant="light">{t('agentSettings.saveError')}</Alert>}
     <form className="form-stack" noValidate onSubmit={form.handleSubmit((input) => save.mutate(input))}>
       <Controller control={form.control} name="provider" render={({ field }) => <Select label={t('agentSettings.provider')} data={[{ value: 'openai', label: 'OpenAI' }]} {...field} error={errors.provider?.message} />} />
-      <TextInput label={t('agentSettings.model')} description={t('agentSettings.modelHelp')} {...form.register('model')} error={errors.model?.message} />
+      <TextInput label={t('agentSettings.model')} {...form.register('model')} error={errors.model?.message} />
       <div className="agent-settings-grid">
         <Controller control={form.control} name="maxToolRounds" render={({ field }) => <NumberInput label={t('agentSettings.maxToolRounds')} min={1} max={12} value={field.value} onChange={(value) => field.onChange(Number(value))} error={errors.maxToolRounds?.message} />} />
-        <Controller control={form.control} name="historyLimit" render={({ field }) => <NumberInput label={t('agentSettings.historyLimit')} description={t('agentSettings.historyLimitHelp')} min={1} max={200} value={field.value} onChange={(value) => field.onChange(Number(value))} error={errors.historyLimit?.message} />} />
-        <Controller control={form.control} name="compactionRecentTurns" render={({ field }) => <NumberInput label={t('agentSettings.compactionRecentTurns')} description={t('agentSettings.compactionRecentTurnsHelp')} min={1} max={99} value={field.value} onChange={(value) => field.onChange(Number(value))} error={errors.compactionRecentTurns?.message} />} />
-        <Controller control={form.control} name="compactionMaxOutputTokens" render={({ field }) => <NumberInput label={t('agentSettings.compactionMaxOutputTokens')} description={t('agentSettings.compactionMaxOutputTokensHelp')} min={128} max={8192} value={field.value} onChange={(value) => field.onChange(Number(value))} error={errors.compactionMaxOutputTokens?.message} />} />
+        <Controller control={form.control} name="historyLimit" render={({ field }) => <NumberInput label={t('agentSettings.historyLimit')} min={1} max={200} value={field.value} onChange={(value) => field.onChange(Number(value))} error={errors.historyLimit?.message} />} />
+        <Controller control={form.control} name="compactionRecentTurns" render={({ field }) => <NumberInput label={t('agentSettings.compactionRecentTurns')} min={1} max={99} value={field.value} onChange={(value) => field.onChange(Number(value))} error={errors.compactionRecentTurns?.message} />} />
+        <Controller control={form.control} name="compactionMaxOutputTokens" render={({ field }) => <NumberInput label={t('agentSettings.compactionMaxOutputTokens')} min={128} max={8192} value={field.value} onChange={(value) => field.onChange(Number(value))} error={errors.compactionMaxOutputTokens?.message} />} />
         <Controller control={form.control} name="maxOutputTokens" render={({ field }) => <NumberInput label={t('agentSettings.maxOutputTokens')} min={1} max={128000} value={field.value} onChange={(value) => field.onChange(Number(value))} error={errors.maxOutputTokens?.message} />} />
       </div>
       <TextInput label={t('agentSettings.baseURL')} description={t('agentSettings.baseURLHelp')} {...form.register('openAIBaseURL')} error={errors.openAIBaseURL?.message} />

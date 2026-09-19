@@ -2,7 +2,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Alert, Button, Switch, TextInput } from '@mantine/core'
 import { ArrowDown, ArrowUp, Check, Save } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import type { HomepageSection, SiteConfig } from '@manifold/contracts'
@@ -11,7 +11,6 @@ import { LinkRowsField } from '../../components/forms/LinkRowsField'
 import { SecuritySection } from './SecuritySection'
 import { setDirtyGuard } from '../../lib/dirty-guard'
 import { createSettingsSchema, type SiteSettingsForm } from './siteSettingsSchema'
-import { AgentSettingsSection } from './AgentSettingsSection'
 
 const sectionOrder: HomepageSection[] = ['PROFILE', 'BACKGROUND', 'RECENT_CONTENT', 'UPDATES', 'SERIES', 'CONTACT']
 
@@ -36,9 +35,7 @@ export function SettingsWorkspace({ token, onLoggedOut }: { token: string; onLog
   const form = useForm<SiteSettingsForm>({ resolver: zodResolver(schema), defaultValues: { title: '', description: '', footer: '', social: [], commentsEnabled: true, navigation: [], sections: [] } })
   useEffect(() => { if (site.data) form.reset(settingsValues(site.data)) }, [site.data, form])
   const dirtyRef = useRef(false)
-  const [agentDirty, setAgentDirty] = useState(false)
-  dirtyRef.current = form.formState.isDirty || agentDirty
-  const handleAgentDirty = useCallback((dirty: boolean) => setAgentDirty(dirty), [])
+  dirtyRef.current = form.formState.isDirty
   useEffect(() => {
     setDirtyGuard(() => dirtyRef.current)
     return () => setDirtyGuard(null)
@@ -124,7 +121,6 @@ export function SettingsWorkspace({ token, onLoggedOut }: { token: string; onLog
         </div></div>
       </section>
     </form>
-    <AgentSettingsSection token={token} onDirtyChange={handleAgentDirty} />
     <SecuritySection token={token} onLoggedOut={onLoggedOut} />
     {form.formState.isDirty && <div className="save-bar"><span>{t('common.unsavedChanges')}</span><div className="save-bar-actions"><Button variant="default" onClick={discard}>{t('common.discard')}</Button><Button className="button button-primary" type="submit" form="site-settings-form" loading={saveSite.isPending} leftSection={savedFlash ? <Check size={16} /> : <Save size={16} />}>{savedFlash ? t('common.saved') : t('settings.save')}</Button></div></div>}
   </section>

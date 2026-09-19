@@ -98,12 +98,7 @@ test("every workspace that owns a dirty form registers the guard", () => {
     "a new dirty-form owner appeared; add it to `expected` and make sure it registers the guard",
   );
   for (const [name, source] of owners) {
-    if (name.endsWith("AgentSettingsSection.tsx")) {
-      assert.match(source, /onDirtyChange\(form\.formState\.isDirty\)/, `${name} must report dirty state to its owning workspace`);
-      assert.match(source, /return \(\) => onDirtyChange\(false\)/, `${name} must clear delegated dirty state on unmount`);
-    } else {
-      assert.match(source, /setDirtyGuard\(\(\) => dirtyRef\.current\)/, `${name} must register the dirty guard`);
-      assert.match(source, /return \(\) => setDirtyGuard\(null\)/, `${name} must clear the guard on unmount`);
-    }
+    assert.match(source, /setDirtyGuard\(\(\) => dirtyRef\.current\)/, `${name} must register the dirty guard`);
+    assert.match(source, /return \(\) => setDirtyGuard\(null\)/, `${name} must clear the guard on unmount`);
   }
 });
